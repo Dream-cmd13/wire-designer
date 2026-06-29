@@ -1,11 +1,31 @@
 import { useHarnessStore } from '@/stores/harnessStore';
 import { calculatePrice } from '@/lib/pricing';
 import { LEAD_TIME_OPTIONS, PROTECTION_OPTIONS } from '@/lib/data';
-import { Calculator, ShoppingCart } from 'lucide-react';
+import { Calculator, Download } from 'lucide-react';
 
 export function QuotePanel() {
   const { config, setConfig } = useHarnessStore();
   const price = calculatePrice(config);
+
+  const handleExportEstimate = () => {
+    const data = {
+      projectName: config.name,
+      quantity: config.quantity,
+      leadTime: LEAD_TIME_OPTIONS.find(o => o.id === config.leadTime)?.name || config.leadTime,
+      protection: PROTECTION_OPTIONS.find(p => p.id === config.protection)?.name || '无',
+      priceBreakdown: price,
+      date: new Date().toISOString(),
+      disclaimer: '此为估算价格，非正式报价。最终价格以实际订单确认为准。',
+    };
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${config.name}_报价估算.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -52,8 +72,14 @@ export function QuotePanel() {
           <div className="flex justify-between font-bold text-xl mt-1"><span>总价</span><span className="text-green-600">${price.totalPrice.toFixed(2)}</span></div>
         </div>
       </div>
-      <button className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer">
-        <ShoppingCart className="w-5 h-5" />加入购物车
+      <div className="bg-amber-50 p-2 rounded border border-amber-200 mb-2">
+        <p className="text-xs text-amber-700">⚠️ 此为估算价格，非正式报价。最终价格以实际订单确认为准。</p>
+      </div>
+      <button
+        onClick={handleExportEstimate}
+        className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer"
+      >
+        <Download className="w-5 h-5" />导出估算
       </button>
     </div>
   );

@@ -42,7 +42,7 @@ export const CONNECTORS: Connector[] = [
 
   // --- USB ---
   { id: 'usb-a', name: 'USB Type-A', manufacturer: 'Generic', pinCount: 4, type: 'female', pinLabels: ['VBUS', 'D-', 'D+', 'GND'] },
-  { id: 'usb-c', name: 'USB Type-C', manufacturer: 'Generic', pinCount: 16, type: 'receptacle', pinLabels: ['VBUS', 'D-', 'D+', 'SBU1', 'CC1', 'D+', 'D-', 'SBU2', 'VBUS', 'TX1+', 'TX1-', 'GND', 'RX2-', 'RX2+', 'TX2+', 'TX2-', 'GND'] },
+  { id: 'usb-c', name: 'USB Type-C', manufacturer: 'Generic', pinCount: 16, type: 'receptacle', pinLabels: ['VBUS', 'D-', 'D+', 'SBU1', 'CC1', 'GND', 'VBUS', 'SBU2', 'D-', 'D+', 'GND', 'TX1+', 'TX1-', 'RX2-', 'RX2+', 'GND'] },
 
   // --- Dupont ---
   { id: 'dupont-1x1', name: 'Dupont 2.54 1P', manufacturer: 'Dupont', pinCount: 1, pitch: 2.54, type: 'female', pinLabels: ['1'] },

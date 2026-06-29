@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { WIRE_COLORS, WIRE_GAUGES, WIRE_TYPES } from '@/lib/data';
 import type { Wire } from '@/types/harness';
@@ -55,10 +55,10 @@ export function WireTablePanel() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [exportOpen]);
 
-  const getNodeLabel = (nodeId: string) => {
+  const getNodeLabel = useCallback((nodeId: string) => {
     const node = config.nodes.find((n) => n.id === nodeId);
     return node?.label || nodeId;
-  };
+  }, [config.nodes]);
 
   const getNodeConnector = (nodeId: string) => {
     const node = config.nodes.find((n) => n.id === nodeId);
@@ -123,7 +123,7 @@ export function WireTablePanel() {
     }
 
     return result;
-  }, [config.wires, searchQuery, colorFilter, gaugeFilter, signalFilter]);
+  }, [config.wires, searchQuery, colorFilter, gaugeFilter, signalFilter, getNodeLabel]);
 
   const sortedWires = useMemo(() => {
     const sorted = [...filteredWires];
@@ -164,7 +164,7 @@ export function WireTablePanel() {
       return sort.dir === 'asc' ? cmp : -cmp;
     });
     return sorted;
-  }, [filteredWires, sort]);
+  }, [filteredWires, sort, getNodeLabel]);
 
   const handleRowClick = (wire: Wire) => {
     // Find the connection this wire belongs to

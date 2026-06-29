@@ -1,30 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { HarnessConfig, HarnessNode, Connection, Wire } from '@/types/harness';
+import type { Connection, HarnessConfig, HarnessNode, SaveState, Selection, Wire } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
 
-// ============================================================
-// ID Generator
-// ============================================================
+const generateId = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
 
-const generateId = (): string =>
-  Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
 
-// ============================================================
-// Default Configuration - T-type topology example
-// 3 nodes: A(JST XH 2P), B(JST XH 2P), C(JST PH 2.0 2P)
-// 2 connections:
-//   A->B: Pin1->Pin1 VCC red, Pin2->Pin2 GND black
-//   A->C: Pin1->Pin1 SDA blue
-// ============================================================
-
-const createDefaultConfig = (): HarnessConfig => {
+export function createDefaultConfig(): HarnessConfig {
   const nodeAId = 'node-a';
   const nodeBId = 'node-b';
   const nodeCId = 'node-c';
-  const connA: typeof CONNECTORS[number] = CONNECTORS[0]; // JST XH 2P
-  const connB: typeof CONNECTORS[number] = CONNECTORS[0]; // JST XH 2P
-  const connC: typeof CONNECTORS[number] = CONNECTORS[4]; // JST PH 2.0 2P
+  const connA: typeof CONNECTORS[number] = CONNECTORS[0];
+  const connB: typeof CONNECTORS[number] = CONNECTORS[0];
+  const connC: typeof CONNECTORS[number] = CONNECTORS[4];
 
   const wire1Id = generateId();
   const wire2Id = generateId();
@@ -118,78 +111,79 @@ const createDefaultConfig = (): HarnessConfig => {
     quantity: 1,
     leadTime: 'standard',
   };
-};
+}
 
-// ============================================================
-// Store Interface
-// ============================================================
+interface ReplaceDocumentOptions {
+  markSaved?: boolean;
+}
 
 interface HarnessState {
   config: HarnessConfig;
-  selectedNodeId: string | null;
-  selectedWireId: string | null;
-
-  // --- Config-level ---
+  selection: Selection;
+  saveState: SaveState;
   setConfig: (config: Partial<HarnessConfig>) => void;
-
-  // --- Node operations ---
+  patchDocument: (partial: Partial<HarnessConfig>) => void;
+  replaceDocument: (fullConfig: HarnessConfig, options?: ReplaceDocumentOptions) => void;
+  markSaving: () => void;
+  markSaved: () => void;
+  markSaveError: (message: string) => void;
   addNode: (node: HarnessNode) => void;
   updateNode: (id: string, updates: Partial<HarnessNode>) => void;
   removeNode: (id: string) => void;
-
-  // --- Connection operations ---
   addConnection: (connection: Connection) => void;
   updateConnection: (id: string, updates: Partial<Connection>) => void;
   removeConnection: (id: string) => void;
-
-  // --- Wire operations ---
   addWire: (wire: Wire) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
   removeWire: (id: string) => void;
-
-  // --- Selection ---
+  setSelection: (selection: Selection) => void;
   setSelectedNode: (id: string | null) => void;
   setSelectedWire: (id: string | null) => void;
-
-  // --- Reset ---
   resetConfig: () => void;
-
-  // ============================================================
-  // Backward-compatible aliases (legacy components use "branch")
-  // ============================================================
-
-  /** @deprecated Use selectedWireId instead */
+  selectedNodeId: string | null;
+  selectedWireId: string | null;
   selectedBranchId: string | null;
-  /** @deprecated Use addConnection instead */
   addBranch: (connection: Connection) => void;
-  /** @deprecated Use updateConnection instead */
   updateBranch: (id: string, updates: Partial<Connection>) => void;
-  /** @deprecated Use removeConnection instead */
   removeBranch: (id: string) => void;
-  /** @deprecated Use setSelectedWire instead */
   setSelectedBranch: (id: string | null) => void;
-  /** @deprecated Use config.connections instead */
   branches: Connection[];
 }
 
-// ============================================================
-// Store Implementation
-// ============================================================
+function dirtyState() {
+  return { status: 'dirty' } as const;
+}
 
 export const useHarnessStore = create<HarnessState>()(
   persist(
     (set, get) => ({
       config: createDefaultConfig(),
-      selectedNodeId: null,
-      selectedWireId: null,
+      selection: { kind: 'none' },
+      saveState: { status: 'saved', savedAt: Date.now() },
 
-      // --- Config-level ---
       setConfig: (updates) =>
         set((state) => ({
           config: { ...state.config, ...updates, updatedAt: Date.now() },
+          saveState: dirtyState(),
         })),
 
-      // --- Node operations ---
+      patchDocument: (partial) =>
+        set((state) => ({
+          config: { ...state.config, ...partial, updatedAt: Date.now() },
+          saveState: dirtyState(),
+        })),
+
+      replaceDocument: (fullConfig, options) =>
+        set({
+          config: fullConfig,
+          selection: { kind: 'none' },
+          saveState: options?.markSaved ? { status: 'saved', savedAt: Date.now() } : dirtyState(),
+        }),
+
+      markSaving: () => set({ saveState: { status: 'saving' } }),
+      markSaved: () => set({ saveState: { status: 'saved', savedAt: Date.now() } }),
+      markSaveError: (message) => set({ saveState: { status: 'error', message } }),
+
       addNode: (node) =>
         set((state) => ({
           config: {
@@ -197,35 +191,45 @@ export const useHarnessStore = create<HarnessState>()(
             nodes: [...state.config.nodes, node],
             updatedAt: Date.now(),
           },
+          saveState: dirtyState(),
         })),
 
       updateNode: (id, updates) =>
         set((state) => ({
           config: {
             ...state.config,
-            nodes: state.config.nodes.map((n) =>
-              n.id === id ? { ...n, ...updates } : n
-            ),
+            nodes: state.config.nodes.map((node) => (
+              node.id === id ? { ...node, ...updates } : node
+            )),
             updatedAt: Date.now(),
           },
+          saveState: dirtyState(),
         })),
 
       removeNode: (id) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            nodes: state.config.nodes.filter((n) => n.id !== id),
-            connections: state.config.connections.filter(
-              (c) => c.fromNodeId !== id && c.toNodeId !== id
-            ),
-            wires: state.config.wires.filter(
-              (w) => w.fromConnectorId !== id && w.toConnectorId !== id
-            ),
-            updatedAt: Date.now(),
-          },
-        })),
+        set((state) => {
+          const nextSelection =
+            state.selection.kind === 'node' && state.selection.id === id
+              ? { kind: 'none' as const }
+              : state.selection;
 
-      // --- Connection operations ---
+          return {
+            config: {
+              ...state.config,
+              nodes: state.config.nodes.filter((node) => node.id !== id),
+              connections: state.config.connections.filter(
+                (connection) => connection.fromNodeId !== id && connection.toNodeId !== id,
+              ),
+              wires: state.config.wires.filter(
+                (wire) => wire.fromConnectorId !== id && wire.toConnectorId !== id,
+              ),
+              updatedAt: Date.now(),
+            },
+            selection: nextSelection,
+            saveState: dirtyState(),
+          };
+        }),
+
       addConnection: (connection) =>
         set((state) => ({
           config: {
@@ -233,29 +237,43 @@ export const useHarnessStore = create<HarnessState>()(
             connections: [...state.config.connections, connection],
             updatedAt: Date.now(),
           },
+          saveState: dirtyState(),
         })),
 
       updateConnection: (id, updates) =>
         set((state) => ({
           config: {
             ...state.config,
-            connections: state.config.connections.map((c) =>
-              c.id === id ? { ...c, ...updates } : c
-            ),
+            connections: state.config.connections.map((connection) => (
+              connection.id === id ? { ...connection, ...updates } : connection
+            )),
             updatedAt: Date.now(),
           },
+          saveState: dirtyState(),
         })),
 
       removeConnection: (id) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            connections: state.config.connections.filter((c) => c.id !== id),
-            updatedAt: Date.now(),
-          },
-        })),
+        set((state) => {
+          const removedConnection = state.config.connections.find((connection) => connection.id === id);
+          const removedWireIds = new Set(removedConnection?.wireIds ?? []);
+          const nextSelection =
+            (state.selection.kind === 'connection' && state.selection.id === id)
+            || (state.selection.kind === 'wire' && removedWireIds.has(state.selection.id))
+              ? { kind: 'none' as const }
+              : state.selection;
 
-      // --- Wire operations ---
+          return {
+            config: {
+              ...state.config,
+              connections: state.config.connections.filter((connection) => connection.id !== id),
+              wires: state.config.wires.filter((wire) => !removedWireIds.has(wire.id)),
+              updatedAt: Date.now(),
+            },
+            selection: nextSelection,
+            saveState: dirtyState(),
+          };
+        }),
+
       addWire: (wire) =>
         set((state) => ({
           config: {
@@ -263,60 +281,94 @@ export const useHarnessStore = create<HarnessState>()(
             wires: [...state.config.wires, wire],
             updatedAt: Date.now(),
           },
+          saveState: dirtyState(),
         })),
 
       updateWire: (id, updates) =>
         set((state) => ({
           config: {
             ...state.config,
-            wires: state.config.wires.map((w) =>
-              w.id === id ? { ...w, ...updates } : w
-            ),
+            wires: state.config.wires.map((wire) => (
+              wire.id === id ? { ...wire, ...updates } : wire
+            )),
             updatedAt: Date.now(),
           },
+          saveState: dirtyState(),
         })),
 
       removeWire: (id) =>
         set((state) => ({
           config: {
             ...state.config,
-            wires: state.config.wires.filter((w) => w.id !== id),
-            // Also remove wire ID from any connections that reference it
-            connections: state.config.connections.map((c) => ({
-              ...c,
-              wireIds: c.wireIds.filter((wid) => wid !== id),
+            wires: state.config.wires.filter((wire) => wire.id !== id),
+            connections: state.config.connections.map((connection) => ({
+              ...connection,
+              wireIds: connection.wireIds.filter((wireId) => wireId !== id),
             })),
             updatedAt: Date.now(),
           },
+          selection:
+            state.selection.kind === 'wire' && state.selection.id === id
+              ? { kind: 'none' as const }
+              : state.selection,
+          saveState: dirtyState(),
         })),
 
-      // --- Selection ---
-      setSelectedNode: (id) => set({ selectedNodeId: id }),
-      setSelectedWire: (id) => set({ selectedWireId: id }),
+      setSelection: (selection) => set({ selection }),
+      setSelectedNode: (id) => set({ selection: id ? { kind: 'node', id } : { kind: 'none' } }),
+      setSelectedWire: (id) => {
+        if (!id) {
+          set({ selection: { kind: 'none' } });
+          return;
+        }
 
-      // --- Reset ---
+        const state = get();
+        if (state.config.connections.some((connection) => connection.id === id)) {
+          set({ selection: { kind: 'connection', id } });
+          return;
+        }
+
+        if (state.config.wires.some((wire) => wire.id === id)) {
+          set({ selection: { kind: 'wire', id } });
+          return;
+        }
+
+        set({ selection: { kind: 'none' } });
+      },
+
       resetConfig: () =>
         set({
           config: createDefaultConfig(),
-          selectedNodeId: null,
-          selectedWireId: null,
+          selection: { kind: 'none' },
+          saveState: dirtyState(),
         }),
 
-      // ============================================================
-      // Backward-compatible aliases
-      // ============================================================
+      get selectedNodeId() {
+        const selection = get().selection;
+        return selection.kind === 'node' ? selection.id : null;
+      },
+
+      get selectedWireId() {
+        const selection = get().selection;
+        return selection.kind === 'connection' || selection.kind === 'wire' ? selection.id : null;
+      },
 
       get selectedBranchId() {
         return get().selectedWireId;
       },
+
       get branches() {
         return get().config.connections;
       },
+
       addBranch: (connection) => get().addConnection(connection),
       updateBranch: (id, updates) => get().updateConnection(id, updates),
       removeBranch: (id) => get().removeConnection(id),
       setSelectedBranch: (id) => get().setSelectedWire(id),
     }),
-    { name: 'harness-config' }
-  )
+    {
+      name: 'harness-config',
+      partialize: (state) => ({ config: state.config, saveState: state.saveState }),
+    },
+  ),
 );

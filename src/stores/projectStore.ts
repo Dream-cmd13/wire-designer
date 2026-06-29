@@ -3,8 +3,12 @@ import { persist } from 'zustand/middleware';
 import type { Project } from '@/types/user';
 import type { HarnessConfig } from '@/types/harness';
 
-const generateId = (): string =>
-  Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+const generateId = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+};
 
 // Project configs are stored separately to avoid nesting issues with persist
 const PROJECT_CONFIG_PREFIX = 'harness-project-config-';

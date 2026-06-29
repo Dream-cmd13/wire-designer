@@ -1,28 +1,20 @@
-import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 import type { Connection } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { WIRE_COLORS } from '@/lib/data';
 
-interface WireEdgeProps {
-  id: string;
-  sourceX: number;
-  sourceY: number;
-  targetX: number;
-  targetY: number;
-  sourcePosition: unknown;
-  targetPosition: unknown;
+interface WireEdgeProps extends Omit<EdgeProps, 'data'> {
   data?: Connection;
-  selected?: boolean;
 }
 
 export function WireEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: WireEdgeProps) {
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
-    sourcePosition: sourcePosition as any,
+    sourcePosition,
     targetX,
     targetY,
-    targetPosition: targetPosition as any,
+    targetPosition,
   });
   const { config } = useHarnessStore();
 

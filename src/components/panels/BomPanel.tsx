@@ -88,9 +88,9 @@ export function BomPanel() {
     // Add total row
     rows.push(['', '', '', '', '', '总计', totalCost.toFixed(2)]);
 
-    // TSV format: tab-separated, .xls extension
+    // TSV format: tab-separated for spreadsheet compatibility
     const tsvContent = [headers, ...rows].map((row) => row.join('\t')).join('\n');
-    downloadFile('\uFEFF' + tsvContent, `${config.name}_BOM.xls`, 'application/vnd.ms-excel;charset=utf-8;');
+    downloadFile('\uFEFF' + tsvContent, `${config.name}_BOM.tsv`, 'text/tab-separated-values;charset=utf-8;');
   };
 
   return (

@@ -139,3 +139,27 @@ export interface PriceBreakdown {
  * @deprecated Use Connection instead. Kept for backward compatibility.
  */
 export type Branch = Connection;
+
+/** Discriminated selection state for the editor */
+export type Selection =
+  | { kind: 'none' }
+  | { kind: 'node'; id: string }
+  | { kind: 'connection'; id: string }
+  | { kind: 'wire'; id: string };
+
+/** Save state for the editor document */
+export type SaveState =
+  | { status: 'saved'; savedAt: number }
+  | { status: 'dirty' }
+  | { status: 'saving' }
+  | { status: 'error'; message: string };
+
+/** Validation issue from the design rule checker */
+export interface ValidationIssue {
+  id: string;
+  severity: 'error' | 'warning' | 'info';
+  code: string;
+  entity: { kind: 'project' | 'node' | 'connection' | 'wire'; id?: string };
+  message: string;
+  suggestedAction?: string;
+}
