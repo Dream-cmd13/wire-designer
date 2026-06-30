@@ -42,8 +42,13 @@ export function ProtectiveSleeveNode({ data, selected }: ProtectiveSleeveNodePro
         ...sleeveStyles[data.type],
       }}
     >
-      <div className="relative z-10 w-full text-center text-[10px] font-semibold text-white drop-shadow">
-        {PROTECTIVE_SLEEVE_LABELS[data.type]} {data.lengthMm ?? 100}mm
+      <div className="relative z-10 flex w-full flex-col items-center gap-0.5">
+        <span className="text-[10px] font-semibold leading-none text-white drop-shadow">
+          {PROTECTIVE_SLEEVE_LABELS[data.type]}
+        </span>
+        <span className="text-[10px] font-semibold leading-none text-white drop-shadow">
+          {data.lengthMm ?? 100}mm
+        </span>
       </div>
     </div>
   );

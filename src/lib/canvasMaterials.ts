@@ -51,7 +51,7 @@ export const CANVAS_MATERIAL_STRIP_HEIGHT = 10;
 // Shared with WireMaterialNode so the sleeve snaps to the exact visual center of the strip.
 export const CANVAS_MATERIAL_SLEEVE_CENTER_Y =
   CANVAS_MATERIAL_STRIP_TOP + CANVAS_MATERIAL_STRIP_PADDING_Y + CANVAS_MATERIAL_STRIP_HEIGHT / 2;
-export const PROTECTIVE_SLEEVE_HEIGHT = 24;
+export const PROTECTIVE_SLEEVE_HEIGHT = 36;
 
 export function sleeveLengthToCanvasWidth(lengthMm: number): number {
   return Math.max(64, Math.min(260, lengthMm * 0.6));
