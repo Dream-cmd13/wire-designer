@@ -1,4 +1,4 @@
-import { CORRUGATED_MATERIAL_LABELS, PROTECTIVE_SLEEVE_HEIGHT, PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
+import { PROTECTIVE_SLEEVE_HEIGHT, PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
 import type { ProtectiveSleeve } from '@/types/harness';
 
 interface ProtectiveSleeveNodeProps {

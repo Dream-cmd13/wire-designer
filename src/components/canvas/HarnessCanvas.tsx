@@ -83,6 +83,67 @@ function getConnectorHeight(node: HarnessNode): number {
   return 52 + visiblePins * 20 + (pinCount > 6 ? 20 : 0) + 32;
 }
 
+function getVisiblePinCount(node: HarnessNode): number {
+  return Math.min(node.connector?.pinCount ?? 2, 6);
+}
+
+function getMaterialEndpointPoint(
+  material: CanvasWireMaterial,
+  endpoint: WireEndpoint,
+): { x: number; y: number } {
+  return {
+    x: endpoint === 'start' ? material.position.x : material.position.x + material.width,
+    y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+  };
+}
+
+function getHandleSide(handleId?: string | null): 'left' | 'right' | undefined {
+  if (!handleId) return undefined;
+  if (handleId.startsWith('left')) return 'left';
+  if (handleId.startsWith('right')) return 'right';
+  return undefined;
+}
+
+function getConnectorPinHandlePosition(
+  node: HarnessNode,
+  side: 'left' | 'right',
+  pin: number,
+): { x: number; y: number } {
+  const clampedPin = Math.max(1, Math.min(pin, getVisiblePinCount(node)));
+  return {
+    x: node.position.x + (side === 'left' ? 0 : 200),
+    y: node.position.y + 52 + (clampedPin - 0.5) * 20,
+  };
+}
+
+function resolveNearestConnectorHandle(
+  node: HarnessNode,
+  point: { x: number; y: number },
+  preferredSide?: 'left' | 'right',
+): { handle: string; distance: number; pin: number } {
+  const connectorCenterX = node.position.x + 100;
+  const side = preferredSide ?? (point.x < connectorCenterX ? 'left' : 'right');
+  const visiblePinCount = getVisiblePinCount(node);
+
+  let bestPin = 1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (let pin = 1; pin <= visiblePinCount; pin += 1) {
+    const handlePosition = getConnectorPinHandlePosition(node, side, pin);
+    const distance = Math.hypot(point.x - handlePosition.x, point.y - handlePosition.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestPin = pin;
+    }
+  }
+
+  return {
+    handle: `${side}-pin-${bestPin}`,
+    distance: bestDistance,
+    pin: bestPin,
+  };
+}
+
 function distanceToRect(
   point: { x: number; y: number },
   rect: { x: number; y: number; width: number; height: number },
@@ -146,16 +207,6 @@ function ensureConnectionMaterial(
   const fromIsLeft = fromNode.position.x <= toNode.position.x;
   const startNode = fromIsLeft ? fromNode : toNode;
   const endNode = fromIsLeft ? toNode : fromNode;
-  const startPin = firstWire
-    ? firstWire.fromConnectorId === startNode.id
-      ? firstWire.fromPin
-      : firstWire.toPin
-    : 1;
-  const endPin = firstWire
-    ? firstWire.fromConnectorId === endNode.id
-      ? firstWire.fromPin
-      : firstWire.toPin
-    : 1;
   const fromCenter = {
     x: fromNode.position.x + 100,
     y: fromNode.position.y + getConnectorHeight(fromNode) / 2,
@@ -183,22 +234,39 @@ function ensureConnectionMaterial(
       endTreatment: { stripped: false },
     },
   };
-  const nextAttachments: MaterialAttachment[] = [
-    {
-      id: generateId(),
-      materialId,
-      endpoint: 'start',
-      connectorNodeId: startNode.id,
-      connectorHandle: `right-pin-${startPin}`,
-    },
-    {
-      id: generateId(),
-      materialId,
-      endpoint: 'end',
-      connectorNodeId: endNode.id,
-      connectorHandle: `left-pin-${endPin}`,
-    },
-  ];
+  const attachmentKeys = new Set<string>();
+  const nextAttachments: MaterialAttachment[] = [];
+  const wireEntries = connectionWires.length > 0 ? connectionWires : [firstWire].filter(Boolean);
+
+  wireEntries.forEach((wire) => {
+    if (!wire) return;
+    const startPin = wire.fromConnectorId === startNode.id ? wire.fromPin : wire.toPin;
+    const endPin = wire.fromConnectorId === endNode.id ? wire.fromPin : wire.toPin;
+    const attachmentDrafts: Array<Omit<MaterialAttachment, 'id'>> = [
+      {
+        materialId,
+        endpoint: 'start',
+        connectorNodeId: startNode.id,
+        connectorHandle: `right-pin-${startPin}`,
+      },
+      {
+        materialId,
+        endpoint: 'end',
+        connectorNodeId: endNode.id,
+        connectorHandle: `left-pin-${endPin}`,
+      },
+    ];
+
+    attachmentDrafts.forEach((draft) => {
+      const key = `${draft.endpoint}:${draft.connectorNodeId}:${draft.connectorHandle}`;
+      if (attachmentKeys.has(key)) return;
+      attachmentKeys.add(key);
+      nextAttachments.push({
+        id: generateId(),
+        ...draft,
+      });
+    });
+  });
 
   return {
     ...config,
@@ -207,6 +275,242 @@ function ensureConnectionMaterial(
     protectiveSleeves: config.protectiveSleeves ?? [],
     updatedAt: Date.now(),
   };
+}
+
+function getMaterialWireDraft(material: CanvasWireMaterial) {
+  return {
+    wireGauge: material.spec.kind === 'electronic' ? material.spec.awg : 26,
+    wireType: 'silicone',
+    wireColor: material.spec.kind === 'electronic' ? material.spec.color : 'red',
+    lengthMm: material.spec.lengthMm,
+  };
+}
+
+interface AttachmentPinRef {
+  attachment: MaterialAttachment;
+  connectorNodeId: string;
+  pin: number;
+}
+
+function choosePrimaryConnectorId(
+  attachments: MaterialAttachment[],
+  preferredConnectorId?: string,
+): string | undefined {
+  if (
+    preferredConnectorId
+    && attachments.some((attachment) => attachment.connectorNodeId === preferredConnectorId)
+  ) {
+    return preferredConnectorId;
+  }
+
+  const counts = new Map<string, number>();
+  attachments.forEach((attachment) => {
+    counts.set(
+      attachment.connectorNodeId,
+      (counts.get(attachment.connectorNodeId) ?? 0) + 1,
+    );
+  });
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+}
+
+function getAttachmentPinRefs(
+  attachments: MaterialAttachment[],
+  endpoint: WireEndpoint,
+  connectorNodeId: string,
+): AttachmentPinRef[] {
+  return attachments
+    .filter((attachment) => (
+      attachment.endpoint === endpoint
+      && attachment.connectorNodeId === connectorNodeId
+    ))
+    .map((attachment) => {
+      const pin = parsePinFromHandleId(attachment.connectorHandle);
+      return pin
+        ? {
+            attachment,
+            connectorNodeId,
+            pin,
+          }
+        : undefined;
+    })
+    .filter((item): item is AttachmentPinRef => Boolean(item))
+    .sort((a, b) => a.pin - b.pin || a.attachment.id.localeCompare(b.attachment.id));
+}
+
+/**
+ * Keeps the electrical Connection/Wire model in sync with a material's two
+ * visual endpoint attachments. A single attachment is intentionally not an
+ * electrical connection yet.
+ */
+function reconcileMaterialConnection(
+  config: HarnessConfig,
+  materialId: string,
+): HarnessConfig {
+  const material = (config.canvasMaterials ?? []).find((item) => item.id === materialId);
+  if (!material) return config;
+
+  const materialAttachments = (config.materialAttachments ?? []).filter(
+    (attachment) => attachment.materialId === materialId,
+  );
+  const existingConnection = material.connectionId
+    ? config.connections.find((item) => item.id === material.connectionId)
+    : undefined;
+  const startConnectorId = choosePrimaryConnectorId(
+    materialAttachments.filter((attachment) => attachment.endpoint === 'start'),
+    existingConnection?.fromNodeId,
+  );
+  const endConnectorId = choosePrimaryConnectorId(
+    materialAttachments.filter((attachment) => attachment.endpoint === 'end'),
+    existingConnection?.toNodeId,
+  );
+  if (!startConnectorId || !endConnectorId || startConnectorId === endConnectorId) {
+    return config;
+  }
+
+  const startPins = getAttachmentPinRefs(materialAttachments, 'start', startConnectorId);
+  const endPins = getAttachmentPinRefs(materialAttachments, 'end', endConnectorId);
+  const pairCount = Math.min(startPins.length, endPins.length);
+
+  if (pairCount === 0) {
+    return config;
+  }
+
+  const startNodeId = startConnectorId;
+  const endNodeId = endConnectorId;
+  let connection = material.connectionId
+    ? config.connections.find((item) => item.id === material.connectionId)
+    : undefined;
+  let nextConfig = config;
+
+  if (!connection) {
+    connection = config.connections.find((item) => (
+      (item.fromNodeId === startNodeId && item.toNodeId === endNodeId)
+      || (item.fromNodeId === endNodeId && item.toNodeId === startNodeId)
+    ));
+  }
+
+  if (!connection) {
+    const result = createConnection(nextConfig, {
+      fromNodeId: startNodeId,
+      toNodeId: endNodeId,
+      fromPin: startPins[0]?.pin ?? 1,
+      toPin: endPins[0]?.pin ?? 1,
+      name: material.name,
+      createDefaultWire: false,
+    });
+    nextConfig = result.config;
+    connection = nextConfig.connections.find((item) => item.id === result.connectionId);
+  }
+
+  if (!connection) return config;
+
+  const forwardPair = connection.fromNodeId === startNodeId
+    && connection.toNodeId === endNodeId;
+  const reversePair = connection.fromNodeId === endNodeId
+    && connection.toNodeId === startNodeId;
+
+  if (!forwardPair && !reversePair) {
+    const connectionWireIds = new Set(connection.wireIds);
+    nextConfig = {
+      ...nextConfig,
+      connections: nextConfig.connections.map((item) => (
+        item.id === connection!.id
+          ? { ...item, fromNodeId: startNodeId, toNodeId: endNodeId }
+          : item
+      )),
+      wires: nextConfig.wires.map((wire) => (
+        connectionWireIds.has(wire.id)
+          ? {
+              ...wire,
+              fromConnectorId: startNodeId,
+              toConnectorId: endNodeId,
+            }
+          : wire
+      )),
+      updatedAt: Date.now(),
+    };
+    connection = nextConfig.connections.find((item) => item.id === connection!.id);
+  }
+
+  if (!connection) return config;
+
+  const desiredPairs = Array.from({ length: pairCount }, (_, index) => {
+    const startPin = startPins[index].pin;
+    const endPin = endPins[index].pin;
+    return connection!.fromNodeId === startNodeId
+      ? { fromPin: startPin, toPin: endPin }
+      : { fromPin: endPin, toPin: startPin };
+  });
+
+  const connectionWireIds = new Set(connection.wireIds);
+  const exactMatchKey = (fromPin: number, toPin: number) => `${fromPin}:${toPin}`;
+  const reusableWires = nextConfig.wires.filter((wire) => (
+    connectionWireIds.has(wire.id)
+    && wire.fromConnectorId === connection!.fromNodeId
+    && wire.toConnectorId === connection!.toNodeId
+  ));
+  const exactMatches = new Map<string, typeof reusableWires>();
+
+  reusableWires.forEach((wire) => {
+    const key = exactMatchKey(wire.fromPin, wire.toPin);
+    const existing = exactMatches.get(key) ?? [];
+    existing.push(wire);
+    exactMatches.set(key, existing);
+  });
+
+  const availableWires = [...reusableWires];
+
+  desiredPairs.forEach(({ fromPin, toPin }) => {
+    const key = exactMatchKey(fromPin, toPin);
+    const exactWire = exactMatches.get(key)?.shift();
+
+    if (exactWire) {
+      const exactIndex = availableWires.findIndex((wire) => wire.id === exactWire.id);
+      if (exactIndex >= 0) availableWires.splice(exactIndex, 1);
+      return;
+    }
+
+    const reusableWire = availableWires.shift();
+    if (reusableWire) {
+      nextConfig = {
+        ...nextConfig,
+        wires: nextConfig.wires.map((wire) => (
+          wire.id === reusableWire.id
+            ? {
+                ...wire,
+                fromConnectorId: connection!.fromNodeId,
+                fromPin,
+                toConnectorId: connection!.toNodeId,
+                toPin,
+              }
+            : wire
+        )),
+        updatedAt: Date.now(),
+      };
+      return;
+    }
+
+    nextConfig = addWireToConnection(nextConfig, connection!.id, {
+      ...getMaterialWireDraft(material),
+      fromPin,
+      toPin,
+    });
+  });
+
+  const materialHasConnection = material.connectionId === connection.id;
+  if (!materialHasConnection) {
+    nextConfig = {
+      ...nextConfig,
+      canvasMaterials: (nextConfig.canvasMaterials ?? []).map((item) => (
+        item.id === materialId ? { ...item, connectionId: connection!.id } : item
+      )),
+      updatedAt: Date.now(),
+    };
+  }
+
+  return nextConfig;
 }
 
 interface SleeveDialogState {
@@ -233,9 +537,13 @@ function HarnessCanvasInner() {
   const sleeves = config.protectiveSleeves ?? EMPTY_SLEEVES;
 
   useEffect(() => {
-    const migratedConfig = config.connections.reduce(
+    let migratedConfig = config.connections.reduce(
       (currentConfig, connection) => ensureConnectionMaterial(currentConfig, connection.id),
       config,
+    );
+    migratedConfig = (migratedConfig.canvasMaterials ?? []).reduce(
+      (currentConfig, material) => reconcileMaterialConnection(currentConfig, material.id),
+      migratedConfig,
     );
     if (migratedConfig !== config) {
       useHarnessStore.getState().replaceDocument(migratedConfig);
@@ -359,6 +667,33 @@ function HarnessCanvasInner() {
     state.updateCanvasMaterial(material.id, { position: { x, y } });
   }, []);
 
+  const normalizeAttachmentHandle = useCallback((
+    materialId: string,
+    endpoint: WireEndpoint,
+    connectorNodeId: string,
+    connectorHandle?: string | null,
+  ): string => {
+    const state = useHarnessStore.getState();
+    const connector = state.config.nodes.find((item) => item.id === connectorNodeId);
+    const material = (state.config.canvasMaterials ?? []).find((item) => item.id === materialId);
+
+    if (parsePinFromHandleId(connectorHandle)) {
+      return connectorHandle!;
+    }
+
+    if (connector && material) {
+      const point = getMaterialEndpointPoint(material, endpoint);
+      return resolveNearestConnectorHandle(
+        connector,
+        point,
+        getHandleSide(connectorHandle),
+      ).handle;
+    }
+
+    const fallbackSide = getHandleSide(connectorHandle) ?? 'left';
+    return `${fallbackSide}-pin-1`;
+  }, []);
+
   const addAttachment = useCallback((
     materialId: string,
     endpoint: WireEndpoint,
@@ -366,7 +701,12 @@ function HarnessCanvasInner() {
     connectorHandle?: string | null,
   ) => {
     const state = useHarnessStore.getState();
-    const normalizedHandle = connectorHandle ?? 'left';
+    const normalizedHandle = normalizeAttachmentHandle(
+      materialId,
+      endpoint,
+      connectorNodeId,
+      connectorHandle,
+    );
     const exists = (state.config.materialAttachments ?? []).some((item) => (
       item.materialId === materialId
       && item.endpoint === endpoint
@@ -386,61 +726,29 @@ function HarnessCanvasInner() {
     };
 
     const latestState = useHarnessStore.getState();
-    const material = (latestState.config.canvasMaterials ?? []).find((m) => m.id === materialId);
     const nextAttachments = [...(latestState.config.materialAttachments ?? []), attachment];
     const materialAttachments = nextAttachments.filter((a) => a.materialId === materialId);
     const startAttach = materialAttachments.find((a) => a.endpoint === 'start');
     const endAttach = materialAttachments.find((a) => a.endpoint === 'end');
 
     if (
-      !material?.connectionId
-      && startAttach
+      startAttach
       && endAttach
       && startAttach.connectorNodeId !== endAttach.connectorNodeId
     ) {
-      const existingConn = latestState.config.connections.find((c) => (
-        (c.fromNodeId === startAttach.connectorNodeId && c.toNodeId === endAttach.connectorNodeId)
-        || (c.fromNodeId === endAttach.connectorNodeId && c.toNodeId === startAttach.connectorNodeId)
-      ));
-
-      if (existingConn) {
-        latestState.replaceDocument({
-          ...latestState.config,
-          materialAttachments: nextAttachments,
-          canvasMaterials: (latestState.config.canvasMaterials ?? []).map((m) => (
-            m.id === materialId ? { ...m, connectionId: existingConn.id } : m
-          )),
-          updatedAt: Date.now(),
-        });
-      } else {
-        const fromPin = parsePinFromHandleId(startAttach.connectorHandle) ?? 1;
-        const toPin = parsePinFromHandleId(endAttach.connectorHandle) ?? 1;
-        const result = createConnection(latestState.config, {
-          fromNodeId: startAttach.connectorNodeId,
-          toNodeId: endAttach.connectorNodeId,
-          fromPin,
-          toPin,
-          name: material?.name ?? '新线缆束',
-          createDefaultWire: true,
-        });
-        latestState.replaceDocument({
-          ...result.config,
-          materialAttachments: nextAttachments,
-          canvasMaterials: (result.config.canvasMaterials ?? []).map((m) => (
-            m.id === materialId ? { ...m, connectionId: result.connectionId } : m
-          )),
-          updatedAt: Date.now(),
-        });
-        setSelection({ kind: 'connection', id: result.connectionId });
-      }
-
+      const nextConfig = reconcileMaterialConnection({
+        ...latestState.config,
+        materialAttachments: nextAttachments,
+        updatedAt: Date.now(),
+      }, materialId);
+      latestState.replaceDocument(nextConfig);
       setCanvasSelection(materialId);
       return;
     }
 
     latestState.addMaterialAttachment(attachment);
     setCanvasSelection(materialId);
-  }, [alignMaterialToConnector, setSelection]);
+  }, [alignMaterialToConnector, normalizeAttachmentHandle]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -504,11 +812,28 @@ function HarnessCanvasInner() {
     if (!targetIsConnector) return;
 
     reconnectSucceeded.current = true;
-    useHarnessStore.getState().updateMaterialAttachment(attachment.id, {
-      connectorNodeId: connection.target,
-      connectorHandle: connection.targetHandle,
-    });
-  }, []);
+    const state = useHarnessStore.getState();
+    const normalizedHandle = normalizeAttachmentHandle(
+      attachment.materialId,
+      attachment.endpoint,
+      connection.target,
+      connection.targetHandle,
+    );
+    const nextConfig = {
+      ...state.config,
+      materialAttachments: (state.config.materialAttachments ?? []).map((item) => (
+        item.id === attachment.id
+          ? {
+              ...item,
+              connectorNodeId: connection.target!,
+              connectorHandle: normalizedHandle,
+            }
+          : item
+      )),
+      updatedAt: Date.now(),
+    };
+    state.replaceDocument(reconcileMaterialConnection(nextConfig, attachment.materialId));
+  }, [normalizeAttachmentHandle]);
 
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
     if (node.type === 'connector') {
@@ -547,39 +872,84 @@ function HarnessCanvasInner() {
     const endpointPoints = [
       {
         endpoint: 'start' as const,
-        point: {
-          x: material.position.x,
-          y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
-        },
+        point: getMaterialEndpointPoint(material, 'start'),
       },
       {
         endpoint: 'end' as const,
-        point: {
-          x: material.position.x + material.width,
-          y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
-        },
+        point: getMaterialEndpointPoint(material, 'end'),
       },
     ];
 
     endpointPoints.forEach(({ endpoint, point }) => {
-      connectorNodes.forEach((connector) => {
-        const distance = distanceToRect(point, {
-          x: connector.position.x,
-          y: connector.position.y,
-          width: 200,
-          height: getConnectorHeight(connector),
-        });
-        if (distance <= 28) {
-          const connectorCenterX = connector.position.x + 100;
-          const connectorHandle = point.x < connectorCenterX ? 'left' : 'right';
-          addAttachment(
-            material.id,
-            endpoint,
-            connector.id,
-            connectorHandle,
-          );
-        }
-      });
+      const candidates = connectorNodes
+        .map((connector) => {
+          const distance = distanceToRect(point, {
+            x: connector.position.x,
+            y: connector.position.y,
+            width: 200,
+            height: getConnectorHeight(connector),
+          });
+          if (distance > 28) return undefined;
+          const resolved = resolveNearestConnectorHandle(connector, point);
+          return {
+            connector,
+            distance: resolved.distance,
+            handle: resolved.handle,
+          };
+        })
+        .filter((candidate): candidate is {
+          connector: HarnessNode;
+          distance: number;
+          handle: string;
+        } => Boolean(candidate))
+        .sort((a, b) => a.distance - b.distance);
+
+      const nearestCandidate = candidates[0];
+      if (!nearestCandidate) return;
+
+      const state = useHarnessStore.getState();
+      const existingAttachments = (state.config.materialAttachments ?? []).filter((attachment) => (
+        attachment.materialId === material.id
+        && attachment.endpoint === endpoint
+      ));
+      const exactAttachment = existingAttachments.find((attachment) => (
+        attachment.connectorNodeId === nearestCandidate.connector.id
+        && attachment.connectorHandle === nearestCandidate.handle
+      ));
+
+      if (exactAttachment) {
+        return;
+      }
+
+      if (existingAttachments.length === 1) {
+        const [existingAttachment] = existingAttachments;
+        const nextConfig = {
+          ...state.config,
+          materialAttachments: (state.config.materialAttachments ?? []).map((attachment) => (
+            attachment.id === existingAttachment.id
+              ? {
+                  ...attachment,
+                  connectorNodeId: nearestCandidate.connector.id,
+                  connectorHandle: nearestCandidate.handle,
+                }
+              : attachment
+          )),
+          updatedAt: Date.now(),
+        };
+        state.replaceDocument(reconcileMaterialConnection(nextConfig, material.id));
+        setCanvasSelection(material.id);
+        return;
+      }
+
+      if (existingAttachments.length === 0) {
+        addAttachment(
+          material.id,
+          endpoint,
+          nearestCandidate.connector.id,
+          nearestCandidate.handle,
+        );
+        return;
+      }
     });
   }, [addAttachment]);
 

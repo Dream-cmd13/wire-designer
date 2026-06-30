@@ -173,7 +173,6 @@ export function ContextMenu({
       {state.kind === 'wire' && state.wireId && (
         <>
           <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑导线" onClick={menuAction(() => onEditWire(state.wireId!), onClose)} />
-          <MenuItem icon={<Copy className="w-4 h-4" />} label="复制导线" onClick={onClose} />
           <div className="border-t border-slate-100 my-1" />
           <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除导线" onClick={menuAction(() => onDeleteWire(state.wireId!), onClose)} destructive />
         </>
