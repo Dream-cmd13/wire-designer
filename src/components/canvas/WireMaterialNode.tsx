@@ -127,7 +127,7 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
       : '#1e293b';
   const description = spec.kind === 'electronic'
     ? `电子线 · UL${spec.ulNumber} · ${spec.awg}AWG · ${spec.lengthMm}mm`
-    : `护套线 · ${spec.jacketMaterial} · ${spec.coreCount}芯 · OD ${spec.odMm.toFixed(2)}mm`;
+    : `护套线 · ${spec.jacketMaterial} · ${spec.coreCount}芯 · ${spec.lengthMm}mm · OD ${spec.odMm.toFixed(2)}mm`;
 
   const attachments = useMemo(
     () => (config.materialAttachments ?? []).filter((attachment) => attachment.materialId === data.id),

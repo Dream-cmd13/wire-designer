@@ -98,6 +98,7 @@ export interface JacketedWireSpec {
   odMm: number;
   coreColors: string[];
   endTreatment: WireEndTreatment;
+  lengthMm: number;
 }
 
 export type CanvasWireSpec = ElectronicWireSpec | JacketedWireSpec;
@@ -131,9 +132,12 @@ export type ProtectiveSleeveType =
   | 'braided'
   | 'corrugated';
 
+export type CorrugatedMaterial = 'PP' | 'PA' | 'stainless-steel';
+
 export interface ProtectiveSleeve {
   id: string;
   type: ProtectiveSleeveType;
+  corrugatedMaterial?: CorrugatedMaterial;
   position: { x: number; y: number };
   width: number;
   lengthMm: number;

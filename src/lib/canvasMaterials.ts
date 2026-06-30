@@ -44,6 +44,18 @@ export const PROTECTIVE_SLEEVE_PRICE_PER_METER: Record<ProtectiveSleeveType, num
   corrugated: 4.0,
 };
 
+export const CORRUGATED_MATERIAL_LABELS: Record<import('@/types/harness').CorrugatedMaterial, string> = {
+  PP: 'PP（聚丙烯）',
+  PA: 'PA（尼龙）',
+  'stainless-steel': '不锈钢',
+};
+
+export const CORRUGATED_MATERIAL_PRICE_MULTIPLIER: Record<import('@/types/harness').CorrugatedMaterial, number> = {
+  PP: 1.0,
+  PA: 1.4,
+  'stainless-steel': 3.2,
+};
+
 export const CANVAS_MATERIAL_HEIGHT = 22;
 export const CANVAS_MATERIAL_STRIP_TOP = 0;
 export const CANVAS_MATERIAL_STRIP_PADDING_Y = 6;
@@ -53,13 +65,23 @@ export const CANVAS_MATERIAL_SLEEVE_CENTER_Y =
   CANVAS_MATERIAL_STRIP_TOP + CANVAS_MATERIAL_STRIP_PADDING_Y + CANVAS_MATERIAL_STRIP_HEIGHT / 2;
 export const PROTECTIVE_SLEEVE_HEIGHT = 36;
 
+/** Unified mm → canvas-px scale used by both wire materials and protective sleeves. */
+export function lengthMmToCanvasWidth(lengthMm: number): number {
+  return Math.max(40, Math.min(600, lengthMm * 0.6));
+}
+
+/** @deprecated Use lengthMmToCanvasWidth */
 export function sleeveLengthToCanvasWidth(lengthMm: number): number {
-  return Math.max(64, Math.min(260, lengthMm * 0.6));
+  return lengthMmToCanvasWidth(lengthMm);
 }
 
 export function calculateProtectiveSleevePrice(sleeve: ProtectiveSleeve): number {
   const pricePerMeter = PROTECTIVE_SLEEVE_PRICE_PER_METER[sleeve.type] ?? 0;
-  return pricePerMeter * (sleeve.lengthMm / 1000);
+  const materialMultiplier =
+    sleeve.type === 'corrugated' && sleeve.corrugatedMaterial
+      ? (CORRUGATED_MATERIAL_PRICE_MULTIPLIER[sleeve.corrugatedMaterial] ?? 1)
+      : 1;
+  return pricePerMeter * materialMultiplier * (sleeve.lengthMm / 1000);
 }
 
 export function getCoreColors(coreCount: JacketCoreCount): string[] {
@@ -90,11 +112,12 @@ export function createDefaultCanvasMaterial(
   id: string,
   position: { x: number; y: number },
 ): CanvasWireMaterial {
+  const spec = createDefaultWireSpec();
   return {
     id,
     name: '新线材',
     position,
-    width: 260,
-    spec: createDefaultWireSpec(),
+    width: lengthMmToCanvasWidth(spec.lengthMm),
+    spec,
   };
 }

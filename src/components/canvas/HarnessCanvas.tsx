@@ -29,6 +29,7 @@ import {
   CANVAS_MATERIAL_HEIGHT,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
   createDefaultCanvasMaterial,
+  lengthMmToCanvasWidth,
   PROTECTIVE_SLEEVE_HEIGHT,
   sleeveLengthToCanvasWidth,
 } from '@/lib/canvasMaterials';
@@ -171,7 +172,7 @@ function ensureConnectionMaterial(
       x: (fromCenter.x + toCenter.x) / 2 - 130,
       y: (fromCenter.y + toCenter.y) / 2 - CANVAS_MATERIAL_SLEEVE_CENTER_Y,
     },
-    width: 260,
+    width: lengthMmToCanvasWidth(firstWire?.lengthMm ?? 300),
     expandedByDefault: true,
     spec: {
       kind: 'electronic',
@@ -373,6 +374,7 @@ function HarnessCanvasInner() {
     if (exists) return;
 
     alignMaterialToConnector(materialId, connectorNodeId);
+
     const attachment: MaterialAttachment = {
       id: generateId(),
       materialId,
@@ -380,9 +382,63 @@ function HarnessCanvasInner() {
       connectorNodeId,
       connectorHandle: connectorHandle ?? 'left',
     };
-    state.addMaterialAttachment(attachment);
+
+    const latestState = useHarnessStore.getState();
+    const material = (latestState.config.canvasMaterials ?? []).find((m) => m.id === materialId);
+    const nextAttachments = [...(latestState.config.materialAttachments ?? []), attachment];
+    const materialAttachments = nextAttachments.filter((a) => a.materialId === materialId);
+    const startAttach = materialAttachments.find((a) => a.endpoint === 'start');
+    const endAttach = materialAttachments.find((a) => a.endpoint === 'end');
+
+    if (
+      !material?.connectionId
+      && startAttach
+      && endAttach
+      && startAttach.connectorNodeId !== endAttach.connectorNodeId
+    ) {
+      const existingConn = latestState.config.connections.find((c) => (
+        (c.fromNodeId === startAttach.connectorNodeId && c.toNodeId === endAttach.connectorNodeId)
+        || (c.fromNodeId === endAttach.connectorNodeId && c.toNodeId === startAttach.connectorNodeId)
+      ));
+
+      if (existingConn) {
+        latestState.replaceDocument({
+          ...latestState.config,
+          materialAttachments: nextAttachments,
+          canvasMaterials: (latestState.config.canvasMaterials ?? []).map((m) => (
+            m.id === materialId ? { ...m, connectionId: existingConn.id } : m
+          )),
+          updatedAt: Date.now(),
+        });
+      } else {
+        const fromPin = parsePinFromHandleId(startAttach.connectorHandle) ?? 1;
+        const toPin = parsePinFromHandleId(endAttach.connectorHandle) ?? 1;
+        const result = createConnection(latestState.config, {
+          fromNodeId: startAttach.connectorNodeId,
+          toNodeId: endAttach.connectorNodeId,
+          fromPin,
+          toPin,
+          name: material?.name ?? '新线缆束',
+          createDefaultWire: true,
+        });
+        latestState.replaceDocument({
+          ...result.config,
+          materialAttachments: nextAttachments,
+          canvasMaterials: (result.config.canvasMaterials ?? []).map((m) => (
+            m.id === materialId ? { ...m, connectionId: result.connectionId } : m
+          )),
+          updatedAt: Date.now(),
+        });
+        setSelection({ kind: 'connection', id: result.connectionId });
+      }
+
+      setCanvasSelection(materialId);
+      return;
+    }
+
+    latestState.addMaterialAttachment(attachment);
     setCanvasSelection(materialId);
-  }, [alignMaterialToConnector]);
+  }, [alignMaterialToConnector, setSelection]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
@@ -771,8 +827,12 @@ function HarnessCanvasInner() {
           sleeves.find((item) => item.id === sleeveDialog?.sleeveId)?.lengthMm
           ?? 100
         }
+        initialCorrugatedMaterial={
+          sleeves.find((item) => item.id === sleeveDialog?.sleeveId)?.corrugatedMaterial
+          ?? 'PP'
+        }
         onCancel={() => setSleeveDialog(null)}
-        onConfirm={(type, lengthMm) => {
+        onConfirm={(type, lengthMm, corrugatedMaterial) => {
           if (!sleeveDialog) return;
           const state = useHarnessStore.getState();
           const width = sleeveLengthToCanvasWidth(lengthMm);
@@ -791,6 +851,7 @@ function HarnessCanvasInner() {
               lengthMm,
               width,
               position,
+              corrugatedMaterial: type === 'corrugated' ? corrugatedMaterial : undefined,
             });
             setCanvasSelection(sleeveDialog.sleeveId);
           } else {
@@ -801,6 +862,7 @@ function HarnessCanvasInner() {
               width,
               position,
               attachedMaterialId: attachedMaterial?.id,
+              corrugatedMaterial: type === 'corrugated' ? corrugatedMaterial : undefined,
             };
             state.addProtectiveSleeve(sleeve);
             setCanvasSelection(sleeve.id);

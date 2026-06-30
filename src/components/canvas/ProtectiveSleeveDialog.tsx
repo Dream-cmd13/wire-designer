@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Check, Layers3, X } from 'lucide-react';
-import { PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
-import type { ProtectiveSleeveType } from '@/types/harness';
+import { CORRUGATED_MATERIAL_LABELS, PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
+import type { CorrugatedMaterial, ProtectiveSleeveType } from '@/types/harness';
 
 interface ProtectiveSleeveDialogProps {
   isOpen: boolean;
   initialType?: ProtectiveSleeveType;
   initialLengthMm?: number;
+  initialCorrugatedMaterial?: CorrugatedMaterial;
   editing: boolean;
   onCancel: () => void;
-  onConfirm: (type: ProtectiveSleeveType, lengthMm: number) => void;
+  onConfirm: (type: ProtectiveSleeveType, lengthMm: number, corrugatedMaterial?: CorrugatedMaterial) => void;
 }
 
 const sleeveTypes = Object.keys(PROTECTIVE_SLEEVE_LABELS) as ProtectiveSleeveType[];
@@ -18,12 +19,14 @@ export function ProtectiveSleeveDialog({
   isOpen,
   initialType = 'heat-shrink',
   initialLengthMm = 100,
+  initialCorrugatedMaterial = 'PP',
   editing,
   onCancel,
   onConfirm,
 }: ProtectiveSleeveDialogProps) {
   const [type, setType] = useState<ProtectiveSleeveType>(initialType);
   const [lengthMm, setLengthMm] = useState(initialLengthMm);
+  const [corrugatedMaterial, setCorrugatedMaterial] = useState<CorrugatedMaterial>(initialCorrugatedMaterial);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,7 +45,7 @@ export function ProtectiveSleeveDialog({
       setError('长度必须是大于 0 的数字');
       return;
     }
-    onConfirm(type, lengthMm);
+    onConfirm(type, lengthMm, type === 'corrugated' ? corrugatedMaterial : undefined);
   };
 
   return (
@@ -86,6 +89,29 @@ export function ProtectiveSleeveDialog({
               ))}
             </div>
           </div>
+
+          {type === 'corrugated' && (
+            <div>
+              <span className="mb-2 block text-xs font-medium text-slate-600">波纹管材质</span>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.keys(CORRUGATED_MATERIAL_LABELS) as import('@/types/harness').CorrugatedMaterial[]).map((mat) => (
+                  <button
+                    key={mat}
+                    type="button"
+                    onClick={() => setCorrugatedMaterial(mat)}
+                    className={`flex items-center justify-between rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                      corrugatedMaterial === mat
+                        ? 'border-cyan-500 bg-cyan-50 font-medium text-cyan-800'
+                        : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {CORRUGATED_MATERIAL_LABELS[mat]}
+                    {corrugatedMaterial === mat && <Check className="h-4 w-4" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-medium text-slate-600">长度（mm）</span>

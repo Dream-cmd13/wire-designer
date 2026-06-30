@@ -6,6 +6,7 @@ import {
   createDefaultWireSpec,
   getCoreColors,
   JACKET_CORE_COUNTS,
+  lengthMmToCanvasWidth,
 } from '@/lib/canvasMaterials';
 import type {
   CanvasWireMaterial,
@@ -17,7 +18,7 @@ import type {
 interface WireMaterialDialogProps {
   material: CanvasWireMaterial | null;
   onCancel: () => void;
-  onConfirm: (updates: Pick<CanvasWireMaterial, 'name' | 'spec'>) => void;
+  onConfirm: (updates: Pick<CanvasWireMaterial, 'name' | 'spec' | 'width'>) => void;
 }
 
 const fieldClass =
@@ -35,12 +36,13 @@ function defaultJacketedSpec(): CanvasWireSpec {
     odMm: calculateCableOd(26, coreCount, false),
     coreColors: getCoreColors(coreCount),
     endTreatment: { stripped: false },
+    lengthMm: 300,
   };
 }
 
 function validateSpec(spec: CanvasWireSpec): string | null {
   if (!Number.isFinite(spec.awg) || spec.awg <= 0) return 'AWG 必须是大于 0 的数字';
-  if (spec.kind === 'electronic' && (!Number.isFinite(spec.lengthMm) || spec.lengthMm <= 0)) {
+  if (!Number.isFinite(spec.lengthMm) || spec.lengthMm <= 0) {
     return '长度必须是大于 0 的数字';
   }
   if (
@@ -79,7 +81,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
       setError(validationError);
       return;
     }
-    onConfirm({ name: name.trim(), spec });
+    onConfirm({ name: name.trim(), spec, width: lengthMmToCanvasWidth(spec.lengthMm) });
   };
 
   return (
@@ -168,6 +170,12 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   <option value="black">黑色</option>
                   <option value="green">绿色</option>
                 </select>
+              </Field>
+              <Field label="长度（mm）">
+                <NumberInput
+                  value={spec.lengthMm}
+                  onChange={(lengthMm) => setSpec({ ...spec, lengthMm })}
+                />
               </Field>
               <Field label="AWG">
                 <NumberInput

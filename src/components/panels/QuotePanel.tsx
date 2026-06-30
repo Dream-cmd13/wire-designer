@@ -80,9 +80,6 @@ export function QuotePanel() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-cyan-100 bg-cyan-50 px-3 py-2 text-xs text-cyan-800">
-        保护套请直接在画布中添加，报价会按画布里的保护套自动统计。
-      </div>
 
       <div className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <h3 className="mb-2 text-sm font-semibold text-slate-700">价格明细</h3>
