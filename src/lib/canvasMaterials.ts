@@ -35,8 +35,8 @@ export const PROTECTIVE_SLEEVE_LABELS: Record<ProtectiveSleeveType, string> = {
   corrugated: '波纹管',
 };
 
-export const CANVAS_MATERIAL_HEIGHT = 76;
-export const CANVAS_MATERIAL_STRIP_TOP = 46;
+export const CANVAS_MATERIAL_HEIGHT = 22;
+export const CANVAS_MATERIAL_STRIP_TOP = 0;
 export const CANVAS_MATERIAL_STRIP_PADDING_Y = 6;
 export const CANVAS_MATERIAL_STRIP_HEIGHT = 10;
 // Shared with WireMaterialNode so the sleeve snaps to the exact visual center of the strip.

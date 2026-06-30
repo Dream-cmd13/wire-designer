@@ -109,6 +109,7 @@ export interface CanvasWireMaterial {
   position: { x: number; y: number };
   width: number;
   spec: CanvasWireSpec;
+  expandedByDefault?: boolean;
 }
 
 export type WireEndpoint = 'start' | 'end';

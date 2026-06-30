@@ -4,7 +4,14 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { CONNECTORS } from '@/lib/data';
-import type { HarnessConfig, HarnessNode, Wire, Connection } from '@/types/harness';
+import type {
+  CanvasWireMaterial,
+  Connection,
+  HarnessConfig,
+  HarnessNode,
+  MaterialAttachment,
+  Wire,
+} from '@/types/harness';
 
 interface ProjectWizardProps {
   onComplete: () => void;
@@ -71,6 +78,7 @@ function createConfigFromTemplate(
   if (templateId === 'simple-2p') {
     const nodeAId = generateId();
     const nodeBId = generateId();
+    const materialId = generateId();
     const wires: Wire[] = [];
     const wireIds: string[] = [];
 
@@ -92,6 +100,38 @@ function createConfigFromTemplate(
       });
     }
 
+    const material: CanvasWireMaterial = {
+      id: materialId,
+      name: '新线材',
+      position: { x: 270, y: 251 },
+      width: 260,
+      expandedByDefault: true,
+      spec: {
+        kind: 'electronic',
+        color: wires[0]?.wireColor ?? 'red',
+        lengthMm: wires[0]?.lengthMm ?? 300,
+        awg: wires[0]?.wireGauge ?? 26,
+        ulNumber: '1007',
+        endTreatment: { stripped: false },
+      },
+    };
+    const materialAttachments: MaterialAttachment[] = [
+      {
+        id: generateId(),
+        materialId,
+        endpoint: 'start',
+        connectorNodeId: nodeAId,
+        connectorHandle: 'right-pin-1',
+      },
+      {
+        id: generateId(),
+        materialId,
+        endpoint: 'end',
+        connectorNodeId: nodeBId,
+        connectorHandle: 'left-pin-1',
+      },
+    ];
+
     return {
       id: generateId(),
       name: projectName,
@@ -105,6 +145,9 @@ function createConfigFromTemplate(
         { id: generateId(), name: '主线缆束', fromNodeId: nodeAId, toNodeId: nodeBId, wireIds },
       ],
       wires,
+      canvasMaterials: [material],
+      materialAttachments,
+      protectiveSleeves: [],
       quantity: 1,
       leadTime: 'standard',
     };

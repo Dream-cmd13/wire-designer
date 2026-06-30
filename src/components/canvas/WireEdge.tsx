@@ -3,8 +3,12 @@ import type { Connection } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { WIRE_COLORS } from '@/lib/data';
 
+interface WireEdgeData extends Connection {
+  hasMaterialNode?: boolean;
+}
+
 interface WireEdgeProps extends Omit<EdgeProps, 'data'> {
-  data?: Connection;
+  data?: WireEdgeData;
 }
 
 export function WireEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, selected }: WireEdgeProps) {
@@ -51,7 +55,7 @@ export function WireEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, t
           strokeDasharray: selected ? '5,5' : undefined,
         }}
       />
-      <EdgeLabelRenderer>
+      {!data?.hasMaterialNode && <EdgeLabelRenderer>
         <div
           style={{
             position: 'absolute',
@@ -109,7 +113,7 @@ export function WireEdge({ sourceX, sourceY, targetX, targetY, sourcePosition, t
             )}
           </div>
         </div>
-      </EdgeLabelRenderer>
+      </EdgeLabelRenderer>}
     </>
   );
 }

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import {
   Background,
   ConnectionMode,
@@ -117,6 +124,22 @@ function HarnessCanvasInner() {
   const materials = config.canvasMaterials ?? EMPTY_MATERIALS;
   const attachments = config.materialAttachments ?? EMPTY_ATTACHMENTS;
   const sleeves = config.protectiveSleeves ?? EMPTY_SLEEVES;
+  const representedConnectionPairs = useMemo(() => new Set(materials.flatMap((material) => {
+    const materialAttachments = attachments.filter(
+      (attachment) => attachment.materialId === material.id,
+    );
+    const startAttachment = materialAttachments.find(
+      (attachment) => attachment.endpoint === 'start',
+    );
+    const endAttachment = materialAttachments.find(
+      (attachment) => attachment.endpoint === 'end',
+    );
+    if (!startAttachment || !endAttachment) return [];
+    return [
+      `${startAttachment.connectorNodeId}:${endAttachment.connectorNodeId}`,
+      `${endAttachment.connectorNodeId}:${startAttachment.connectorNodeId}`,
+    ];
+  })), [attachments, materials]);
 
   useEffect(() => {
     const connectorNodes: Node[] = config.nodes.map((node) => ({
@@ -152,7 +175,13 @@ function HarnessCanvasInner() {
       source: connection.fromNodeId,
       target: connection.toNodeId,
       type: 'wire',
-      data: { ...connection, kind: 'connection' },
+      data: {
+        ...connection,
+        kind: 'connection',
+        hasMaterialNode: representedConnectionPairs.has(
+          `${connection.fromNodeId}:${connection.toNodeId}`,
+        ),
+      },
       selected: selection.kind === 'connection' && selection.id === connection.id,
     }));
     const attachmentEdges: Edge[] = attachments.map((attachment) => ({
@@ -168,7 +197,14 @@ function HarnessCanvasInner() {
     }));
 
     setEdges([...connectionEdges, ...attachmentEdges]);
-  }, [attachments, canvasSelection, config.connections, selection, setEdges]);
+  }, [
+    attachments,
+    canvasSelection,
+    config.connections,
+    representedConnectionPairs,
+    selection,
+    setEdges,
+  ]);
 
   const currentFlowPosition = useCallback(() => (
     contextMenu?.flowPosition ?? { x: 220, y: 220 }
@@ -219,7 +255,8 @@ function HarnessCanvasInner() {
     const x = side === 'right'
       ? connector.position.x + 200 + gap
       : connector.position.x - material.width - gap;
-    const y = connector.position.y + getConnectorHeight(connector) / 2 - 29;
+    const y = connector.position.y + getConnectorHeight(connector) / 2
+      - CANVAS_MATERIAL_SLEEVE_CENTER_Y;
     state.updateCanvasMaterial(material.id, { position: { x, y } });
   }, []);
 
@@ -340,8 +377,20 @@ function HarnessCanvasInner() {
   const attachNearbyMaterialEndpoints = useCallback((material: CanvasWireMaterial) => {
     const connectorNodes = useHarnessStore.getState().config.nodes;
     const endpointPoints = [
-      { endpoint: 'start' as const, point: { x: material.position.x, y: material.position.y + 29 } },
-      { endpoint: 'end' as const, point: { x: material.position.x + material.width, y: material.position.y + 29 } },
+      {
+        endpoint: 'start' as const,
+        point: {
+          x: material.position.x,
+          y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+        },
+      },
+      {
+        endpoint: 'end' as const,
+        point: {
+          x: material.position.x + material.width,
+          y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+        },
+      },
     ];
 
     endpointPoints.forEach(({ endpoint, point }) => {
