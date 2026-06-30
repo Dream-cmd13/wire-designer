@@ -181,10 +181,26 @@ export function ContextMenu({
 
       {state.kind === 'material' && state.materialId && (
         <>
+          {state.connectionId && (
+            <>
+              <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑线材信息" onClick={menuAction(() => onEditConnection(state.connectionId!), onClose)} />
+              <MenuItem icon={<Plus className="w-4 h-4" />} label="添加导线" onClick={menuAction(() => onAddWire(state.connectionId!), onClose)} />
+            </>
+          )}
           <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑线材参数" onClick={menuAction(() => onEditMaterial(state.materialId!), onClose)} />
           <MenuItem icon={<Layers3 className="w-4 h-4" />} label="添加保护套" onClick={menuAction(() => onAddProtectiveSleeve(state.materialId!), onClose)} />
           <div className="border-t border-slate-100 my-1" />
-          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除线材" onClick={menuAction(() => onDeleteMaterial(state.materialId!), onClose)} destructive />
+          <MenuItem
+            icon={<Trash2 className="w-4 h-4" />}
+            label="删除线材"
+            onClick={menuAction(
+              () => state.connectionId
+                ? onDeleteConnection(state.connectionId!)
+                : onDeleteMaterial(state.materialId!),
+              onClose,
+            )}
+            destructive
+          />
         </>
       )}
 

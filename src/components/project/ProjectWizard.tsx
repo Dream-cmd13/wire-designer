@@ -70,6 +70,9 @@ function createConfigFromTemplate(
       nodes: [],
       connections: [],
       wires: [],
+      canvasMaterials: [],
+      materialAttachments: [],
+      protectiveSleeves: [],
       quantity: 1,
       leadTime: 'standard',
     };
@@ -78,6 +81,7 @@ function createConfigFromTemplate(
   if (templateId === 'simple-2p') {
     const nodeAId = generateId();
     const nodeBId = generateId();
+    const connectionId = generateId();
     const materialId = generateId();
     const wires: Wire[] = [];
     const wireIds: string[] = [];
@@ -103,6 +107,7 @@ function createConfigFromTemplate(
     const material: CanvasWireMaterial = {
       id: materialId,
       name: '新线材',
+      connectionId,
       position: { x: 270, y: 251 },
       width: 260,
       expandedByDefault: true,
@@ -142,7 +147,7 @@ function createConfigFromTemplate(
         { id: nodeBId, type: 'connector', position: { x: 500, y: 200 }, connector: connB, label: 'B端' },
       ],
       connections: [
-        { id: generateId(), name: '主线缆束', fromNodeId: nodeAId, toNodeId: nodeBId, wireIds },
+        { id: connectionId, name: '主线缆束', fromNodeId: nodeAId, toNodeId: nodeBId, wireIds },
       ],
       wires,
       canvasMaterials: [material],
@@ -273,7 +278,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
 
   const { currentUser } = useUserStore();
   const { createProject } = useProjectStore();
-  const { setConfig } = useHarnessStore();
+  const { replaceDocument } = useHarnessStore();
 
   const canNext =
     step === 1
@@ -287,8 +292,8 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   const handleComplete = () => {
     if (!currentUser) return;
     const config = createConfigFromTemplate(selectedTemplate, projectName, connectorA, connectorB, pinCount);
-    createProject(currentUser.id, projectName, projectDesc, config);
-    setConfig(config);
+    const project = createProject(currentUser.id, projectName, projectDesc, config);
+    replaceDocument({ ...config, id: project.harnessConfigId }, { markSaved: true });
     onComplete();
   };
 

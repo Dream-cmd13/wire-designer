@@ -272,6 +272,11 @@ export const useHarnessStore = create<HarnessState>()(
             connections: state.config.connections.map((connection) => (
               connection.id === id ? { ...connection, ...updates } : connection
             )),
+            canvasMaterials: (state.config.canvasMaterials ?? []).map((material) => (
+              material.connectionId === id && updates.name
+                ? { ...material, name: updates.name }
+                : material
+            )),
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
@@ -281,6 +286,11 @@ export const useHarnessStore = create<HarnessState>()(
         set((state) => {
           const removedConnection = state.config.connections.find((connection) => connection.id === id);
           const removedWireIds = new Set(removedConnection?.wireIds ?? []);
+          const removedMaterialIds = new Set(
+            (state.config.canvasMaterials ?? [])
+              .filter((material) => material.connectionId === id)
+              .map((material) => material.id),
+          );
           const nextSelection =
             (state.selection.kind === 'connection' && state.selection.id === id)
             || (state.selection.kind === 'wire' && removedWireIds.has(state.selection.id))
@@ -292,6 +302,17 @@ export const useHarnessStore = create<HarnessState>()(
               ...state.config,
               connections: state.config.connections.filter((connection) => connection.id !== id),
               wires: state.config.wires.filter((wire) => !removedWireIds.has(wire.id)),
+              canvasMaterials: (state.config.canvasMaterials ?? []).filter(
+                (material) => !removedMaterialIds.has(material.id),
+              ),
+              materialAttachments: (state.config.materialAttachments ?? []).filter(
+                (attachment) => !removedMaterialIds.has(attachment.materialId),
+              ),
+              protectiveSleeves: (state.config.protectiveSleeves ?? []).map((sleeve) => (
+                sleeve.attachedMaterialId && removedMaterialIds.has(sleeve.attachedMaterialId)
+                  ? { ...sleeve, attachedMaterialId: undefined }
+                  : sleeve
+              )),
               updatedAt: Date.now(),
             },
             selection: nextSelection,

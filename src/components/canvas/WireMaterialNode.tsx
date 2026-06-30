@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import {
   CANVAS_MATERIAL_HEIGHT,
@@ -37,6 +37,7 @@ function getMaterialWireEntries(
   attachments: MaterialAttachment[],
   nodes: HarnessNode[],
   wires: Wire[],
+  connectionWireIds?: Set<string>,
 ): MaterialWireEntry[] {
   const startAttachment = attachments.find((attachment) => attachment.endpoint === 'start');
   const endAttachment = attachments.find((attachment) => attachment.endpoint === 'end');
@@ -48,6 +49,8 @@ function getMaterialWireEntries(
   if (!startConnector || !endConnector) return [];
 
   return wires.reduce<MaterialWireEntry[]>((entries, wire) => {
+    if (connectionWireIds && !connectionWireIds.has(wire.id)) return entries;
+
     if (
       wire.fromConnectorId === startAttachment.connectorNodeId
       && wire.toConnectorId === endAttachment.connectorNodeId
@@ -105,6 +108,7 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
   const [detailsOpen, setDetailsOpen] = useState(data.expandedByDefault ?? false);
   const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({});
   const [pinErrors, setPinErrors] = useState<Record<string, boolean>>({});
+  const previousAttachmentCountRef = useRef(0);
   const {
     config,
     updateCanvasMaterial,
@@ -132,9 +136,29 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
   const hasStartAttachment = attachments.some((attachment) => attachment.endpoint === 'start');
   const hasEndAttachment = attachments.some((attachment) => attachment.endpoint === 'end');
 
+  useEffect(() => {
+    if (attachments.length > previousAttachmentCountRef.current) {
+      setDetailsOpen(true);
+    }
+    previousAttachmentCountRef.current = attachments.length;
+  }, [attachments.length]);
+
   const relatedWireEntries = useMemo(
-    () => getMaterialWireEntries(attachments, config.nodes, config.wires),
-    [attachments, config.nodes, config.wires],
+    () => {
+      const connection = data.connectionId
+        ? config.connections.find((item) => item.id === data.connectionId)
+        : undefined;
+      const connectionWireIds = connection
+        ? new Set(connection.wireIds)
+        : undefined;
+      return getMaterialWireEntries(
+        attachments,
+        config.nodes,
+        config.wires,
+        connectionWireIds,
+      );
+    },
+    [attachments, config.connections, config.nodes, config.wires, data.connectionId],
   );
 
   const syncMaterialColor = (nextColor: string) => {
@@ -191,7 +215,7 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
 
   return (
     <div
-      className="relative"
+      className="relative wire-material-drag cursor-grab active:cursor-grabbing"
       style={{ width: data.width, minHeight: CANVAS_MATERIAL_HEIGHT }}
     >
       <Handle
@@ -214,7 +238,7 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
           type="button"
           onClick={() => setDetailsOpen((open) => !open)}
           aria-expanded={detailsOpen}
-          className={`nodrag nopan block w-full rounded-full text-left outline-none transition hover:scale-[1.01] focus:ring-2 focus:ring-blue-200 ${
+          className={`block w-full rounded-full text-left outline-none transition hover:scale-[1.01] focus:ring-2 focus:ring-blue-200 ${
             selected ? 'ring-2 ring-blue-300 ring-offset-2' : ''
           }`}
         >
@@ -235,7 +259,7 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
       </div>
 
       {detailsOpen && (
-        <div className="nodrag nopan mt-2 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md">
+        <div className="mt-2 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md">
           <div className="mb-1 border-b border-slate-100 pb-1 text-center font-semibold text-slate-700">
             {relatedWireEntries.length} 根导线 - {data.name}
           </div>

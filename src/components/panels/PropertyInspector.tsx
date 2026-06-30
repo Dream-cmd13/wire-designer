@@ -55,7 +55,7 @@ function validateNodeDraft(draft: NodeDraft): FieldError[] {
 }
 
 function validateConnectionDraft(draft: ConnectionDraft): FieldError[] {
-  return draft.name.trim() ? [] : [{ field: 'name', message: '连接名称不能为空' }];
+  return draft.name.trim() ? [] : [{ field: 'name', message: '线材名称不能为空' }];
 }
 
 function validateWireDraft(draft: WireDraft, fromPinCount: number, toPinCount: number): FieldError[] {
@@ -214,7 +214,7 @@ export function PropertyInspector() {
   if (!draft) {
     return (
       <div className="p-4 text-center text-sm text-slate-400">
-        <p>选择一个节点、连接或导线以编辑其属性</p>
+        <p>选择一个节点、线材或导线以编辑其属性</p>
       </div>
     );
   }
@@ -224,7 +224,7 @@ export function PropertyInspector() {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-700">
           {draft.kind === 'node' && '节点属性'}
-          {draft.kind === 'connection' && '连接属性'}
+          {draft.kind === 'connection' && '线材属性'}
           {draft.kind === 'wire' && '导线属性'}
         </h3>
         <div className="flex items-center gap-1">
@@ -370,7 +370,7 @@ function ConnectionEditor({
 }) {
   return (
     <div className="space-y-2">
-      <FormField label="连接名称" error={fieldError('name')}>
+      <FormField label="线材名称" error={fieldError('name')}>
         <input
           type="text"
           value={draft.name}
