@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Connection, HarnessConfig, HarnessNode, SaveState, Selection, Wire } from '@/types/harness';
+import type {
+  CanvasWireMaterial,
+  Connection,
+  HarnessConfig,
+  HarnessNode,
+  MaterialAttachment,
+  ProtectiveSleeve,
+  SaveState,
+  Selection,
+  Wire,
+} from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
 
 const generateId = (): string => {
@@ -108,6 +118,9 @@ export function createDefaultConfig(): HarnessConfig {
         signalName: 'SDA',
       },
     ],
+    canvasMaterials: [],
+    materialAttachments: [],
+    protectiveSleeves: [],
     quantity: 1,
     leadTime: 'standard',
   };
@@ -136,6 +149,15 @@ interface HarnessState {
   addWire: (wire: Wire) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
   removeWire: (id: string) => void;
+  addCanvasMaterial: (material: CanvasWireMaterial) => void;
+  updateCanvasMaterial: (id: string, updates: Partial<CanvasWireMaterial>) => void;
+  removeCanvasMaterial: (id: string) => void;
+  addMaterialAttachment: (attachment: MaterialAttachment) => void;
+  updateMaterialAttachment: (id: string, updates: Partial<MaterialAttachment>) => void;
+  removeMaterialAttachment: (id: string) => void;
+  addProtectiveSleeve: (sleeve: ProtectiveSleeve) => void;
+  updateProtectiveSleeve: (id: string, updates: Partial<ProtectiveSleeve>) => void;
+  removeProtectiveSleeve: (id: string) => void;
   setSelection: (selection: Selection) => void;
   setSelectedNode: (id: string | null) => void;
   setSelectedWire: (id: string | null) => void;
@@ -222,6 +244,9 @@ export const useHarnessStore = create<HarnessState>()(
               ),
               wires: state.config.wires.filter(
                 (wire) => wire.fromConnectorId !== id && wire.toConnectorId !== id,
+              ),
+              materialAttachments: (state.config.materialAttachments ?? []).filter(
+                (attachment) => attachment.connectorNodeId !== id,
               ),
               updatedAt: Date.now(),
             },
@@ -311,6 +336,131 @@ export const useHarnessStore = create<HarnessState>()(
             state.selection.kind === 'wire' && state.selection.id === id
               ? { kind: 'none' as const }
               : state.selection,
+          saveState: dirtyState(),
+        })),
+
+      addCanvasMaterial: (material) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            canvasMaterials: [...(state.config.canvasMaterials ?? []), material],
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      updateCanvasMaterial: (id, updates) =>
+        set((state) => {
+          const current = (state.config.canvasMaterials ?? []).find((item) => item.id === id);
+          const dx = updates.position && current ? updates.position.x - current.position.x : 0;
+          const dy = updates.position && current ? updates.position.y - current.position.y : 0;
+
+          return {
+            config: {
+              ...state.config,
+              canvasMaterials: (state.config.canvasMaterials ?? []).map((item) => (
+                item.id === id ? { ...item, ...updates } : item
+              )),
+              protectiveSleeves: (state.config.protectiveSleeves ?? []).map((sleeve) => (
+                sleeve.attachedMaterialId === id && updates.position
+                  ? {
+                      ...sleeve,
+                      position: {
+                        x: sleeve.position.x + dx,
+                        y: sleeve.position.y + dy,
+                      },
+                    }
+                  : sleeve
+              )),
+              updatedAt: Date.now(),
+            },
+            saveState: dirtyState(),
+          };
+        }),
+
+      removeCanvasMaterial: (id) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            canvasMaterials: (state.config.canvasMaterials ?? []).filter((item) => item.id !== id),
+            materialAttachments: (state.config.materialAttachments ?? []).filter(
+              (attachment) => attachment.materialId !== id,
+            ),
+            protectiveSleeves: (state.config.protectiveSleeves ?? []).map((sleeve) => (
+              sleeve.attachedMaterialId === id
+                ? { ...sleeve, attachedMaterialId: undefined }
+                : sleeve
+            )),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      addMaterialAttachment: (attachment) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            materialAttachments: [...(state.config.materialAttachments ?? []), attachment],
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      updateMaterialAttachment: (id, updates) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            materialAttachments: (state.config.materialAttachments ?? []).map((item) => (
+              item.id === id ? { ...item, ...updates } : item
+            )),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      removeMaterialAttachment: (id) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            materialAttachments: (state.config.materialAttachments ?? []).filter(
+              (item) => item.id !== id,
+            ),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      addProtectiveSleeve: (sleeve) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            protectiveSleeves: [...(state.config.protectiveSleeves ?? []), sleeve],
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      updateProtectiveSleeve: (id, updates) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            protectiveSleeves: (state.config.protectiveSleeves ?? []).map((item) => (
+              item.id === id ? { ...item, ...updates } : item
+            )),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      removeProtectiveSleeve: (id) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            protectiveSleeves: (state.config.protectiveSleeves ?? []).filter(
+              (item) => item.id !== id,
+            ),
+            updatedAt: Date.now(),
+          },
           saveState: dirtyState(),
         })),
 

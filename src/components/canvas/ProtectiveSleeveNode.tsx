@@ -1,0 +1,50 @@
+import { PROTECTIVE_SLEEVE_HEIGHT, PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
+import type { ProtectiveSleeve } from '@/types/harness';
+
+interface ProtectiveSleeveNodeProps {
+  data: ProtectiveSleeve;
+  selected?: boolean;
+}
+
+const sleeveStyles: Record<ProtectiveSleeve['type'], React.CSSProperties> = {
+  'acetate-cloth': {
+    backgroundColor: '#d6b36a',
+    backgroundImage: 'repeating-linear-gradient(45deg, rgba(72,49,20,.25) 0 2px, transparent 2px 7px)',
+  },
+  fleece: {
+    backgroundColor: '#475569',
+    backgroundImage: 'radial-gradient(circle, rgba(255,255,255,.3) 1px, transparent 1.5px)',
+    backgroundSize: '6px 6px',
+  },
+  'heat-shrink': {
+    background: 'linear-gradient(180deg, #334155, #0f172a 48%, #475569)',
+  },
+  braided: {
+    backgroundColor: '#334155',
+    backgroundImage:
+      'repeating-linear-gradient(45deg, transparent 0 4px, rgba(255,255,255,.35) 4px 6px), repeating-linear-gradient(-45deg, transparent 0 4px, rgba(0,0,0,.35) 4px 6px)',
+  },
+  corrugated: {
+    background: 'repeating-linear-gradient(90deg, #111827 0 6px, #64748b 6px 9px, #1f2937 9px 14px)',
+  },
+};
+
+export function ProtectiveSleeveNode({ data, selected }: ProtectiveSleeveNodeProps) {
+  return (
+    <div
+      className={`relative flex items-center justify-center overflow-hidden rounded-md border-2 px-2 shadow-md ${
+        selected ? 'border-cyan-500 ring-4 ring-cyan-100' : 'border-white/80'
+      }`}
+      style={{
+        width: data.width,
+        height: PROTECTIVE_SLEEVE_HEIGHT,
+        minHeight: PROTECTIVE_SLEEVE_HEIGHT,
+        ...sleeveStyles[data.type],
+      }}
+    >
+      <div className="relative z-10 w-full text-center text-[10px] font-semibold text-white drop-shadow">
+        {PROTECTIVE_SLEEVE_LABELS[data.type]} {data.lengthMm ?? 100}mm
+      </div>
+    </div>
+  );
+}

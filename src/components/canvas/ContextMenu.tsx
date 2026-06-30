@@ -1,21 +1,27 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Plus, Edit3, Copy, Trash2, Cable, Maximize2, Eye,
+  Plus, Edit3, Copy, Trash2, Cable, Maximize2, Eye, Layers3,
 } from 'lucide-react';
 
 export interface ContextMenuState {
   x: number;
   y: number;
-  kind: 'pane' | 'node' | 'connection' | 'wire';
+  kind: 'pane' | 'node' | 'connection' | 'wire' | 'material' | 'sleeve' | 'attachment';
   nodeId?: string;
   connectionId?: string;
   wireId?: string;
+  materialId?: string;
+  sleeveId?: string;
+  attachmentId?: string;
+  flowPosition?: { x: number; y: number };
 }
 
 interface ContextMenuProps {
   state: ContextMenuState;
   onClose: () => void;
   onAddConnector: () => void;
+  onAddCanvasWire: () => void;
+  onAddProtectiveSleeve: (materialId?: string) => void;
   onEditNode: (nodeId: string) => void;
   onChangeConnector: (nodeId: string) => void;
   onCopyNode: (nodeId: string) => void;
@@ -25,6 +31,11 @@ interface ContextMenuProps {
   onDeleteConnection: (connectionId: string) => void;
   onEditWire: (wireId: string) => void;
   onDeleteWire: (wireId: string) => void;
+  onEditMaterial: (materialId: string) => void;
+  onDeleteMaterial: (materialId: string) => void;
+  onEditSleeve: (sleeveId: string) => void;
+  onDeleteSleeve: (sleeveId: string) => void;
+  onDeleteAttachment: (attachmentId: string) => void;
   onFitView: () => void;
   hasSelection: boolean;
 }
@@ -57,6 +68,8 @@ export function ContextMenu({
   state,
   onClose,
   onAddConnector,
+  onAddCanvasWire,
+  onAddProtectiveSleeve,
   onEditNode,
   onChangeConnector,
   onCopyNode,
@@ -66,6 +79,11 @@ export function ContextMenu({
   onDeleteConnection,
   onEditWire,
   onDeleteWire,
+  onEditMaterial,
+  onDeleteMaterial,
+  onEditSleeve,
+  onDeleteSleeve,
+  onDeleteAttachment,
   onFitView,
   hasSelection,
 }: ContextMenuProps) {
@@ -118,6 +136,8 @@ export function ContextMenu({
       {state.kind === 'pane' && (
         <>
           <MenuItem icon={<Plus className="w-4 h-4" />} label="添加连接器" onClick={menuAction(onAddConnector, onClose)} />
+          <MenuItem icon={<Cable className="w-4 h-4" />} label="添加线材" onClick={menuAction(onAddCanvasWire, onClose)} />
+          <MenuItem icon={<Layers3 className="w-4 h-4" />} label="添加保护套" onClick={menuAction(() => onAddProtectiveSleeve(), onClose)} />
           {hasSelection && (
             <>
               <div className="border-t border-slate-100 my-1" />
@@ -157,6 +177,27 @@ export function ContextMenu({
           <div className="border-t border-slate-100 my-1" />
           <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除导线" onClick={menuAction(() => onDeleteWire(state.wireId!), onClose)} destructive />
         </>
+      )}
+
+      {state.kind === 'material' && state.materialId && (
+        <>
+          <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑线材参数" onClick={menuAction(() => onEditMaterial(state.materialId!), onClose)} />
+          <MenuItem icon={<Layers3 className="w-4 h-4" />} label="添加保护套" onClick={menuAction(() => onAddProtectiveSleeve(state.materialId!), onClose)} />
+          <div className="border-t border-slate-100 my-1" />
+          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除线材" onClick={menuAction(() => onDeleteMaterial(state.materialId!), onClose)} destructive />
+        </>
+      )}
+
+      {state.kind === 'sleeve' && state.sleeveId && (
+        <>
+          <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑保护套" onClick={menuAction(() => onEditSleeve(state.sleeveId!), onClose)} />
+          <div className="border-t border-slate-100 my-1" />
+          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除保护套" onClick={menuAction(() => onDeleteSleeve(state.sleeveId!), onClose)} destructive />
+        </>
+      )}
+
+      {state.kind === 'attachment' && state.attachmentId && (
+        <MenuItem icon={<Trash2 className="w-4 h-4" />} label="断开连接" onClick={menuAction(() => onDeleteAttachment(state.attachmentId!), onClose)} destructive />
       )}
     </div>
   );

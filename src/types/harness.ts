@@ -70,6 +70,74 @@ export interface WireBundle {
   shieldColor?: string;
 }
 
+export type WireEndTreatment =
+  | { stripped: false }
+  | { stripped: true; method: 'tinned'; lengthMm: number }
+  | { stripped: true; method: 'terminal'; terminalModel: 'cold-press-terminal' };
+
+export interface ElectronicWireSpec {
+  kind: 'electronic';
+  color: string;
+  lengthMm: number;
+  awg: number;
+  ulNumber: '1007';
+  endTreatment: WireEndTreatment;
+}
+
+export type JacketMaterial = 'PVC' | 'PVR';
+export type JacketColor = 'black' | 'green';
+export type JacketCoreCount = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 12 | 17;
+
+export interface JacketedWireSpec {
+  kind: 'jacketed';
+  jacketMaterial: JacketMaterial;
+  jacketColor: JacketColor;
+  awg: number;
+  coreCount: JacketCoreCount;
+  shielded: boolean;
+  odMm: number;
+  coreColors: string[];
+  endTreatment: WireEndTreatment;
+}
+
+export type CanvasWireSpec = ElectronicWireSpec | JacketedWireSpec;
+
+/** A physical wire/cable that can be placed before it is connected. */
+export interface CanvasWireMaterial {
+  id: string;
+  name: string;
+  position: { x: number; y: number };
+  width: number;
+  spec: CanvasWireSpec;
+}
+
+export type WireEndpoint = 'start' | 'end';
+
+/** One endpoint can have multiple attachment records, enabling fan-out connections. */
+export interface MaterialAttachment {
+  id: string;
+  materialId: string;
+  endpoint: WireEndpoint;
+  connectorNodeId: string;
+  connectorHandle?: string | null;
+}
+
+export type ProtectiveSleeveType =
+  | 'acetate-cloth'
+  | 'fleece'
+  | 'heat-shrink'
+  | 'braided'
+  | 'corrugated';
+
+export interface ProtectiveSleeve {
+  id: string;
+  type: ProtectiveSleeveType;
+  position: { x: number; y: number };
+  width: number;
+  lengthMm: number;
+  attachedMaterialId?: string;
+}
+
 /**
  * HarnessNode - a node on the design canvas.
  * Can be a connector, junction point, or terminal.
@@ -107,6 +175,9 @@ export interface HarnessConfig {
   connections: Connection[];
   wires: Wire[];
   bundles?: WireBundle[];
+  canvasMaterials?: CanvasWireMaterial[];
+  materialAttachments?: MaterialAttachment[];
+  protectiveSleeves?: ProtectiveSleeve[];
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
   protection?: string;

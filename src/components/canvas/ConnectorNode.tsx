@@ -59,8 +59,13 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
       }`}
       style={{ width: 200, minHeight: nodeHeight }}
     >
-      {/* Left Handle */}
-      <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-blue-500" />
+      {/* Legacy outer handles kept for existing edges; row handles are the primary connection points now. */}
+      <Handle
+        id="left"
+        type="target"
+        position={Position.Left}
+        className="pointer-events-none !h-0 !w-0 !border-0 !bg-transparent !opacity-0"
+      />
 
       {/* Header: connector label + model */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-100">
@@ -82,11 +87,18 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
           return (
             <div
               key={pinNum}
-              className={`flex items-center h-5 px-1 rounded-sm transition-colors hover:bg-blue-50 ${
+              className={`relative flex items-center h-5 pl-3 pr-3 rounded-sm transition-colors hover:bg-blue-50 ${
                 isEvenRow ? 'bg-slate-50' : 'bg-white'
               }`}
               style={{ lineHeight: '20px' }}
             >
+              <Handle
+                id={`left-pin-${pinNum}`}
+                type="target"
+                position={Position.Left}
+                className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
+              />
+
               {/* Left side: PIN number (right-aligned, monospace, blue) */}
               <span className="text-[10px] font-mono text-blue-600 w-5 text-right flex-shrink-0 pr-1 font-semibold">
                 {pinNum}
@@ -133,6 +145,13 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
                   </span>
                 )}
               </div>
+
+              <Handle
+                id={`right-pin-${pinNum}`}
+                type="source"
+                position={Position.Right}
+                className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
+              />
             </div>
           );
         })}
@@ -150,8 +169,12 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
         {connectedPinCount}/{pinCount} 已连接
       </div>
 
-      {/* Right Handle */}
-      <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-blue-500" />
+      <Handle
+        id="right"
+        type="source"
+        position={Position.Right}
+        className="pointer-events-none !h-0 !w-0 !border-0 !bg-transparent !opacity-0"
+      />
     </div>
   );
 }

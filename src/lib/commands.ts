@@ -42,6 +42,8 @@ export interface CreateConnectionInput {
   toNodeId: string;
   name?: string;
   createDefaultWire?: boolean;
+  fromPin?: number;
+  toPin?: number;
 }
 
 export interface WireDraft {
@@ -217,9 +219,9 @@ export function createConnection(
       wireColor: 'red',
       lengthMm: 300,
       fromConnectorId: input.fromNodeId,
-      fromPin: 1,
+      fromPin: input.fromPin || 1,
       toConnectorId: input.toNodeId,
-      toPin: 1,
+      toPin: input.toPin || 1,
     };
     newConnection.wireIds = [wireId];
     newWires = [...newWires, defaultWire];
