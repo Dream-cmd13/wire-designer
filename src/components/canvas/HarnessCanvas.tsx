@@ -224,6 +224,7 @@ function HarnessCanvasInner() {
   const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
   const [sleeveDialog, setSleeveDialog] = useState<SleeveDialogState | null>(null);
   const reconnectSucceeded = useRef(false);
+  const hasAutoFitted = useRef(false);
   const { fitView, screenToFlowPosition } = useReactFlow();
 
   const materials = config.canvasMaterials ?? EMPTY_MATERIALS;
@@ -284,6 +285,24 @@ function HarnessCanvasInner() {
 
     setEdges(attachmentEdges);
   }, [attachments, canvasSelection, setEdges]);
+
+  useEffect(() => {
+    if (nodes.length === 0) {
+      hasAutoFitted.current = false;
+      return;
+    }
+
+    if (hasAutoFitted.current) {
+      return;
+    }
+
+    hasAutoFitted.current = true;
+    const frameId = requestAnimationFrame(() => {
+      fitView({ duration: 0, padding: 0.16 });
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [fitView, nodes.length]);
 
   const currentFlowPosition = useCallback(() => (
     contextMenu?.flowPosition ?? { x: 220, y: 220 }
@@ -645,7 +664,6 @@ function HarnessCanvasInner() {
         connectionMode={ConnectionMode.Loose}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        fitView
         attributionPosition="bottom-left"
         deleteKeyCode={null}
       >
