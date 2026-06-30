@@ -366,10 +366,12 @@ function HarnessCanvasInner() {
     connectorHandle?: string | null,
   ) => {
     const state = useHarnessStore.getState();
+    const normalizedHandle = connectorHandle ?? 'left';
     const exists = (state.config.materialAttachments ?? []).some((item) => (
       item.materialId === materialId
       && item.endpoint === endpoint
       && item.connectorNodeId === connectorNodeId
+      && item.connectorHandle === normalizedHandle
     ));
     if (exists) return;
 
@@ -380,7 +382,7 @@ function HarnessCanvasInner() {
       materialId,
       endpoint,
       connectorNodeId,
-      connectorHandle: connectorHandle ?? 'left',
+      connectorHandle: normalizedHandle,
     };
 
     const latestState = useHarnessStore.getState();
