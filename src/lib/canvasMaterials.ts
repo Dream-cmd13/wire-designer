@@ -2,6 +2,7 @@ import type {
   CanvasWireMaterial,
   CanvasWireSpec,
   JacketCoreCount,
+  ProtectiveSleeve,
   ProtectiveSleeveType,
 } from '@/types/harness';
 
@@ -35,6 +36,14 @@ export const PROTECTIVE_SLEEVE_LABELS: Record<ProtectiveSleeveType, string> = {
   corrugated: '波纹管',
 };
 
+export const PROTECTIVE_SLEEVE_PRICE_PER_METER: Record<ProtectiveSleeveType, number> = {
+  'acetate-cloth': 2.2,
+  fleece: 2.8,
+  'heat-shrink': 1.67,
+  braided: 3.33,
+  corrugated: 4.0,
+};
+
 export const CANVAS_MATERIAL_HEIGHT = 22;
 export const CANVAS_MATERIAL_STRIP_TOP = 0;
 export const CANVAS_MATERIAL_STRIP_PADDING_Y = 6;
@@ -46,6 +55,11 @@ export const PROTECTIVE_SLEEVE_HEIGHT = 24;
 
 export function sleeveLengthToCanvasWidth(lengthMm: number): number {
   return Math.max(64, Math.min(260, lengthMm * 0.6));
+}
+
+export function calculateProtectiveSleevePrice(sleeve: ProtectiveSleeve): number {
+  const pricePerMeter = PROTECTIVE_SLEEVE_PRICE_PER_METER[sleeve.type] ?? 0;
+  return pricePerMeter * (sleeve.lengthMm / 1000);
 }
 
 export function getCoreColors(coreCount: JacketCoreCount): string[] {

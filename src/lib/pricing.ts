@@ -1,5 +1,6 @@
 import type { HarnessConfig, PriceBreakdown } from '@/types/harness';
-import { BASE_PRICES, LEAD_TIME_OPTIONS, PROTECTION_OPTIONS } from './data';
+import { calculateProtectiveSleevePrice } from './canvasMaterials';
+import { BASE_PRICES, LEAD_TIME_OPTIONS } from './data';
 
 /**
  * Calculate the price of a wire harness configuration.
@@ -29,9 +30,10 @@ export function calculatePrice(config: HarnessConfig): PriceBreakdown {
   // Labor: crimping labor per connector
   laborCost += config.nodes.filter((n) => n.type === 'connector').length * BASE_PRICES.laborPerConnector;
 
-  // Protection cost per connection
-  const protection = PROTECTION_OPTIONS.find((p) => p.id === config.protection);
-  const protectionCost = protection ? protection.price * config.connections.length : 0;
+  const protectionCost = (config.protectiveSleeves ?? []).reduce(
+    (sum, sleeve) => sum + calculateProtectiveSleevePrice(sleeve),
+    0,
+  );
 
   // Lead time multiplier
   const leadTime = LEAD_TIME_OPTIONS.find((l) => l.id === config.leadTime);

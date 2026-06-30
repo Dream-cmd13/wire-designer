@@ -1,4 +1,8 @@
 import type { HarnessConfig, BOMItem } from '@/types/harness';
+import {
+  calculateProtectiveSleevePrice,
+  PROTECTIVE_SLEEVE_LABELS,
+} from './canvasMaterials';
 import { BASE_PRICES } from './data';
 
 /**
@@ -85,12 +89,32 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     }
   }
 
-  // --- Protection accessory ---
-  if (config.protection && config.protection !== 'none') {
+  // --- Protective sleeves placed on the canvas ---
+  const sleeveMap = new Map<string, { count: number; description: string; unitPrice: number }>();
+
+  for (const sleeve of config.protectiveSleeves ?? []) {
+    const key = `${sleeve.type}-${sleeve.lengthMm}`;
+    const existing = sleeveMap.get(key);
+    if (existing) {
+      existing.count += 1;
+      continue;
+    }
+
+    const unitPrice = calculateProtectiveSleevePrice(sleeve);
+    sleeveMap.set(key, {
+      count: 1,
+      description: `${PROTECTIVE_SLEEVE_LABELS[sleeve.type]} ${sleeve.lengthMm}mm`,
+      unitPrice,
+    });
+  }
+
+  for (const [, info] of sleeveMap) {
     items.push({
       type: 'accessory',
-      description: `保护套: ${config.protection}`,
-      quantity: config.connections.length,
+      description: info.description,
+      quantity: info.count,
+      unitPrice: info.unitPrice,
+      totalPrice: info.unitPrice * info.count,
     });
   }
 
