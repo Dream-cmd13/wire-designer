@@ -1,7 +1,7 @@
 # Wire Harness Designer — 代码变更记录与提交规则
 
 ## 提交消息规则
-
+每次修改完代码后在回复的最后面加上建议的提交消息
 所有提交消息使用 Conventional Commits 格式：
 
 ```
