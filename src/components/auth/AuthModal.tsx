@@ -71,6 +71,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
         {/* Body */}
         <div className="px-5 py-4 space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700">
+            当前为本地演示登录，账号和项目仅保存在此浏览器中。后续如启用 Supabase，再切换为正式云端登录。
+          </div>
+
           {error && (
             <div className="px-3 py-2 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>
           )}

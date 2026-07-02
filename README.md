@@ -2,14 +2,19 @@
 
 基于 Web 的线束设计工具，支持连接器选型、线材接线、保护套配置、BOM 生成和等距预览。
 
-## ⚠️ 演示模式说明
+## 当前运行模式
 
-当前版本为**前端演示原型**，使用浏览器 `localStorage` 存储数据，适用于单机演示和评估。
+当前仓库默认运行模式已经收敛为前端单体：
+
+- UI、画布编辑、BOM、报价预估都在 `Vite + React` 前端内运行；
+- 项目和登录仍使用浏览器 `localStorage`，方便快速原型和单机演示；
+- `Supabase` 作为下一步轻量云端方案预留，不再要求先搭 `NestJS` 后端。
 
 **限制：**
-- 登录为本地模拟，密码以明文存储（非安全认证）
+- 当前 UI 登录仍是本地模拟，不能用于生产
 - 报价为前端估算价格，非正式报价
-- 无后端持久化、无多用户协作、无版本管理
+- 当前项目数据只保存在本机浏览器，不会自动云端同步
+- 暂无多人实时协作
 - 连接器目录为演示数据，不可直接用于生产
 
 ## 功能范围
@@ -37,6 +42,9 @@
 | 画布 | @xyflow/react 12 (React Flow) |
 | 状态 | Zustand 5 (persist) |
 | 图标 | Lucide React |
+| 数据持久化 | 浏览器 `localStorage` |
+| 预留云端方案 | Supabase Auth + Postgres |
+| 校验 | TypeScript + 领域规则校验 |
 | 测试 | Vitest 3 |
 
 ## 快速开始
@@ -57,6 +65,18 @@ npm run lint
 # 运行测试
 npm test
 ```
+
+### 环境变量
+
+如需提前准备后续直连 Supabase，可复制 `.env.example` 为 `.env`：
+
+```dotenv
+VITE_SUPABASE_URL=https://PROJECT_REF.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
+```
+
+当前代码仍可在没有这些变量的情况下本地运行；它们主要用于后续切换到
+Supabase 直连时复用。
 
 ## 数据模型 (schemaVersion 3)
 
@@ -85,7 +105,7 @@ PIN、颜色、SIG 直接归属于线材的接线明细 (`MaterialCircuit`)，�
 - 同侧 PIN 可短接，短接网络可继续扩展
 - 两端触碰后保持原线材，不创建新线材
 
-## 数据存储
+## 前端当前数据存储
 
 所有数据存储在浏览器的 `localStorage` 中：
 - 项目列表：`harness-projects`
@@ -102,7 +122,7 @@ PIN、颜色、SIG 直接归属于线材的接线明细 (`MaterialCircuit`)，�
 
 - `useHarnessStore` — 编辑器状态（配置、选择、保存状态）
 - `useProjectStore` — 项目元数据和持久化
-- `useUserStore` — 用户认证（演示模式）
+- `useUserStore` — 用户认证（本地演示模式）
 - `useHistoryStore` — 撤销/重做历史
 
 ### 领域命令
@@ -128,10 +148,21 @@ PIN、颜色、SIG 直接归属于线材的接线明细 (`MaterialCircuit`)，�
 
 校验结果实时展示在 ConfigPanel 的"校验问题"区块中。
 
+## 当前轻量架构结论
+
+- 当前阶段不默认引入 `NestJS`；
+- 先保持前端单体和本地持久化，继续快速迭代产品交互；
+- 当你准备把项目上云时，优先采用 `Supabase Auth + Supabase Postgres` 直连；
+- 只有在出现复杂权限、复杂事务或多系统集成时，再补业务后端层。
+
+相关决策和演进步骤见
+`FRONTEND_REVIEW_AND_BACKEND_IMPLEMENTATION_PLAN.md` 第 20 节。
+
 ## 后续生产化方向
 
-- 后端 API（NestJS/Fastify + PostgreSQL）
-- 真实认证和授权
+- 前端替换为 Supabase Auth session
+- 项目存储从 `localStorage` 切到 Supabase 表
+- 抽离异步 `ProjectRepository`，避免组件直接绑定浏览器存储
 - 连接器/端子/密封件完整目录
 - 真实报价规则和订单系统
 - 多人协作和版本管理

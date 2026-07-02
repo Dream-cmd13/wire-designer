@@ -1,8 +1,8 @@
-# 当前前端修改复核与后端分阶段实施方案
+# 当前前端修改复核与轻量 Supabase 实施方案
 
 > 文档日期：2026-07-02  
 > 项目：`wire-harness-designer`  
-> 目标：在不考虑历史数据和旧项目迁移的前提下，复核当前前端改动，并规划适合单人开发、少量并发、优先快速可用的 NestJS + Supabase 方案。
+> 目标：在不考虑历史数据和旧项目迁移的前提下，复核当前前端改动，并规划适合单人开发、优先快速交付的轻量 Supabase 方案；NestJS 仅保留为后续复杂化时的备选路径。
 
 ---
 
@@ -21,10 +21,23 @@
 9. 连接器、线材、保护套是唯一三类画布业务对象；
 10. PIN、颜色和 SIG 直接归属于线材的接线明细。
 11. 使用 Supabase 托管 PostgreSQL，不自行维护生产数据库；
-12. NestJS 仍然是项目和线束文档的唯一业务 API；
-13. 前端不直接通过 Supabase Data API 读写项目表。
+12. 当前阶段不引入 NestJS 作为默认后端；
+13. 前端优先采用本地持久化过渡，并在需要上云时直接切换到 Supabase。
 
 因此，旧数据迁移、旧项目备份和 v1/v2 到 v3 的字段转换不再是阻塞项。对于非 v3 数据，直接清空并返回新的 v3 空项目即可。
+
+### 1.1 2026-07-02 决策更新
+
+本次方向已经从 “NestJS + Supabase 双层结构” 收敛为 “前端单体优先，Supabase
+直连作为下一步”。原因很明确：
+
+1. 当前目标是快速开发，不追求复杂后端边界；
+2. 明确不考虑接入其他系统，也不需要额外服务编排；
+3. 现阶段引入 `NestJS + Prisma + migration + API` 会增加维护成本；
+4. 前端已有可运行流程，最合适的是保留现有交互并逐步把认证和项目存储切到 Supabase。
+
+因此，本文中段关于 NestJS、Prisma、独立业务 API 的章节保留为“备选架构参考”，
+不再作为当前仓库默认实施基线。当前代码以第 20 节为准。
 
 ---
 
@@ -386,14 +399,17 @@ NestJS 是长生命周期服务，推荐顺序：
 
 不要在长期运行的 NestJS 容器中默认使用 transaction mode。Supabase 官方说明 transaction mode 更适合短生命周期的 serverless/edge 请求，并且不支持 prepared statements。
 
-Prisma 环境变量建议区分：
+当前实现采用 Prisma ORM 7。Prisma 7 已将连接配置移到
+`apps/api/prisma.config.ts`，并移除了 `datasource.directUrl`。运行时和迁移应分别
+在对应命令环境中提供 `DATABASE_URL`，而不是继续在 `schema.prisma` 中配置
+`url/directUrl`。
 
 ```dotenv
 # NestJS 运行时。IPv4 环境使用 Supavisor session mode :5432
 DATABASE_URL=postgresql://prisma.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:5432/postgres
 
-# migration、pg_dump 和管理命令优先使用 direct connection
-DIRECT_URL=postgresql://prisma:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
+# migration、pg_dump 和管理命令优先在命令环境覆盖 DATABASE_URL 为 direct connection
+# DATABASE_URL=postgresql://prisma:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
 ```
 
 如果开发或部署网络不能访问 Supabase direct IPv6 地址：
@@ -1063,11 +1079,10 @@ Web 和 API 可以部署在同一 VPS，也可以分别部署到静态托管和�
 NODE_ENV=development
 PORT=3000
 DATABASE_URL=postgresql://prisma.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:5432/postgres
-DIRECT_URL=postgresql://prisma:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
 SUPABASE_URL=https://PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 SUPABASE_JWT_ISSUER=https://PROJECT_REF.supabase.co/auth/v1
 SUPABASE_JWKS_URL=https://PROJECT_REF.supabase.co/auth/v1/.well-known/jwks.json
-SUPABASE_SERVICE_ROLE_KEY=server-only-secret
 CORS_ORIGIN=http://localhost:5173
 STORAGE_DRIVER=supabase
 SUPABASE_STORAGE_BUCKET=connector-assets
@@ -1075,7 +1090,7 @@ SWAGGER_ENABLED=true
 
 # 只有下面两个值可以进入 Vite 前端；service role 和数据库 URL 绝不能进入前端
 VITE_SUPABASE_URL=https://PROJECT_REF.supabase.co
-VITE_SUPABASE_ANON_KEY=publishable-anon-key
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 ```
 
 要求：
@@ -1083,7 +1098,7 @@ VITE_SUPABASE_ANON_KEY=publishable-anon-key
 - `.env` 不提交；
 - 提交 `.env.example`；
 - development 和 production 使用不同 Supabase 项目；
-- `SUPABASE_SERVICE_ROLE_KEY` 只允许服务端读取；
+- 当前阶段不需要 service role/secret key；如未来 Storage 管理确实需要，只允许服务端读取；
 - 数据库密码和 direct URL 只允许服务端/CI 读取；
 - 不在前端使用 Prisma；
 - 不从浏览器直连 PostgreSQL；
@@ -1241,3 +1256,51 @@ Supabase 托管数据库、认证和文件存储，NestJS 保留业务 API 和�
 - Prisma PostgreSQL 连接器：<https://docs.prisma.io/docs/orm/core-concepts/supported-databases/postgresql>
 - Prisma JSON 字段：<https://www.prisma.io/docs/orm/prisma-client/special-fields-and-types/working-with-json-fields>
 - PostgreSQL 版本支持策略：<https://www.postgresql.org/support/versioning/>
+
+---
+
+## 20. 2026-07-02 当前代码基线与轻量方案结论
+
+### 20.1 当前仓库基线
+
+本次已将仓库默认路径收敛回前端单体：
+
+- 不再把 `NestJS` 作为当前必需后端；
+- 后端脚手架、Prisma migration、共享 schema workspace 已从当前代码基线撤出；
+- 根脚本恢复为前端开发、构建、Lint、Vitest 为主；
+- `.env.example` 仅保留未来直连 Supabase 需要的前端变量；
+- README 已同步改为“本地单体优先，Supabase 作为下一步”。
+
+这比直接整库回退更合适，因为：
+
+1. 保留了你前面已经确认可用的前端交互和界面修复；
+2. 只移除了与你当前目标不一致的重型后端部分；
+3. 避免误伤同一时间段内的其他前端修改。
+
+### 20.2 当前仍然存在的前端问题
+
+当前架构仍是“可快速开发”，但不是“可正式上线”。主要边界有三点：
+
+1. `userStore` 仍是本地演示登录，且密码保存在浏览器本地；
+2. `projectStore` 仍把项目存到 `localStorage`，没有跨设备同步；
+3. `harnessStore` 与 `projectStore` 仍然共同参与持久化，长期看应收敛为单一数据入口。
+
+这些问题在当前阶段不是阻塞，因为你明确优先级是“先快速开发”，不是立即生产化。
+
+### 20.3 推荐的下一步轻量演进
+
+当你准备把当前单机模式切到云端时，建议按下面顺序做：
+
+1. 新增前端单例 `supabase` client；
+2. 用 Supabase Auth 替换 `userStore` 的本地账号体系；
+3. 抽离异步 `ProjectRepository` 接口；
+4. 先实现 `SupabaseProjectRepository`，不要再额外补 NestJS；
+5. 把项目列表和文档保存迁移到 Supabase；
+6. 最后再去掉本地演示账号和多份持久化逻辑。
+
+只有在出现下列情况时，才建议重新引入业务后端层：
+
+- 复杂审批或复杂权限；
+- 大量服务端规则校验；
+- 多系统集成；
+- 队列、异步任务、审计日志等明显后端职责。
