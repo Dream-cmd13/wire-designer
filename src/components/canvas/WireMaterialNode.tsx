@@ -121,18 +121,18 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
       </div>
 
       {detailsOpen && (
-        <div className="mt-2 min-w-[200px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md">
+        <div className="relative left-1/2 mt-2 min-w-[240px] -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md">
           <div className="mb-1 border-b border-slate-100 pb-1 text-center font-semibold text-slate-700">
             {circuits.length} 条接线 · {data.name}
           </div>
-          <div className="mb-1.5 truncate text-[10px] leading-3 text-slate-500">
+          <div className="mb-1.5 whitespace-nowrap text-[10px] leading-3 text-slate-500">
             {description}
           </div>
 
           {/* Header row */}
           <div className="flex items-center gap-1.5 text-[9px] text-slate-400 font-semibold border-b border-slate-100 pb-0.5 mb-0.5">
             <span className="min-w-[42px] text-center">左侧PIN</span>
-            <span className="w-4 text-center">颜色</span>
+            <span className="w-8 shrink-0 whitespace-nowrap text-center">颜色</span>
             <span className="flex-1 text-center">接线定义</span>
             <span className="min-w-[42px] text-center">右侧PIN</span>
             <span className="w-4" />
@@ -148,28 +148,30 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                   </span>
 
                   {/* Color picker */}
-                  <label className="nodrag nopan relative flex h-2.5 w-2.5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200">
-                    <span
-                      className="h-full w-full rounded-full"
-                      title={WIRE_COLORS.find((color) => color.id === circuit.color)?.name ?? circuit.color}
-                      style={{ backgroundColor: getColorHex(circuit.color) }}
-                    />
-                    <select
-                      value={circuit.color}
-                      onChange={(event) => {
-                        const nextColor = event.target.value;
-                        handleUpdateCircuit(circuit.id, { color: nextColor });
-                        if (circuits.length === 1) {
-                          syncMaterialColor(nextColor);
-                        }
-                      }}
-                      className="absolute inset-0 cursor-pointer opacity-0"
-                    >
-                      {WIRE_COLORS.map((color) => (
-                        <option key={color.id} value={color.id}>{color.name}</option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="flex w-8 shrink-0 justify-center">
+                    <label className="nodrag nopan relative flex h-2.5 w-2.5 cursor-pointer items-center justify-center rounded-full border border-slate-200">
+                      <span
+                        className="h-full w-full rounded-full"
+                        title={WIRE_COLORS.find((color) => color.id === circuit.color)?.name ?? circuit.color}
+                        style={{ backgroundColor: getColorHex(circuit.color) }}
+                      />
+                      <select
+                        value={circuit.color}
+                        onChange={(event) => {
+                          const nextColor = event.target.value;
+                          handleUpdateCircuit(circuit.id, { color: nextColor });
+                          if (circuits.length === 1) {
+                            syncMaterialColor(nextColor);
+                          }
+                        }}
+                        className="absolute inset-0 cursor-pointer opacity-0"
+                      >
+                        {WIRE_COLORS.map((color) => (
+                          <option key={color.id} value={color.id}>{color.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
 
                   {/* Signal name */}
                   <input
@@ -181,7 +183,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                       });
                     }}
                     placeholder="SIG"
-                    className="nodrag nopan max-w-[72px] flex-1 rounded border border-transparent bg-transparent px-1 py-0 text-slate-700 font-medium outline-none focus:border-slate-200 focus:bg-slate-50"
+                    className="nodrag nopan min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0 text-slate-700 font-medium outline-none focus:border-slate-200 focus:bg-slate-50"
                   />
 
                   {/* Right PIN */}
