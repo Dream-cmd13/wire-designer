@@ -96,6 +96,20 @@ export function lengthMmToCanvasWidth(lengthMm: number): number {
   return Math.max(40, Math.min(600, lengthMm * 0.6));
 }
 
+/**
+ * Position an attached sleeve around the visual center line of a material.
+ * This is the single source of truth for create, resize, move, and edit flows.
+ */
+export function centerSleeveOnMaterial(
+  material: Pick<CanvasWireMaterial, 'position' | 'width'>,
+  sleeveWidth: number,
+): { x: number; y: number } {
+  return {
+    x: material.position.x + (material.width - sleeveWidth) / 2,
+    y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y - PROTECTIVE_SLEEVE_HEIGHT / 2,
+  };
+}
+
 /** @deprecated Use lengthMmToCanvasWidth */
 export function sleeveLengthToCanvasWidth(lengthMm: number): number {
   return lengthMmToCanvasWidth(lengthMm);

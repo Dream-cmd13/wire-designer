@@ -29,6 +29,7 @@ import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMateria
 import {
   CANVAS_MATERIAL_HEIGHT,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+  centerSleeveOnMaterial,
   createDefaultCanvasMaterial,
   lengthMmToCanvasWidth,
   PROTECTIVE_SLEEVE_HEIGHT,
@@ -159,16 +160,6 @@ function distanceToRect(
   const dx = Math.max(rect.x - point.x, 0, point.x - (rect.x + rect.width));
   const dy = Math.max(rect.y - point.y, 0, point.y - (rect.y + rect.height));
   return Math.hypot(dx, dy);
-}
-
-function centerSleeveOnMaterial(
-  material: CanvasWireMaterial,
-  sleeveWidth: number,
-): { x: number; y: number } {
-  return {
-    x: material.position.x + (material.width - sleeveWidth) / 2,
-    y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y - PROTECTIVE_SLEEVE_HEIGHT / 2,
-  };
 }
 
 // ============================================================

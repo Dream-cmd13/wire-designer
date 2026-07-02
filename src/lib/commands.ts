@@ -18,7 +18,11 @@ import type {
   ProtectiveSleeve,
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
-import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import {
+  centerSleeveOnMaterial,
+  createDefaultWireSpec,
+  lengthMmToCanvasWidth,
+} from '@/lib/canvasMaterials';
 
 // ============================================================
 // ID Generator
@@ -235,10 +239,28 @@ export function updateMaterial(
   materialId: string,
   patch: Partial<Pick<CanvasWireMaterial, 'name' | 'position' | 'width' | 'spec' | 'expandedByDefault'>>,
 ): HarnessConfig {
+  const current = config.materials.find((material) => material.id === materialId);
+  if (!current) return config;
+
+  const width =
+    patch.width
+    ?? (patch.spec && patch.spec.lengthMm !== current.spec.lengthMm
+      ? lengthMmToCanvasWidth(patch.spec.lengthMm)
+      : current.width);
+  const nextMaterial = { ...current, ...patch, width };
+
   return {
     ...config,
     materials: config.materials.map((m) =>
-      m.id === materialId ? { ...m, ...patch } : m,
+      m.id === materialId ? nextMaterial : m,
+    ),
+    protectiveSleeves: config.protectiveSleeves.map((sleeve) =>
+      sleeve.attachedMaterialId === materialId
+        ? {
+            ...sleeve,
+            position: centerSleeveOnMaterial(nextMaterial, sleeve.width),
+          }
+        : sleeve,
     ),
     updatedAt: Date.now(),
   };
@@ -711,10 +733,26 @@ export function updateProtectiveSleeve(
   sleeveId: string,
   patch: Partial<ProtectiveSleeve>,
 ): HarnessConfig {
+  const current = config.protectiveSleeves.find((sleeve) => sleeve.id === sleeveId);
+  if (!current) return config;
+
+  const width =
+    patch.width
+    ?? (patch.lengthMm !== undefined
+      ? lengthMmToCanvasWidth(patch.lengthMm)
+      : current.width);
+  const nextSleeve = { ...current, ...patch, width };
+  const attachedMaterial = nextSleeve.attachedMaterialId
+    ? config.materials.find((material) => material.id === nextSleeve.attachedMaterialId)
+    : undefined;
+  if (attachedMaterial) {
+    nextSleeve.position = centerSleeveOnMaterial(attachedMaterial, width);
+  }
+
   return {
     ...config,
     protectiveSleeves: config.protectiveSleeves.map((s) =>
-      s.id === sleeveId ? { ...s, ...patch } : s,
+      s.id === sleeveId ? nextSleeve : s,
     ),
     updatedAt: Date.now(),
   };

@@ -10,7 +10,11 @@ import type {
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
 import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
-import { generateId } from '@/lib/commands';
+import {
+  generateId,
+  updateMaterial as updateMaterialCommand,
+  updateProtectiveSleeve as updateProtectiveSleeveCommand,
+} from '@/lib/commands';
 import { normalizeHarnessConfig } from '@/lib/normalizeHarnessConfig';
 
 export function createDefaultConfig(): HarnessConfig {
@@ -210,33 +214,10 @@ export const useHarnessStore = create<HarnessState>()(
         })),
 
       updateMaterial: (id, updates) =>
-        set((state) => {
-          const current = state.config.materials.find((item) => item.id === id);
-          const dx = updates.position && current ? updates.position.x - current.position.x : 0;
-          const dy = updates.position && current ? updates.position.y - current.position.y : 0;
-
-          return {
-            config: {
-              ...state.config,
-              materials: state.config.materials.map((item) =>
-                item.id === id ? { ...item, ...updates } : item,
-              ),
-              protectiveSleeves: state.config.protectiveSleeves.map((sleeve) =>
-                sleeve.attachedMaterialId === id && updates.position
-                  ? {
-                      ...sleeve,
-                      position: {
-                        x: sleeve.position.x + dx,
-                        y: sleeve.position.y + dy,
-                      },
-                    }
-                  : sleeve,
-              ),
-              updatedAt: Date.now(),
-            },
+        set((state) => ({
+            config: updateMaterialCommand(state.config, id, updates),
             saveState: dirtyState(),
-          };
-        }),
+        })),
 
       removeMaterial: (id) =>
         set((state) => ({
@@ -265,13 +246,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       updateProtectiveSleeve: (id, updates) =>
         set((state) => ({
-          config: {
-            ...state.config,
-            protectiveSleeves: state.config.protectiveSleeves.map((item) =>
-              item.id === id ? { ...item, ...updates } : item,
-            ),
-            updatedAt: Date.now(),
-          },
+          config: updateProtectiveSleeveCommand(state.config, id, updates),
           saveState: dirtyState(),
         })),
 
