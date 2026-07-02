@@ -189,23 +189,35 @@ describe('addConnectorJumper', () => {
     expect(() => addConnectorJumper(config, 'conn-a', 'right', 1, 1)).toThrow();
   });
 
-  it('merges overlapping networks into one', () => {
+  it('creates independent binary jumpers (no merging)', () => {
     let config = makeTestConfig();
-    // conn-b is a 4-pin connector — use it for multi-pin jumper tests.
+    // conn-b is a 4-pin connector.
 
-    // Create [1,2]
+    // 1→2 (first arc)
     config = addConnectorJumper(config, 'conn-b', 'right', 1, 2);
-    // Create [3,4]
-    config = addConnectorJumper(config, 'conn-b', 'right', 3, 4);
-
-    expect(config.connectors[1].jumpers).toHaveLength(2);
-
-    // Now short 2-3 → should merge both into [1,2,3,4].
+    // 2→3 (second arc, independent)
     config = addConnectorJumper(config, 'conn-b', 'right', 2, 3);
+    // 1→4 (third arc, independent)
+    config = addConnectorJumper(config, 'conn-b', 'right', 1, 4);
 
     const connector = config.connectors.find((c) => c.id === 'conn-b')!;
-    expect(connector.jumpers).toHaveLength(1);
-    expect(connector.jumpers[0].pins).toEqual([1, 2, 3, 4]);
+    // Three separate jumpers, each with exactly 2 pins.
+    expect(connector.jumpers).toHaveLength(3);
+    expect(connector.jumpers.every((j) => j.pins.length === 2)).toBe(true);
+  });
+
+  it('rejects exact duplicate shorts (same two pins, same side)', () => {
+    let config = makeTestConfig();
+    config = addConnectorJumper(config, 'conn-b', 'right', 1, 2);
+    const countAfterFirst = config.connectors[1].jumpers.length;
+
+    // Same pair in same order.
+    config = addConnectorJumper(config, 'conn-b', 'right', 1, 2);
+    expect(config.connectors[1].jumpers.length).toBe(countAfterFirst);
+
+    // Same pair in reverse order — still a duplicate.
+    config = addConnectorJumper(config, 'conn-b', 'right', 2, 1);
+    expect(config.connectors[1].jumpers.length).toBe(countAfterFirst);
   });
 });
 

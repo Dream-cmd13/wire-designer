@@ -579,8 +579,15 @@ export function updateMaterialCircuit(
 
 /**
  * Create a jumper between two pins on the same side of a connector.
- * If a jumper already exists on that side that contains one of the pins,
- * the other pin is merged into it instead of creating a new jumper.
+ *
+ * Each jumper is an independent binary connection (pin1 ↔ pin2).
+ * Connecting 1→2 then 2→3 produces TWO separate jumpers, each drawn
+ * as its own arc — they are NOT merged into a network. Connecting
+ * 1→4 creates a third independent jumper. This makes the visual
+ * representation match the user's mental model of "one line per short".
+ *
+ * Duplicate connections (same two pins on the same side) are rejected
+ * as no-ops to avoid stacking identical arcs.
  */
 export function addConnectorJumper(
   config: HarnessConfig,
@@ -603,7 +610,8 @@ export function addConnectorJumper(
     throw new Error(`Pin out of range (1-${maxPin})`);
   }
 
-  // Reject if side conflicts with active side (from material circuits).
+  // Reject if side conflicts with active side (from material circuits
+  // or existing jumpers on the other side).
   const activeSide = getActiveConnectorSide(config, connectorId);
   if (activeSide !== undefined && activeSide !== side) {
     throw new Error(
@@ -611,45 +619,32 @@ export function addConnectorJumper(
     );
   }
 
-  // Find ALL jumpers on this side that contain pin1 OR pin2.
-  // They must all be merged into a single network, otherwise we'd
-  // end up with overlapping jumpers (e.g. [1,2] + [3,4] shorted via
-  // 2-3 would wrongly stay as [1,2,3] and [3,4] sharing pin 3).
-  const overlappingJumpers = connector.jumpers.filter(
-    (j) => j.side === side && (j.pins.includes(pin1) || j.pins.includes(pin2)),
+  // Reject exact duplicates (same two pins, same side, either order).
+  const lo = Math.min(pin1, pin2);
+  const hi = Math.max(pin1, pin2);
+  const dupExists = connector.jumpers.some(
+    (j) =>
+      j.side === side &&
+      j.pins.length === 2 &&
+      j.pins.includes(lo) &&
+      j.pins.includes(hi),
   );
-
-  let nextJumpers: ConnectorJumper[];
-  if (overlappingJumpers.length > 0) {
-    // Union all pins from every overlapping jumper plus the two new pins.
-    const pinSet = new Set<number>();
-    for (const j of overlappingJumpers) {
-      for (const p of j.pins) pinSet.add(p);
-    }
-    pinSet.add(pin1);
-    pinSet.add(pin2);
-    const mergedPins = [...pinSet].sort((a, b) => a - b);
-
-    const overlappingIds = new Set(overlappingJumpers.map((j) => j.id));
-    // Keep non-overlapping jumpers as-is; replace all overlapping ones
-    // with a single merged jumper (reuse the first overlapping id).
-    const firstId = overlappingJumpers[0].id;
-    nextJumpers = connector.jumpers
-      .filter((j) => !overlappingIds.has(j.id))
-      .concat({ id: firstId, side, pins: mergedPins });
-  } else {
-    const newJumper: ConnectorJumper = {
-      id: generateId(),
-      side,
-      pins: [Math.min(pin1, pin2), Math.max(pin1, pin2)],
-    };
-    nextJumpers = [...connector.jumpers, newJumper];
+  if (dupExists) {
+    // No-op: this exact short already exists.
+    return config;
   }
+
+  // Create a new independent binary jumper.
+  const newJumper: ConnectorJumper = {
+    id: generateId(),
+    side,
+    pins: [lo, hi],
+  };
 
   return {
     ...config,
     connectors: config.connectors.map((c) =>
-      c.id === connectorId ? { ...c, jumpers: nextJumpers } : c,
+      c.id === connectorId ? { ...c, jumpers: [...c.jumpers, newJumper] } : c,
     ),
     updatedAt: Date.now(),
   };

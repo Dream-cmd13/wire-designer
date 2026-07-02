@@ -1,12 +1,13 @@
 import { memo } from 'react';
+import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { ConnectorInstance } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { WIRE_COLORS } from '@/lib/data';
+import { showJumperContextMenu } from './jumperContextMenu';
 import {
   getActiveConnectorSide,
   getConnectorPinBindings,
-  getJumperPinSet,
 } from '@/lib/commands';
 import { Plug } from 'lucide-react';
 
@@ -24,8 +25,6 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
 
   const activeSide = getActiveConnectorSide(config, data.id);
   const pinBindings = getConnectorPinBindings(config, data.id);
-  const jumperPinsLeft = getJumperPinSet(data, 'left');
-  const jumperPinsRight = getJumperPinSet(data, 'right');
 
   const showLeft = activeSide === undefined || activeSide === 'left';
   const showRight = activeSide === undefined || activeSide === 'right';
@@ -61,14 +60,12 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
       </div>
 
       {/* PIN layout area */}
-      <div className="px-1 relative">
+      <div className="px-1 relative" style={{ overflow: 'visible' }}>
         {Array.from({ length: displayPins }, (_, i) => i + 1).map((pinNum) => {
           const leftBindings = pinBindings.get(`left-pin-${pinNum}`) ?? [];
           const rightBindings = pinBindings.get(`right-pin-${pinNum}`) ?? [];
           const allBindings = [...leftBindings, ...rightBindings];
           const isConnected = allBindings.length > 0;
-          const isJumperedLeft = jumperPinsLeft.has(pinNum);
-          const isJumperedRight = jumperPinsRight.has(pinNum);
           const label = pinNum <= pinLabels.length ? pinLabels[pinNum - 1] : String(pinNum);
           const isEvenRow = pinNum % 2 === 0;
 
@@ -80,15 +77,15 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
               }`}
               style={{ lineHeight: '20px' }}
             >
-              {/* Left pin handle — only rendered if left side is active */}
+              {/* Left pin handle — only rendered if left side is active.
+                  Stays blue even when jumpered; the jumper arc is the
+                  visual indicator, not a handle color change. */}
               {showLeft && (
                 <Handle
                   id={`left-pin-${pinNum}`}
                   type="target"
                   position={Position.Left}
-                  className={`!h-3 !w-3 !border-2 !border-white ${
-                    isJumperedLeft ? '!bg-orange-500' : '!bg-blue-500'
-                  }`}
+                  className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
                 />
               )}
 
@@ -136,62 +133,101 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
                     x{allBindings.length}
                   </span>
                 )}
-
-                {/* Jumper indicator */}
-                {(isJumperedLeft || isJumperedRight) && (
-                  <span
-                    className="text-[8px] text-orange-500 font-bold ml-0.5"
-                    title="短接"
-                  >
-                    ⏚
-                  </span>
-                )}
               </div>
 
-              {/* Right pin handle — only rendered if right side is active */}
+              {/* Right pin handle — only rendered if right side is active.
+                  Stays blue even when jumpered. */}
               {showRight && (
                 <Handle
                   id={`right-pin-${pinNum}`}
                   type="source"
                   position={Position.Right}
-                  className={`!h-3 !w-3 !border-2 !border-white ${
-                    isJumperedRight ? '!bg-orange-500' : '!bg-blue-500'
-                  }`}
+                  className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
                 />
               )}
             </div>
           );
         })}
 
-        {/* Jumper visual overlay: draw brackets between jumpered pins.
-            NOTE: this overlay is inside the pin-area div (which sits
-            below the header), so top is relative to the first pin row,
-            NOT to the node root. Do NOT add header height here. */}
+        {/* Jumper visual: a blue curved arc connecting jumpered pins,
+            drawn OUTSIDE the connector body (bulging outward into the
+            canvas). No extra dots — the existing blue PIN handles are
+            the endpoints. */}
         {data.jumpers.map((jumper) => {
           const side = jumper.side;
           if (jumper.pins.length < 2) return null;
-          const visiblePins = jumper.pins.filter((p) => p <= displayPins);
+          const sortedPins = [...jumper.pins].sort((a, b) => a - b);
+          const visiblePins = sortedPins.filter((p) => p <= displayPins);
           if (visiblePins.length < 2) return null;
-          const minPin = Math.min(...visiblePins);
-          const maxPin = Math.max(...visiblePins);
-          if (minPin === maxPin) return null;
-          const top = (minPin - 1) * 20 + 2;
-          const height = (maxPin - minPin) * 20 - 4;
+
+          const firstPin = visiblePins[0];
+          const lastPin = visiblePins[visiblePins.length - 1];
+          const y1 = (firstPin - 1) * 20 + 10;
+          const y2 = (lastPin - 1) * 20 + 10;
+          const arcHeight = y2 - y1;
           const isLeft = side === 'left';
+
+          // The SVG is positioned entirely outside the connector body.
+          // x=0 (right side) or x=svgWidth (left side) touches the
+          // connector edge; the arc bulges further outward.
+          const bulgeDepth = 16; // how far the arc sticks out
+          const svgWidth = bulgeDepth + 4;
+          const svgHeight = arcHeight + 8;
+          const svgTop = y1 - 4;
+
+          // edgeX: the x coordinate at the connector boundary
+          //   right side → x=0 (left edge of the outer SVG)
+          //   left side  → x=svgWidth (right edge of the outer SVG)
+          const edgeX = isLeft ? svgWidth : 0;
+          // bulgeX: the x coordinate of the arc's outermost point
+          //   right side → bulge right (positive x, away from body)
+          //   left side  → bulge left (x=0, away from body)
+          const bulgeX = isLeft ? 0 : svgWidth;
+
+          // Cubic bezier: start at edge, control points push outward,
+          // end at edge. This creates a smooth arc outside the body.
+          const path = `M ${edgeX} 4 C ${bulgeX} 4, ${bulgeX} ${arcHeight + 4}, ${edgeX} ${arcHeight + 4}`;
+
           return (
-            <div
+            <svg
               key={jumper.id}
-              className="absolute pointer-events-none"
+              className="absolute"
               style={{
-                top,
-                height,
-                [isLeft ? 'left' : 'right']: '-2px',
-                width: '4px',
-                backgroundColor: '#f97316',
-                borderRadius: '2px',
+                top: svgTop,
+                // Anchor the SVG so its inner edge sits on the connector
+                // boundary and the rest extends outward into the canvas.
+                [isLeft ? 'right' : 'left']: `100%`,
+                width: svgWidth,
+                height: svgHeight,
+                overflow: 'visible',
+                cursor: 'context-menu',
               }}
-              title={`短接: Pin ${jumper.pins.join(', ')}`}
-            />
+              viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+              onContextMenu={(event: ReactMouseEvent) => {
+                event.preventDefault();
+                event.stopPropagation();
+                showJumperContextMenu(jumper.id, event.clientX, event.clientY);
+              }}
+            >
+              {/* The connecting arc — blue, matching the PIN handle color.
+                  A transparent wide stroke underneath provides a larger
+                  hit area for right-click. */}
+              <path
+                d={path}
+                fill="none"
+                stroke="transparent"
+                strokeWidth={14}
+                strokeLinecap="round"
+              />
+              <path
+                d={path}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                strokeLinecap="round"
+              />
+              <title>{`短接 ${side === 'left' ? '左' : '右'}侧: Pin ${sortedPins.join(', ')}`}</title>
+            </svg>
           );
         })}
 

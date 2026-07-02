@@ -45,6 +45,7 @@ import type {
 import { ConnectorNode } from './ConnectorNode';
 import { ContextMenu, type ContextMenuState } from './ContextMenu';
 import { JumperEdge } from './JumperEdge';
+import { setJumperContextMenuHandler } from './jumperContextMenu';
 import { MaterialAttachmentEdge } from './MaterialAttachmentEdge';
 import { ProtectiveSleeveDialog } from './ProtectiveSleeveDialog';
 import { ProtectiveSleeveNode } from './ProtectiveSleeveNode';
@@ -260,6 +261,16 @@ function HarnessCanvasInner() {
 
   const materials = config.materials ?? EMPTY_MATERIALS;
   const sleeves = config.protectiveSleeves ?? EMPTY_SLEEVES;
+
+  // Register the jumper context menu handler so ConnectorNode's jumper
+  // SVG arcs can trigger this context menu (the arcs are drawn as node
+  // overlays, not as React Flow edges, so onEdgeContextMenu doesn't fire).
+  useEffect(() => {
+    setJumperContextMenuHandler((jumperId, x, y) => {
+      setContextMenu({ x, y, kind: 'jumper', jumperId });
+    });
+    return () => setJumperContextMenuHandler(null);
+  }, []);
 
   // Build React Flow nodes from config.
   // React Flow 12's Node<T> requires T extends Record<string, unknown>;
