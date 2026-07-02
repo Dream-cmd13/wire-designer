@@ -2,7 +2,7 @@
 
 > 文档日期：2026-07-02  
 > 项目：`wire-harness-designer`  
-> 目标：在不考虑历史数据和旧项目迁移的前提下，复核当前前端改动，并规划适合单人开发、少量并发、优先快速可用的后端与数据库方案。
+> 目标：在不考虑历史数据和旧项目迁移的前提下，复核当前前端改动，并规划适合单人开发、少量并发、优先快速可用的 NestJS + Supabase 方案。
 
 ---
 
@@ -20,6 +20,9 @@
 8. 当前线束文档继续使用 `schemaVersion: 3`；
 9. 连接器、线材、保护套是唯一三类画布业务对象；
 10. PIN、颜色和 SIG 直接归属于线材的接线明细。
+11. 使用 Supabase 托管 PostgreSQL，不自行维护生产数据库；
+12. NestJS 仍然是项目和线束文档的唯一业务 API；
+13. 前端不直接通过 Supabase Data API 读写项目表。
 
 因此，旧数据迁移、旧项目备份和 v1/v2 到 v3 的字段转换不再是阻塞项。对于非 v3 数据，直接清空并返回新的 v3 空项目即可。
 
@@ -258,7 +261,7 @@ reassignMaterialEndpoint(config, {
 
 ---
 
-## 5. 推荐技术栈结论
+## 5. 推荐技术栈结论：改用 Supabase
 
 ### 5.1 第一阶段采用
 
@@ -267,20 +270,43 @@ reassignMaterialEndpoint(config, {
 | 前端 | React 19 + Vite + Zustand + `@xyflow/react` | 保留 |
 | 后端 | NestJS + TypeScript | 采用 |
 | HTTP 平台 | NestJS 默认 Express Adapter | 第一阶段采用 |
-| 数据库 | PostgreSQL 16 当前最新小版本 | 采用 |
+| 数据库平台 | Supabase 托管 PostgreSQL | 采用 |
 | ORM | Prisma ORM + Prisma Migrate | 采用 |
-| 文档存储 | PostgreSQL JSONB | 采用 |
-| 认证 | JWT + Passport | 采用 |
-| 密码哈希 | Argon2id；无法方便部署时使用 bcrypt | 采用 |
+| 文档存储 | Supabase PostgreSQL JSONB | 采用 |
+| 认证 | Supabase Auth 签发 JWT，NestJS Guard/Passport 验证 | 推荐采用 |
 | API 文档 | Swagger / OpenAPI | 采用 |
 | 请求校验 | Nest `ValidationPipe` + 共享 Harness Zod schema | 采用 |
-| 文件存储 | `StorageService` 接口 + 本地磁盘实现 | 第一阶段采用 |
-| 部署 | 单机 Docker Compose | 采用 |
+| 文件存储 | Supabase Storage | 推荐采用 |
+| 后端部署 | 单 NestJS 实例或容器 | 采用 |
 | 缓存 | 无 Redis | 第一阶段不采用 |
 | 实时通信 | 无 WebSocket | 第一阶段不采用 |
 | 消息队列 | 无 | 第一阶段不采用 |
 
-### 5.2 为什么第一阶段使用 Express 而不是 Fastify
+### 5.2 是否建议 Supabase
+
+建议。
+
+Supabase 并不是另一种数据库，它提供托管 PostgreSQL，并附带 Auth、Storage、连接池和管理界面。当前应用本来就计划使用 PostgreSQL + JSONB，因此切换到 Supabase 不需要改变线束文档模型，也不影响 Prisma。
+
+它特别适合当前阶段：
+
+- 单人开发，不需要维护 PostgreSQL 服务；
+- 同时用户很少，不需要复杂基础设施；
+- 可以快速获得托管数据库、认证和文件存储；
+- Prisma 仍负责业务表和 migration；
+- NestJS 仍承载项目权限、领域校验、乐观锁和 API；
+- 后续仍可使用标准 PostgreSQL 工具导出和迁移数据。
+
+需要接受的代价：
+
+- 增加对 Supabase Auth/Storage API 的依赖；
+- 数据库连接方式需要区分 direct、session pooler 和 transaction pooler；
+- 免费或低配项目的资源、休眠、备份和网络能力以实际套餐为准；
+- 如果未来离开 Supabase，Auth 和 Storage 比纯 PostgreSQL 更需要迁移工作。
+
+综合当前“快速开发、先能用、少量用户”的目标，收益大于代价。
+
+### 5.3 为什么第一阶段使用 Express 而不是 Fastify
 
 NestJS 默认使用 Express。对当前“同时几名用户”的规模，Express 性能足够，并且：
 
@@ -291,15 +317,21 @@ NestJS 默认使用 Express。对当前“同时几名用户”的规模，Expre
 
 如果以后 API QPS 明显升高，再评估 Fastify。当前不应为了尚不存在的性能问题增加开发成本。
 
-### 5.3 PostgreSQL 16 是否合适
+### 5.4 Supabase 与 PostgreSQL 16 的关系
 
-合适。
+使用 Supabase 后，不再自行部署或锁定本地 PostgreSQL 16 镜像，而使用 Supabase 项目提供的 PostgreSQL 版本和升级策略。
 
-PostgreSQL 官方支持策略为每个大版本约 5 年。PostgreSQL 16 支持到 2028-11-09，因此第一阶段可以继续使用 PostgreSQL 16，但应安装 16 系列的当前最新小版本，不应固定使用 16.0。
+业务设计不依赖 PostgreSQL 16 的独占特性，只依赖：
 
-如果上线前托管平台默认提供 PostgreSQL 17 或 18，也可以直接使用平台当前稳定版本；本项目没有依赖 PostgreSQL 16 独占特性。
+- UUID；
+- JSONB；
+- 普通索引和唯一约束；
+- 事务；
+- 行级锁或乐观锁更新。
 
-### 5.4 为什么使用 JSONB
+如果必须自托管，PostgreSQL 16 仍受官方支持到 2028-11-09；但采用 Supabase 时，应跟随平台支持的稳定 PostgreSQL 版本，不在应用中硬编码大版本假设。
+
+### 5.5 为什么使用 JSONB
 
 线束文档具有以下特点：
 
@@ -318,7 +350,62 @@ PostgreSQL 官方支持策略为每个大版本约 5 年。PostgreSQL 16 支持�
 
 这样既保留事务、权限和查询能力，又不把画布领域模型过度关系化。
 
-### 5.5 为什么第一阶段不需要 Redis
+### 5.6 Supabase 的使用边界
+
+推荐架构：
+
+```text
+React
+  ├─ Supabase Auth：注册、登录、刷新 Token
+  ├─ Supabase Storage：图片上传，可按需启用
+  └─ NestJS API：项目、线束文档、连接器目录、权限和业务校验
+                         │
+                         ├─ Prisma
+                         └─ Supabase PostgreSQL
+```
+
+关键规则：
+
+1. 前端可以直接调用 Supabase Auth；
+2. 前端不得直接读写 `projects`、`project_revisions` 等业务表；
+3. 项目数据统一通过 NestJS；
+4. NestJS 验证 Supabase access token；
+5. NestJS 从 token 的 `sub` 获取用户 ID；
+6. Supabase `service_role`、Prisma 数据库密码只存在于服务端；
+7. 绝不把 service role key 放进 Vite 环境变量；
+8. 如果只使用 Prisma 访问业务表，可关闭不需要的 Supabase Data API，或为业务表启用默认拒绝的 RLS；
+9. Swagger 使用 Bearer Auth 描述 Supabase JWT。
+
+### 5.7 数据库连接方式
+
+NestJS 是长生命周期服务，推荐顺序：
+
+1. 部署环境支持 IPv6：使用 direct connection；
+2. 部署环境只有 IPv4：使用 Supavisor session mode，端口 5432；
+3. 只有把 API 部署成 serverless/edge 时，才使用 transaction mode，端口 6543。
+
+不要在长期运行的 NestJS 容器中默认使用 transaction mode。Supabase 官方说明 transaction mode 更适合短生命周期的 serverless/edge 请求，并且不支持 prepared statements。
+
+Prisma 环境变量建议区分：
+
+```dotenv
+# NestJS 运行时。IPv4 环境使用 Supavisor session mode :5432
+DATABASE_URL=postgresql://prisma.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:5432/postgres
+
+# migration、pg_dump 和管理命令优先使用 direct connection
+DIRECT_URL=postgresql://prisma:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
+```
+
+如果开发或部署网络不能访问 Supabase direct IPv6 地址：
+
+- 运行时使用 session pooler；
+- migration 按 Supabase/Prisma 当前官方指引配置；
+- 不要为了连通性把数据库开放到公网任意来源；
+- 可使用 Supabase Network Restrictions 限制来源。
+
+建议为 Prisma 创建独立数据库角色，不要让应用直接使用最高权限的默认 postgres 账号。
+
+### 5.8 为什么第一阶段不需要 Redis
 
 当前场景：
 
@@ -369,7 +456,6 @@ wire-harness-designer/
 │     │  ├─ harness.schema.ts
 │     │  └─ index.ts
 │     └─ package.json
-├─ docker-compose.yml
 ├─ package.json
 └─ README.md
 ```
@@ -387,6 +473,8 @@ wire-harness-designer/
 
 暂不把当前前端移动到 `apps/web`，避免第一阶段产生大量无业务价值的路径改动。后续需要完整 monorepo 规范时再移动。
 
+生产环境数据库由 Supabase 托管，因此不需要在本仓库的 Docker Compose 中运行 PostgreSQL。若希望完全本地开发，可后续使用 Supabase CLI 启动本地栈；单人第一阶段也可以直接创建彼此隔离的 Supabase development 和 production 项目。
+
 ---
 
 ## 7. 后端模块设计
@@ -396,8 +484,8 @@ AppModule
 ├─ ConfigModule
 ├─ PrismaModule
 ├─ HealthModule
-├─ AuthModule
-├─ UsersModule
+├─ AuthModule（验证 Supabase JWT）
+├─ ProfilesModule
 ├─ ProjectsModule
 ├─ ConnectorCatalogModule
 ├─ AssetsModule
@@ -408,23 +496,26 @@ AppModule
 
 职责：
 
-- 注册；
-- 登录；
-- JWT access token；
-- refresh token；
-- 登出；
-- 当前用户；
-- 密码哈希；
-- 登录限流。
+- 验证 Supabase JWT；
+- 从 JWT `sub` 读取用户 UUID；
+- 提供 NestJS Guard/Passport Strategy；
+- 向 Swagger 注册 Bearer Auth；
+- 提供 `/auth/me` 或 `/profiles/me`；
+- 不签发自己的 access/refresh token；
+- 不保存密码；
+- 不维护第二套 refresh token 表。
 
 推荐：
 
-- access token：15 分钟；
-- refresh token：7 到 30 天；
-- refresh token 仅保存哈希到数据库；
-- refresh token 放 HttpOnly、Secure、SameSite Cookie；
-- access token 保存在前端内存，不放 localStorage；
-- 修改密码或主动退出时撤销 refresh token。
+- React 使用 Supabase SDK 注册、登录、退出和刷新；
+- Supabase Auth 负责签发和刷新 JWT；
+- React 调用 NestJS 时携带 Supabase access token；
+- NestJS 通过 Supabase JWKS/issuer/audience 验证 token；
+- NestJS 不信任客户端提交的 userId；
+- 所有 ownerId 均来自已验证 token 的 `sub`；
+- 若继续使用 Passport，实现 `SupabaseJwtStrategy`，不要再实现本地密码策略。
+
+如果产品明确要求完全脱离 Supabase Auth，也可以退回“NestJS 自建 JWT + Passport + Argon2id + RefreshToken 表”，但开发量和安全责任都会增加，不符合当前快速交付优先级。
 
 ### 7.2 ProjectsModule
 
@@ -452,7 +543,7 @@ AppModule
 第一阶段：
 
 - 把当前 `src/lib/data.ts` 连接器数据做成 Prisma seed；
-- API 从 PostgreSQL 返回；
+- API 从 Supabase PostgreSQL 返回；
 - 不使用 Redis；
 - 前端可以在一次请求后内存缓存。
 
@@ -466,7 +557,7 @@ AppModule
 - 返回受控访问 URL；
 - 删除未引用文件。
 
-定义统一接口：
+使用 Supabase Storage，并在 NestJS 保留统一接口：
 
 ```ts
 interface StorageService {
@@ -476,12 +567,20 @@ interface StorageService {
 }
 ```
 
-实现顺序：
+实现：
 
-1. `LocalStorageService`：本地磁盘；
-2. 后续替换 `S3StorageService`：S3、MinIO 或兼容对象存储。
+1. `SupabaseStorageService`：第一阶段；
+2. `LocalStorageService`：仅用于离线开发或测试；
+3. 后续如果离开 Supabase，可替换为 `S3StorageService`。
 
-数据库只保存文件元数据和 storage key，不把图片二进制存入 PostgreSQL。
+数据库只保存 bucket、storage path、文件元数据，不把图片二进制存入 PostgreSQL。
+
+上传可以有两种方式：
+
+- 简单方案：前端使用登录用户 token 直接上传到受 RLS 保护的 bucket；
+- 中央控制方案：NestJS 生成短期 signed upload URL。
+
+不允许前端持有 service role key。
 
 ### 7.5 HealthModule
 
@@ -490,7 +589,7 @@ interface StorageService {
 - `GET /api/health/live`
 - `GET /api/health/ready`
 
-ready 检查 PostgreSQL 连接。
+ready 检查 Supabase PostgreSQL 连接；Storage 检查可以作为非阻塞依赖，不应因为图片服务短暂异常阻止项目文档读写。
 
 ---
 
@@ -502,29 +601,16 @@ enum ProjectStatus {
   ARCHIVED
 }
 
-model User {
-  id           String         @id @default(uuid()) @db.Uuid
-  email        String         @unique
-  passwordHash String
-  displayName  String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  projects     Project[]
-  refreshTokens RefreshToken[]
-  assets       Asset[]
-}
-
-model RefreshToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @db.Uuid
-  tokenHash String    @unique
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([expiresAt])
+model Profile {
+  // 与 Supabase auth.users.id 使用相同 UUID。
+  // 不让 Prisma 管理 auth schema；Profile 由注册触发器或首次登录时创建。
+  id          String    @id @db.Uuid
+  email       String?
+  displayName String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  projects    Project[]
+  assets      Asset[]
 }
 
 model Project {
@@ -538,7 +624,7 @@ model Project {
   revision              Int           @default(1)
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
-  owner                 User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner                 Profile       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   revisions             ProjectRevision[]
   assets                Asset[]
 
@@ -579,17 +665,19 @@ model ConnectorPart {
 }
 
 model Asset {
-  id          String   @id @default(uuid()) @db.Uuid
-  ownerId     String   @db.Uuid
-  projectId   String?  @db.Uuid
-  storageKey  String   @unique
+  id           String   @id @default(uuid()) @db.Uuid
+  ownerId      String   @db.Uuid
+  projectId    String?  @db.Uuid
+  bucket       String
+  storagePath  String
   originalName String
-  mimeType    String
-  sizeBytes   Int
-  createdAt   DateTime @default(now())
-  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  project     Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mimeType     String
+  sizeBytes    Int
+  createdAt    DateTime @default(now())
+  owner        Profile  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  @@unique([bucket, storagePath])
   @@index([ownerId])
   @@index([projectId])
 }
@@ -600,6 +688,8 @@ model Asset {
 - 正常自动保存只更新 `Project.document`；
 - 用户执行“生成版本”或导出前创建 revision；
 - 后续再增加定时快照和保留策略。
+
+Supabase Auth 的用户位于平台维护的 `auth.users` 中，不要使用 Prisma migration 修改该表。推荐通过 Supabase SQL migration 创建触发器，在新用户注册时向 `public.Profile` 插入相同 UUID；也可以由 NestJS 在用户首次访问 `/auth/me` 时幂等创建 Profile。
 
 ---
 
@@ -651,13 +741,22 @@ Nest 的 `ValidationPipe` 继续用于普通 DTO，例如登录、创建项目�
 
 ### 10.1 认证
 
+注册、登录、退出、密码重置和 token 刷新由 Supabase Auth API/SDK 完成，NestJS 不重复提供这些端点。
+
+NestJS 只提供：
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/auth/register` | 注册 |
-| POST | `/auth/login` | 登录 |
-| POST | `/auth/refresh` | 刷新 access token |
-| POST | `/auth/logout` | 撤销 refresh token |
-| GET | `/auth/me` | 当前用户 |
+| GET | `/auth/me` | 验证 Supabase JWT 并返回应用 Profile |
+| PATCH | `/profiles/me` | 修改应用显示名称等资料 |
+
+所有受保护 API 使用：
+
+```http
+Authorization: Bearer <supabase-access-token>
+```
+
+NestJS 应校验 token 的签名、过期时间、issuer 和 audience，不能只解码 payload。
 
 ### 10.2 项目
 
@@ -858,26 +957,28 @@ new ValidationPipe({
 ```
 
 6. 接入 Swagger；
-7. 创建 Docker Compose PostgreSQL 16；
-8. 接入 Prisma；
-9. 创建第一条 migration；
-10. 增加 health API；
-11. 增加统一错误返回和请求日志。
+7. 创建 Supabase development 项目；
+8. 为 Prisma 创建独立数据库角色；
+9. 配置 direct 或 Supavisor session 连接；
+10. 接入 Prisma；
+11. 创建第一条 migration；
+12. 增加 health API；
+13. 增加统一错误返回和请求日志。
 
 ### Phase 2：认证
 
-预计 1 到 2 天。
+预计 1 天。
 
-1. User、RefreshToken 表；
-2. 注册和登录；
-3. 密码哈希；
-4. JWT access token；
-5. Refresh Token Cookie；
-6. Passport JWT Guard；
-7. `/auth/me`；
-8. 登录限流；
-9. 替换前端明文用户 Store；
-10. 认证接口测试。
+1. 开启 Supabase Auth 邮箱/密码登录；
+2. React 接入 Supabase Auth SDK；
+3. 创建 public Profile 表；
+4. 创建 auth user 到 Profile 的触发器，或实现首次访问幂等创建；
+5. NestJS 实现 Supabase JWT Guard/Passport Strategy；
+6. 校验 issuer、audience、签名和过期时间；
+7. 实现 `/auth/me`；
+8. 替换前端明文用户 Store；
+9. 增加未登录、过期 token、伪造 token 测试；
+10. 确保 service role key 不进入前端构建。
 
 ### Phase 3：项目 API
 
@@ -916,28 +1017,30 @@ new ValidationPipe({
 1. ConnectorPart 表；
 2. seed 当前目录；
 3. 列表、搜索、筛选 API；
-4. 本地 StorageService；
-5. 图片上传；
-6. 前端连接器选择器改读 API；
-7. 不使用 Redis。
+4. Supabase Storage bucket 和访问策略；
+5. `SupabaseStorageService`；
+6. 图片上传或 signed upload URL；
+7. 前端连接器选择器改读 API；
+8. 不使用 Redis。
 
 ### Phase 6：部署
 
 预计 1 到 2 天。
 
-推荐单机 Docker Compose：
+推荐：
 
 ```text
-reverse-proxy
-web
-api
-postgres
+Supabase Cloud
+  ├─ PostgreSQL
+  ├─ Auth
+  └─ Storage
+
+应用部署
+  ├─ web 静态站点
+  └─ NestJS API 单实例
 ```
 
-可以使用：
-
-- Caddy：HTTPS 配置简单；
-- 或 Nginx：更常见。
+Web 和 API 可以部署在同一 VPS，也可以分别部署到静态托管和容器平台。NestJS 使用 direct connection 或 Supavisor session mode 连接 Supabase。
 
 第一阶段不部署 Redis。
 
@@ -949,31 +1052,42 @@ postgres
 
 - 前端：本机 `npm run dev`
 - API：本机 `npm run start:dev`
-- PostgreSQL：Docker Compose
-- 文件：项目根目录外的本地 volume
+- 数据库：Supabase development 项目；
+- 认证：Supabase Auth；
+- 文件：Supabase Storage；
+- 可选：以后用 Supabase CLI 提供完全本地的开发环境。
 
 环境变量：
 
 ```dotenv
 NODE_ENV=development
 PORT=3000
-DATABASE_URL=postgresql://wire_user:password@localhost:5432/wire_harness
-JWT_ACCESS_SECRET=replace-with-long-random-secret
-JWT_REFRESH_SECRET=replace-with-another-long-random-secret
-JWT_ACCESS_TTL=15m
-JWT_REFRESH_TTL=14d
+DATABASE_URL=postgresql://prisma.PROJECT_REF:PASSWORD@REGION.pooler.supabase.com:5432/postgres
+DIRECT_URL=postgresql://prisma:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres
+SUPABASE_URL=https://PROJECT_REF.supabase.co
+SUPABASE_JWT_ISSUER=https://PROJECT_REF.supabase.co/auth/v1
+SUPABASE_JWKS_URL=https://PROJECT_REF.supabase.co/auth/v1/.well-known/jwks.json
+SUPABASE_SERVICE_ROLE_KEY=server-only-secret
 CORS_ORIGIN=http://localhost:5173
-STORAGE_DRIVER=local
-STORAGE_LOCAL_ROOT=./data/uploads
+STORAGE_DRIVER=supabase
+SUPABASE_STORAGE_BUCKET=connector-assets
 SWAGGER_ENABLED=true
+
+# 只有下面两个值可以进入 Vite 前端；service role 和数据库 URL 绝不能进入前端
+VITE_SUPABASE_URL=https://PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=publishable-anon-key
 ```
 
 要求：
 
 - `.env` 不提交；
 - 提交 `.env.example`；
-- 生产环境密钥不得复用开发值；
-- 数据库不得暴露到公网；
+- development 和 production 使用不同 Supabase 项目；
+- `SUPABASE_SERVICE_ROLE_KEY` 只允许服务端读取；
+- 数据库密码和 direct URL 只允许服务端/CI 读取；
+- 不在前端使用 Prisma；
+- 不从浏览器直连 PostgreSQL；
+- 根据部署网络选择 direct 或 session pooler；
 - Swagger 生产环境默认关闭或限制访问。
 
 ---
@@ -988,12 +1102,13 @@ SWAGGER_ENABLED=true
 
 ### 后端
 
-- 单元测试：AuthService、ProjectsService、document validation；
-- 集成测试：Prisma + 测试 PostgreSQL；
+- 单元测试：Supabase JWT Guard、ProjectsService、document validation；
+- 集成测试：Prisma + Supabase development/test 项目，或 Supabase CLI 本地栈；
 - E2E：Supertest 调用 Nest API；
 - 权限测试：用户 A 不能读取用户 B 项目；
 - 冲突测试：旧 revision 保存返回 409；
-- 文件测试：MIME、大小、未授权、路径穿越。
+- 文件测试：MIME、大小、未授权、非法 storage path；
+- 密钥测试：前端构建产物不得包含 service role key。
 
 ### CI 必须执行
 
@@ -1010,15 +1125,16 @@ npm --workspace apps/api run build
 
 ## 15. 数据备份和运维
 
-即使用户很少，也必须做最基础的数据安全：
+即使使用托管平台，也必须做最基础的数据安全：
 
-- PostgreSQL 每日 `pg_dump`；
-- 至少保留最近 7 天；
-- 每周保留一份，至少 4 周；
-- 上传目录与数据库分别备份；
+- 确认当前 Supabase 套餐实际提供的备份和恢复能力；
+- 不把“托管”误认为“不需要备份”；
+- 定期通过 direct connection 导出 `pg_dump`；
+- 至少保留最近 7 天，或采用与业务重要程度匹配的周期；
+- Supabase Storage 文件和数据库元数据分别纳入备份策略；
 - 定期执行恢复演练；
-- 应用日志不记录密码、JWT、完整 Cookie；
-- 增加磁盘空间和数据库连接健康检查。
+- 应用日志不记录 JWT、数据库 URL、service role key；
+- 监控 Supabase 数据库容量、连接数和 API 使用量。
 
 不需要第一阶段部署：
 
@@ -1051,6 +1167,9 @@ npm --workspace apps/api run build
 - 多租户组织系统；
 - 复杂 RBAC；
 - 对旧 localStorage 项目的迁移。
+- 自托管 PostgreSQL；
+- 自建密码和 Refresh Token 系统；
+- 前端直接读写 Supabase 项目业务表。
 
 这些都不是当前几名用户场景的必要条件。
 
@@ -1061,19 +1180,20 @@ npm --workspace apps/api run build
 满足以下条件即可上线给少量用户试用：
 
 1. 新用户可注册和登录；
-2. 密码不明文保存；
+2. 注册、登录、刷新和密码安全由 Supabase Auth 负责；
 3. 用户只能查看自己的项目；
 4. 新建项目生成合法 v3 文档；
 5. 单端、多点、短接、侧锁定行为正确；
 6. 线材重连失败不会破坏旧连接；
-7. 项目可以保存到 PostgreSQL JSONB；
+7. 项目可以保存到 Supabase PostgreSQL JSONB；
 8. 关闭浏览器后重新登录仍能打开项目；
 9. 自动保存失败有明确提示；
 10. 两个页面同时编辑时旧 revision 返回 409；
 11. Swagger 可查看 API；
-12. PostgreSQL 有备份；
+12. 已确认 Supabase 套餐备份能力，并配置独立导出策略；
 13. 前后端 test、lint、build 全部通过；
-14. Redis 未部署也不影响任何功能。
+14. Redis 未部署也不影响任何功能；
+15. 浏览器构建中不存在 service role key 或数据库连接串。
 
 ---
 
@@ -1093,14 +1213,14 @@ npm --workspace apps/api run build
 
 ```text
 NestJS + Express + TypeScript
-PostgreSQL 16 + JSONB
+Supabase PostgreSQL + JSONB
 Prisma
-JWT + Passport
+Supabase Auth JWT + NestJS Guard/Passport
 Swagger
-本地 StorageService
+Supabase Storage
 ```
 
-Redis、Fastify、消息队列和实时协作全部延后。对单人开发和少量并发用户，这是复杂度、开发速度和后续扩展能力之间更合适的平衡点。
+Supabase 托管数据库、认证和文件存储，NestJS 保留业务 API 和权限边界。Redis、Fastify、消息队列和实时协作全部延后。对单人开发和少量并发用户，这是开发速度、运维成本和后续扩展能力之间更合适的平衡点。
 
 ---
 
@@ -1112,7 +1232,12 @@ Redis、Fastify、消息队列和实时协作全部延后。对单人开发和�
 - NestJS Passport：<https://docs.nestjs.com/recipes/passport>
 - NestJS ValidationPipe：<https://docs.nestjs.com/techniques/validation>
 - NestJS Swagger/OpenAPI：<https://docs.nestjs.com/openapi/introduction>
+- Supabase 数据库连接模式：<https://supabase.com/docs/guides/database/connecting-to-postgres>
+- Supabase + Prisma：<https://supabase.com/docs/guides/database/prisma>
+- Supabase Auth：<https://supabase.com/docs/guides/auth>
+- Supabase Auth 架构：<https://supabase.com/docs/guides/auth/architecture>
+- Supabase JWT：<https://supabase.com/docs/guides/auth/jwts>
+- Supabase Network Restrictions：<https://supabase.com/docs/guides/platform/network-restrictions>
 - Prisma PostgreSQL 连接器：<https://docs.prisma.io/docs/orm/core-concepts/supported-databases/postgresql>
 - Prisma JSON 字段：<https://www.prisma.io/docs/orm/prisma-client/special-fields-and-types/working-with-json-fields>
 - PostgreSQL 版本支持策略：<https://www.postgresql.org/support/versioning/>
-
