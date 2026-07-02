@@ -25,7 +25,7 @@ import {
   type IsValidConnection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper } from '@/lib/commands';
+import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper } from '@/lib/commands';
 import {
   CANVAS_MATERIAL_HEIGHT,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
@@ -445,9 +445,9 @@ function HarnessCanvasInner() {
   }, [handleAttachEndpoint, handleAddJumper]);
 
   // --- Edge reconnection (move endpoint to different pin) ---
-  // Route through domain commands so active-side lock, pin range and
-  // duplicate-detection are all enforced. Bypassing them could create
-  // illegal states the UI can't recover from.
+  // Uses the atomic reassignMaterialEndpoint command so that any
+  // validation failure (side lock, pin range, duplicate) leaves the
+  // original connection untouched — no lossy detach-then-attach.
   const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
     if (!connection.target) return;
     const state = useHarnessStore.getState();
@@ -467,29 +467,20 @@ function HarnessCanvasInner() {
 
       reconnectSucceeded.current = true;
 
-      // Step 1: detach the old endpoint (clears the circuit's slot).
-      let nextConfig = detachMaterialEndpoint(state.config, materialId, circuitId, side);
+      // Atomic reassignment: returns original config on validation
+      // failure, so the old connection is never lost.
+      const nextConfig = reassignMaterialEndpoint(state.config, {
+        materialId,
+        circuitId,
+        endpoint: side,
+        connectorId: connection.target,
+        connectorSide: newSide,
+        pin: newPin,
+      });
 
-      // Step 2: attach to the new pin via the domain command. This
-      // re-checks active-side lock, pin range, and duplicates. If the
-      // circuit still has its other endpoint, attachMaterialEndpoint
-      // will complete it; otherwise it creates a fresh single-end
-      // circuit. We pass circuitId so the command targets this circuit.
-      try {
-        nextConfig = attachMaterialEndpoint(nextConfig, {
-          materialId,
-          endpoint: side,
-          connectorId: connection.target,
-          connectorSide: newSide,
-          pin: newPin,
-          circuitId,
-        });
-      } catch {
-        // Re-attach failed (e.g. side conflict). The old endpoint is
-        // already detached — accept the lossy result.
+      if (nextConfig !== state.config) {
+        state.replaceDocument(nextConfig);
       }
-
-      state.replaceDocument(nextConfig);
       return;
     }
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   attachMaterialEndpoint,
   detachMaterialEndpoint,
+  reassignMaterialEndpoint,
   addConnectorJumper,
   changeConnectorPart,
   getActiveConnectorSide,
@@ -263,5 +264,130 @@ describe('detachMaterialEndpoint', () => {
     config = detachMaterialEndpoint(config, 'mat-1', circuitId, 'start');
 
     expect(config.materials[0].circuits.find((c) => c.id === circuitId)).toBeUndefined();
+  });
+});
+
+describe('reassignMaterialEndpoint', () => {
+  it('atomically moves an endpoint to a new pin, preserving circuit id/color/sig', () => {
+    let config = makeTestConfig();
+    // conn-b is 4-pin. Create a two-end circuit A.p1 -> B.p1.
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1', endpoint: 'start', connectorId: 'conn-a', connectorSide: 'right', pin: 1,
+    });
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1', endpoint: 'end', connectorId: 'conn-b', connectorSide: 'left', pin: 1,
+    });
+
+    const circuit = config.materials[0].circuits[0];
+    const circuitId = circuit.id;
+    // Mutate color/sig so we can verify preservation.
+    config = {
+      ...config,
+      materials: config.materials.map((m) =>
+        m.id === 'mat-1'
+          ? {
+              ...m,
+              circuits: m.circuits.map((c) =>
+                c.id === circuitId ? { ...c, color: 'blue', signalName: 'VCC' } : c,
+              ),
+            }
+          : m,
+      ),
+    };
+
+    // Reassign the end endpoint from B.p1 to B.p2.
+    config = reassignMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      circuitId,
+      endpoint: 'end',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 2,
+    });
+
+    const updated = config.materials[0].circuits.find((c) => c.id === circuitId)!;
+    expect(updated.end).toEqual({ connectorId: 'conn-b', connectorSide: 'left', pin: 2 });
+    // Preserved fields
+    expect(updated.id).toBe(circuitId);
+    expect(updated.color).toBe('blue');
+    expect(updated.signalName).toBe('VCC');
+    expect(updated.start).toEqual({ connectorId: 'conn-a', connectorSide: 'right', pin: 1 });
+  });
+
+  it('returns original config unchanged when target pin is out of range', () => {
+    let config = makeTestConfig();
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1', endpoint: 'start', connectorId: 'conn-b', connectorSide: 'right', pin: 1,
+    });
+    const circuitId = config.materials[0].circuits[0].id;
+    const original = config;
+
+    // conn-b has 4 pins — pin 99 is invalid.
+    const result = reassignMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      circuitId,
+      endpoint: 'start',
+      connectorId: 'conn-b',
+      connectorSide: 'right',
+      pin: 99,
+    });
+
+    expect(result).toBe(original);
+    // Endpoint unchanged
+    expect(result.materials[0].circuits[0].start).toEqual({
+      connectorId: 'conn-b', connectorSide: 'right', pin: 1,
+    });
+  });
+
+  it('returns original config unchanged when another circuit still locks the side', () => {
+    let config = makeTestConfig();
+    // Lock conn-b's active side to 'right' with TWO circuits.
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1', endpoint: 'start', connectorId: 'conn-b', connectorSide: 'right', pin: 1,
+    });
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1', endpoint: 'end', connectorId: 'conn-b', connectorSide: 'right', pin: 2,
+    });
+    // conn-b is 4-pin, so pin 1 and 2 are valid.
+    const circuitId = config.materials[0].circuits[0].id;
+    const original = config;
+
+    // Attempt to reassign the first circuit's start to the left side.
+    // The second circuit still locks conn-b to 'right', so this must fail.
+    const result = reassignMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      circuitId,
+      endpoint: 'start',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 1,
+    });
+
+    expect(result).toBe(original);
+  });
+
+  it('returns original config unchanged when the new target duplicates the other side (self-loop)', () => {
+    let config = makeTestConfig();
+    // Two-end circuit: start on conn-a right p1, end on conn-b left p1.
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1', endpoint: 'start', connectorId: 'conn-a', connectorSide: 'right', pin: 1,
+    });
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1', endpoint: 'end', connectorId: 'conn-b', connectorSide: 'left', pin: 1,
+    });
+    const circuitId = config.materials[0].circuits[0].id;
+    const original = config;
+
+    // Try to reassign 'start' to the exact same target as 'end'.
+    const result = reassignMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      circuitId,
+      endpoint: 'start',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 1,
+    });
+
+    expect(result).toBe(original);
   });
 });

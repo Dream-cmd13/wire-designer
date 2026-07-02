@@ -405,6 +405,134 @@ export function detachMaterialEndpoint(
   };
 }
 
+// ============================================================
+// Material Endpoint Reassignment (atomic)
+// ============================================================
+
+export interface ReassignEndpointInput {
+  materialId: string;
+  circuitId: string;
+  endpoint: MaterialEndpoint;
+  connectorId: string;
+  connectorSide: ConnectorSide;
+  pin: number;
+}
+
+/**
+ * Atomically reassign a material endpoint to a different connector pin.
+ *
+ * Unlike the detach+attach two-step flow, this command:
+ *   - Validates the new target BEFORE removing the old endpoint.
+ *   - On any validation failure, returns the original config unchanged
+ *     (no data loss).
+ *   - On success, replaces the endpoint in place, preserving the
+ *     circuit ID, color, signalName and coreIndex.
+ *
+ * This prevents the lossy "drag wrong → connection gone" scenario.
+ */
+export function reassignMaterialEndpoint(
+  config: HarnessConfig,
+  input: ReassignEndpointInput,
+): HarnessConfig {
+  const { materialId, circuitId, endpoint, connectorId, connectorSide, pin } = input;
+
+  const material = config.materials.find((m) => m.id === materialId);
+  if (!material) {
+    return config;
+  }
+
+  const circuit = material.circuits.find((c) => c.id === circuitId);
+  if (!circuit) {
+    return config;
+  }
+
+  const connector = config.connectors.find((c) => c.id === connectorId);
+  if (!connector) {
+    return config;
+  }
+
+  // --- Validation (all failures return the ORIGINAL config unchanged) ---
+
+  // PIN range
+  if (pin < 1 || pin > connector.connector.pinCount) {
+    return config;
+  }
+
+  // Active side lock: the new side must match the connector's locked
+  // active side (if any). When the reassigned endpoint is the ONLY
+  // connection on this connector, the active side is still derived
+  // from the circuit's own ref, so we need a temp config with this
+  // endpoint cleared to check correctly.
+  const configWithoutThisEndpoint: HarnessConfig = {
+    ...config,
+    materials: config.materials.map((m) =>
+      m.id !== materialId
+        ? m
+        : {
+            ...m,
+            circuits: m.circuits.map((c) =>
+              c.id !== circuitId ? c : { ...c, [endpoint]: undefined },
+            ),
+          },
+    ),
+  };
+  const activeSide = getActiveConnectorSide(configWithoutThisEndpoint, connectorId);
+  if (activeSide !== undefined && activeSide !== connectorSide) {
+    return config;
+  }
+
+  // Exact duplicate: if the new target is identical to what's already
+  // on the OTHER side of this same circuit, it's a no-op (self-loop).
+  const otherSide: MaterialEndpoint = endpoint === 'start' ? 'end' : 'start';
+  const otherRef = circuit[otherSide];
+  if (
+    otherRef &&
+    otherRef.connectorId === connectorId &&
+    otherRef.connectorSide === connectorSide &&
+    otherRef.pin === pin
+  ) {
+    return config;
+  }
+
+  // Exact duplicate: if another circuit on this material already has
+  // this exact endpoint bound, treat as no-op (same as attachMaterialEndpoint).
+  const dupExists = material.circuits.some((c) => {
+    if (c.id === circuitId) return false;
+    const ref = c[endpoint];
+    return (
+      ref?.connectorId === connectorId &&
+      ref?.connectorSide === connectorSide &&
+      ref?.pin === pin
+    );
+  });
+  if (dupExists) {
+    return config;
+  }
+
+  // --- All validations passed: atomically replace the endpoint. ---
+  const pinRef = { connectorId, connectorSide, pin };
+  return {
+    ...config,
+    materials: config.materials.map((m) =>
+      m.id !== materialId
+        ? m
+        : {
+            ...m,
+            circuits: m.circuits.map((c) =>
+              c.id !== circuitId
+                ? c
+                : {
+                    ...c,
+                    [endpoint]: pinRef,
+                    // color, signalName, coreIndex, id all preserved.
+                  },
+            ),
+          },
+    ),
+    updatedAt: Date.now(),
+  };
+}
+
 /** Remove an entire circuit from a material (does not remove the material). */
 export function removeMaterialCircuit(
   config: HarnessConfig,

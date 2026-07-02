@@ -1,17 +1,14 @@
 // ============================================================
-// Config Normalization & Validation
+// Config Normalization
 //
 // Per project guidance: "无需考虑历史数据，无需考虑以前在该系统
 // 建立的 project，只要确保之后新建的是正常的即可。"
 //
-// Therefore this module does NOT attempt legacy v1/v2 → v3 conversion.
-// It only:
+// This module does NOT migrate legacy v1/v2 data. It only:
 //   1. Validates that a persisted shape is a well-formed v3 config.
 //   2. Normalizes missing arrays to empty arrays.
-//   3. Returns a fresh default config for anything invalid.
-//
-// This keeps the surface tiny and avoids subtle data-loss bugs from
-// half-converted legacy structures.
+//   3. Returns a fresh default config for anything invalid (non-v3
+//      data is discarded, not converted).
 // ============================================================
 
 import { generateId } from '@/lib/commands';
@@ -41,11 +38,13 @@ export function createFallbackConfig(): HarnessConfig {
  *
  * - If input is already a valid v3 config, fill in any missing arrays
  *   and return it.
- * - If input is missing/invalid/legacy, return a fresh default config.
+ * - If input is missing/invalid/legacy (not schemaVersion 3), discard
+ *   it and return a fresh default config. No backup is performed
+ *   because the project is pre-release and legacy data is not needed.
  *
  * Never throws.
  */
-export function migrateHarnessConfig(input: unknown): HarnessConfig {
+export function normalizeHarnessConfig(input: unknown): HarnessConfig {
   if (!input || typeof input !== 'object') {
     return createFallbackConfig();
   }

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { migrateHarnessConfig, createFallbackConfig } from '@/lib/migration';
+import { normalizeHarnessConfig, createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import type { HarnessConfig } from '@/types/harness';
 
-describe('migrateHarnessConfig', () => {
+describe('normalizeHarnessConfig', () => {
   it('returns a valid v3 config for v3 input', () => {
     const v3: HarnessConfig = {
       schemaVersion: 3,
@@ -17,7 +17,7 @@ describe('migrateHarnessConfig', () => {
       leadTime: 'rush',
     };
 
-    const result = migrateHarnessConfig(v3);
+    const result = normalizeHarnessConfig(v3);
     expect(result.schemaVersion).toBe(3);
     expect(result.id).toBe('test-id');
     expect(result.name).toBe('测试项目');
@@ -25,7 +25,7 @@ describe('migrateHarnessConfig', () => {
     expect(result.leadTime).toBe('rush');
   });
 
-  it('returns fallback for non-v3 input (legacy schema)', () => {
+  it('discards non-v3 input and returns a fresh default', () => {
     const legacy = {
       id: 'old',
       name: '旧项目',
@@ -35,7 +35,7 @@ describe('migrateHarnessConfig', () => {
       // No schemaVersion
     };
 
-    const result = migrateHarnessConfig(legacy);
+    const result = normalizeHarnessConfig(legacy);
     expect(result.schemaVersion).toBe(3);
     expect(result.connectors).toEqual([]);
     expect(result.materials).toEqual([]);
@@ -44,9 +44,9 @@ describe('migrateHarnessConfig', () => {
   });
 
   it('returns fallback for null/undefined input', () => {
-    expect(migrateHarnessConfig(null).schemaVersion).toBe(3);
-    expect(migrateHarnessConfig(undefined).schemaVersion).toBe(3);
-    expect(migrateHarnessConfig('string').schemaVersion).toBe(3);
+    expect(normalizeHarnessConfig(null).schemaVersion).toBe(3);
+    expect(normalizeHarnessConfig(undefined).schemaVersion).toBe(3);
+    expect(normalizeHarnessConfig('string').schemaVersion).toBe(3);
   });
 
   it('normalizes missing arrays to empty arrays', () => {
@@ -57,7 +57,7 @@ describe('migrateHarnessConfig', () => {
       // Missing connectors, materials, protectiveSleeves
     };
 
-    const result = migrateHarnessConfig(partial);
+    const result = normalizeHarnessConfig(partial);
     expect(result.connectors).toEqual([]);
     expect(result.materials).toEqual([]);
     expect(result.protectiveSleeves).toEqual([]);
@@ -71,7 +71,7 @@ describe('migrateHarnessConfig', () => {
       quantity: -5,
     };
 
-    const result = migrateHarnessConfig(bad);
+    const result = normalizeHarnessConfig(bad);
     expect(result.quantity).toBe(1);
   });
 
@@ -83,7 +83,7 @@ describe('migrateHarnessConfig', () => {
       leadTime: 'invalid',
     };
 
-    const result = migrateHarnessConfig(bad);
+    const result = normalizeHarnessConfig(bad);
     expect(result.leadTime).toBe('standard');
   });
 });

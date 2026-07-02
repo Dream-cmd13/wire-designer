@@ -11,7 +11,7 @@ import type {
 import { CONNECTORS } from '@/lib/data';
 import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import { generateId } from '@/lib/commands';
-import { migrateHarnessConfig } from '@/lib/migration';
+import { normalizeHarnessConfig } from '@/lib/normalizeHarnessConfig';
 
 export function createDefaultConfig(): HarnessConfig {
   const connectorA: typeof CONNECTORS[number] = CONNECTORS[0]; // JST XH 2P
@@ -298,18 +298,16 @@ export const useHarnessStore = create<HarnessState>()(
       name: 'harness-config',
       version: 3,
       partialize: (state) => ({ config: state.config, saveState: state.saveState }),
-      // Unified migration: any persisted shape (v1/v2/v3) is funneled
-      // through migrateHarnessConfig, which backs up the original and
-      // normalizes to v3. This covers both the draft config and any
-      // project-scoped config loaded via loadProjectConfig.
+      // Normalize any persisted shape to v3. Non-v3 data is discarded
+      // (the project is pre-release; legacy data is not needed).
       merge: (persisted, current) => {
         const incoming = persisted as Partial<{ config: unknown; saveState: SaveState }> | undefined;
-        const migratedConfig = incoming?.config
-          ? migrateHarnessConfig(incoming.config)
+        const normalizedConfig = incoming?.config
+          ? normalizeHarnessConfig(incoming.config)
           : current.config;
         return {
           ...current,
-          config: migratedConfig,
+          config: normalizedConfig,
           saveState: incoming?.saveState ?? current.saveState,
         };
       },
@@ -320,28 +318,15 @@ export const useHarnessStore = create<HarnessState>()(
 );
 
 /**
- * Wraps zustand's default JSON storage with:
- *   1. Debounced writes (300ms) — avoids hammering localStorage on
- *      rapid state changes (e.g. dragging).
- *   2. Quota-exceeded handling — on failure, sets a flag key the UI
- *      can detect and degrades to in-memory-only mode.
+ * Wraps zustand's default JSON storage with quota-exceeded handling.
+ * On failure, sets a flag key the UI can detect and degrades to
+ * in-memory-only mode (the in-memory state stays intact).
+ *
+ * Writes are synchronous (no debouncing) to avoid losing the last
+ * draft when the page closes. For a single-user design tool the write
+ * frequency is low enough that debouncing is premature optimization.
  */
 function createSafeStorage() {
-  const pendingWrites = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> }>();
-  const DEBOUNCE_MS = 300;
-
-  const nativeSet = (name: string, value: string) => {
-    try {
-      localStorage.setItem(name, value);
-    } catch {
-      try {
-        localStorage.setItem('harness-config-quota-exceeded', '1');
-      } catch {
-        // Even the flag failed; nothing more we can do.
-      }
-    }
-  };
-
   return {
     getItem: (name: string) => {
       try {
@@ -352,22 +337,18 @@ function createSafeStorage() {
       }
     },
     setItem: (name: string, value: unknown) => {
-      const serialized = JSON.stringify(value);
-      // Cancel any pending write for this key and schedule a new one.
-      const existing = pendingWrites.get(name);
-      if (existing) clearTimeout(existing.timer);
-      const timer = setTimeout(() => {
-        nativeSet(name, serialized);
-        pendingWrites.delete(name);
-      }, DEBOUNCE_MS);
-      pendingWrites.set(name, { value: serialized, timer });
+      try {
+        localStorage.setItem(name, JSON.stringify(value));
+      } catch {
+        // Quota exceeded — mark a flag the UI can read.
+        try {
+          localStorage.setItem('harness-config-quota-exceeded', '1');
+        } catch {
+          // Even the flag failed; nothing more we can do.
+        }
+      }
     },
     removeItem: (name: string) => {
-      const existing = pendingWrites.get(name);
-      if (existing) {
-        clearTimeout(existing.timer);
-        pendingWrites.delete(name);
-      }
       try {
         localStorage.removeItem(name);
       } catch {
