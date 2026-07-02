@@ -2,124 +2,74 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
   CanvasWireMaterial,
-  Connection,
+  ConnectorInstance,
   HarnessConfig,
-  HarnessNode,
-  MaterialAttachment,
   ProtectiveSleeve,
   SaveState,
   Selection,
-  Wire,
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
-
-const generateId = (): string => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-};
+import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import { generateId } from '@/lib/commands';
 
 export function createDefaultConfig(): HarnessConfig {
-  const nodeAId = 'node-a';
-  const nodeBId = 'node-b';
-  const nodeCId = 'node-c';
-  const connA: typeof CONNECTORS[number] = CONNECTORS[0];
-  const connB: typeof CONNECTORS[number] = CONNECTORS[0];
-  const connC: typeof CONNECTORS[number] = CONNECTORS[4];
+  const connectorA: typeof CONNECTORS[number] = CONNECTORS[0]; // JST XH 2P
+  const connectorB: typeof CONNECTORS[number] = CONNECTORS[2]; // JST XH 4P
 
-  const wire1Id = generateId();
-  const wire2Id = generateId();
-  const wire3Id = generateId();
+  const connectorAId = 'connector-a';
+  const connectorBId = 'connector-b';
+
+  const materialId = generateId();
+  const spec = createDefaultWireSpec();
+
+  const material: CanvasWireMaterial = {
+    id: materialId,
+    name: 'W1',
+    position: { x: 320, y: 220 },
+    width: lengthMmToCanvasWidth(spec.lengthMm),
+    spec,
+    circuits: [
+      {
+        id: generateId(),
+        start: { connectorId: connectorAId, connectorSide: 'right', pin: 1 },
+        end: { connectorId: connectorBId, connectorSide: 'left', pin: 1 },
+        color: 'red',
+        signalName: 'VCC',
+      },
+      {
+        id: generateId(),
+        start: { connectorId: connectorAId, connectorSide: 'right', pin: 2 },
+        end: { connectorId: connectorBId, connectorSide: 'left', pin: 2 },
+        color: 'black',
+        signalName: 'GND',
+      },
+    ],
+    expandedByDefault: true,
+  };
 
   return {
+    schemaVersion: 3,
     id: generateId(),
     name: '未命名线束',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    nodes: [
+    connectors: [
       {
-        id: nodeAId,
-        type: 'connector',
-        position: { x: 100, y: 200 },
-        connector: connA,
+        id: connectorAId,
+        position: { x: 80, y: 200 },
+        connector: { ...connectorA },
         label: 'A端',
+        jumpers: [],
       },
       {
-        id: nodeBId,
-        type: 'connector',
-        position: { x: 500, y: 100 },
-        connector: connB,
+        id: connectorBId,
+        position: { x: 600, y: 200 },
+        connector: { ...connectorB },
         label: 'B端',
-      },
-      {
-        id: nodeCId,
-        type: 'connector',
-        position: { x: 500, y: 300 },
-        connector: connC,
-        label: 'C端',
+        jumpers: [],
       },
     ],
-    connections: [
-      {
-        id: 'conn-1',
-        name: 'A-B 主线缆束',
-        fromNodeId: nodeAId,
-        toNodeId: nodeBId,
-        wireIds: [wire1Id, wire2Id],
-      },
-      {
-        id: 'conn-2',
-        name: 'A-C 分支线缆',
-        fromNodeId: nodeAId,
-        toNodeId: nodeCId,
-        wireIds: [wire3Id],
-      },
-    ],
-    wires: [
-      {
-        id: wire1Id,
-        name: 'W1',
-        wireGauge: 26,
-        wireType: 'silicone',
-        wireColor: 'red',
-        lengthMm: 300,
-        fromConnectorId: nodeAId,
-        fromPin: 1,
-        toConnectorId: nodeBId,
-        toPin: 1,
-        signalName: 'VCC',
-      },
-      {
-        id: wire2Id,
-        name: 'W2',
-        wireGauge: 26,
-        wireType: 'silicone',
-        wireColor: 'black',
-        lengthMm: 300,
-        fromConnectorId: nodeAId,
-        fromPin: 2,
-        toConnectorId: nodeBId,
-        toPin: 2,
-        signalName: 'GND',
-      },
-      {
-        id: wire3Id,
-        name: 'W3',
-        wireGauge: 26,
-        wireType: 'silicone',
-        wireColor: 'blue',
-        lengthMm: 300,
-        fromConnectorId: nodeAId,
-        fromPin: 1,
-        toConnectorId: nodeCId,
-        toPin: 1,
-        signalName: 'SDA',
-      },
-    ],
-    canvasMaterials: [],
-    materialAttachments: [],
+    materials: [material],
     protectiveSleeves: [],
     quantity: 1,
     leadTime: 'standard',
@@ -140,36 +90,24 @@ interface HarnessState {
   markSaving: () => void;
   markSaved: () => void;
   markSaveError: (message: string) => void;
-  addNode: (node: HarnessNode) => void;
-  updateNode: (id: string, updates: Partial<HarnessNode>) => void;
-  removeNode: (id: string) => void;
-  addConnection: (connection: Connection) => void;
-  updateConnection: (id: string, updates: Partial<Connection>) => void;
-  removeConnection: (id: string) => void;
-  addWire: (wire: Wire) => void;
-  updateWire: (id: string, updates: Partial<Wire>) => void;
-  removeWire: (id: string) => void;
-  addCanvasMaterial: (material: CanvasWireMaterial) => void;
-  updateCanvasMaterial: (id: string, updates: Partial<CanvasWireMaterial>) => void;
-  removeCanvasMaterial: (id: string) => void;
-  addMaterialAttachment: (attachment: MaterialAttachment) => void;
-  updateMaterialAttachment: (id: string, updates: Partial<MaterialAttachment>) => void;
-  removeMaterialAttachment: (id: string) => void;
+
+  // Connector actions
+  addConnector: (connector: ConnectorInstance) => void;
+  updateConnector: (id: string, updates: Partial<ConnectorInstance>) => void;
+  removeConnector: (id: string) => void;
+
+  // Material actions
+  addMaterial: (material: CanvasWireMaterial) => void;
+  updateMaterial: (id: string, updates: Partial<CanvasWireMaterial>) => void;
+  removeMaterial: (id: string) => void;
+
+  // Protective sleeve actions
   addProtectiveSleeve: (sleeve: ProtectiveSleeve) => void;
   updateProtectiveSleeve: (id: string, updates: Partial<ProtectiveSleeve>) => void;
   removeProtectiveSleeve: (id: string) => void;
+
   setSelection: (selection: Selection) => void;
-  setSelectedNode: (id: string | null) => void;
-  setSelectedWire: (id: string | null) => void;
   resetConfig: () => void;
-  selectedNodeId: string | null;
-  selectedWireId: string | null;
-  selectedBranchId: string | null;
-  addBranch: (connection: Connection) => void;
-  updateBranch: (id: string, updates: Partial<Connection>) => void;
-  removeBranch: (id: string) => void;
-  setSelectedBranch: (id: string | null) => void;
-  branches: Connection[];
 }
 
 function dirtyState() {
@@ -178,7 +116,7 @@ function dirtyState() {
 
 export const useHarnessStore = create<HarnessState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       config: createDefaultConfig(),
       selection: { kind: 'none' },
       saveState: { status: 'saved', savedAt: Date.now() },
@@ -206,48 +144,53 @@ export const useHarnessStore = create<HarnessState>()(
       markSaved: () => set({ saveState: { status: 'saved', savedAt: Date.now() } }),
       markSaveError: (message) => set({ saveState: { status: 'error', message } }),
 
-      addNode: (node) =>
+      addConnector: (connector) =>
         set((state) => ({
           config: {
             ...state.config,
-            nodes: [...state.config.nodes, node],
+            connectors: [...state.config.connectors, connector],
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
         })),
 
-      updateNode: (id, updates) =>
+      updateConnector: (id, updates) =>
         set((state) => ({
           config: {
             ...state.config,
-            nodes: state.config.nodes.map((node) => (
-              node.id === id ? { ...node, ...updates } : node
-            )),
+            connectors: state.config.connectors.map((c) =>
+              c.id === id ? { ...c, ...updates } : c,
+            ),
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
         })),
 
-      removeNode: (id) =>
+      removeConnector: (id) =>
         set((state) => {
           const nextSelection =
-            state.selection.kind === 'node' && state.selection.id === id
-              ? { kind: 'none' as const }
+            state.selection.kind === 'connector' && state.selection.id === id
+              ? ({ kind: 'none' } as const)
               : state.selection;
+
+          // Clear pin refs in circuits, keep materials.
+          const materials = state.config.materials.map((material) => {
+            const nextCircuits = material.circuits
+              .map((circuit) => {
+                const next = { ...circuit };
+                if (next.start?.connectorId === id) next.start = undefined;
+                if (next.end?.connectorId === id) next.end = undefined;
+                return next;
+              })
+              .filter((c) => c.start || c.end);
+            return { ...material, circuits: nextCircuits };
+          });
 
           return {
             config: {
               ...state.config,
-              nodes: state.config.nodes.filter((node) => node.id !== id),
-              connections: state.config.connections.filter(
-                (connection) => connection.fromNodeId !== id && connection.toNodeId !== id,
-              ),
-              wires: state.config.wires.filter(
-                (wire) => wire.fromConnectorId !== id && wire.toConnectorId !== id,
-              ),
-              materialAttachments: (state.config.materialAttachments ?? []).filter(
-                (attachment) => attachment.connectorNodeId !== id,
-              ),
+              connectors: state.config.connectors.filter((c) => c.id !== id),
+              materials,
               updatedAt: Date.now(),
             },
             selection: nextSelection,
@@ -255,134 +198,29 @@ export const useHarnessStore = create<HarnessState>()(
           };
         }),
 
-      addConnection: (connection) =>
+      addMaterial: (material) =>
         set((state) => ({
           config: {
             ...state.config,
-            connections: [...state.config.connections, connection],
+            materials: [...state.config.materials, material],
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
         })),
 
-      updateConnection: (id, updates) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            connections: state.config.connections.map((connection) => (
-              connection.id === id ? { ...connection, ...updates } : connection
-            )),
-            canvasMaterials: (state.config.canvasMaterials ?? []).map((material) => (
-              material.connectionId === id && updates.name
-                ? { ...material, name: updates.name }
-                : material
-            )),
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      removeConnection: (id) =>
+      updateMaterial: (id, updates) =>
         set((state) => {
-          const removedConnection = state.config.connections.find((connection) => connection.id === id);
-          const removedWireIds = new Set(removedConnection?.wireIds ?? []);
-          const removedMaterialIds = new Set(
-            (state.config.canvasMaterials ?? [])
-              .filter((material) => material.connectionId === id)
-              .map((material) => material.id),
-          );
-          const nextSelection =
-            (state.selection.kind === 'connection' && state.selection.id === id)
-            || (state.selection.kind === 'wire' && removedWireIds.has(state.selection.id))
-              ? { kind: 'none' as const }
-              : state.selection;
-
-          return {
-            config: {
-              ...state.config,
-              connections: state.config.connections.filter((connection) => connection.id !== id),
-              wires: state.config.wires.filter((wire) => !removedWireIds.has(wire.id)),
-              canvasMaterials: (state.config.canvasMaterials ?? []).filter(
-                (material) => !removedMaterialIds.has(material.id),
-              ),
-              materialAttachments: (state.config.materialAttachments ?? []).filter(
-                (attachment) => !removedMaterialIds.has(attachment.materialId),
-              ),
-              protectiveSleeves: (state.config.protectiveSleeves ?? []).map((sleeve) => (
-                sleeve.attachedMaterialId && removedMaterialIds.has(sleeve.attachedMaterialId)
-                  ? { ...sleeve, attachedMaterialId: undefined }
-                  : sleeve
-              )),
-              updatedAt: Date.now(),
-            },
-            selection: nextSelection,
-            saveState: dirtyState(),
-          };
-        }),
-
-      addWire: (wire) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            wires: [...state.config.wires, wire],
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      updateWire: (id, updates) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            wires: state.config.wires.map((wire) => (
-              wire.id === id ? { ...wire, ...updates } : wire
-            )),
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      removeWire: (id) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            wires: state.config.wires.filter((wire) => wire.id !== id),
-            connections: state.config.connections.map((connection) => ({
-              ...connection,
-              wireIds: connection.wireIds.filter((wireId) => wireId !== id),
-            })),
-            updatedAt: Date.now(),
-          },
-          selection:
-            state.selection.kind === 'wire' && state.selection.id === id
-              ? { kind: 'none' as const }
-              : state.selection,
-          saveState: dirtyState(),
-        })),
-
-      addCanvasMaterial: (material) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            canvasMaterials: [...(state.config.canvasMaterials ?? []), material],
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      updateCanvasMaterial: (id, updates) =>
-        set((state) => {
-          const current = (state.config.canvasMaterials ?? []).find((item) => item.id === id);
+          const current = state.config.materials.find((item) => item.id === id);
           const dx = updates.position && current ? updates.position.x - current.position.x : 0;
           const dy = updates.position && current ? updates.position.y - current.position.y : 0;
 
           return {
             config: {
               ...state.config,
-              canvasMaterials: (state.config.canvasMaterials ?? []).map((item) => (
-                item.id === id ? { ...item, ...updates } : item
-              )),
-              protectiveSleeves: (state.config.protectiveSleeves ?? []).map((sleeve) => (
+              materials: state.config.materials.map((item) =>
+                item.id === id ? { ...item, ...updates } : item,
+              ),
+              protectiveSleeves: state.config.protectiveSleeves.map((sleeve) =>
                 sleeve.attachedMaterialId === id && updates.position
                   ? {
                       ...sleeve,
@@ -391,60 +229,23 @@ export const useHarnessStore = create<HarnessState>()(
                         y: sleeve.position.y + dy,
                       },
                     }
-                  : sleeve
-              )),
+                  : sleeve,
+              ),
               updatedAt: Date.now(),
             },
             saveState: dirtyState(),
           };
         }),
 
-      removeCanvasMaterial: (id) =>
+      removeMaterial: (id) =>
         set((state) => ({
           config: {
             ...state.config,
-            canvasMaterials: (state.config.canvasMaterials ?? []).filter((item) => item.id !== id),
-            materialAttachments: (state.config.materialAttachments ?? []).filter(
-              (attachment) => attachment.materialId !== id,
-            ),
-            protectiveSleeves: (state.config.protectiveSleeves ?? []).map((sleeve) => (
+            materials: state.config.materials.filter((item) => item.id !== id),
+            protectiveSleeves: state.config.protectiveSleeves.map((sleeve) =>
               sleeve.attachedMaterialId === id
                 ? { ...sleeve, attachedMaterialId: undefined }
-                : sleeve
-            )),
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      addMaterialAttachment: (attachment) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            materialAttachments: [...(state.config.materialAttachments ?? []), attachment],
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      updateMaterialAttachment: (id, updates) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            materialAttachments: (state.config.materialAttachments ?? []).map((item) => (
-              item.id === id ? { ...item, ...updates } : item
-            )),
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      removeMaterialAttachment: (id) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            materialAttachments: (state.config.materialAttachments ?? []).filter(
-              (item) => item.id !== id,
+                : sleeve,
             ),
             updatedAt: Date.now(),
           },
@@ -455,7 +256,7 @@ export const useHarnessStore = create<HarnessState>()(
         set((state) => ({
           config: {
             ...state.config,
-            protectiveSleeves: [...(state.config.protectiveSleeves ?? []), sleeve],
+            protectiveSleeves: [...state.config.protectiveSleeves, sleeve],
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
@@ -465,9 +266,9 @@ export const useHarnessStore = create<HarnessState>()(
         set((state) => ({
           config: {
             ...state.config,
-            protectiveSleeves: (state.config.protectiveSleeves ?? []).map((item) => (
-              item.id === id ? { ...item, ...updates } : item
-            )),
+            protectiveSleeves: state.config.protectiveSleeves.map((item) =>
+              item.id === id ? { ...item, ...updates } : item,
+            ),
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
@@ -477,35 +278,13 @@ export const useHarnessStore = create<HarnessState>()(
         set((state) => ({
           config: {
             ...state.config,
-            protectiveSleeves: (state.config.protectiveSleeves ?? []).filter(
-              (item) => item.id !== id,
-            ),
+            protectiveSleeves: state.config.protectiveSleeves.filter((item) => item.id !== id),
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
         })),
 
       setSelection: (selection) => set({ selection }),
-      setSelectedNode: (id) => set({ selection: id ? { kind: 'node', id } : { kind: 'none' } }),
-      setSelectedWire: (id) => {
-        if (!id) {
-          set({ selection: { kind: 'none' } });
-          return;
-        }
-
-        const state = get();
-        if (state.config.connections.some((connection) => connection.id === id)) {
-          set({ selection: { kind: 'connection', id } });
-          return;
-        }
-
-        if (state.config.wires.some((wire) => wire.id === id)) {
-          set({ selection: { kind: 'wire', id } });
-          return;
-        }
-
-        set({ selection: { kind: 'none' } });
-      },
 
       resetConfig: () =>
         set({
@@ -513,33 +292,45 @@ export const useHarnessStore = create<HarnessState>()(
           selection: { kind: 'none' },
           saveState: dirtyState(),
         }),
-
-      get selectedNodeId() {
-        const selection = get().selection;
-        return selection.kind === 'node' ? selection.id : null;
-      },
-
-      get selectedWireId() {
-        const selection = get().selection;
-        return selection.kind === 'connection' || selection.kind === 'wire' ? selection.id : null;
-      },
-
-      get selectedBranchId() {
-        return get().selectedWireId;
-      },
-
-      get branches() {
-        return get().config.connections;
-      },
-
-      addBranch: (connection) => get().addConnection(connection),
-      updateBranch: (id, updates) => get().updateConnection(id, updates),
-      removeBranch: (id) => get().removeConnection(id),
-      setSelectedBranch: (id) => get().setSelectedWire(id),
     }),
     {
       name: 'harness-config',
       partialize: (state) => ({ config: state.config, saveState: state.saveState }),
+      // Defensive rehydration: localStorage may contain an old schema (v1/v2)
+      // with `nodes/wires/connections` instead of `connectors/materials/...`.
+      // If the persisted config is not schemaVersion 3, discard it and use the
+      // fresh default config. Otherwise, normalize to guarantee all arrays exist.
+      merge: (persisted, current) => {
+        const incoming = persisted as Partial<HarnessState> | undefined;
+        const persistedConfig = incoming?.config;
+        if (!persistedConfig || persistedConfig.schemaVersion !== 3) {
+          return current;
+        }
+        // Normalize: guarantee all required fields exist.
+        const safeConfig: HarnessConfig = {
+          schemaVersion: 3,
+          id: persistedConfig.id ?? current.config.id,
+          name: persistedConfig.name ?? current.config.name,
+          createdAt: persistedConfig.createdAt ?? current.config.createdAt,
+          updatedAt: persistedConfig.updatedAt ?? Date.now(),
+          connectors: Array.isArray(persistedConfig.connectors)
+            ? persistedConfig.connectors
+            : [],
+          materials: Array.isArray(persistedConfig.materials)
+            ? persistedConfig.materials
+            : [],
+          protectiveSleeves: Array.isArray(persistedConfig.protectiveSleeves)
+            ? persistedConfig.protectiveSleeves
+            : [],
+          quantity: persistedConfig.quantity ?? 1,
+          leadTime: persistedConfig.leadTime ?? 'standard',
+        };
+        return {
+          ...current,
+          config: safeConfig,
+          saveState: incoming?.saveState ?? current.saveState,
+        };
+      },
     },
   ),
 );

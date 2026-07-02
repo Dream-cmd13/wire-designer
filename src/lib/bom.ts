@@ -1,35 +1,54 @@
-import type { HarnessConfig, BOMItem } from '@/types/harness';
+import type { HarnessConfig, BOMItem, CanvasWireMaterial } from '@/types/harness';
 import {
   calculateProtectiveSleevePrice,
-  PROTECTIVE_SLEEVE_LABELS,
+  getProtectiveSleeveDisplayName,
 } from './canvasMaterials';
 import { BASE_PRICES } from './data';
+
+function getMaterialDescription(material: CanvasWireMaterial): string {
+  const spec = material.spec;
+  if (spec.kind === 'electronic') {
+    return `${spec.awg}AWG 电子线 ${spec.color} ${spec.lengthMm}mm`;
+  }
+  const ul = spec.ulNumber ? ` ${spec.ulNumber}` : '';
+  return `${spec.jacketMaterial}护套线${ul} ${spec.coreCount}芯 ${spec.awg}AWG ${spec.lengthMm}mm`;
+}
+
+function getMaterialUnitPrice(material: CanvasWireMaterial): number {
+  const spec = material.spec;
+  const lengthM = spec.lengthMm / 1000;
+  if (spec.kind === 'electronic') {
+    return BASE_PRICES.wirePerMeter(spec.awg, 'ul1007') * lengthM;
+  }
+  // Jacketed: price by outer cable, cores don't multiply cost
+  return BASE_PRICES.wirePerMeter(spec.awg, 'ul1007') * lengthM * spec.coreCount * 0.6;
+}
 
 /**
  * Generate a Bill of Materials (BOM) from a harness configuration.
  *
- * - Deduplicates connectors by model (connector id).
- * - Groups wires by gauge + type + color + length.
- * - Calculates quantities and unit prices for each line item.
+ * - Connectors: deduplicate by connector id.
+ * - Materials: group by spec (kind + awg + length + color / coreCount + material).
+ * - Protective sleeves: group by type + material + length.
  */
 export function generateBOM(config: HarnessConfig): BOMItem[] {
   const items: BOMItem[] = [];
 
-  // --- Connectors: deduplicate by connector id ---
+  // --- Connectors ---
   const connectorMap = new Map<string, { count: number; manufacturer: string; description: string; pinCount: number }>();
 
-  for (const node of config.nodes) {
-    if (node.connector) {
-      const key = node.connector.id;
+  for (const instance of config.connectors) {
+    if (instance.connector) {
+      const key = instance.connector.id;
       const existing = connectorMap.get(key);
       if (existing) {
         existing.count += 1;
       } else {
         connectorMap.set(key, {
           count: 1,
-          manufacturer: node.connector.manufacturer,
-          description: `${node.connector.name} (${node.connector.pinCount}P)`,
-          pinCount: node.connector.pinCount,
+          manufacturer: instance.connector.manufacturer,
+          description: `${instance.connector.name} (${instance.connector.pinCount}P)`,
+          pinCount: instance.connector.pinCount,
         });
       }
     }
@@ -48,26 +67,25 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     });
   }
 
-  // --- Wires: group by gauge + type + color + length ---
-  const wireMap = new Map<string, { count: number; description: string; unitPrice: number }>();
+  // --- Materials (wire / cable) ---
+  const materialMap = new Map<string, { count: number; description: string; unitPrice: number }>();
 
-  for (const wire of config.wires) {
-    const lengthM = wire.lengthMm / 1000;
-    const key = `${wire.wireGauge}-${wire.wireType}-${wire.wireColor}-${wire.lengthMm}`;
-    const existing = wireMap.get(key);
+  for (const material of config.materials) {
+    const key = getMaterialDescription(material);
+    const existing = materialMap.get(key);
+    const unitPrice = getMaterialUnitPrice(material);
     if (existing) {
       existing.count += 1;
     } else {
-      const unitPrice = BASE_PRICES.wirePerMeter(wire.wireGauge, wire.wireType) * lengthM;
-      wireMap.set(key, {
+      materialMap.set(key, {
         count: 1,
-        description: `${wire.wireGauge}AWG ${wire.wireType} ${wire.wireColor} ${wire.lengthMm}mm`,
+        description: getMaterialDescription(material),
         unitPrice,
       });
     }
   }
 
-  for (const [, info] of wireMap) {
+  for (const [, info] of materialMap) {
     items.push({
       type: 'wire',
       description: info.description,
@@ -77,23 +95,11 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     });
   }
 
-  // --- Bundles (if any) ---
-  if (config.bundles) {
-    for (const bundle of config.bundles) {
-      items.push({
-        type: 'cable',
-        partNumber: bundle.id,
-        description: `${bundle.name} (${bundle.wireCount}芯, ${bundle.category === 'cable' ? '线缆' : '线束'}${bundle.shielded ? ', 屏蔽' : ''})`,
-        quantity: 1,
-      });
-    }
-  }
-
-  // --- Protective sleeves placed on the canvas ---
+  // --- Protective sleeves: group by type + material + length ---
   const sleeveMap = new Map<string, { count: number; description: string; unitPrice: number }>();
 
-  for (const sleeve of config.protectiveSleeves ?? []) {
-    const key = `${sleeve.type}-${sleeve.lengthMm}`;
+  for (const sleeve of config.protectiveSleeves) {
+    const key = `${sleeve.type}-${sleeve.corrugatedMaterial ?? 'none'}-${sleeve.lengthMm}`;
     const existing = sleeveMap.get(key);
     if (existing) {
       existing.count += 1;
@@ -103,7 +109,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     const unitPrice = calculateProtectiveSleevePrice(sleeve);
     sleeveMap.set(key, {
       count: 1,
-      description: `${PROTECTIVE_SLEEVE_LABELS[sleeve.type]} ${sleeve.lengthMm}mm`,
+      description: `${getProtectiveSleeveDisplayName(sleeve)} ${sleeve.lengthMm}mm`,
       unitPrice,
     });
   }

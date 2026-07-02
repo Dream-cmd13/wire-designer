@@ -1,12 +1,17 @@
 import type {
   CanvasWireMaterial,
   CanvasWireSpec,
+  CorrugatedMaterial,
   JacketCoreCount,
+  JacketUlNumber,
   ProtectiveSleeve,
   ProtectiveSleeveType,
 } from '@/types/harness';
 
 export const JACKET_CORE_COUNTS: JacketCoreCount[] = [1, 2, 3, 4, 5, 6, 8, 12, 17];
+
+/** Allowed UL numbers for jacketed wires (single-select, may be absent). */
+export const JACKET_UL_NUMBERS: JacketUlNumber[] = ['UL2464', 'UL20276'];
 
 const CORE_COLOR_SEQUENCE = [
   '红色',
@@ -44,17 +49,38 @@ export const PROTECTIVE_SLEEVE_PRICE_PER_METER: Record<ProtectiveSleeveType, num
   corrugated: 4.0,
 };
 
-export const CORRUGATED_MATERIAL_LABELS: Record<import('@/types/harness').CorrugatedMaterial, string> = {
+export const CORRUGATED_MATERIAL_LABELS: Record<CorrugatedMaterial, string> = {
   PP: 'PP（聚丙烯）',
   PA: 'PA（尼龙）',
   'stainless-steel': '不锈钢',
 };
 
-export const CORRUGATED_MATERIAL_PRICE_MULTIPLIER: Record<import('@/types/harness').CorrugatedMaterial, number> = {
+export const CORRUGATED_MATERIAL_SHORT_LABELS: Record<CorrugatedMaterial, string> = {
+  PP: 'PP',
+  PA: 'PA',
+  'stainless-steel': '不锈钢',
+};
+
+export const CORRUGATED_MATERIAL_PRICE_MULTIPLIER: Record<CorrugatedMaterial, number> = {
   PP: 1.0,
   PA: 1.4,
   'stainless-steel': 3.2,
 };
+
+/**
+ * Unified display name for a protective sleeve.
+ * Corrugated sleeves include their material (e.g. "PA波纹管").
+ * All UI surfaces (canvas, BOM, quote) should use this function.
+ */
+export function getProtectiveSleeveDisplayName(sleeve: ProtectiveSleeve): string {
+  if (sleeve.type !== 'corrugated') {
+    return PROTECTIVE_SLEEVE_LABELS[sleeve.type];
+  }
+  const materialLabel = sleeve.corrugatedMaterial
+    ? CORRUGATED_MATERIAL_SHORT_LABELS[sleeve.corrugatedMaterial]
+    : '未指定材质';
+  return `${materialLabel}波纹管`;
+}
 
 export const CANVAS_MATERIAL_HEIGHT = 22;
 export const CANVAS_MATERIAL_STRIP_TOP = 0;
@@ -119,5 +145,7 @@ export function createDefaultCanvasMaterial(
     position,
     width: lengthMmToCanvasWidth(spec.lengthMm),
     spec,
+    circuits: [],
+    expandedByDefault: true,
   };
 }

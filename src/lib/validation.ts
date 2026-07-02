@@ -1,94 +1,74 @@
 // ============================================================
-// Harness Design Validation Engine
-// Pure function that checks a HarnessConfig for structural
-// integrity issues, PIN violations, dangling references, etc.
+// Harness Design Validation Engine (v3)
+// Validates the converged data model: connectors, materials, sleeves.
 // ============================================================
 
 import type { HarnessConfig, ValidationIssue } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
-
-// ============================================================
-// Main Validation Function
-// ============================================================
+import { getActiveConnectorSide } from '@/lib/commands';
+import { JACKET_UL_NUMBERS } from '@/lib/canvasMaterials';
 
 export function validateHarness(config: HarnessConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
-  // Validate nodes
-  validateNodes(config, issues);
+  validateConnectors(config, issues);
+  validateMaterialCircuits(config, issues);
+  validateJumpers(config, issues);
+  validateProtectiveSleeves(config, issues);
+  validateUniqueIds(config, issues);
+  validateQuantity(config, issues);
 
-  // Validate connections
-  validateConnections(config, issues);
-
-  // Validate wires
-  validateWires(config, issues);
-
-  // Validate cross-references
-  validateCrossReferences(config, issues);
-
-  // Validate catalog consistency
-  validateCatalogConsistency(config, issues);
-
-  // Assign unique IDs
   return issues.map((issue, i) => ({
     ...issue,
     id: `val-${i + 1}`,
   }));
 }
 
-// ============================================================
-// Individual Validation Functions
-// ============================================================
-
-function validateNodes(config: HarnessConfig, issues: ValidationIssue[]): void {
-  if (config.nodes.length === 0) {
+function validateConnectors(config: HarnessConfig, issues: ValidationIssue[]): void {
+  if (config.connectors.length === 0) {
     issues.push({
       id: '',
       severity: 'info',
       code: 'EMPTY_DESIGN',
       entity: { kind: 'project' },
-      message: '设计中没有连接器节点。请添加连接器以开始设计。',
-      suggestedAction: '通过画布或工具栏添加连接器节点',
+      message: '设计中没有连接器。请添加连接器以开始设计。',
+      suggestedAction: '通过画布或工具栏添加连接器',
     });
     return;
   }
 
-  for (const node of config.nodes) {
-    // Check connector exists
-    if (!node.connector) {
+  for (const instance of config.connectors) {
+    if (!instance.connector) {
       issues.push({
         id: '',
         severity: 'error',
         code: 'MISSING_CONNECTOR',
-        entity: { kind: 'node', id: node.id },
-        message: `节点 "${node.label}" 没有关联的连接器`,
-        suggestedAction: '为此节点选择一个连接器型号',
+        entity: { kind: 'connector', id: instance.id },
+        message: `连接器 "${instance.label}" 没有关联的型号`,
+        suggestedAction: '为此连接器选择一个型号',
       });
       continue;
     }
 
-    const connector = node.connector!; // narrowed by continue above
-
-    // Check pin count vs pin labels
+    const connector = instance.connector;
     if (connector.pinLabels.length !== connector.pinCount) {
       issues.push({
         id: '',
         severity: 'warning',
         code: 'PIN_LABEL_MISMATCH',
-        entity: { kind: 'node', id: node.id },
+        entity: { kind: 'connector', id: instance.id },
         message: `连接器 "${connector.name}" 的 pinCount (${connector.pinCount}) 与 pinLabels 数量 (${connector.pinLabels.length}) 不一致`,
-        suggestedAction: '修正连接器数据中的 pinLabels 或 pinCount',
+        suggestedAction: '修正连接器数据',
       });
     }
 
-    // Check catalog entry exists
     const catalogEntry = CONNECTORS.find((c) => c.id === connector.id);
     if (!catalogEntry) {
       issues.push({
         id: '',
         severity: 'warning',
         code: 'UNKNOWN_CATALOG_PART',
-        entity: { kind: 'node', id: node.id },
+        entity: { kind: 'connector', id: instance.id },
         message: `连接器 "${connector.name}" (${connector.id}) 不在当前目录中`,
         suggestedAction: '更新连接器目录或更换为已知型号',
       });
@@ -96,238 +76,251 @@ function validateNodes(config: HarnessConfig, issues: ValidationIssue[]): void {
   }
 }
 
-function validateConnections(config: HarnessConfig, issues: ValidationIssue[]): void {
-  if (config.connections.length === 0 && config.nodes.length > 0) {
-    issues.push({
-      id: '',
-      severity: 'info',
-      code: 'NO_CONNECTIONS',
-      entity: { kind: 'project' },
-      message: '有连接器节点但没有线缆连接',
-      suggestedAction: '在节点之间创建连接以定义线缆束',
-    });
-  }
+function validateMaterialCircuits(config: HarnessConfig, issues: ValidationIssue[]): void {
+  for (const material of config.materials) {
+    for (const circuit of material.circuits) {
+      // Validate start pin ref
+      if (circuit.start) {
+        validatePinRef(config, material.id, material.name, circuit.start, '起点', issues);
+      }
+      // Validate end pin ref
+      if (circuit.end) {
+        validatePinRef(config, material.id, material.name, circuit.end, '终点', issues);
+      }
 
-  for (const conn of config.connections) {
-    // Check from node exists
-    if (!config.nodes.find((n) => n.id === conn.fromNodeId)) {
-      issues.push({
-        id: '',
-        severity: 'error',
-        code: 'DANGLING_CONNECTION_SOURCE',
-        entity: { kind: 'connection', id: conn.id },
-        message: `连接 "${conn.name}" 的起点节点 (${conn.fromNodeId}) 不存在`,
-        suggestedAction: '删除此连接或修正起点节点引用',
-      });
-    }
-
-    // Check to node exists
-    if (!config.nodes.find((n) => n.id === conn.toNodeId)) {
-      issues.push({
-        id: '',
-        severity: 'error',
-        code: 'DANGLING_CONNECTION_TARGET',
-        entity: { kind: 'connection', id: conn.id },
-        message: `连接 "${conn.name}" 的终点节点 (${conn.toNodeId}) 不存在`,
-        suggestedAction: '删除此连接或修正终点节点引用',
-      });
-    }
-
-    // Check connection references itself
-    if (conn.fromNodeId === conn.toNodeId) {
-      issues.push({
-        id: '',
-        severity: 'error',
-        code: 'SELF_REFERENCING_CONNECTION',
-        entity: { kind: 'connection', id: conn.id },
-        message: `连接 "${conn.name}" 的起点和终点相同 (${conn.fromNodeId})`,
-        suggestedAction: '连接必须连接两个不同的节点',
-      });
-    }
-
-    // Check empty connection
-    if (conn.wireIds.length === 0) {
-      issues.push({
-        id: '',
-        severity: 'warning',
-        code: 'EMPTY_CONNECTION',
-        entity: { kind: 'connection', id: conn.id },
-        message: `连接 "${conn.name}" 没有包含导线`,
-        suggestedAction: '向此连接添加导线或删除空连接',
-      });
-    }
-
-    // Check wire IDs reference existing wires
-    for (const wireId of conn.wireIds) {
-      if (!config.wires.find((w) => w.id === wireId)) {
+      // Check: same pin as both start and end on the same connector side
+      if (
+        circuit.start &&
+        circuit.end &&
+        circuit.start.connectorId === circuit.end.connectorId &&
+        circuit.start.connectorSide === circuit.end.connectorSide &&
+        circuit.start.pin === circuit.end.pin
+      ) {
         issues.push({
           id: '',
           severity: 'error',
-          code: 'DANGLING_WIRE_REFERENCE',
-          entity: { kind: 'connection', id: conn.id },
-          message: `连接 "${conn.name}" 引用了不存在的导线 (${wireId})`,
-          suggestedAction: '从连接中移除此导线引用或恢复导线',
+          code: 'CIRCUIT_SELF_LOOP',
+          entity: { kind: 'material', id: material.id },
+          message: `线材 "${material.name}" 的一条接线明细起点和终点相同`,
+          suggestedAction: '修正接线明细',
+        });
+      }
+
+      // Check side conflict with active side
+      for (const ref of [circuit.start, circuit.end]) {
+        if (!ref) continue;
+        const activeSide = getActiveConnectorSide(config, ref.connectorId);
+        if (activeSide !== undefined && activeSide !== ref.connectorSide) {
+          issues.push({
+            id: '',
+            severity: 'error',
+            code: 'SIDE_CONFLICT',
+            entity: { kind: 'material', id: material.id },
+            message: `线材 "${material.name}" 的接线与连接器有效侧冲突`,
+            suggestedAction: '删除冲突的接线或调整连接侧',
+          });
+        }
+      }
+
+      // Jacketed wire: check coreIndex
+      if (material.spec.kind === 'jacketed' && circuit.coreIndex !== undefined) {
+        if (circuit.coreIndex < 0 || circuit.coreIndex >= material.spec.coreCount) {
+          issues.push({
+            id: '',
+            severity: 'error',
+            code: 'CORE_INDEX_OUT_OF_RANGE',
+            entity: { kind: 'material', id: material.id },
+            message: `线材 "${material.name}" 的芯线索引 ${circuit.coreIndex} 超出范围 (0-${material.spec.coreCount - 1})`,
+            suggestedAction: '修正芯线索引',
+          });
+        }
+      }
+    }
+
+    // Jacketed wire UL validation
+    if (material.spec.kind === 'jacketed' && material.spec.ulNumber) {
+      if (!JACKET_UL_NUMBERS.includes(material.spec.ulNumber)) {
+        issues.push({
+          id: '',
+          severity: 'warning',
+          code: 'UNKNOWN_UL_NUMBER',
+          entity: { kind: 'material', id: material.id },
+          message: `护套线 "${material.name}" 的 UL 号 ${material.spec.ulNumber} 不在允许列表中`,
+          suggestedAction: '选择有效的 UL 号或清除',
         });
       }
     }
   }
 }
 
-function validateWires(config: HarnessConfig, issues: ValidationIssue[]): void {
-  if (config.wires.length === 0 && config.nodes.length > 0) {
+function validatePinRef(
+  config: HarnessConfig,
+  materialId: string,
+  materialName: string,
+  ref: { connectorId: string; connectorSide: 'left' | 'right'; pin: number },
+  label: string,
+  issues: ValidationIssue[],
+): void {
+  const instance = config.connectors.find((c) => c.id === ref.connectorId);
+  if (!instance) {
     issues.push({
       id: '',
-      severity: 'info',
-      code: 'NO_WIRES',
-      entity: { kind: 'project' },
-      message: '有线缆连接但没有定义导线',
-      suggestedAction: '向连接添加导线以定义引脚映射',
+      severity: 'error',
+      code: 'DANGLING_CONNECTOR_REF',
+      entity: { kind: 'material', id: materialId },
+      message: `线材 "${materialName}" 的${label}引用了不存在的连接器 (${ref.connectorId})`,
+      suggestedAction: '删除此接线或修正连接器引用',
     });
+    return;
   }
 
-  const wireIdsInConnections = new Set(
-    config.connections.flatMap((c) => c.wireIds)
-  );
+  if (ref.pin < 1 || ref.pin > instance.connector.pinCount) {
+    issues.push({
+      id: '',
+      severity: 'error',
+      code: 'PIN_OUT_OF_RANGE',
+      entity: { kind: 'material', id: materialId },
+      message: `线材 "${materialName}" 的${label}PIN (${ref.pin}) 超出连接器 "${instance.label}" 的范围 (1-${instance.connector.pinCount})`,
+      suggestedAction: '修正PIN或更换连接器',
+    });
+  }
+}
 
-  for (const wire of config.wires) {
-    // Check from connector exists
-    const fromNode = config.nodes.find((n) => n.id === wire.fromConnectorId);
-    if (!fromNode) {
-      issues.push({
-        id: '',
-        severity: 'error',
-        code: 'DANGLING_WIRE_SOURCE',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的起点连接器 (${wire.fromConnectorId}) 不存在`,
-        suggestedAction: '删除此导线或修正起点连接器引用',
-      });
+function validateJumpers(config: HarnessConfig, issues: ValidationIssue[]): void {
+  for (const instance of config.connectors) {
+    for (const jumper of instance.jumpers) {
+      // At least 2 distinct pins
+      const uniquePins = new Set(jumper.pins);
+      if (uniquePins.size < 2) {
+        issues.push({
+          id: '',
+          severity: 'error',
+          code: 'JUMPER_TOO_FEW_PINS',
+          entity: { kind: 'connector', id: instance.id },
+          message: `连接器 "${instance.label}" 的短接包含的 PIN 少于 2 个`,
+          suggestedAction: '删除此短接或添加更多 PIN',
+        });
+      }
+
+      // Pin range
+      for (const pin of jumper.pins) {
+        if (pin < 1 || pin > instance.connector.pinCount) {
+          issues.push({
+            id: '',
+            severity: 'error',
+            code: 'JUMPER_PIN_OUT_OF_RANGE',
+            entity: { kind: 'connector', id: instance.id },
+            message: `连接器 "${instance.label}" 的短接 PIN ${pin} 超出范围 (1-${instance.connector.pinCount})`,
+            suggestedAction: '修正短接 PIN 或更换连接器',
+          });
+        }
+      }
+
+      // Side conflict
+      const activeSide = getActiveConnectorSide(config, instance.id);
+      if (activeSide !== undefined && activeSide !== jumper.side) {
+        issues.push({
+          id: '',
+          severity: 'error',
+          code: 'JUMPER_SIDE_CONFLICT',
+          entity: { kind: 'connector', id: instance.id },
+          message: `连接器 "${instance.label}" 的短接与有效侧冲突`,
+          suggestedAction: '删除冲突的短接',
+        });
+      }
     }
+  }
+}
 
-    // Check to connector exists
-    const toNode = config.nodes.find((n) => n.id === wire.toConnectorId);
-    if (!toNode) {
-      issues.push({
-        id: '',
-        severity: 'error',
-        code: 'DANGLING_WIRE_TARGET',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的终点连接器 (${wire.toConnectorId}) 不存在`,
-        suggestedAction: '删除此导线或修正终点连接器引用',
-      });
-    }
-
-    // Check from pin range
-    if (fromNode?.connector && (wire.fromPin < 1 || wire.fromPin > fromNode.connector.pinCount)) {
-      issues.push({
-        id: '',
-        severity: 'error',
-        code: 'PIN_OUT_OF_RANGE',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的起点PIN (${wire.fromPin}) 超出连接器 "${fromNode.label}" 的范围 (1-${fromNode.connector.pinCount})`,
-        suggestedAction: '修正起点PIN或更换连接器',
-      });
-    }
-
-    // Check to pin range
-    if (toNode?.connector && (wire.toPin < 1 || wire.toPin > toNode.connector.pinCount)) {
-      issues.push({
-        id: '',
-        severity: 'error',
-        code: 'PIN_OUT_OF_RANGE',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的终点PIN (${wire.toPin}) 超出连接器 "${toNode.label}" 的范围 (1-${toNode.connector.pinCount})`,
-        suggestedAction: '修正终点PIN或更换连接器',
-      });
-    }
-
-    // Check wire belongs to a connection
-    if (!wireIdsInConnections.has(wire.id)) {
+function validateProtectiveSleeves(config: HarnessConfig, issues: ValidationIssue[]): void {
+  for (const sleeve of config.protectiveSleeves) {
+    // Corrugated must have material
+    if (sleeve.type === 'corrugated' && !sleeve.corrugatedMaterial) {
       issues.push({
         id: '',
         severity: 'warning',
-        code: 'ORPHAN_WIRE',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 不属于任何连接（孤立导线）`,
-        suggestedAction: '将此导线添加到连接中或将其删除',
+        code: 'CORRUGATED_MISSING_MATERIAL',
+        entity: { kind: 'sleeve', id: sleeve.id },
+        message: '波纹管未指定材质',
+        suggestedAction: '选择 PP、PA 或不锈钢材质',
       });
     }
 
-    // Check negative or zero length
-    if (wire.lengthMm <= 0) {
+    // Attached material must exist
+    if (sleeve.attachedMaterialId) {
+      const exists = config.materials.some((m) => m.id === sleeve.attachedMaterialId);
+      if (!exists) {
+        issues.push({
+          id: '',
+          severity: 'error',
+          code: 'DANGLING_SLEEVE_ATTACHMENT',
+          entity: { kind: 'sleeve', id: sleeve.id },
+          message: '保护套引用了不存在的线材',
+          suggestedAction: '解除保护套的线材绑定或删除保护套',
+        });
+      }
+    }
+
+    if (sleeve.lengthMm <= 0) {
       issues.push({
         id: '',
         severity: 'error',
         code: 'INVALID_LENGTH',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的长度无效 (${wire.lengthMm}mm)`,
+        entity: { kind: 'sleeve', id: sleeve.id },
+        message: `保护套长度无效 (${sleeve.lengthMm}mm)`,
         suggestedAction: '设置正数长度值',
       });
     }
-
-    // Check large length
-    if (wire.lengthMm > 50000) {
-      issues.push({
-        id: '',
-        severity: 'warning',
-        code: 'LARGE_LENGTH',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的长度异常大 (${wire.lengthMm}mm = ${(wire.lengthMm / 1000).toFixed(1)}m)`,
-        suggestedAction: '确认长度是否正确',
-      });
-    }
-
-    // Check wire endpoint consistency with parent connection
-    const parentConn = config.connections.find((c) => c.wireIds.includes(wire.id));
-    if (parentConn) {
-      if (wire.fromConnectorId !== parentConn.fromNodeId && wire.fromConnectorId !== parentConn.toNodeId) {
-        issues.push({
-          id: '',
-          severity: 'error',
-          code: 'WIRE_CONNECTION_MISMATCH',
-          entity: { kind: 'wire', id: wire.id },
-          message: `导线 "${wire.name}" 的起点 (${wire.fromConnectorId}) 不属于其父连接 "${parentConn.name}"`,
-          suggestedAction: '修正导线端点以匹配连接或移动导线到正确的连接',
-        });
-      }
-      if (wire.toConnectorId !== parentConn.fromNodeId && wire.toConnectorId !== parentConn.toNodeId) {
-        issues.push({
-          id: '',
-          severity: 'error',
-          code: 'WIRE_CONNECTION_MISMATCH',
-          entity: { kind: 'wire', id: wire.id },
-          message: `导线 "${wire.name}" 的终点 (${wire.toConnectorId}) 不属于其父连接 "${parentConn.name}"`,
-          suggestedAction: '修正导线端点以匹配连接或移动导线到正确的连接',
-        });
-      }
-    }
   }
 }
 
-function validateCrossReferences(config: HarnessConfig, issues: ValidationIssue[]): void {
-  // Check for duplicate node positions
-  const posMap = new Map<string, string[]>();
-  for (const node of config.nodes) {
-    const key = `${node.position.x},${node.position.y}`;
-    const ids = posMap.get(key) || [];
-    ids.push(node.id);
-    posMap.set(key, ids);
-  }
-  for (const [, ids] of posMap) {
-    if (ids.length > 1) {
+function validateUniqueIds(config: HarnessConfig, issues: ValidationIssue[]): void {
+  const ids = new Map<string, string>();
+
+  for (const c of config.connectors) {
+    if (ids.has(c.id)) {
       issues.push({
         id: '',
-        severity: 'info',
-        code: 'OVERLAPPING_NODES',
-        entity: { kind: 'node', id: ids[0] },
-        message: `${ids.length} 个节点位置重叠`,
-        suggestedAction: '移动节点以避免视觉重叠',
+        severity: 'error',
+        code: 'DUPLICATE_ID',
+        entity: { kind: 'connector', id: c.id },
+        message: `重复的连接器 ID: ${c.id}`,
+        suggestedAction: '修正数据中的重复 ID',
       });
     }
+    ids.set(c.id, 'connector');
+  }
+
+  for (const m of config.materials) {
+    if (ids.has(m.id)) {
+      issues.push({
+        id: '',
+        severity: 'error',
+        code: 'DUPLICATE_ID',
+        entity: { kind: 'material', id: m.id },
+        message: `重复的线材 ID: ${m.id}`,
+        suggestedAction: '修正数据中的重复 ID',
+      });
+    }
+    ids.set(m.id, 'material');
+  }
+
+  for (const s of config.protectiveSleeves) {
+    if (ids.has(s.id)) {
+      issues.push({
+        id: '',
+        severity: 'error',
+        code: 'DUPLICATE_ID',
+        entity: { kind: 'sleeve', id: s.id },
+        message: `重复的保护套 ID: ${s.id}`,
+        suggestedAction: '修正数据中的重复 ID',
+      });
+    }
+    ids.set(s.id, 'sleeve');
   }
 }
 
-function validateCatalogConsistency(config: HarnessConfig, issues: ValidationIssue[]): void {
-  // Check for quantity
+function validateQuantity(config: HarnessConfig, issues: ValidationIssue[]): void {
   if (config.quantity < 1) {
     issues.push({
       id: '',
@@ -337,49 +330,5 @@ function validateCatalogConsistency(config: HarnessConfig, issues: ValidationIss
       message: `生产数量无效 (${config.quantity})`,
       suggestedAction: '设置至少为 1 的生产数量',
     });
-  }
-
-  // Check wire color references
-  for (const wire of config.wires) {
-    if (!['red', 'black', 'white', 'green', 'blue', 'yellow', 'orange', 'purple', 'brown', 'gray', 'pink'].includes(wire.wireColor)) {
-      issues.push({
-        id: '',
-        severity: 'warning',
-        code: 'UNKNOWN_WIRE_COLOR',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的颜色 "${wire.wireColor}" 不在已知颜色列表中`,
-        suggestedAction: '选择标准颜色',
-      });
-    }
-  }
-
-  // Check wire type references
-  const knownWireTypes = ['silicone', 'ul1007', 'ul1061', 'gxl', 'ptfe'];
-  for (const wire of config.wires) {
-    if (!knownWireTypes.includes(wire.wireType)) {
-      issues.push({
-        id: '',
-        severity: 'warning',
-        code: 'UNKNOWN_WIRE_TYPE',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的类型 "${wire.wireType}" 不在已知类型列表中`,
-        suggestedAction: '选择标准线材类型',
-      });
-    }
-  }
-
-  // Check wire gauge references
-  const knownGauges = [22, 24, 26, 28, 30];
-  for (const wire of config.wires) {
-    if (!knownGauges.includes(wire.wireGauge)) {
-      issues.push({
-        id: '',
-        severity: 'warning',
-        code: 'UNKNOWN_WIRE_GAUGE',
-        entity: { kind: 'wire', id: wire.id },
-        message: `导线 "${wire.name}" 的线规 ${wire.wireGauge}AWG 不在已知列表中`,
-        suggestedAction: '选择标准线规',
-      });
-    }
   }
 }

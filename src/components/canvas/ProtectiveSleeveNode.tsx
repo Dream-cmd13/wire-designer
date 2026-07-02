@@ -1,4 +1,4 @@
-import { PROTECTIVE_SLEEVE_HEIGHT, PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
+import { PROTECTIVE_SLEEVE_HEIGHT, getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
 import type { ProtectiveSleeve } from '@/types/harness';
 
 interface ProtectiveSleeveNodeProps {
@@ -44,7 +44,7 @@ export function ProtectiveSleeveNode({ data, selected }: ProtectiveSleeveNodePro
     >
       <div className="relative z-10 flex w-full flex-col items-center gap-0.5">
         <span className="text-[10px] font-semibold leading-none text-white drop-shadow">
-          {PROTECTIVE_SLEEVE_LABELS[data.type]}
+          {getProtectiveSleeveDisplayName(data)}
         </span>
         <span className="text-[10px] font-semibold leading-none text-white drop-shadow">
           {data.lengthMm ?? 100}mm

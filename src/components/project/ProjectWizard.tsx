@@ -4,13 +4,13 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { CONNECTORS } from '@/lib/data';
+import { generateId } from '@/lib/commands';
+import { lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import type {
   CanvasWireMaterial,
-  Connection,
+  ConnectorInstance,
   HarnessConfig,
-  HarnessNode,
-  MaterialAttachment,
-  Wire,
+  MaterialCircuit,
 } from '@/types/harness';
 
 interface ProjectWizardProps {
@@ -19,9 +19,6 @@ interface ProjectWizardProps {
 }
 
 type WizardStep = 1 | 2 | 3 | 4;
-
-const generateId = (): string =>
-  Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
 const TEMPLATES = [
   {
@@ -50,28 +47,84 @@ const TEMPLATES = [
   },
 ];
 
+const CIRCUIT_COLORS = ['red', 'black', 'blue', 'green', 'yellow', 'white'];
+
+function makeConnector(
+  connectorId: string,
+  position: { x: number; y: number },
+  label: string,
+): ConnectorInstance {
+  const conn = CONNECTORS.find((c) => c.id === connectorId) || CONNECTORS[0];
+  return {
+    id: generateId(),
+    position,
+    connector: { ...conn },
+    label,
+    jumpers: [],
+  };
+}
+
+function makeMaterial(
+  name: string,
+  position: { x: number; y: number },
+  circuits: MaterialCircuit[],
+): CanvasWireMaterial {
+  const lengthMm = 300;
+  return {
+    id: generateId(),
+    name,
+    position,
+    width: lengthMmToCanvasWidth(lengthMm),
+    spec: {
+      kind: 'electronic',
+      color: circuits[0]?.color ?? 'red',
+      lengthMm,
+      awg: 26,
+      ulNumber: '1007',
+      endTreatment: { stripped: false },
+    },
+    circuits,
+    expandedByDefault: true,
+  };
+}
+
+function makeCircuit(
+  startConnectorId: string,
+  startSide: 'left' | 'right',
+  startPin: number,
+  endConnectorId: string,
+  endSide: 'left' | 'right',
+  endPin: number,
+  color: string,
+  signalName: string,
+): MaterialCircuit {
+  return {
+    id: generateId(),
+    start: { connectorId: startConnectorId, connectorSide: startSide, pin: startPin },
+    end: { connectorId: endConnectorId, connectorSide: endSide, pin: endPin },
+    color,
+    signalName,
+  };
+}
+
 function createConfigFromTemplate(
   templateId: string,
   projectName: string,
   connectorAId: string,
   connectorBId: string,
-  pinCount: number
+  pinCount: number,
 ): HarnessConfig {
   const now = Date.now();
-  const connA = CONNECTORS.find((c) => c.id === connectorAId) || CONNECTORS[0];
-  const connB = CONNECTORS.find((c) => c.id === connectorBId) || CONNECTORS[4];
 
   if (templateId === 'blank') {
     return {
+      schemaVersion: 3,
       id: generateId(),
       name: projectName,
       createdAt: now,
       updatedAt: now,
-      nodes: [],
-      connections: [],
-      wires: [],
-      canvasMaterials: [],
-      materialAttachments: [],
+      connectors: [],
+      materials: [],
       protectiveSleeves: [],
       quantity: 1,
       leadTime: 'standard',
@@ -79,79 +132,29 @@ function createConfigFromTemplate(
   }
 
   if (templateId === 'simple-2p') {
-    const nodeAId = generateId();
-    const nodeBId = generateId();
-    const connectionId = generateId();
-    const materialId = generateId();
-    const wires: Wire[] = [];
-    const wireIds: string[] = [];
-
-    for (let i = 1; i <= Math.min(pinCount, connA.pinCount, connB.pinCount); i++) {
-      const wId = generateId();
-      wireIds.push(wId);
-      wires.push({
-        id: wId,
-        name: `W${i}`,
-        wireGauge: 26,
-        wireType: 'silicone',
-        wireColor: ['red', 'black', 'blue', 'green', 'yellow', 'white'][i - 1] || 'red',
-        lengthMm: 300,
-        fromConnectorId: nodeAId,
-        fromPin: i,
-        toConnectorId: nodeBId,
-        toPin: i,
-        signalName: `SIG${i}`,
-      });
+    const connA = makeConnector(connectorAId, { x: 100, y: 200 }, 'A端');
+    const connB = makeConnector(connectorBId, { x: 500, y: 200 }, 'B端');
+    const maxPins = Math.min(pinCount, connA.connector.pinCount, connB.connector.pinCount);
+    const circuits: MaterialCircuit[] = [];
+    for (let i = 1; i <= maxPins; i++) {
+      circuits.push(
+        makeCircuit(
+          connA.id, 'right', i,
+          connB.id, 'left', i,
+          CIRCUIT_COLORS[i - 1] ?? 'red',
+          `SIG${i}`,
+        ),
+      );
     }
-
-    const material: CanvasWireMaterial = {
-      id: materialId,
-      name: '新线材',
-      connectionId,
-      position: { x: 270, y: 251 },
-      width: 260,
-      expandedByDefault: true,
-      spec: {
-        kind: 'electronic',
-        color: wires[0]?.wireColor ?? 'red',
-        lengthMm: wires[0]?.lengthMm ?? 300,
-        awg: wires[0]?.wireGauge ?? 26,
-        ulNumber: '1007',
-        endTreatment: { stripped: false },
-      },
-    };
-    const materialAttachments: MaterialAttachment[] = [
-      {
-        id: generateId(),
-        materialId,
-        endpoint: 'start',
-        connectorNodeId: nodeAId,
-        connectorHandle: 'right-pin-1',
-      },
-      {
-        id: generateId(),
-        materialId,
-        endpoint: 'end',
-        connectorNodeId: nodeBId,
-        connectorHandle: 'left-pin-1',
-      },
-    ];
-
+    const material = makeMaterial('主线材', { x: 270, y: 220 }, circuits);
     return {
+      schemaVersion: 3,
       id: generateId(),
       name: projectName,
       createdAt: now,
       updatedAt: now,
-      nodes: [
-        { id: nodeAId, type: 'connector', position: { x: 100, y: 200 }, connector: connA, label: 'A端' },
-        { id: nodeBId, type: 'connector', position: { x: 500, y: 200 }, connector: connB, label: 'B端' },
-      ],
-      connections: [
-        { id: connectionId, name: '主线缆束', fromNodeId: nodeAId, toNodeId: nodeBId, wireIds },
-      ],
-      wires,
-      canvasMaterials: [material],
-      materialAttachments,
+      connectors: [connA, connB],
+      materials: [material],
       protectiveSleeves: [],
       quantity: 1,
       leadTime: 'standard',
@@ -159,109 +162,73 @@ function createConfigFromTemplate(
   }
 
   if (templateId === 't-branch') {
-    const nodeAId = generateId();
-    const nodeBId = generateId();
-    const nodeCId = generateId();
-    const wiresAB: Wire[] = [];
-    const wiresAC: Wire[] = [];
-    const wireIdsAB: string[] = [];
-    const wireIdsAC: string[] = [];
+    const connA = makeConnector(connectorAId, { x: 100, y: 200 }, 'A端');
+    const connB = makeConnector(connectorBId, { x: 500, y: 100 }, 'B端');
+    const connC = makeConnector(connectorBId, { x: 500, y: 300 }, 'C端');
 
-    const pc = Math.min(pinCount, connA.pinCount, connB.pinCount);
-    for (let i = 1; i <= pc; i++) {
-      const wId = generateId();
-      wireIdsAB.push(wId);
-      wiresAB.push({
-        id: wId,
-        name: `W${i}`,
-        wireGauge: 26,
-        wireType: 'silicone',
-        wireColor: ['red', 'black'][i - 1] || 'red',
-        lengthMm: 300,
-        fromConnectorId: nodeAId,
-        fromPin: i,
-        toConnectorId: nodeBId,
-        toPin: i,
-        signalName: i === 1 ? 'VCC' : 'GND',
-      });
+    const maxPins = Math.min(pinCount, connA.connector.pinCount, connB.connector.pinCount);
+    const circuitsAB: MaterialCircuit[] = [];
+    for (let i = 1; i <= Math.min(maxPins, 2); i++) {
+      circuitsAB.push(
+        makeCircuit(connA.id, 'right', i, connB.id, 'left', i, CIRCUIT_COLORS[i - 1], i === 1 ? 'VCC' : 'GND'),
+      );
     }
+    const materialAB = makeMaterial('A-B线材', { x: 270, y: 120 }, circuitsAB);
 
-    const wId3 = generateId();
-    wireIdsAC.push(wId3);
-    wiresAC.push({
-      id: wId3,
-      name: `W${pc + 1}`,
-      wireGauge: 26,
-      wireType: 'silicone',
-      wireColor: 'blue',
-      lengthMm: 300,
-      fromConnectorId: nodeAId,
-      fromPin: 1,
-      toConnectorId: nodeCId,
-      toPin: 1,
-      signalName: 'SDA',
-    });
+    const circuitsAC: MaterialCircuit[] = [
+      makeCircuit(connA.id, 'right', 1, connC.id, 'left', 1, 'blue', 'SDA'),
+    ];
+    // Wait: connA right side is already used by materialAB. But in the new model,
+    // multiple materials can connect to the same side of the same connector.
+    // However, activeSide will lock to 'right' after the first connection.
+    // This is fine — both materials connect to the right side of connA.
+    const materialAC = makeMaterial('A-C线材', { x: 270, y: 320 }, circuitsAC);
 
     return {
+      schemaVersion: 3,
       id: generateId(),
       name: projectName,
       createdAt: now,
       updatedAt: now,
-      nodes: [
-        { id: nodeAId, type: 'connector', position: { x: 100, y: 200 }, connector: connA, label: 'A端' },
-        { id: nodeBId, type: 'connector', position: { x: 500, y: 100 }, connector: connB, label: 'B端' },
-        { id: nodeCId, type: 'connector', position: { x: 500, y: 300 }, connector: connB, label: 'C端' },
-      ],
-      connections: [
-        { id: generateId(), name: 'A-B 主线缆束', fromNodeId: nodeAId, toNodeId: nodeBId, wireIds: wireIdsAB },
-        { id: generateId(), name: 'A-C 分支线缆', fromNodeId: nodeAId, toNodeId: nodeCId, wireIds: wireIdsAC },
-      ],
-      wires: [...wiresAB, ...wiresAC],
+      connectors: [connA, connB, connC],
+      materials: [materialAB, materialAC],
+      protectiveSleeves: [],
       quantity: 1,
       leadTime: 'standard',
     };
   }
 
   // star-4
-  const centerId = generateId();
-  const nodes: HarnessNode[] = [
-    { id: centerId, type: 'connector', position: { x: 300, y: 200 }, connector: connA, label: '中心' },
-  ];
-  const connections: Connection[] = [];
-  const allWires: Wire[] = [];
+  const center = makeConnector(connectorAId, { x: 300, y: 200 }, '中心');
+  const connectors: ConnectorInstance[] = [center];
+  const materials: CanvasWireMaterial[] = [];
 
   for (let arm = 0; arm < 4; arm++) {
-    const armId = generateId();
     const angle = (arm * Math.PI) / 2;
     const x = 300 + Math.cos(angle) * 200;
     const y = 200 + Math.sin(angle) * 150;
-    nodes.push({ id: armId, type: 'connector', position: { x, y }, connector: connB, label: `${String.fromCharCode(65 + arm)}端` });
+    const armConnector = makeConnector(connectorBId, { x, y }, `${String.fromCharCode(65 + arm)}端`);
+    connectors.push(armConnector);
 
-    const wId = generateId();
-    allWires.push({
-      id: wId,
-      name: `W${arm + 1}`,
-      wireGauge: 26,
-      wireType: 'silicone',
-      wireColor: ['red', 'black', 'blue', 'green'][arm],
-      lengthMm: 300,
-      fromConnectorId: centerId,
-      fromPin: 1,
-      toConnectorId: armId,
-      toPin: 1,
-      signalName: `SIG${arm + 1}`,
-    });
-    connections.push({ id: generateId(), name: `中心-${String.fromCharCode(65 + arm)}`, fromNodeId: centerId, toNodeId: armId, wireIds: [wId] });
+    const circuit = makeCircuit(
+      center.id, 'right', 1,
+      armConnector.id, 'left', 1,
+      CIRCUIT_COLORS[arm],
+      `SIG${arm + 1}`,
+    );
+    const material = makeMaterial(`中心-${String.fromCharCode(65 + arm)}`, { x: 320, y: 200 + arm * 30 }, [circuit]);
+    materials.push(material);
   }
 
   return {
+    schemaVersion: 3,
     id: generateId(),
     name: projectName,
     createdAt: now,
     updatedAt: now,
-    nodes,
-    connections,
-    wires: allWires,
+    connectors,
+    materials,
+    protectiveSleeves: [],
     quantity: 1,
     leadTime: 'standard',
   };
@@ -280,14 +247,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   const { createProject } = useProjectStore();
   const { replaceDocument } = useHarnessStore();
 
-  const canNext =
-    step === 1
-      ? projectName.trim().length > 0
-      : step === 2
-      ? true
-      : step === 3
-      ? true
-      : true;
+  const canNext = step === 1 ? projectName.trim().length > 0 : true;
 
   const handleComplete = () => {
     if (!currentUser) return;
@@ -302,7 +262,6 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-xl w-[600px] max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-lg font-semibold text-slate-800">新建项目向导</h2>
@@ -310,7 +269,6 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
               ✕
             </button>
           </div>
-          {/* Step indicator */}
           <div className="flex items-center gap-2">
             {([1, 2, 3, 4] as WizardStep[]).map((s) => (
               <div key={s} className="flex items-center gap-2 flex-1">
@@ -338,7 +296,6 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
           </div>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {step === 1 && (
             <div className="space-y-4">
@@ -421,14 +378,14 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  导线数量 / PIN数: {pinCount}
+                  接线数量 / PIN数: {pinCount}
                 </label>
                 <input
                   type="range"
                   min={1}
                   max={Math.min(
                     CONNECTORS.find((c) => c.id === connectorA)?.pinCount || 2,
-                    CONNECTORS.find((c) => c.id === connectorB)?.pinCount || 2
+                    CONNECTORS.find((c) => c.id === connectorB)?.pinCount || 2,
                   )}
                   value={pinCount}
                   onChange={(e) => setPinCount(Number(e.target.value))}
@@ -439,7 +396,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   <span>
                     {Math.min(
                       CONNECTORS.find((c) => c.id === connectorA)?.pinCount || 2,
-                      CONNECTORS.find((c) => c.id === connectorB)?.pinCount || 2
+                      CONNECTORS.find((c) => c.id === connectorB)?.pinCount || 2,
                     )}
                   </span>
                 </div>
@@ -487,7 +444,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-slate-500">导线数量</span>
+                      <span className="text-sm text-slate-500">接线数量</span>
                       <span className="text-sm text-slate-800">{pinCount}</span>
                     </div>
                   </>
@@ -498,7 +455,6 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between">
           <button
             onClick={step === 1 ? onCancel : () => setStep((s) => (s - 1) as WizardStep)}

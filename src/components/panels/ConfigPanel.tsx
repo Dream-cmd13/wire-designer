@@ -1,24 +1,16 @@
-import { useState, type ReactNode } from 'react';
-import { Cable, List, Settings2, Table as TableIcon } from 'lucide-react';
+import { Settings2, Plug, Cable, Layers3 } from 'lucide-react';
 import { useHarnessStore } from '@/stores/harnessStore';
-import { ConnectorPinView } from './ConnectorPinView';
-import { PinMatrixPanel } from './PinMatrixPanel';
 import { PropertyInspector } from './PropertyInspector';
-import { WireListPanel } from './WireListPanel';
-import { WireTablePanel } from './WireTablePanel';
-
-type PanelTab = 'wireList' | 'pinMatrix' | 'wireTable';
 
 export function ConfigPanel() {
   const { config, selection } = useHarnessStore();
-  const [activeTab, setActiveTab] = useState<PanelTab>('wireList');
 
   const hasSelection = selection.kind !== 'none';
-  const selectedNode =
-    selection.kind === 'node'
-      ? config.nodes.find((node) => node.id === selection.id)
-      : null;
   const inspectorKey = selection.kind === 'none' ? 'none' : `${selection.kind}:${selection.id}`;
+
+  const connectorCount = config?.connectors?.length ?? 0;
+  const materialCount = config?.materials?.length ?? 0;
+  const sleeveCount = config?.protectiveSleeves?.length ?? 0;
 
   return (
     <div className="space-y-4 p-4">
@@ -37,69 +29,34 @@ export function ConfigPanel() {
         />
       </div>
 
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-2">
+        <SummaryCard icon={<Plug className="h-4 w-4" />} label="连接器" count={connectorCount} />
+        <SummaryCard icon={<Cable className="h-4 w-4" />} label="线材" count={materialCount} />
+        <SummaryCard icon={<Layers3 className="h-4 w-4" />} label="保护套" count={sleeveCount} />
+      </div>
+
       {hasSelection && (
         <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3">
           <PropertyInspector key={inspectorKey} />
         </div>
       )}
 
-      {selectedNode && <ConnectorPinView />}
-
-      <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-0.5">
-        <TabButton
-          active={activeTab === 'wireList'}
-          onClick={() => setActiveTab('wireList')}
-          icon={<List className="h-3 w-3" />}
-          label="导线列表"
-        />
-        <TabButton
-          active={activeTab === 'pinMatrix'}
-          onClick={() => setActiveTab('pinMatrix')}
-          icon={<Cable className="h-3 w-3" />}
-          label="连接矩阵"
-        />
-        <TabButton
-          active={activeTab === 'wireTable'}
-          onClick={() => setActiveTab('wireTable')}
-          icon={<TableIcon className="h-3 w-3" />}
-          label="接线表"
-        />
-      </div>
-
-      {activeTab === 'pinMatrix' && <PinMatrixPanel />}
-      {activeTab === 'wireTable' && <WireTablePanel />}
-      {!hasSelection && activeTab === 'wireList' && <WireListPanel />}
+      {!hasSelection && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-400">
+          <p>选择画布中的连接器、线材或保护套以编辑属性</p>
+        </div>
+      )}
     </div>
   );
 }
 
-function TabButton({
-  active,
-  disabled,
-  icon,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
+function SummaryCard({ icon, label, count }: { icon: React.ReactNode; label: string; count: number }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex flex-1 cursor-pointer items-center justify-center gap-1 rounded py-1.5 text-xs transition-colors ${
-        disabled
-          ? 'cursor-not-allowed text-slate-300'
-          : active
-            ? 'bg-white font-medium text-blue-700 shadow-sm'
-            : 'text-slate-500 hover:text-slate-700'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
+    <div className="flex flex-col items-center rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <span className="text-slate-400">{icon}</span>
+      <span className="mt-1 text-lg font-bold text-slate-700">{count}</span>
+      <span className="text-[10px] text-slate-400">{label}</span>
+    </div>
   );
 }

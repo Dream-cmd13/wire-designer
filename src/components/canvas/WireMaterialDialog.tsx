@@ -6,12 +6,14 @@ import {
   createDefaultWireSpec,
   getCoreColors,
   JACKET_CORE_COUNTS,
+  JACKET_UL_NUMBERS,
   lengthMmToCanvasWidth,
 } from '@/lib/canvasMaterials';
 import type {
   CanvasWireMaterial,
   CanvasWireSpec,
   JacketCoreCount,
+  JacketUlNumber,
   WireEndTreatment,
 } from '@/types/harness';
 
@@ -224,6 +226,24 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   />
                   带屏蔽层
                 </label>
+              </Field>
+              <Field label="UL 号（可选）">
+                <select
+                  value={spec.ulNumber ?? ''}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSpec({
+                      ...spec,
+                      ulNumber: value ? (value as JacketUlNumber) : undefined,
+                    });
+                  }}
+                  className={fieldClass}
+                >
+                  <option value="">无</option>
+                  {JACKET_UL_NUMBERS.map((ul) => (
+                    <option key={ul} value={ul}>{ul}</option>
+                  ))}
+                </select>
               </Field>
               <Field label="自动计算 OD（mm）">
                 <div className="flex h-[38px] items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700">

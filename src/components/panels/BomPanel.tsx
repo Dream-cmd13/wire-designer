@@ -20,8 +20,6 @@ export function BomPanel() {
         return <Plug className="w-3.5 h-3.5 text-blue-500" />;
       case 'wire':
         return <Cable className="w-3.5 h-3.5 text-orange-500" />;
-      case 'cable':
-        return <Cable className="w-3.5 h-3.5 text-purple-500" />;
       case 'accessory':
         return <Shield className="w-3.5 h-3.5 text-green-500" />;
       default:
@@ -34,9 +32,7 @@ export function BomPanel() {
       case 'connector':
         return '连接器';
       case 'wire':
-        return '导线';
-      case 'cable':
-        return '线缆';
+        return '线材';
       case 'accessory':
         return '附件';
       default:

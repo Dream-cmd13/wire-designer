@@ -1,9 +1,17 @@
 // ============================================================
-// Wire Harness Designer - Professional Data Model
-// Inspired by WireViz data model
+// Wire Harness Designer - Professional Data Model (v3)
+//
+// Business objects converged to three kinds:
+//   1. Connector (连接器)
+//   2. Wire Material (线材 — electronic wire or jacketed cable)
+//   3. Protective Sleeve (保护套)
+//
+// PIN / color / signal definitions live directly on the material's
+// `circuits` (接线明细). There is no longer an independent Wire,
+// Connection, or WireBundle domain object.
 // ============================================================
 
-/** Connector definition (catalog part) */
+/** Connector catalog entry (part definition) */
 export interface Connector {
   id: string;
   name: string;
@@ -37,38 +45,9 @@ export interface WireGauge {
   maxCurrent: number;
 }
 
-/**
- * Wire - represents a single conductor with precise pin-to-pin mapping.
- * This is the core concept: each wire connects one specific pin on a
- * source connector to one specific pin on a destination connector.
- */
-export interface Wire {
-  id: string;
-  name: string;
-  wireGauge: number;
-  wireType: string;
-  wireColor: string;
-  lengthMm: number;
-  fromConnectorId: string;
-  fromPin: number;
-  toConnectorId: string;
-  toPin: number;
-  signalName?: string;
-  shielded?: boolean;
-}
-
-/**
- * WireBundle - optional, represents a multi-core cable that groups
- * multiple wires into a single physical cable.
- */
-export interface WireBundle {
-  id: string;
-  name: string;
-  wireCount: number;
-  category: 'cable' | 'bundle';
-  shielded: boolean;
-  shieldColor?: string;
-}
+// ============================================================
+// Wire Material Specs
+// ============================================================
 
 export type WireEndTreatment =
   | { stripped: false }
@@ -88,6 +67,9 @@ export type JacketMaterial = 'PVC' | 'PVR';
 export type JacketColor = 'black' | 'green';
 export type JacketCoreCount = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 12 | 17;
 
+/** Allowed UL numbers for jacketed wires (single-select, may be absent). */
+export type JacketUlNumber = 'UL2464' | 'UL20276';
+
 export interface JacketedWireSpec {
   kind: 'jacketed';
   jacketMaterial: JacketMaterial;
@@ -99,31 +81,88 @@ export interface JacketedWireSpec {
   coreColors: string[];
   endTreatment: WireEndTreatment;
   lengthMm: number;
+  /** Optional UL number; `undefined` means "无". */
+  ulNumber?: JacketUlNumber;
 }
 
 export type CanvasWireSpec = ElectronicWireSpec | JacketedWireSpec;
 
-/** A physical wire/cable that can be placed before it is connected. */
+// ============================================================
+// Material Circuit (接线明细)
+// ============================================================
+
+export type ConnectorSide = 'left' | 'right';
+export type MaterialEndpoint = 'start' | 'end';
+
+/** A reference to a specific pin on a specific side of a connector. */
+export interface ConnectorPinRef {
+  connectorId: string;
+  connectorSide: ConnectorSide;
+  pin: number;
+}
+
+/**
+ * MaterialCircuit — one row of pin-assignment detail on a wire material.
+ *
+ * - Single-end connection: only `start` OR only `end` is set.
+ * - Two-end connection: both `start` and `end` are set.
+ * - A material may carry many circuits (multi-pin on same side).
+ * - `color` and `signalName` always belong to the circuit, so they
+ *   are visible immediately even on a single-end connection.
+ */
+export interface MaterialCircuit {
+  id: string;
+  start?: ConnectorPinRef;
+  end?: ConnectorPinRef;
+  color: string;
+  signalName: string;
+  /** For jacketed wires: which core this circuit binds to. */
+  coreIndex?: number;
+}
+
+// ============================================================
+// Connector Instance & Jumper (短接)
+// ============================================================
+
+/**
+ * ConnectorJumper — an internal short-circuit between pins on the
+ * same side of a connector. `pins` holds two or more distinct pins
+ * that are electrically joined. A jumper also locks the connector's
+ * active side (same as an external material connection).
+ */
+export interface ConnectorJumper {
+  id: string;
+  side: ConnectorSide;
+  pins: number[];
+}
+
+/** A connector placed on the design canvas. */
+export interface ConnectorInstance {
+  id: string;
+  position: { x: number; y: number };
+  connector: Connector;
+  label: string;
+  jumpers: ConnectorJumper[];
+}
+
+// ============================================================
+// Canvas Wire Material
+// ============================================================
+
+/** A physical wire/cable placed on the canvas. */
 export interface CanvasWireMaterial {
   id: string;
   name: string;
   position: { x: number; y: number };
   width: number;
   spec: CanvasWireSpec;
-  connectionId?: string;
+  circuits: MaterialCircuit[];
   expandedByDefault?: boolean;
 }
 
-export type WireEndpoint = 'start' | 'end';
-
-/** One endpoint can have multiple attachment records, enabling fan-out connections. */
-export interface MaterialAttachment {
-  id: string;
-  materialId: string;
-  endpoint: WireEndpoint;
-  connectorNodeId: string;
-  connectorHandle?: string | null;
-}
+// ============================================================
+// Protective Sleeve
+// ============================================================
 
 export type ProtectiveSleeveType =
   | 'acetate-cloth'
@@ -144,54 +183,34 @@ export interface ProtectiveSleeve {
   attachedMaterialId?: string;
 }
 
-/**
- * HarnessNode - a node on the design canvas.
- * Can be a connector, junction point, or terminal.
- */
-export interface HarnessNode {
-  id: string;
-  type: 'connector' | 'junction' | 'terminal';
-  position: { x: number; y: number };
-  connector?: Connector;
-  label: string;
-}
+// ============================================================
+// Top-level Harness Config
+// ============================================================
 
 /**
- * Connection - represents a cable bundle/branch between two nodes.
- * Contains references to the individual wires that run through it.
- */
-export interface Connection {
-  id: string;
-  name: string;
-  fromNodeId: string;
-  toNodeId: string;
-  wireIds: string[];
-}
-
-/**
- * HarnessConfig - the top-level configuration for a wire harness design.
- * Contains all nodes, connections, wires, and metadata.
+ * HarnessConfig — the top-level configuration for a wire harness design.
+ * Only three kinds of business objects exist: connectors, materials, sleeves.
  */
 export interface HarnessConfig {
+  schemaVersion: 3;
   id: string;
   name: string;
   createdAt: number;
   updatedAt: number;
-  nodes: HarnessNode[];
-  connections: Connection[];
-  wires: Wire[];
-  bundles?: WireBundle[];
-  canvasMaterials?: CanvasWireMaterial[];
-  materialAttachments?: MaterialAttachment[];
-  protectiveSleeves?: ProtectiveSleeve[];
+  connectors: ConnectorInstance[];
+  materials: CanvasWireMaterial[];
+  protectiveSleeves: ProtectiveSleeve[];
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
-  protection?: string;
 }
+
+// ============================================================
+// BOM & Pricing
+// ============================================================
 
 /** BOM item for cost estimation and manufacturing */
 export interface BOMItem {
-  type: 'connector' | 'wire' | 'cable' | 'accessory';
+  type: 'connector' | 'wire' | 'accessory';
   partNumber?: string;
   manufacturer?: string;
   description: string;
@@ -212,17 +231,16 @@ export interface PriceBreakdown {
   totalPrice: number;
 }
 
-/**
- * @deprecated Use Connection instead. Kept for backward compatibility.
- */
-export type Branch = Connection;
+// ============================================================
+// Editor State
+// ============================================================
 
 /** Discriminated selection state for the editor */
 export type Selection =
   | { kind: 'none' }
-  | { kind: 'node'; id: string }
-  | { kind: 'connection'; id: string }
-  | { kind: 'wire'; id: string };
+  | { kind: 'connector'; id: string }
+  | { kind: 'material'; id: string }
+  | { kind: 'sleeve'; id: string };
 
 /** Save state for the editor document */
 export type SaveState =
@@ -236,7 +254,7 @@ export interface ValidationIssue {
   id: string;
   severity: 'error' | 'warning' | 'info';
   code: string;
-  entity: { kind: 'project' | 'node' | 'connection' | 'wire'; id?: string };
+  entity: { kind: 'project' | 'connector' | 'material' | 'sleeve'; id?: string };
   message: string;
   suggestedAction?: string;
 }

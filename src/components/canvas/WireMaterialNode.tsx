@@ -7,268 +7,28 @@ import {
 } from '@/lib/canvasMaterials';
 import { WIRE_COLORS } from '@/lib/data';
 import { useHarnessStore } from '@/stores/harnessStore';
-import type {
-  CanvasWireMaterial,
-  HarnessNode,
-  MaterialAttachment,
-  Wire,
-} from '@/types/harness';
+import { updateMaterialCircuit, removeMaterialCircuit } from '@/lib/commands';
+import type { CanvasWireMaterial, MaterialCircuit } from '@/types/harness';
 
 interface WireMaterialNodeProps {
   data: CanvasWireMaterial;
   selected?: boolean;
 }
 
-interface MaterialWireEntry {
-  endConnector?: HarnessNode;
-  endPin: number;
-  forward: boolean;
-  startConnector?: HarnessNode;
-  startPin: number;
-  wire: Wire;
-}
-
-type PinSide = 'start' | 'end';
-
-interface AttachmentPinRef {
-  attachment: MaterialAttachment;
-  connector?: HarnessNode;
-  connectorNodeId: string;
-  pin?: number;
-}
-
-function getWireColorHex(colorId: string): string {
+function getColorHex(colorId: string): string {
   return WIRE_COLORS.find((color) => color.id === colorId)?.hex ?? '#6B7280';
 }
 
-function parseAttachmentPin(handleId?: string | null): number | undefined {
-  if (!handleId) return undefined;
-  const match = handleId.match(/pin-(\d+)$/);
-  if (!match) return undefined;
-  const pin = Number.parseInt(match[1], 10);
-  return Number.isFinite(pin) && pin > 0 ? pin : undefined;
-}
-
-function getAttachmentRefs(
-  attachments: MaterialAttachment[],
-  nodes: HarnessNode[],
-  endpoint: PinSide,
-): AttachmentPinRef[] {
-  return attachments
-    .filter((attachment) => attachment.endpoint === endpoint)
-    .map((attachment) => ({
-      attachment,
-      connector: nodes.find((node) => node.id === attachment.connectorNodeId),
-      connectorNodeId: attachment.connectorNodeId,
-      pin: parseAttachmentPin(attachment.connectorHandle),
-    }))
-    .sort((a, b) => {
-      const pinA = a.pin ?? Number.POSITIVE_INFINITY;
-      const pinB = b.pin ?? Number.POSITIVE_INFINITY;
-      return pinA - pinB || a.attachment.id.localeCompare(b.attachment.id);
-    });
-}
-
-function getAttachmentKey(connectorNodeId: string, pin?: number): string {
-  return pin ? `${connectorNodeId}:${pin}` : connectorNodeId;
-}
-
-
-function getMaterialWireEntries(
-  attachments: MaterialAttachment[],
-  nodes: HarnessNode[],
-  wires: Wire[],
-  connectionWireIds?: Set<string>,
-): MaterialWireEntry[] {
-  const startAttachments = getAttachmentRefs(attachments, nodes, 'start');
-  const endAttachments = getAttachmentRefs(attachments, nodes, 'end');
-
-  if (startAttachments.length === 0 && endAttachments.length === 0) return [];
-
-  const startAttachmentMap = new Map(
-    startAttachments.map((attachment) => [
-      getAttachmentKey(attachment.connectorNodeId, attachment.pin),
-      attachment,
-    ]),
-  );
-  const endAttachmentMap = new Map(
-    endAttachments.map((attachment) => [
-      getAttachmentKey(attachment.connectorNodeId, attachment.pin),
-      attachment,
-    ]),
-  );
-  const startNodeIds = new Set(startAttachments.map((attachment) => attachment.connectorNodeId));
-  const endNodeIds = new Set(endAttachments.map((attachment) => attachment.connectorNodeId));
-
-  return wires.reduce<MaterialWireEntry[]>((entries, wire) => {
-    if (connectionWireIds && !connectionWireIds.has(wire.id)) return entries;
-
-    const fromStartAttachment = startAttachmentMap.get(
-      getAttachmentKey(wire.fromConnectorId, wire.fromPin),
-    );
-    const toStartAttachment = startAttachmentMap.get(
-      getAttachmentKey(wire.toConnectorId, wire.toPin),
-    );
-    const fromEndAttachment = endAttachmentMap.get(
-      getAttachmentKey(wire.fromConnectorId, wire.fromPin),
-    );
-    const toEndAttachment = endAttachmentMap.get(
-      getAttachmentKey(wire.toConnectorId, wire.toPin),
-    );
-
-    // Both sides connected: match wire endpoints to material endpoints
-    if (startAttachments.length > 0 && endAttachments.length > 0) {
-      if (fromStartAttachment && toEndAttachment) {
-        entries.push({
-          wire,
-          forward: true,
-          startPin: wire.fromPin,
-          endPin: wire.toPin,
-          startConnector: fromStartAttachment.connector,
-          endConnector: toEndAttachment.connector,
-        });
-        return entries;
-      }
-      if (fromEndAttachment && toStartAttachment) {
-        entries.push({
-          wire,
-          forward: false,
-          startPin: wire.toPin,
-          endPin: wire.fromPin,
-          startConnector: toStartAttachment.connector,
-          endConnector: fromEndAttachment.connector,
-        });
-        return entries;
-      }
-      return entries;
-    }
-
-    // Only start connected: show wires touching the start connector
-    if (startAttachments.length > 0 && endAttachments.length === 0) {
-      if (fromStartAttachment) {
-        entries.push({
-          wire,
-          forward: true,
-          startPin: wire.fromPin,
-          endPin: wire.toPin,
-          startConnector: fromStartAttachment.connector,
-          endConnector: undefined,
-        });
-      } else if (toStartAttachment) {
-        entries.push({
-          wire,
-          forward: false,
-          startPin: wire.toPin,
-          endPin: wire.fromPin,
-          startConnector: toStartAttachment.connector,
-          endConnector: undefined,
-        });
-      } else if (startNodeIds.has(wire.fromConnectorId)) {
-        entries.push({
-          wire,
-          forward: true,
-          startPin: wire.fromPin,
-          endPin: wire.toPin,
-          startConnector: startAttachments.find((attachment) => (
-            attachment.connectorNodeId === wire.fromConnectorId
-          ))?.connector,
-          endConnector: undefined,
-        });
-      } else if (startNodeIds.has(wire.toConnectorId)) {
-        entries.push({
-          wire,
-          forward: false,
-          startPin: wire.toPin,
-          endPin: wire.fromPin,
-          startConnector: startAttachments.find((attachment) => (
-            attachment.connectorNodeId === wire.toConnectorId
-          ))?.connector,
-          endConnector: undefined,
-        });
-      }
-      return entries;
-    }
-
-    // Only end connected: show wires touching the end connector
-    if (endAttachments.length > 0 && startAttachments.length === 0) {
-      if (fromEndAttachment) {
-        entries.push({
-          wire,
-          forward: true,
-          startPin: wire.fromPin,
-          endPin: wire.toPin,
-          startConnector: undefined,
-          endConnector: fromEndAttachment.connector,
-        });
-      } else if (toEndAttachment) {
-        entries.push({
-          wire,
-          forward: false,
-          startPin: wire.toPin,
-          endPin: wire.fromPin,
-          startConnector: undefined,
-          endConnector: toEndAttachment.connector,
-        });
-      } else if (endNodeIds.has(wire.fromConnectorId)) {
-        entries.push({
-          wire,
-          forward: true,
-          startPin: wire.fromPin,
-          endPin: wire.toPin,
-          startConnector: undefined,
-          endConnector: endAttachments.find((attachment) => (
-            attachment.connectorNodeId === wire.fromConnectorId
-          ))?.connector,
-        });
-      } else if (endNodeIds.has(wire.toConnectorId)) {
-        entries.push({
-          wire,
-          forward: false,
-          startPin: wire.toPin,
-          endPin: wire.fromPin,
-          startConnector: undefined,
-          endConnector: endAttachments.find((attachment) => (
-            attachment.connectorNodeId === wire.toConnectorId
-          ))?.connector,
-        });
-      }
-    }
-
-    return entries;
-  }, []).sort((a, b) => {
-    if (a.startPin !== b.startPin) return a.startPin - b.startPin;
-    return a.endPin - b.endPin;
-  });
-}
-
-function pinDraftKey(wireId: string, side: PinSide): string {
-  return `${wireId}:${side}`;
-}
-
-function normalizePinLabel(pin: number): string {
-  return `Pin${pin}`;
-}
-
-function parsePinInput(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const match = trimmed.match(/^pin(\d+)$/i);
-  if (!match) return Number.NaN;
-  const pin = Number.parseInt(match[1], 10);
-  return Number.isFinite(pin) && pin > 0 ? pin : Number.NaN;
+function formatPinLabel(circuit: MaterialCircuit, side: 'start' | 'end'): string {
+  const ref = circuit[side];
+  if (!ref) return '';
+  return `Pin${ref.pin}`;
 }
 
 export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
   const [detailsOpen, setDetailsOpen] = useState(data.expandedByDefault ?? false);
-  const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({});
-  const [pinErrors, setPinErrors] = useState<Record<string, boolean>>({});
-  const previousAttachmentCountRef = useRef(0);
-  const {
-    config,
-    updateCanvasMaterial,
-    updateWire,
-    removeWire,
-  } = useHarnessStore();
+  const previousCircuitCountRef = useRef(0);
+  const { config, updateMaterial } = useHarnessStore();
 
   const spec = data.spec;
   const isElectronic = spec.kind === 'electronic';
@@ -282,90 +42,37 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
       : '#1e293b';
   const description = spec.kind === 'electronic'
     ? `电子线 · UL${spec.ulNumber} · ${spec.awg}AWG · ${spec.lengthMm}mm`
-    : `护套线 · ${spec.jacketMaterial} · ${spec.coreCount}芯 · ${spec.lengthMm}mm · OD ${spec.odMm.toFixed(2)}mm`;
+    : `护套线 · ${spec.jacketMaterial} · ${spec.coreCount}芯 · ${spec.lengthMm}mm · OD ${spec.odMm.toFixed(2)}mm${spec.ulNumber ? ` · ${spec.ulNumber}` : ''}`;
 
-  const attachments = useMemo(
-    () => (config.materialAttachments ?? []).filter((attachment) => attachment.materialId === data.id),
-    [config.materialAttachments, data.id],
+  const circuits = useMemo(
+    () => data.circuits ?? [],
+    [data.circuits],
   );
-  const hasStartAttachment = attachments.some((attachment) => attachment.endpoint === 'start');
-  const hasEndAttachment = attachments.some((attachment) => attachment.endpoint === 'end');
 
+  // Auto-expand when a new circuit is added
   useEffect(() => {
-    if (attachments.length > previousAttachmentCountRef.current) {
+    if (circuits.length > previousCircuitCountRef.current) {
       setDetailsOpen(true);
     }
-    previousAttachmentCountRef.current = attachments.length;
-  }, [attachments.length]);
+    previousCircuitCountRef.current = circuits.length;
+  }, [circuits.length]);
 
-  const relatedWireEntries = useMemo(
-    () => {
-      const connection = data.connectionId
-        ? config.connections.find((item) => item.id === data.connectionId)
-        : undefined;
-      const connectionWireIds = connection
-        ? new Set(connection.wireIds)
-        : undefined;
-      return getMaterialWireEntries(
-        attachments,
-        config.nodes,
-        config.wires,
-        connectionWireIds,
-      );
-    },
-    [attachments, config.connections, config.nodes, config.wires, data.connectionId],
-  );
+  const handleUpdateCircuit = (circuitId: string, patch: Partial<Pick<MaterialCircuit, 'color' | 'signalName'>>) => {
+    const nextConfig = updateMaterialCircuit(config, data.id, circuitId, patch);
+    useHarnessStore.getState().replaceDocument(nextConfig);
+  };
+
+  const handleRemoveCircuit = (circuitId: string) => {
+    const nextConfig = removeMaterialCircuit(config, data.id, circuitId);
+    useHarnessStore.getState().replaceDocument(nextConfig);
+  };
 
   const syncMaterialColor = (nextColor: string) => {
     if (data.spec.kind !== 'electronic') return;
     if (data.spec.color === nextColor) return;
-    updateCanvasMaterial(data.id, {
-      spec: {
-        ...data.spec,
-        color: nextColor,
-      },
+    updateMaterial(data.id, {
+      spec: { ...data.spec, color: nextColor },
     });
-  };
-
-  const commitPinDraft = (entry: MaterialWireEntry, side: PinSide) => {
-    const key = pinDraftKey(entry.wire.id, side);
-    const draft = pinDrafts[key] ?? normalizePinLabel(side === 'start' ? entry.startPin : entry.endPin);
-    const parsed = parsePinInput(draft);
-
-    if (parsed === null) {
-      setPinDrafts((current) => ({ ...current, [key]: '' }));
-      setPinErrors((current) => ({ ...current, [key]: false }));
-      return;
-    }
-
-    if (!Number.isFinite(parsed)) {
-      setPinErrors((current) => ({ ...current, [key]: true }));
-      return;
-    }
-
-    const maxPin = side === 'start'
-      ? entry.startConnector?.connector?.pinCount
-      : entry.endConnector?.connector?.pinCount;
-    if (maxPin && parsed > maxPin) {
-      setPinErrors((current) => ({ ...current, [key]: true }));
-      return;
-    }
-
-    if (side === 'start') {
-      updateWire(entry.wire.id, entry.forward ? { fromPin: parsed } : { toPin: parsed });
-    } else {
-      updateWire(entry.wire.id, entry.forward ? { toPin: parsed } : { fromPin: parsed });
-    }
-
-    setPinDrafts((current) => ({ ...current, [key]: normalizePinLabel(parsed) }));
-    setPinErrors((current) => ({ ...current, [key]: false }));
-  };
-
-  const resetPinDraft = (entry: MaterialWireEntry, side: PinSide) => {
-    const key = pinDraftKey(entry.wire.id, side);
-    const nextLabel = normalizePinLabel(side === 'start' ? entry.startPin : entry.endPin);
-    setPinDrafts((current) => ({ ...current, [key]: nextLabel }));
-    setPinErrors((current) => ({ ...current, [key]: false }));
   };
 
   return (
@@ -414,116 +121,88 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
       </div>
 
       {detailsOpen && (
-        <div className="mt-2 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md">
+        <div className="mt-2 min-w-[200px] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md">
           <div className="mb-1 border-b border-slate-100 pb-1 text-center font-semibold text-slate-700">
-            {relatedWireEntries.length} 根导线 - {data.name}
+            {circuits.length} 条接线 · {data.name}
           </div>
           <div className="mb-1.5 truncate text-[10px] leading-3 text-slate-500">
             {description}
           </div>
 
-          <div className="space-y-0.5">
-            {relatedWireEntries.length > 0 ? (
-              relatedWireEntries.map((entry) => {
-                const startKey = pinDraftKey(entry.wire.id, 'start');
-                const endKey = pinDraftKey(entry.wire.id, 'end');
-                const startValue = pinDrafts[startKey] ?? normalizePinLabel(entry.startPin);
-                const endValue = pinDrafts[endKey] ?? normalizePinLabel(entry.endPin);
+          {/* Header row */}
+          <div className="flex items-center gap-1.5 text-[9px] text-slate-400 font-semibold border-b border-slate-100 pb-0.5 mb-0.5">
+            <span className="min-w-[42px] text-center">左侧PIN</span>
+            <span className="w-4 text-center">颜色</span>
+            <span className="flex-1 text-center">接线定义</span>
+            <span className="min-w-[42px] text-center">右侧PIN</span>
+            <span className="w-4" />
+          </div>
 
-                return (
-                  <div key={entry.wire.id} className="flex items-center gap-1.5 text-[10px]">
-                    {entry.startConnector ? (
-                      <input
-                        type="text"
-                        value={startValue}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setPinDrafts((current) => ({ ...current, [startKey]: value }));
-                          setPinErrors((current) => ({ ...current, [startKey]: false }));
-                        }}
-                        onBlur={() => commitPinDraft(entry, 'start')}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') event.currentTarget.blur();
-                          if (event.key === 'Escape') { resetPinDraft(entry, 'start'); event.currentTarget.blur(); }
-                        }}
-                        className={`nodrag nopan min-w-[42px] rounded border px-1 py-0 text-blue-600 font-semibold outline-none ${
-                          pinErrors[startKey] ? 'border-red-200 bg-red-50' : 'border-transparent bg-transparent focus:border-blue-200 focus:bg-blue-50'
-                        }`}
-                      />
-                    ) : (
-                      <span className="min-w-[42px] px-1 text-slate-300">—</span>
-                    )}
-                    <span className="text-slate-400">→</span>
-                    {entry.endConnector ? (
-                      <input
-                        type="text"
-                        value={endValue}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setPinDrafts((current) => ({ ...current, [endKey]: value }));
-                          setPinErrors((current) => ({ ...current, [endKey]: false }));
-                        }}
-                        onBlur={() => commitPinDraft(entry, 'end')}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') event.currentTarget.blur();
-                          if (event.key === 'Escape') { resetPinDraft(entry, 'end'); event.currentTarget.blur(); }
-                        }}
-                        className={`nodrag nopan min-w-[42px] rounded border px-1 py-0 text-emerald-600 font-semibold outline-none ${
-                          pinErrors[endKey] ? 'border-red-200 bg-red-50' : 'border-transparent bg-transparent focus:border-emerald-200 focus:bg-emerald-50'
-                        }`}
-                      />
-                    ) : (
-                      <span className="min-w-[42px] px-1 text-slate-300">—</span>
-                    )}
-                    <label className="nodrag nopan relative flex h-2.5 w-2.5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200">
-                      <span
-                        className="h-full w-full rounded-full"
-                        title={WIRE_COLORS.find((color) => color.id === entry.wire.wireColor)?.name ?? entry.wire.wireColor}
-                        style={{ backgroundColor: getWireColorHex(entry.wire.wireColor) }}
-                      />
-                      <select
-                        value={entry.wire.wireColor}
-                        onChange={(event) => {
-                          const nextColor = event.target.value;
-                          updateWire(entry.wire.id, { wireColor: nextColor });
-                          if (relatedWireEntries.length === 1) {
-                            syncMaterialColor(nextColor);
-                          }
-                        }}
-                        className="absolute inset-0 cursor-pointer opacity-0"
-                      >
-                        {WIRE_COLORS.map((color) => (
-                          <option key={color.id} value={color.id}>{color.name}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <input
-                      type="text"
-                      value={entry.wire.signalName ?? ''}
-                      onChange={(event) => updateWire(entry.wire.id, {
-                        signalName: event.target.value || undefined,
-                      })}
-                      placeholder="SIG"
-                      className="nodrag nopan max-w-[72px] flex-1 rounded border border-transparent bg-transparent px-1 py-0 text-slate-700 font-medium outline-none focus:border-slate-200 focus:bg-slate-50"
+          <div className="space-y-0.5">
+            {circuits.length > 0 ? (
+              circuits.map((circuit) => (
+                <div key={circuit.id} className="flex items-center gap-1.5 text-[10px]">
+                  {/* Left PIN */}
+                  <span className="min-w-[42px] px-1 text-blue-600 font-semibold text-center">
+                    {formatPinLabel(circuit, 'start') || '\u00A0'}
+                  </span>
+
+                  {/* Color picker */}
+                  <label className="nodrag nopan relative flex h-2.5 w-2.5 shrink-0 cursor-pointer items-center justify-center rounded-full border border-slate-200">
+                    <span
+                      className="h-full w-full rounded-full"
+                      title={WIRE_COLORS.find((color) => color.id === circuit.color)?.name ?? circuit.color}
+                      style={{ backgroundColor: getColorHex(circuit.color) }}
                     />
-                    {relatedWireEntries.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeWire(entry.wire.id)}
-                        className="nodrag nopan ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-slate-300 hover:bg-red-50 hover:text-red-400"
-                        title="删除导线"
-                      >
-                        <X className="h-2.5 w-2.5" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })
+                    <select
+                      value={circuit.color}
+                      onChange={(event) => {
+                        const nextColor = event.target.value;
+                        handleUpdateCircuit(circuit.id, { color: nextColor });
+                        if (circuits.length === 1) {
+                          syncMaterialColor(nextColor);
+                        }
+                      }}
+                      className="absolute inset-0 cursor-pointer opacity-0"
+                    >
+                      {WIRE_COLORS.map((color) => (
+                        <option key={color.id} value={color.id}>{color.name}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {/* Signal name */}
+                  <input
+                    type="text"
+                    value={circuit.signalName ?? ''}
+                    onChange={(event) => {
+                      handleUpdateCircuit(circuit.id, {
+                        signalName: event.target.value,
+                      });
+                    }}
+                    placeholder="接线定义"
+                    className="nodrag nopan max-w-[72px] flex-1 rounded border border-transparent bg-transparent px-1 py-0 text-slate-700 font-medium outline-none focus:border-slate-200 focus:bg-slate-50"
+                  />
+
+                  {/* Right PIN */}
+                  <span className="min-w-[42px] px-1 text-emerald-600 font-semibold text-center">
+                    {formatPinLabel(circuit, 'end') || '\u00A0'}
+                  </span>
+
+                  {/* Delete circuit */}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCircuit(circuit.id)}
+                    className="nodrag nopan ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-slate-300 hover:bg-red-50 hover:text-red-400"
+                    title="删除此接线"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              ))
             ) : (
-              <div className="text-[10px] text-slate-400">
-                {hasStartAttachment || hasEndAttachment
-                  ? '连接另一端后，导线 Pin 将自动显示。'
-                  : '把线材连接到连接器后，Pin 信息将自动显示。'}
+              <div className="text-[10px] text-slate-400 py-1 text-center">
+                把线材连接到连接器后，接线信息将自动显示。
               </div>
             )}
           </div>

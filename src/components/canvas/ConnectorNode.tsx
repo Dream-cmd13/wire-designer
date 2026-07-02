@@ -1,12 +1,16 @@
 import { Handle, Position } from '@xyflow/react';
-import type { HarnessNode } from '@/types/harness';
-import type { Wire } from '@/types/harness';
+import type { ConnectorInstance } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { WIRE_COLORS } from '@/lib/data';
+import {
+  getActiveConnectorSide,
+  getConnectorPinBindings,
+  getJumperPinSet,
+} from '@/lib/commands';
 import { Plug } from 'lucide-react';
 
 interface ConnectorNodeProps {
-  data: HarnessNode;
+  data: ConnectorInstance;
   selected?: boolean;
 }
 
@@ -15,41 +19,25 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
   const pinCount = data.connector?.pinCount || 2;
   const pinLabels = data.connector?.pinLabels || [];
 
-  // Find all wires connected to this connector
-  const connectedWires = config.wires.filter(
-    (w) => w.fromConnectorId === data.id || w.toConnectorId === data.id
-  );
+  const activeSide = getActiveConnectorSide(config, data.id);
+  const pinBindings = getConnectorPinBindings(config, data.id);
+  const jumperPinsLeft = getJumperPinSet(data, 'left');
+  const jumperPinsRight = getJumperPinSet(data, 'right');
 
-  // Build a map: pin number -> array of wires (for multi-connection support)
-  const wiresByPin = new Map<number, Wire[]>();
-  for (const wire of connectedWires) {
-    if (wire.fromConnectorId === data.id) {
-      const existing = wiresByPin.get(wire.fromPin) || [];
-      existing.push(wire);
-      wiresByPin.set(wire.fromPin, existing);
-    } else if (wire.toConnectorId === data.id) {
-      const existing = wiresByPin.get(wire.toPin) || [];
-      existing.push(wire);
-      wiresByPin.set(wire.toPin, existing);
-    }
-  }
+  const showLeft = activeSide === undefined || activeSide === 'left';
+  const showRight = activeSide === undefined || activeSide === 'right';
 
-  const getWireColorHex = (colorId: string) => {
-    const color = WIRE_COLORS.find((c) => c.id === colorId);
-    return color?.hex || '#6B7280';
-  };
+  const getColorHex = (colorId: string) =>
+    WIRE_COLORS.find((c) => c.id === colorId)?.hex || '#6B7280';
 
-  // Determine displayed pins (max 6, then fold)
   const MAX_DISPLAY_PINS = 6;
   const displayPins = Math.min(pinCount, MAX_DISPLAY_PINS);
   const isFolded = pinCount > MAX_DISPLAY_PINS;
 
-  // Count connected pins
-  const connectedPinCount = Array.from({ length: pinCount }, (_, i) => i + 1).filter(
-    (p) => (wiresByPin.get(p)?.length || 0) > 0
-  ).length;
+  const connectedPinCount = Array.from({ length: pinCount }, (_, i) => i + 1).filter((p) => {
+    return pinBindings.get(`left-pin-${p}`)?.length || pinBindings.get(`right-pin-${p}`)?.length;
+  }).length;
 
-  // Dynamic height: header ~52px + each pin row 20px + footer ~24px + padding
   const nodeHeight = 52 + displayPins * 20 + (isFolded ? 20 : 0) + 24 + 8;
 
   return (
@@ -59,15 +47,7 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
       }`}
       style={{ width: 200, minHeight: nodeHeight }}
     >
-      {/* Legacy outer handles kept for existing edges; row handles are the primary connection points now. */}
-      <Handle
-        id="left"
-        type="target"
-        position={Position.Left}
-        className="pointer-events-none !h-0 !w-0 !border-0 !bg-transparent !opacity-0"
-      />
-
-      {/* Header: connector label + model */}
+      {/* Header */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-100">
         <Plug className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
         <div className="min-w-0 flex-1">
@@ -77,10 +57,14 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
       </div>
 
       {/* PIN layout area */}
-      <div className="px-1">
+      <div className="px-1 relative">
         {Array.from({ length: displayPins }, (_, i) => i + 1).map((pinNum) => {
-          const pinWires = wiresByPin.get(pinNum) || [];
-          const isConnected = pinWires.length > 0;
+          const leftBindings = pinBindings.get(`left-pin-${pinNum}`) ?? [];
+          const rightBindings = pinBindings.get(`right-pin-${pinNum}`) ?? [];
+          const allBindings = [...leftBindings, ...rightBindings];
+          const isConnected = allBindings.length > 0;
+          const isJumperedLeft = jumperPinsLeft.has(pinNum);
+          const isJumperedRight = jumperPinsRight.has(pinNum);
           const label = pinNum <= pinLabels.length ? pinLabels[pinNum - 1] : String(pinNum);
           const isEvenRow = pinNum % 2 === 0;
 
@@ -92,19 +76,24 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
               }`}
               style={{ lineHeight: '20px' }}
             >
-              <Handle
-                id={`left-pin-${pinNum}`}
-                type="target"
-                position={Position.Left}
-                className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
-              />
+              {/* Left pin handle — only rendered if left side is active */}
+              {showLeft && (
+                <Handle
+                  id={`left-pin-${pinNum}`}
+                  type="target"
+                  position={Position.Left}
+                  className={`!h-3 !w-3 !border-2 !border-white ${
+                    isJumperedLeft ? '!bg-orange-500' : '!bg-blue-500'
+                  }`}
+                />
+              )}
 
-              {/* Left side: PIN number (right-aligned, monospace, blue) */}
+              {/* Left side: PIN number */}
               <span className="text-[10px] font-mono text-blue-600 w-5 text-right flex-shrink-0 pr-1 font-semibold">
                 {pinNum}
               </span>
 
-              {/* Middle: PIN label (left-aligned) */}
+              {/* Middle: PIN label */}
               <span
                 className={`text-[10px] truncate flex-1 min-w-0 ${
                   isConnected ? 'text-slate-700 font-medium' : 'text-slate-400'
@@ -116,10 +105,10 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
               {/* Right side: connection status */}
               <div className="flex items-center gap-0.5 flex-shrink-0">
                 {isConnected ? (
-                  pinWires.map((wire, idx) => {
-                    const colorHex = getWireColorHex(wire.wireColor);
+                  allBindings.map((binding, idx) => {
+                    const colorHex = getColorHex(binding.color);
                     return (
-                      <div key={`${wire.id}-${idx}`} className="flex items-center gap-0.5">
+                      <div key={`${binding.circuitId}-${idx}`} className="flex items-center gap-0.5">
                         <div
                           className="w-2 h-2 rounded-full flex-shrink-0"
                           style={{ backgroundColor: colorHex }}
@@ -138,25 +127,65 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
                   </div>
                 )}
 
-                {/* Multi-connection count badge */}
-                {pinWires.length > 1 && (
+                {allBindings.length > 1 && (
                   <span className="text-[8px] text-blue-500 font-semibold ml-0.5">
-                    x{pinWires.length}
+                    x{allBindings.length}
+                  </span>
+                )}
+
+                {/* Jumper indicator */}
+                {(isJumperedLeft || isJumperedRight) && (
+                  <span
+                    className="text-[8px] text-orange-500 font-bold ml-0.5"
+                    title="短接"
+                  >
+                    ⏚
                   </span>
                 )}
               </div>
 
-              <Handle
-                id={`right-pin-${pinNum}`}
-                type="source"
-                position={Position.Right}
-                className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
-              />
+              {/* Right pin handle — only rendered if right side is active */}
+              {showRight && (
+                <Handle
+                  id={`right-pin-${pinNum}`}
+                  type="source"
+                  position={Position.Right}
+                  className={`!h-3 !w-3 !border-2 !border-white ${
+                    isJumperedRight ? '!bg-orange-500' : '!bg-blue-500'
+                  }`}
+                />
+              )}
             </div>
           );
         })}
 
-        {/* Fold indicator for >6 pins */}
+        {/* Jumper visual overlay: draw brackets between jumpered pins */}
+        {data.jumpers.map((jumper) => {
+          const side = jumper.side;
+          if (jumper.pins.length < 2) return null;
+          const minPin = Math.min(...jumper.pins.filter((p) => p <= displayPins));
+          const maxPin = Math.max(...jumper.pins.filter((p) => p <= displayPins));
+          if (minPin === maxPin) return null;
+          const top = 52 + (minPin - 1) * 20 + 2;
+          const height = (maxPin - minPin) * 20 - 4;
+          const isLeft = side === 'left';
+          return (
+            <div
+              key={jumper.id}
+              className="absolute pointer-events-none"
+              style={{
+                top,
+                height,
+                [isLeft ? 'left' : 'right']: '-2px',
+                width: '4px',
+                backgroundColor: '#f97316',
+                borderRadius: '2px',
+              }}
+              title={`短接: Pin ${jumper.pins.join(', ')}`}
+            />
+          );
+        })}
+
         {isFolded && (
           <div className="flex items-center justify-center h-5 text-[10px] text-slate-400">
             ...共 {pinCount} PIN
@@ -164,17 +193,15 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
         )}
       </div>
 
-      {/* Footer: connection statistics */}
+      {/* Footer */}
       <div className="px-2 py-1 border-t border-slate-100 text-[10px] text-slate-500">
         {connectedPinCount}/{pinCount} 已连接
+        {activeSide && (
+          <span className="ml-1 text-slate-400">
+            · {activeSide === 'left' ? '左' : '右'}侧
+          </span>
+        )}
       </div>
-
-      <Handle
-        id="right"
-        type="source"
-        position={Position.Right}
-        className="pointer-events-none !h-0 !w-0 !border-0 !bg-transparent !opacity-0"
-      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { Calculator, Download } from 'lucide-react';
-import { PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
+import { getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
 import { LEAD_TIME_OPTIONS } from '@/lib/data';
 import { calculatePrice } from '@/lib/pricing';
 import { useHarnessStore } from '@/stores/harnessStore';
@@ -7,8 +7,8 @@ import { useHarnessStore } from '@/stores/harnessStore';
 export function QuotePanel() {
   const { config, setConfig } = useHarnessStore();
   const price = calculatePrice(config);
-  const sleeveSummary = (config.protectiveSleeves ?? []).map((sleeve) => ({
-    type: PROTECTIVE_SLEEVE_LABELS[sleeve.type],
+  const sleeveSummary = config.protectiveSleeves.map((sleeve) => ({
+    name: getProtectiveSleeveDisplayName(sleeve),
     lengthMm: sleeve.lengthMm,
     attachedMaterialId: sleeve.attachedMaterialId ?? null,
   }));

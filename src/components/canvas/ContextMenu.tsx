@@ -6,13 +6,13 @@ import {
 export interface ContextMenuState {
   x: number;
   y: number;
-  kind: 'pane' | 'node' | 'connection' | 'wire' | 'material' | 'sleeve' | 'attachment';
-  nodeId?: string;
-  connectionId?: string;
-  wireId?: string;
+  kind: 'pane' | 'connector' | 'material' | 'sleeve' | 'attachment' | 'jumper';
+  connectorId?: string;
   materialId?: string;
   sleeveId?: string;
   attachmentId?: string;
+  /** For attachment: {materialId}:{circuitId}:{side} */
+  jumperId?: string;
   flowPosition?: { x: number; y: number };
 }
 
@@ -22,20 +22,16 @@ interface ContextMenuProps {
   onAddConnector: () => void;
   onAddCanvasWire: () => void;
   onAddProtectiveSleeve: (materialId?: string) => void;
-  onEditNode: (nodeId: string) => void;
-  onChangeConnector: (nodeId: string) => void;
-  onCopyNode: (nodeId: string) => void;
-  onDeleteNode: (nodeId: string) => void;
-  onEditConnection: (connectionId: string) => void;
-  onAddWire: (connectionId: string) => void;
-  onDeleteConnection: (connectionId: string) => void;
-  onEditWire: (wireId: string) => void;
-  onDeleteWire: (wireId: string) => void;
+  onEditConnector: (connectorId: string) => void;
+  onChangeConnector: (connectorId: string) => void;
+  onCopyConnector: (connectorId: string) => void;
+  onDeleteConnector: (connectorId: string) => void;
   onEditMaterial: (materialId: string) => void;
   onDeleteMaterial: (materialId: string) => void;
   onEditSleeve: (sleeveId: string) => void;
   onDeleteSleeve: (sleeveId: string) => void;
-  onDeleteAttachment: (attachmentId: string) => void;
+  onDetachEndpoint: (attachmentId: string) => void;
+  onDeleteJumper: (jumperId: string) => void;
   onFitView: () => void;
   hasSelection: boolean;
 }
@@ -70,27 +66,22 @@ export function ContextMenu({
   onAddConnector,
   onAddCanvasWire,
   onAddProtectiveSleeve,
-  onEditNode,
+  onEditConnector,
   onChangeConnector,
-  onCopyNode,
-  onDeleteNode,
-  onEditConnection,
-  onAddWire,
-  onDeleteConnection,
-  onEditWire,
-  onDeleteWire,
+  onCopyConnector,
+  onDeleteConnector,
   onEditMaterial,
   onDeleteMaterial,
   onEditSleeve,
   onDeleteSleeve,
-  onDeleteAttachment,
+  onDetachEndpoint,
+  onDeleteJumper,
   onFitView,
   hasSelection,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPos, setAdjustedPos] = useState({ x: state.x, y: state.y });
 
-  // Adjust position to stay within viewport
   useEffect(() => {
     if (menuRef.current) {
       const rect = menuRef.current.getBoundingClientRect();
@@ -106,7 +97,6 @@ export function ContextMenu({
     }
   }, [state.x, state.y]);
 
-  // Close on Esc
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -115,14 +105,12 @@ export function ContextMenu({
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  // Close on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    // Delayed to avoid the context menu event itself triggering close
     setTimeout(() => document.addEventListener('click', handleClick), 0);
     return () => document.removeEventListener('click', handleClick);
   }, [onClose]);
@@ -149,54 +137,23 @@ export function ContextMenu({
         </>
       )}
 
-      {state.kind === 'node' && state.nodeId && (
+      {state.kind === 'connector' && state.connectorId && (
         <>
-          <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑属性" onClick={menuAction(() => onEditNode(state.nodeId!), onClose)} />
-          <MenuItem icon={<Eye className="w-4 h-4" />} label="更换连接器型号" onClick={menuAction(() => onChangeConnector(state.nodeId!), onClose)} />
-          <MenuItem icon={<Cable className="w-4 h-4" />} label="发起连接" onClick={onClose} />
+          <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑属性" onClick={menuAction(() => onEditConnector(state.connectorId!), onClose)} />
+          <MenuItem icon={<Eye className="w-4 h-4" />} label="更换连接器型号" onClick={menuAction(() => onChangeConnector(state.connectorId!), onClose)} />
           <div className="border-t border-slate-100 my-1" />
-          <MenuItem icon={<Copy className="w-4 h-4" />} label="复制节点" onClick={menuAction(() => onCopyNode(state.nodeId!), onClose)} />
+          <MenuItem icon={<Copy className="w-4 h-4" />} label="复制连接器" onClick={menuAction(() => onCopyConnector(state.connectorId!), onClose)} />
           <div className="border-t border-slate-100 my-1" />
-          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除节点" onClick={menuAction(() => onDeleteNode(state.nodeId!), onClose)} destructive />
-        </>
-      )}
-
-      {state.kind === 'connection' && state.connectionId && (
-        <>
-          <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑连接" onClick={menuAction(() => onEditConnection(state.connectionId!), onClose)} />
-          <MenuItem icon={<Plus className="w-4 h-4" />} label="添加导线" onClick={menuAction(() => onAddWire(state.connectionId!), onClose)} />
-          <div className="border-t border-slate-100 my-1" />
-          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除连接" onClick={menuAction(() => onDeleteConnection(state.connectionId!), onClose)} destructive />
-        </>
-      )}
-
-      {state.kind === 'wire' && state.wireId && (
-        <>
-          <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑导线" onClick={menuAction(() => onEditWire(state.wireId!), onClose)} />
-          <div className="border-t border-slate-100 my-1" />
-          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除导线" onClick={menuAction(() => onDeleteWire(state.wireId!), onClose)} destructive />
+          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除连接器" onClick={menuAction(() => onDeleteConnector(state.connectorId!), onClose)} destructive />
         </>
       )}
 
       {state.kind === 'material' && state.materialId && (
         <>
           <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑线材参数" onClick={menuAction(() => onEditMaterial(state.materialId!), onClose)} />
-          {state.connectionId && (
-            <MenuItem icon={<Plus className="w-4 h-4" />} label="添加导线" onClick={menuAction(() => onAddWire(state.connectionId!), onClose)} />
-          )}
           <MenuItem icon={<Layers3 className="w-4 h-4" />} label="添加保护套" onClick={menuAction(() => onAddProtectiveSleeve(state.materialId!), onClose)} />
           <div className="border-t border-slate-100 my-1" />
-          <MenuItem
-            icon={<Trash2 className="w-4 h-4" />}
-            label="删除线材"
-            onClick={menuAction(
-              () => state.connectionId
-                ? onDeleteConnection(state.connectionId!)
-                : onDeleteMaterial(state.materialId!),
-              onClose,
-            )}
-            destructive
-          />
+          <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除线材" onClick={menuAction(() => onDeleteMaterial(state.materialId!), onClose)} destructive />
         </>
       )}
 
@@ -209,7 +166,11 @@ export function ContextMenu({
       )}
 
       {state.kind === 'attachment' && state.attachmentId && (
-        <MenuItem icon={<Trash2 className="w-4 h-4" />} label="断开连接" onClick={menuAction(() => onDeleteAttachment(state.attachmentId!), onClose)} destructive />
+        <MenuItem icon={<Trash2 className="w-4 h-4" />} label="断开连接" onClick={menuAction(() => onDetachEndpoint(state.attachmentId!), onClose)} destructive />
+      )}
+
+      {state.kind === 'jumper' && state.jumperId && (
+        <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除短接" onClick={menuAction(() => onDeleteJumper(state.jumperId!), onClose)} destructive />
       )}
     </div>
   );

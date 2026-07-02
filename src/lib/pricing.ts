@@ -1,36 +1,45 @@
-import type { HarnessConfig, PriceBreakdown } from '@/types/harness';
+import type { HarnessConfig, PriceBreakdown, CanvasWireMaterial } from '@/types/harness';
 import { calculateProtectiveSleevePrice } from './canvasMaterials';
 import { BASE_PRICES, LEAD_TIME_OPTIONS } from './data';
 
+function getMaterialCost(material: CanvasWireMaterial): { wireCost: number; laborCost: number } {
+  const spec = material.spec;
+  const lengthM = spec.lengthMm / 1000;
+  const wirePricePerM = BASE_PRICES.wirePerMeter(spec.awg, 'ul1007');
+  const multiplier = spec.kind === 'jacketed' ? spec.coreCount * 0.6 : 1;
+  const wireCost = wirePricePerM * lengthM * multiplier;
+  const laborCost = BASE_PRICES.laborPerMeter * lengthM;
+  return { wireCost, laborCost };
+}
+
 /**
  * Calculate the price of a wire harness configuration.
- * Now iterates over the wires list to compute per-wire costs,
- * since each wire has its own gauge, type, color, and length.
+ * Reads wire costs from `materials` (not a separate wires list).
  */
 export function calculatePrice(config: HarnessConfig): PriceBreakdown {
   let connectorsCost = 0;
   let wiresCost = 0;
   let laborCost = 0;
 
-  // Connector costs: sum up all connector nodes
-  for (const node of config.nodes) {
-    if (node.connector) {
-      connectorsCost += BASE_PRICES.connector(node.connector.pinCount);
+  // Connector costs
+  for (const instance of config.connectors) {
+    if (instance.connector) {
+      connectorsCost += BASE_PRICES.connector(instance.connector.pinCount);
     }
   }
 
-  // Wire costs: iterate over the flat wires list
-  for (const wire of config.wires) {
-    const lengthM = wire.lengthMm / 1000;
-    const wirePricePerM = BASE_PRICES.wirePerMeter(wire.wireGauge, wire.wireType);
-    wiresCost += wirePricePerM * lengthM;
-    laborCost += BASE_PRICES.laborPerMeter * lengthM;
+  // Material costs: each material is one physical cable
+  for (const material of config.materials) {
+    const { wireCost, laborCost: materialLabor } = getMaterialCost(material);
+    wiresCost += wireCost;
+    laborCost += materialLabor;
   }
 
-  // Labor: crimping labor per connector
-  laborCost += config.nodes.filter((n) => n.type === 'connector').length * BASE_PRICES.laborPerConnector;
+  // Labor: crimping per connector
+  laborCost += config.connectors.length * BASE_PRICES.laborPerConnector;
 
-  const protectionCost = (config.protectiveSleeves ?? []).reduce(
+  // Protection costs
+  const protectionCost = config.protectiveSleeves.reduce(
     (sum, sleeve) => sum + calculateProtectiveSleevePrice(sleeve),
     0,
   );
