@@ -14,6 +14,30 @@ function getMaterialDescription(material: CanvasWireMaterial): string {
   return `${spec.jacketMaterial}护套线${ul} ${spec.coreCount}芯 ${spec.awg}AWG ${spec.lengthMm}mm`;
 }
 
+/**
+ * Build a grouping key that captures EVERY distinguishing spec field.
+ * Two materials with the same key are truly identical and can share a
+ * BOM line. Fields omitted from the description (jacket color, shielded,
+ * OD, core colors, end treatment, UL) are all included here.
+ */
+function getMaterialGroupKey(material: CanvasWireMaterial): string {
+  const spec = material.spec;
+  if (spec.kind === 'electronic') {
+    const endKey = spec.endTreatment.stripped
+      ? spec.endTreatment.method === 'tinned'
+        ? `tinned:${spec.endTreatment.lengthMm}`
+        : 'terminal'
+      : 'unstripped';
+    return `elec|${spec.awg}|${spec.color}|${spec.lengthMm}|${spec.ulNumber}|${endKey}`;
+  }
+  const endKey = spec.endTreatment.stripped
+    ? spec.endTreatment.method === 'tinned'
+      ? `tinned:${spec.endTreatment.lengthMm}`
+      : 'terminal'
+    : 'unstripped';
+  return `jack|${spec.jacketMaterial}|${spec.jacketColor}|${spec.awg}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${endKey}`;
+}
+
 function getMaterialUnitPrice(material: CanvasWireMaterial): number {
   const spec = material.spec;
   const lengthM = spec.lengthMm / 1000;
@@ -68,10 +92,13 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
   }
 
   // --- Materials (wire / cable) ---
+  // Group by a key that captures EVERY distinguishing spec field so
+  // different jacket colors, shielding, OD, end treatment, etc. are
+  // never merged into one BOM line.
   const materialMap = new Map<string, { count: number; description: string; unitPrice: number }>();
 
   for (const material of config.materials) {
-    const key = getMaterialDescription(material);
+    const key = getMaterialGroupKey(material);
     const existing = materialMap.get(key);
     const unitPrice = getMaterialUnitPrice(material);
     if (existing) {

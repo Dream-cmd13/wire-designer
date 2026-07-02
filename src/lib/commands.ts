@@ -483,20 +483,32 @@ export function addConnectorJumper(
     );
   }
 
-  // Check if either pin already belongs to a jumper on this side.
-  const existingJumper = connector.jumpers.find(
+  // Find ALL jumpers on this side that contain pin1 OR pin2.
+  // They must all be merged into a single network, otherwise we'd
+  // end up with overlapping jumpers (e.g. [1,2] + [3,4] shorted via
+  // 2-3 would wrongly stay as [1,2,3] and [3,4] sharing pin 3).
+  const overlappingJumpers = connector.jumpers.filter(
     (j) => j.side === side && (j.pins.includes(pin1) || j.pins.includes(pin2)),
   );
 
   let nextJumpers: ConnectorJumper[];
-  if (existingJumper) {
-    // Merge pins into the existing jumper.
-    const pinSet = new Set([...existingJumper.pins, pin1, pin2]);
-    nextJumpers = connector.jumpers.map((j) =>
-      j.id === existingJumper.id
-        ? { ...j, pins: [...pinSet].sort((a, b) => a - b) }
-        : j,
-    );
+  if (overlappingJumpers.length > 0) {
+    // Union all pins from every overlapping jumper plus the two new pins.
+    const pinSet = new Set<number>();
+    for (const j of overlappingJumpers) {
+      for (const p of j.pins) pinSet.add(p);
+    }
+    pinSet.add(pin1);
+    pinSet.add(pin2);
+    const mergedPins = [...pinSet].sort((a, b) => a - b);
+
+    const overlappingIds = new Set(overlappingJumpers.map((j) => j.id));
+    // Keep non-overlapping jumpers as-is; replace all overlapping ones
+    // with a single merged jumper (reuse the first overlapping id).
+    const firstId = overlappingJumpers[0].id;
+    nextJumpers = connector.jumpers
+      .filter((j) => !overlappingIds.has(j.id))
+      .concat({ id: firstId, side, pins: mergedPins });
   } else {
     const newJumper: ConnectorJumper = {
       id: generateId(),

@@ -1,9 +1,14 @@
-import { Settings2, Plug, Cable, Layers3 } from 'lucide-react';
+import { useMemo } from 'react';
+import { Settings2, Plug, Cable, Layers3, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { validateHarness } from '@/lib/validation';
 import { PropertyInspector } from './PropertyInspector';
+import type { ValidationIssue } from '@/types/harness';
 
 export function ConfigPanel() {
-  const { config, selection } = useHarnessStore();
+  const config = useHarnessStore((s) => s.config);
+  const selection = useHarnessStore((s) => s.selection);
+  const setSelection = useHarnessStore((s) => s.setSelection);
 
   const hasSelection = selection.kind !== 'none';
   const inspectorKey = selection.kind === 'none' ? 'none' : `${selection.kind}:${selection.id}`;
@@ -11,6 +16,17 @@ export function ConfigPanel() {
   const connectorCount = config?.connectors?.length ?? 0;
   const materialCount = config?.materials?.length ?? 0;
   const sleeveCount = config?.protectiveSleeves?.length ?? 0;
+
+  // Run validation whenever config changes.
+  const issues = useMemo(() => validateHarness(config), [config]);
+  const errorCount = issues.filter((i) => i.severity === 'error').length;
+  const warningCount = issues.filter((i) => i.severity === 'warning').length;
+
+  const handleIssueClick = (issue: ValidationIssue) => {
+    if (issue.entity.id && issue.entity.kind !== 'project') {
+      setSelection({ kind: issue.entity.kind, id: issue.entity.id } as typeof selection);
+    }
+  };
 
   return (
     <div className="space-y-4 p-4">
@@ -35,6 +51,36 @@ export function ConfigPanel() {
         <SummaryCard icon={<Cable className="h-4 w-4" />} label="线材" count={materialCount} />
         <SummaryCard icon={<Layers3 className="h-4 w-4" />} label="保护套" count={sleeveCount} />
       </div>
+
+      {/* Validation issues */}
+      {issues.length > 0 && (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            校验问题
+            <span className="text-xs font-normal text-slate-400">
+              ({errorCount} 错误 · {warningCount} 警告)
+            </span>
+          </div>
+          <div className="max-h-48 space-y-1 overflow-y-auto">
+            {issues.map((issue) => (
+              <button
+                key={issue.id}
+                type="button"
+                onClick={() => handleIssueClick(issue)}
+                className="flex w-full items-start gap-1.5 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-white"
+              >
+                {issue.severity === 'error' && <AlertCircle className="mt-0.5 h-3 w-3 shrink-0 text-red-500" />}
+                {issue.severity === 'warning' && <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />}
+                {issue.severity === 'info' && <Info className="mt-0.5 h-3 w-3 shrink-0 text-blue-500" />}
+                <span className={issue.severity === 'error' ? 'text-red-600' : 'text-slate-600'}>
+                  {issue.message}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {hasSelection && (
         <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-3">

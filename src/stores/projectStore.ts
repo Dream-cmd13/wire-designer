@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Project } from '@/types/user';
 import type { HarnessConfig } from '@/types/harness';
+import { migrateHarnessConfig } from '@/lib/migration';
 
 const generateId = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -20,7 +21,10 @@ export function saveProjectConfig(projectId: string, config: HarnessConfig) {
 export function loadProjectConfig(projectId: string): HarnessConfig | null {
   try {
     const data = localStorage.getItem(PROJECT_CONFIG_PREFIX + projectId);
-    return data ? JSON.parse(data) : null;
+    if (!data) return null;
+    const raw = JSON.parse(data);
+    // Always run migration — handles v1/v2/v3 uniformly.
+    return migrateHarnessConfig(raw);
   } catch {
     return null;
   }

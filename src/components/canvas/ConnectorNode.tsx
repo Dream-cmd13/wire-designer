@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { ConnectorInstance } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
@@ -14,8 +15,10 @@ interface ConnectorNodeProps {
   selected?: boolean;
 }
 
-export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
-  const { config } = useHarnessStore();
+function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
+  // Selectors: subscribe only to the config slice this node needs.
+  // This prevents re-renders when unrelated materials/sleeves change.
+  const config = useHarnessStore((s) => s.config);
   const pinCount = data.connector?.pinCount || 2;
   const pinLabels = data.connector?.pinLabels || [];
 
@@ -30,15 +33,16 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
   const getColorHex = (colorId: string) =>
     WIRE_COLORS.find((c) => c.id === colorId)?.hex || '#6B7280';
 
-  const MAX_DISPLAY_PINS = 6;
-  const displayPins = Math.min(pinCount, MAX_DISPLAY_PINS);
-  const isFolded = pinCount > MAX_DISPLAY_PINS;
+  // Render ALL pins so every PIN is connectable/shortable. The previous
+  // 6-PIN fold made Pin7+ unreachable after the legacy full-PIN panel
+  // was removed. Tall nodes are acceptable in a design tool.
+  const displayPins = pinCount;
 
   const connectedPinCount = Array.from({ length: pinCount }, (_, i) => i + 1).filter((p) => {
     return pinBindings.get(`left-pin-${p}`)?.length || pinBindings.get(`right-pin-${p}`)?.length;
   }).length;
 
-  const nodeHeight = 52 + displayPins * 20 + (isFolded ? 20 : 0) + 24 + 8;
+  const nodeHeight = 52 + displayPins * 20 + 24 + 8;
 
   return (
     <div
@@ -159,14 +163,19 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
           );
         })}
 
-        {/* Jumper visual overlay: draw brackets between jumpered pins */}
+        {/* Jumper visual overlay: draw brackets between jumpered pins.
+            NOTE: this overlay is inside the pin-area div (which sits
+            below the header), so top is relative to the first pin row,
+            NOT to the node root. Do NOT add header height here. */}
         {data.jumpers.map((jumper) => {
           const side = jumper.side;
           if (jumper.pins.length < 2) return null;
-          const minPin = Math.min(...jumper.pins.filter((p) => p <= displayPins));
-          const maxPin = Math.max(...jumper.pins.filter((p) => p <= displayPins));
+          const visiblePins = jumper.pins.filter((p) => p <= displayPins);
+          if (visiblePins.length < 2) return null;
+          const minPin = Math.min(...visiblePins);
+          const maxPin = Math.max(...visiblePins);
           if (minPin === maxPin) return null;
-          const top = 52 + (minPin - 1) * 20 + 2;
+          const top = (minPin - 1) * 20 + 2;
           const height = (maxPin - minPin) * 20 - 4;
           const isLeft = side === 'left';
           return (
@@ -186,11 +195,6 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
           );
         })}
 
-        {isFolded && (
-          <div className="flex items-center justify-center h-5 text-[10px] text-slate-400">
-            ...共 {pinCount} PIN
-          </div>
-        )}
       </div>
 
       {/* Footer */}
@@ -205,3 +209,5 @@ export function ConnectorNode({ data, selected }: ConnectorNodeProps) {
     </div>
   );
 }
+
+export const ConnectorNode = memo(ConnectorNodeImpl);

@@ -84,12 +84,13 @@ function parseSideFromHandleId(handleId?: string | null): ConnectorSide | undefi
 
 function getConnectorHeight(instance: ConnectorInstance): number {
   const pinCount = instance.connector?.pinCount ?? 2;
-  const visiblePins = Math.min(pinCount, 6);
-  return 52 + visiblePins * 20 + (pinCount > 6 ? 20 : 0) + 32;
+  // All pins are rendered (no fold), so height reflects full pin count.
+  return 52 + pinCount * 20 + 32;
 }
 
 function getVisiblePinCount(instance: ConnectorInstance): number {
-  return Math.min(instance.connector?.pinCount ?? 2, 6);
+  // All pins are rendered — no 6-pin cap.
+  return instance.connector?.pinCount ?? 2;
 }
 
 function getMaterialEndpointPoint(
@@ -260,20 +261,24 @@ function HarnessCanvasInner() {
   const materials = config.materials ?? EMPTY_MATERIALS;
   const sleeves = config.protectiveSleeves ?? EMPTY_SLEEVES;
 
-  // Build React Flow nodes from config
+  // Build React Flow nodes from config.
+  // React Flow 12's Node<T> requires T extends Record<string, unknown>;
+  // our domain interfaces don't satisfy that constraint, so we bridge
+  // with a centralized cast helper. This is the ONLY place the cast
+  // happens — downstream components receive properly typed props.
   useEffect(() => {
     const connectorNodes: Node[] = config.connectors.map((instance) => ({
       id: instance.id,
       type: 'connector',
       position: instance.position,
-      data: instance as unknown as Record<string, unknown>,
+      data: instance as unknown as Node['data'],
       selected: selection.kind === 'connector' && selection.id === instance.id,
     }));
     const materialNodes: Node[] = materials.map((material) => ({
       id: material.id,
       type: 'material',
       position: material.position,
-      data: material as unknown as Record<string, unknown>,
+      data: material as unknown as Node['data'],
       selected: canvasSelection === material.id,
       dragHandle: '.wire-material-drag',
       zIndex: 2,
@@ -282,7 +287,7 @@ function HarnessCanvasInner() {
       id: sleeve.id,
       type: 'sleeve',
       position: sleeve.position,
-      data: sleeve as unknown as Record<string, unknown>,
+      data: sleeve as unknown as Node['data'],
       selected: canvasSelection === sleeve.id,
       zIndex: 4,
     }));
@@ -440,6 +445,9 @@ function HarnessCanvasInner() {
   }, [handleAttachEndpoint, handleAddJumper]);
 
   // --- Edge reconnection (move endpoint to different pin) ---
+  // Route through domain commands so active-side lock, pin range and
+  // duplicate-detection are all enforced. Bypassing them could create
+  // illegal states the UI can't recover from.
   const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
     if (!connection.target) return;
     const state = useHarnessStore.getState();
@@ -454,33 +462,33 @@ function HarnessCanvasInner() {
       const newPin = parsePinFromHandleId(connection.targetHandle);
       if (!newSide || !newPin) return;
 
-      // Check target is a connector
       const isConnector = state.config.connectors.some((c) => c.id === connection.target);
       if (!isConnector) return;
 
       reconnectSucceeded.current = true;
 
-      // Detach old, attach new — but preserve the circuit.
-      // We do this by directly updating the circuit's pin ref.
-      const nextConfig = {
-        ...state.config,
-        materials: state.config.materials.map((m) =>
-          m.id !== materialId
-            ? m
-            : {
-                ...m,
-                circuits: m.circuits.map((c) =>
-                  c.id !== circuitId
-                    ? c
-                    : {
-                        ...c,
-                        [side]: { connectorId: connection.target!, connectorSide: newSide, pin: newPin },
-                      },
-                ),
-              },
-        ),
-        updatedAt: Date.now(),
-      };
+      // Step 1: detach the old endpoint (clears the circuit's slot).
+      let nextConfig = detachMaterialEndpoint(state.config, materialId, circuitId, side);
+
+      // Step 2: attach to the new pin via the domain command. This
+      // re-checks active-side lock, pin range, and duplicates. If the
+      // circuit still has its other endpoint, attachMaterialEndpoint
+      // will complete it; otherwise it creates a fresh single-end
+      // circuit. We pass circuitId so the command targets this circuit.
+      try {
+        nextConfig = attachMaterialEndpoint(nextConfig, {
+          materialId,
+          endpoint: side,
+          connectorId: connection.target,
+          connectorSide: newSide,
+          pin: newPin,
+          circuitId,
+        });
+      } catch {
+        // Re-attach failed (e.g. side conflict). The old endpoint is
+        // already detached — accept the lossy result.
+      }
+
       state.replaceDocument(nextConfig);
       return;
     }
@@ -527,15 +535,22 @@ function HarnessCanvasInner() {
   }, []);
 
   // --- Drag-stop: snap material endpoints to nearby connectors ---
+  // IMPORTANT: re-read the latest config on every iteration. The store
+  // updates after the first endpoint attaches; if we reuse the stale
+  // snapshot for the second endpoint, the first one gets overwritten.
   const attachNearbyMaterialEndpoints = useCallback((material: CanvasWireMaterial) => {
-    const state = useHarnessStore.getState();
-    const connectors = state.config.connectors;
     const endpointPoints: Array<{ endpoint: MaterialEndpoint; point: { x: number; y: number } }> = [
       { endpoint: 'start', point: getMaterialEndpointPoint(material, 'start') },
       { endpoint: 'end', point: getMaterialEndpointPoint(material, 'end') },
     ];
 
+    let attachedAny = false;
+
     for (const { endpoint, point } of endpointPoints) {
+      // Always read the freshest config from the store.
+      const currentConfig = useHarnessStore.getState().config;
+      const connectors = currentConfig.connectors;
+
       const candidates = connectors
         .map((connector) => {
           const distance = distanceToRect(point, {
@@ -555,21 +570,25 @@ function HarnessCanvasInner() {
       const nearest = candidates[0];
       if (nearest) {
         try {
-          const nextConfig = attachMaterialEndpoint(state.config, {
+          const nextConfig = attachMaterialEndpoint(currentConfig, {
             materialId: material.id,
             endpoint,
             connectorId: nearest.connector.id,
             connectorSide: nearest.resolved.side,
             pin: nearest.resolved.pin,
           });
-          if (nextConfig !== state.config) {
-            state.replaceDocument(nextConfig);
-            setCanvasSelection(material.id);
+          if (nextConfig !== currentConfig) {
+            useHarnessStore.getState().replaceDocument(nextConfig);
+            attachedAny = true;
           }
         } catch {
           // Side conflict — ignore.
         }
       }
+    }
+
+    if (attachedAny) {
+      setCanvasSelection(material.id);
     }
   }, []);
 

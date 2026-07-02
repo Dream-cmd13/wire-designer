@@ -318,6 +318,40 @@ function validateUniqueIds(config: HarnessConfig, issues: ValidationIssue[]): vo
     }
     ids.set(s.id, 'sleeve');
   }
+
+  // Circuit IDs (unique within the whole project)
+  for (const m of config.materials) {
+    for (const c of m.circuits) {
+      if (ids.has(c.id)) {
+        issues.push({
+          id: '',
+          severity: 'error',
+          code: 'DUPLICATE_CIRCUIT_ID',
+          entity: { kind: 'material', id: m.id },
+          message: `线材 "${m.name}" 的接线明细 ID 重复: ${c.id}`,
+          suggestedAction: '修正数据中的重复 ID',
+        });
+      }
+      ids.set(c.id, 'circuit');
+    }
+  }
+
+  // Jumper IDs (unique within the whole project)
+  for (const conn of config.connectors) {
+    for (const j of conn.jumpers) {
+      if (ids.has(j.id)) {
+        issues.push({
+          id: '',
+          severity: 'error',
+          code: 'DUPLICATE_JUMPER_ID',
+          entity: { kind: 'connector', id: conn.id },
+          message: `连接器 "${conn.label}" 的短接 ID 重复: ${j.id}`,
+          suggestedAction: '修正数据中的重复 ID',
+        });
+      }
+      ids.set(j.id, 'jumper');
+    }
+  }
 }
 
 function validateQuantity(config: HarnessConfig, issues: ValidationIssue[]): void {

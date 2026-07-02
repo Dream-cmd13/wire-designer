@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, memo } from 'react';
 import { X } from 'lucide-react';
 import { Handle, Position } from '@xyflow/react';
 import {
@@ -25,7 +25,7 @@ function formatPinLabel(circuit: MaterialCircuit, side: 'start' | 'end'): string
   return `Pin${ref.pin}`;
 }
 
-export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
+function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   const [detailsOpen, setDetailsOpen] = useState(data.expandedByDefault ?? false);
   const previousCircuitCountRef = useRef(0);
   const { config, updateMaterial } = useHarnessStore();
@@ -180,7 +180,7 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
                         signalName: event.target.value,
                       });
                     }}
-                    placeholder="接线定义"
+                    placeholder="SIG"
                     className="nodrag nopan max-w-[72px] flex-1 rounded border border-transparent bg-transparent px-1 py-0 text-slate-700 font-medium outline-none focus:border-slate-200 focus:bg-slate-50"
                   />
 
@@ -211,3 +211,5 @@ export function WireMaterialNode({ data, selected }: WireMaterialNodeProps) {
     </div>
   );
 }
+
+export const WireMaterialNode = memo(WireMaterialNodeImpl);

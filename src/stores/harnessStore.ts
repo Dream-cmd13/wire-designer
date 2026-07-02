@@ -11,6 +11,7 @@ import type {
 import { CONNECTORS } from '@/lib/data';
 import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import { generateId } from '@/lib/commands';
+import { migrateHarnessConfig } from '@/lib/migration';
 
 export function createDefaultConfig(): HarnessConfig {
   const connectorA: typeof CONNECTORS[number] = CONNECTORS[0]; // JST XH 2P
@@ -295,42 +296,83 @@ export const useHarnessStore = create<HarnessState>()(
     }),
     {
       name: 'harness-config',
+      version: 3,
       partialize: (state) => ({ config: state.config, saveState: state.saveState }),
-      // Defensive rehydration: localStorage may contain an old schema (v1/v2)
-      // with `nodes/wires/connections` instead of `connectors/materials/...`.
-      // If the persisted config is not schemaVersion 3, discard it and use the
-      // fresh default config. Otherwise, normalize to guarantee all arrays exist.
+      // Unified migration: any persisted shape (v1/v2/v3) is funneled
+      // through migrateHarnessConfig, which backs up the original and
+      // normalizes to v3. This covers both the draft config and any
+      // project-scoped config loaded via loadProjectConfig.
       merge: (persisted, current) => {
-        const incoming = persisted as Partial<HarnessState> | undefined;
-        const persistedConfig = incoming?.config;
-        if (!persistedConfig || persistedConfig.schemaVersion !== 3) {
-          return current;
-        }
-        // Normalize: guarantee all required fields exist.
-        const safeConfig: HarnessConfig = {
-          schemaVersion: 3,
-          id: persistedConfig.id ?? current.config.id,
-          name: persistedConfig.name ?? current.config.name,
-          createdAt: persistedConfig.createdAt ?? current.config.createdAt,
-          updatedAt: persistedConfig.updatedAt ?? Date.now(),
-          connectors: Array.isArray(persistedConfig.connectors)
-            ? persistedConfig.connectors
-            : [],
-          materials: Array.isArray(persistedConfig.materials)
-            ? persistedConfig.materials
-            : [],
-          protectiveSleeves: Array.isArray(persistedConfig.protectiveSleeves)
-            ? persistedConfig.protectiveSleeves
-            : [],
-          quantity: persistedConfig.quantity ?? 1,
-          leadTime: persistedConfig.leadTime ?? 'standard',
-        };
+        const incoming = persisted as Partial<{ config: unknown; saveState: SaveState }> | undefined;
+        const migratedConfig = incoming?.config
+          ? migrateHarnessConfig(incoming.config)
+          : current.config;
         return {
           ...current,
-          config: safeConfig,
+          config: migratedConfig,
           saveState: incoming?.saveState ?? current.saveState,
         };
       },
+      // Defensive storage: catch quota exceeded and degrade gracefully.
+      storage: createSafeStorage(),
     },
   ),
 );
+
+/**
+ * Wraps zustand's default JSON storage with:
+ *   1. Debounced writes (300ms) — avoids hammering localStorage on
+ *      rapid state changes (e.g. dragging).
+ *   2. Quota-exceeded handling — on failure, sets a flag key the UI
+ *      can detect and degrades to in-memory-only mode.
+ */
+function createSafeStorage() {
+  const pendingWrites = new Map<string, { value: string; timer: ReturnType<typeof setTimeout> }>();
+  const DEBOUNCE_MS = 300;
+
+  const nativeSet = (name: string, value: string) => {
+    try {
+      localStorage.setItem(name, value);
+    } catch {
+      try {
+        localStorage.setItem('harness-config-quota-exceeded', '1');
+      } catch {
+        // Even the flag failed; nothing more we can do.
+      }
+    }
+  };
+
+  return {
+    getItem: (name: string) => {
+      try {
+        const v = localStorage.getItem(name);
+        return v ? JSON.parse(v) : null;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (name: string, value: unknown) => {
+      const serialized = JSON.stringify(value);
+      // Cancel any pending write for this key and schedule a new one.
+      const existing = pendingWrites.get(name);
+      if (existing) clearTimeout(existing.timer);
+      const timer = setTimeout(() => {
+        nativeSet(name, serialized);
+        pendingWrites.delete(name);
+      }, DEBOUNCE_MS);
+      pendingWrites.set(name, { value: serialized, timer });
+    },
+    removeItem: (name: string) => {
+      const existing = pendingWrites.get(name);
+      if (existing) {
+        clearTimeout(existing.timer);
+        pendingWrites.delete(name);
+      }
+      try {
+        localStorage.removeItem(name);
+      } catch {
+        // ignored
+      }
+    },
+  };
+}
