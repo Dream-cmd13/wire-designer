@@ -117,14 +117,21 @@ export function BomPanel() {
 
       {/* BOM Table */}
       <div className="overflow-hidden rounded-lg border border-slate-200">
-        <table className="w-full text-xs">
+        <table className="w-full table-fixed text-xs">
+          <colgroup>
+            <col className="w-7" />
+            <col />
+            <col className="w-10" />
+            <col className="w-14" />
+            <col className="w-14" />
+          </colgroup>
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-2 py-1.5 text-left text-slate-500 font-medium w-6"></th>
-              <th className="px-2 py-1.5 text-left text-slate-500 font-medium">描述</th>
-              <th className="px-2 py-1.5 text-right text-slate-500 font-medium w-12">数量</th>
-              <th className="px-2 py-1.5 text-right text-slate-500 font-medium w-16">单价</th>
-              <th className="px-2 py-1.5 text-right text-slate-500 font-medium w-16">小计</th>
+              <th className="px-1 py-1.5 text-left text-slate-500 font-medium"></th>
+              <th className="px-1 py-1.5 text-left text-slate-500 font-medium">描述</th>
+              <th className="whitespace-nowrap px-1 py-1.5 text-right text-slate-500 font-medium">数量</th>
+              <th className="whitespace-nowrap px-1 py-1.5 text-right text-slate-500 font-medium">单价</th>
+              <th className="whitespace-nowrap px-1 py-1.5 text-right text-slate-500 font-medium">小计</th>
             </tr>
           </thead>
           <tbody>
@@ -133,16 +140,19 @@ export function BomPanel() {
                 key={`${item.type}-${item.description}-${index}`}
                 className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors"
               >
-                <td className="px-2 py-1.5">{getTypeIcon(item.type)}</td>
-                <td className="px-2 py-1.5">
-                  <div className="text-slate-700 font-medium truncate max-w-[140px]">
+                <td className="px-1 py-1.5">{getTypeIcon(item.type)}</td>
+                <td className="min-w-0 px-1 py-1.5">
+                  <div
+                    className="truncate text-slate-700 font-medium"
+                    title={item.description}
+                  >
                     {item.description}
                   </div>
                   {item.manufacturer && (
-                    <div className="text-[10px] text-slate-400">{item.manufacturer}</div>
+                    <div className="truncate text-[10px] text-slate-400">{item.manufacturer}</div>
                   )}
                 </td>
-                <td className="px-2 py-1.5 text-right text-slate-600">
+                <td className="whitespace-nowrap px-1 py-1.5 text-right text-slate-600">
                   {item.quantity}
                   {config.quantity > 1 && (
                     <div className="text-[10px] text-slate-400">
@@ -150,10 +160,10 @@ export function BomPanel() {
                     </div>
                   )}
                 </td>
-                <td className="px-2 py-1.5 text-right text-slate-600">
+                <td className="whitespace-nowrap px-1 py-1.5 text-right text-slate-600">
                   {item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '-'}
                 </td>
-                <td className="px-2 py-1.5 text-right text-slate-700 font-medium">
+                <td className="whitespace-nowrap px-1 py-1.5 text-right text-slate-700 font-medium">
                   {item.totalPrice ? `$${item.totalPrice.toFixed(2)}` : '-'}
                 </td>
               </tr>
