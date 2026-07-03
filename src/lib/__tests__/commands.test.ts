@@ -56,6 +56,7 @@ function makeTestConfig(): HarnessConfig {
     connectors: [connectorA, connectorB],
     materials: [material],
     protectiveSleeves: [],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
   };

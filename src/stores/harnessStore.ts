@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
+  CanvasModel,
   CanvasWireMaterial,
   ConnectorInstance,
   HarnessConfig,
@@ -77,6 +78,7 @@ export function createDefaultConfig(): HarnessConfig {
     ],
     materials: [material],
     protectiveSleeves: [],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
   };
@@ -111,6 +113,11 @@ interface HarnessState {
   addProtectiveSleeve: (sleeve: ProtectiveSleeve) => void;
   updateProtectiveSleeve: (id: string, updates: Partial<ProtectiveSleeve>) => void;
   removeProtectiveSleeve: (id: string) => void;
+
+  // Canvas model actions
+  addModel: (model: CanvasModel) => void;
+  updateModel: (id: string, updates: Partial<CanvasModel>) => void;
+  removeModel: (id: string) => void;
 
   setSelection: (selection: Selection) => void;
   resetConfig: () => void;
@@ -249,6 +256,41 @@ export const useHarnessStore = create<HarnessState>()(
             protectiveSleeves: state.config.protectiveSleeves.filter((item) => item.id !== id),
             updatedAt: Date.now(),
           },
+          saveState: dirtyState(),
+        })),
+
+      addModel: (model) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            models: [...state.config.models, model],
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      updateModel: (id, updates) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            models: state.config.models.map((item) =>
+              item.id === id ? { ...item, ...updates } : item,
+            ),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      removeModel: (id) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            models: state.config.models.filter((item) => item.id !== id),
+            updatedAt: Date.now(),
+          },
+          selection: state.selection.kind === 'model' && state.selection.id === id
+            ? { kind: 'none' }
+            : state.selection,
           saveState: dirtyState(),
         })),
 

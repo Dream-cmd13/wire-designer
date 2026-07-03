@@ -36,6 +36,7 @@ function makeBaseConfig(): HarnessConfig {
     connectors: [connA],
     materials: [material],
     protectiveSleeves: [],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
   };

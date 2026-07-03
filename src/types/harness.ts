@@ -201,6 +201,20 @@ export interface ProtectiveSleeve {
 }
 
 // ============================================================
+// Canvas Model / Outer Mold
+// ============================================================
+
+export type CanvasModelKind = 'outer-box';
+
+export interface CanvasModel {
+  id: string;
+  kind: CanvasModelKind;
+  position: { x: number; y: number };
+  width: number;
+  height: number;
+}
+
+// ============================================================
 // Top-level Harness Config
 // ============================================================
 
@@ -217,6 +231,7 @@ export interface HarnessConfig {
   connectors: ConnectorInstance[];
   materials: CanvasWireMaterial[];
   protectiveSleeves: ProtectiveSleeve[];
+  models: CanvasModel[];
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
 }
@@ -257,7 +272,8 @@ export type Selection =
   | { kind: 'none' }
   | { kind: 'connector'; id: string }
   | { kind: 'material'; id: string }
-  | { kind: 'sleeve'; id: string };
+  | { kind: 'sleeve'; id: string }
+  | { kind: 'model'; id: string };
 
 /** Save state for the editor document */
 export type SaveState =

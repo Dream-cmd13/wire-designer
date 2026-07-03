@@ -28,6 +28,7 @@ export function createFallbackConfig(): HarnessConfig {
     connectors: [],
     materials: [],
     protectiveSleeves: [],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
   };
@@ -83,6 +84,7 @@ export function normalizeHarnessConfig(input: unknown): HarnessConfig {
         };
       })
     : [];
+  const models = Array.isArray(raw.models) ? raw.models : [];
 
   // Must have the three core arrays (or absence is fine — normalized to []).
   return {
@@ -94,6 +96,7 @@ export function normalizeHarnessConfig(input: unknown): HarnessConfig {
     connectors: Array.isArray(raw.connectors) ? raw.connectors : [],
     materials,
     protectiveSleeves,
+    models,
     quantity: typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : 1,
     leadTime: raw.leadTime === 'rush' || raw.leadTime === 'standard' || raw.leadTime === 'economy'
       ? raw.leadTime

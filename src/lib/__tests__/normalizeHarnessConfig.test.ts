@@ -13,6 +13,7 @@ describe('normalizeHarnessConfig', () => {
       connectors: [],
       materials: [],
       protectiveSleeves: [],
+      models: [],
       quantity: 5,
       leadTime: 'rush',
     };
@@ -115,6 +116,7 @@ describe('normalizeHarnessConfig', () => {
         lengthMm: 100,
         attachedMaterialId: 'material-1',
       }],
+      models: [],
     };
 
     const result = normalizeHarnessConfig(input);

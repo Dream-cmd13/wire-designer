@@ -1,4 +1,5 @@
 import type {
+  CanvasModel,
   CanvasWireMaterial,
   CanvasWireSpec,
   CorrugatedMaterial,
@@ -91,6 +92,7 @@ export const CANVAS_MATERIAL_SLEEVE_CENTER_Y =
   CANVAS_MATERIAL_STRIP_TOP + CANVAS_MATERIAL_STRIP_PADDING_Y + CANVAS_MATERIAL_STRIP_HEIGHT / 2;
 export const PROTECTIVE_SLEEVE_HEIGHT = 36;
 export const PROTECTIVE_SLEEVE_VERTICAL_PADDING = 8;
+export const CANVAS_MODEL_SIZE = 84;
 
 /** Unified mm → canvas-px scale used by both wire materials and protective sleeves. */
 export function lengthMmToCanvasWidth(lengthMm: number): number {
@@ -155,6 +157,10 @@ export function calculateProtectiveSleevePrice(sleeve: ProtectiveSleeve): number
       ? (CORRUGATED_MATERIAL_PRICE_MULTIPLIER[sleeve.corrugatedMaterial] ?? 1)
       : 1;
   return pricePerMeter * materialMultiplier * (sleeve.lengthMm / 1000);
+}
+
+export function getCanvasModelDisplayName(model: CanvasModel): string {
+  return model.kind === 'outer-box' ? '方块外模' : '外模';
 }
 
 export function getCoreColors(coreCount: JacketCoreCount): string[] {

@@ -126,6 +126,7 @@ function createConfigFromTemplate(
       connectors: [],
       materials: [],
       protectiveSleeves: [],
+      models: [],
       quantity: 1,
       leadTime: 'standard',
     };
@@ -156,6 +157,7 @@ function createConfigFromTemplate(
       connectors: [connA, connB],
       materials: [material],
       protectiveSleeves: [],
+      models: [],
       quantity: 1,
       leadTime: 'standard',
     };
@@ -193,6 +195,7 @@ function createConfigFromTemplate(
       connectors: [connA, connB, connC],
       materials: [materialAB, materialAC],
       protectiveSleeves: [],
+      models: [],
       quantity: 1,
       leadTime: 'standard',
     };
@@ -229,6 +232,7 @@ function createConfigFromTemplate(
     connectors,
     materials,
     protectiveSleeves: [],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
   };

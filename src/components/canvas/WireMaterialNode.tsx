@@ -86,6 +86,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
         circuit: material.circuits[0],
       }));
     }
+
     return detailMaterials.flatMap((material) =>
       material.circuits.length > 0
         ? material.circuits.map((circuit) => ({
@@ -109,6 +110,8 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   }, [config.connectors, detailMaterials]);
 
   const circuitCount = detailMaterials.reduce((sum, material) => sum + material.circuits.length, 0);
+  const electronicMaterialCount = detailMaterials.filter((material) => material.spec.kind === 'electronic').length;
+  const jacketedMaterialCount = detailMaterials.filter((material) => material.spec.kind === 'jacketed').length;
   const showMergedDetails = data.showMergedDetails ?? true;
 
   useEffect(() => {
@@ -139,8 +142,18 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
     });
   };
 
-  const panelWidth = Math.max(240, 104 + connectorColumns.length * 82 + 42 + 92 + 22);
-  const gridColumns = `minmax(92px, 1fr) ${connectorColumns.map(() => '76px').join(' ')} 36px minmax(82px, 1fr) 18px`;
+  const materialColumnWidth = Math.min(
+    280,
+    Math.max(
+      160,
+      ...detailMaterials.map((material) => Math.round(materialDescription(material).length * 6.4)),
+    ),
+  );
+  const panelWidth = Math.max(340, materialColumnWidth + connectorColumns.length * 82 + 42 + 92 + 22);
+  const gridColumns = `${materialColumnWidth}px ${connectorColumns.map(() => '76px').join(' ')} 36px minmax(82px, 1fr) 18px`;
+  const detailTitle = electronicMaterialCount > 0
+    ? `${electronicMaterialCount} 条电子线`
+    : `${Math.max(jacketedMaterialCount, detailMaterials.length || 1)} 条护套线`;
 
   return (
     <div
@@ -170,16 +183,11 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
         style={{ top: CANVAS_MATERIAL_SLEEVE_CENTER_Y }}
       />
 
-      {(data.labels?.length || data.numberTubes?.length) ? (
+      {data.labels?.length ? (
         <div className="pointer-events-none absolute bottom-full left-1/2 mb-0.5 flex -translate-x-1/2 gap-1 whitespace-nowrap">
-          {data.labels?.map((label) => (
+          {data.labels.map((label) => (
             <span key={label.id} title={`${label.material} · ${label.lengthMm}mm`} className="rounded bg-amber-100 px-1 text-[8px] text-amber-800">
               <Tag className="mr-0.5 inline h-2 w-2" />{label.content}
-            </span>
-          ))}
-          {data.numberTubes?.map((tube) => (
-            <span key={tube.id} title={`号码管 · ${tube.lengthMm}mm`} className="rounded bg-sky-100 px-1 text-[8px] text-sky-800">
-              #{tube.content}
             </span>
           ))}
         </div>
@@ -219,9 +227,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
           style={{ width: panelWidth }}
         >
           <div className="mb-1 border-b border-slate-100 pb-1 text-center font-semibold text-slate-700">
-            {detailMaterials.length > 1
-              ? `${detailMaterials.length} 条电子线 · 合并线材信息`
-              : `${circuitCount} 条接线 · ${data.name}`}
+            {detailTitle}
           </div>
 
           <div
@@ -249,9 +255,10 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                   className="grid items-center gap-1 text-[10px]"
                   style={{ gridTemplateColumns: gridColumns }}
                 >
-                  <span className="min-w-0 truncate" title={`${row.material.name} · ${materialDescription(row.material)}`}>
-                    <span className="block truncate font-semibold text-slate-700">{row.material.name}</span>
-                    <span className="block truncate text-[8px] font-normal text-slate-400">{materialDescription(row.material)}</span>
+                  <span className="min-w-0" title={materialDescription(row.material)}>
+                    <span className="block whitespace-normal break-words text-[8px] font-normal leading-[1.2] text-slate-500">
+                      {materialDescription(row.material)}
+                    </span>
                   </span>
 
                   {connectorColumns.map((connector) => {
@@ -359,16 +366,19 @@ function PinInput({
       setError(null);
       return;
     }
+
     const match = /^pin(\d+)$/i.exec(trimmed);
     if (!match) {
       setError('只能填写 Pin+数字，或留空');
       return;
     }
+
     const nextPin = Number(match[1]);
     if (nextPin < 1 || nextPin > connector.connector.pinCount) {
       setError(`范围：Pin1-Pin${connector.connector.pinCount}`);
       return;
     }
+
     const state = useHarnessStore.getState();
     const next = reassignMaterialEndpoint(state.config, {
       materialId,
@@ -383,10 +393,12 @@ function PinInput({
       )[0]?.ref?.connectorSide ?? 'left',
       pin: nextPin,
     });
+
     if (next === state.config && nextPin !== pin) {
       setError('该 PIN 与当前连接规则冲突');
       return;
     }
+
     state.replaceDocument(next);
     setValue(`Pin${nextPin}`);
     setError(null);

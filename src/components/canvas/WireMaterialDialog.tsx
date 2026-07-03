@@ -20,7 +20,7 @@ import type {
 interface WireMaterialDialogProps {
   material: CanvasWireMaterial | null;
   onCancel: () => void;
-  onConfirm: (updates: Pick<CanvasWireMaterial, 'name' | 'spec' | 'width'>) => void;
+  onConfirm: (updates: Pick<CanvasWireMaterial, 'spec' | 'width'>) => void;
 }
 
 const fieldClass =
@@ -43,22 +43,19 @@ function defaultJacketedSpec(): CanvasWireSpec {
 }
 
 function validateSpec(spec: CanvasWireSpec): string | null {
-  if (!Number.isFinite(spec.awg) || spec.awg <= 0) return 'AWG 必须是大于 0 的数字';
-  if (!Number.isFinite(spec.lengthMm) || spec.lengthMm <= 0) {
-    return '长度必须是大于 0 的数字';
-  }
+  if (!Number.isFinite(spec.awg) || spec.awg <= 0) return 'AWG 必须大于 0';
+  if (!Number.isFinite(spec.lengthMm) || spec.lengthMm <= 0) return '长度必须大于 0';
   if (
     spec.endTreatment.stripped
     && spec.endTreatment.method === 'tinned'
     && (!Number.isFinite(spec.endTreatment.lengthMm) || spec.endTreatment.lengthMm <= 0)
   ) {
-    return '沾锡长度必须是大于 0 的数字';
+    return '沾锡长度必须大于 0';
   }
   return null;
 }
 
 export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMaterialDialogProps) {
-  const [name, setName] = useState(material?.name ?? '');
   const [spec, setSpec] = useState<CanvasWireSpec>(material?.spec ?? createDefaultWireSpec());
   const [error, setError] = useState<string | null>(null);
 
@@ -78,12 +75,12 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
   };
 
   const handleSubmit = () => {
-    const validationError = name.trim() ? validateSpec(spec) : '线材名称不能为空';
+    const validationError = validateSpec(spec);
     if (validationError) {
       setError(validationError);
       return;
     }
-    onConfirm({ name: name.trim(), spec, width: lengthMmToCanvasWidth(spec.lengthMm) });
+    onConfirm({ spec, width: lengthMmToCanvasWidth(spec.lengthMm) });
   };
 
   return (
@@ -96,7 +93,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">配置线材</h2>
-              <p className="text-xs text-slate-500">选择类型并填写生产参数</p>
+              <p className="text-xs text-slate-500">选择线材类型并填写生产参数</p>
             </div>
           </div>
           <button type="button" onClick={onCancel} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
@@ -105,11 +102,6 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
         </div>
 
         <div className="max-h-[calc(90vh-132px)] overflow-y-auto px-5 py-4">
-          <label className="mb-4 block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-600">线材名称</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} className={fieldClass} />
-          </label>
-
           <div className="mb-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
             <TypeButton
               active={spec.kind === 'electronic'}
@@ -136,7 +128,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   ))}
                 </select>
               </Field>
-              <Field label="长度（mm）">
+              <Field label="长度 (mm)">
                 <NumberInput
                   value={spec.lengthMm}
                   onChange={(lengthMm) => setSpec({ ...spec, lengthMm })}
@@ -173,7 +165,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   <option value="green">绿色</option>
                 </select>
               </Field>
-              <Field label="长度（mm）">
+              <Field label="长度 (mm)">
                 <NumberInput
                   value={spec.lengthMm}
                   onChange={(lengthMm) => setSpec({ ...spec, lengthMm })}
@@ -245,7 +237,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   ))}
                 </select>
               </Field>
-              <Field label="自动计算 OD（mm）">
+              <Field label="自动计算 OD (mm)">
                 <div className="flex h-[38px] items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700">
                   {spec.odMm.toFixed(2)}
                 </div>
@@ -364,7 +356,7 @@ function EndTreatmentFields({
           </div>
 
           {value.method === 'tinned' ? (
-            <Field label="沾锡长度（mm）">
+            <Field label="沾锡长度 (mm)">
               <NumberInput
                 value={value.lengthMm}
                 onChange={(lengthMm) => onChange({ ...value, lengthMm })}

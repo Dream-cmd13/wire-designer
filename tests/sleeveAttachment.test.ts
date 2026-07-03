@@ -49,6 +49,7 @@ function makeConfig(
     connectors: [],
     materials: [material],
     protectiveSleeves: [sleeve],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
   };

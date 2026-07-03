@@ -2,8 +2,8 @@ import { useState, type ReactNode } from 'react';
 import { Check, Search } from 'lucide-react';
 import { CONNECTORS } from '@/lib/data';
 import { changeConnectorPart, getActiveConnectorSide } from '@/lib/commands';
+import { getCanvasModelDisplayName, getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
-import { getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
 import type { Connector } from '@/types/harness';
 import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
 
@@ -19,16 +19,15 @@ export function PropertyInspector() {
   if (selection.kind === 'sleeve') {
     return <SleeveEditor sleeveId={selection.id} />;
   }
+  if (selection.kind === 'model') {
+    return <ModelEditor modelId={selection.id} />;
+  }
   return null;
 }
 
-// ============================================================
-// Connector Editor
-// ============================================================
-
 function ConnectorEditor({ connectorId }: { connectorId: string }) {
   const { config, updateConnector, setSelection } = useHarnessStore();
-  const instance = config.connectors.find((c) => c.id === connectorId);
+  const instance = config.connectors.find((connector) => connector.id === connectorId);
   const [label, setLabel] = useState(instance?.label ?? '');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +46,6 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
   const handlePartChange = (connector: Connector) => {
     const result = changeConnectorPart(config, connectorId, connector.id);
     useHarnessStore.getState().replaceDocument(result.config);
-    // Replacing the connector part must not clear the selected connector:
-    // the left-side editor stays open so consecutive properties can be edited.
     setSelection({ kind: 'connector', id: connectorId });
     setError(result.warnings.length > 0 ? result.warnings.join('; ') : null);
   };
@@ -66,6 +63,7 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
             className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button
+            type="button"
             onClick={handleApply}
             className="flex cursor-pointer items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
           >
@@ -79,7 +77,7 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
           <select
             value={instance.connector?.id ?? ''}
             onChange={(event) => {
-              const part = CONNECTORS.find((c) => c.id === event.target.value);
+              const part = CONNECTORS.find((connector) => connector.id === event.target.value);
               if (part) handlePartChange(part);
             }}
             className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -111,16 +109,16 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
 
       {activeSide && (
         <p className="text-[10px] text-amber-600">
-          有效侧已锁定：{activeSide === 'left' ? '左' : '右'}侧
+          有效侧已锁定：{activeSide === 'left' ? '左侧' : '右侧'}
         </p>
       )}
 
       {instance.jumpers.length > 0 && (
         <div className="rounded border border-orange-200 bg-orange-50 p-2">
           <p className="text-xs font-medium text-orange-700">短接 ({instance.jumpers.length})</p>
-          {instance.jumpers.map((j) => (
-            <p key={j.id} className="text-[10px] text-orange-600">
-              {j.side === 'left' ? '左' : '右'}侧 Pin {j.pins.join(', ')}
+          {instance.jumpers.map((jumper) => (
+            <p key={jumper.id} className="text-[10px] text-orange-600">
+              {jumper.side === 'left' ? '左侧' : '右侧'} Pin {jumper.pins.join(', ')}
             </p>
           ))}
         </div>
@@ -138,13 +136,9 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
   );
 }
 
-// ============================================================
-// Material Editor
-// ============================================================
-
 function MaterialEditor({ materialId }: { materialId: string }) {
-  const { config, updateMaterial } = useHarnessStore();
-  const material = config.materials.find((m) => m.id === materialId);
+  const { config } = useHarnessStore();
+  const material = config.materials.find((item) => item.id === materialId);
 
   if (!material) {
     return <div className="text-sm text-slate-400">线材不存在</div>;
@@ -156,15 +150,6 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   return (
     <div className="space-y-2">
       <h3 className="text-sm font-semibold text-slate-700">线材属性</h3>
-
-      <FormField label="名称">
-        <input
-          type="text"
-          value={material.name}
-          onChange={(event) => updateMaterial(materialId, { name: event.target.value })}
-          className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </FormField>
 
       <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
         <p>{spec.kind === 'electronic' ? '电子线' : '护套线'}</p>
@@ -186,19 +171,40 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       </div>
 
       <p className="text-[10px] text-slate-400">
-        在画布上拖动线材端点到连接器 PIN 可添加接线明细。
+        在画布上点击线材端点和连接器 PIN 点即可建立接线。
       </p>
     </div>
   );
 }
 
-// ============================================================
-// Sleeve Editor
-// ============================================================
+function ModelEditor({ modelId }: { modelId: string }) {
+  const { config } = useHarnessStore();
+  const model = config.models.find((item) => item.id === modelId);
+
+  if (!model) {
+    return <div className="text-sm text-slate-400">外模不存在</div>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-slate-700">外模属性</h3>
+
+      <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+        <p>类型: {getCanvasModelDisplayName(model)}</p>
+        <p>宽度: {Math.round(model.width)} px</p>
+        <p>高度: {Math.round(model.height)} px</p>
+      </div>
+
+      <p className="text-[10px] text-slate-400">
+        外模显示在线材和连接器之间，并遮住包覆区域内的连接线。
+      </p>
+    </div>
+  );
+}
 
 function SleeveEditor({ sleeveId }: { sleeveId: string }) {
   const { config, updateProtectiveSleeve } = useHarnessStore();
-  const sleeve = config.protectiveSleeves.find((s) => s.id === sleeveId);
+  const sleeve = config.protectiveSleeves.find((item) => item.id === sleeveId);
 
   if (!sleeve) {
     return <div className="text-sm text-slate-400">保护套不存在</div>;
@@ -234,10 +240,6 @@ function SleeveEditor({ sleeveId }: { sleeveId: string }) {
     </div>
   );
 }
-
-// ============================================================
-// Shared
-// ============================================================
 
 function FormField({ children, label }: { children: ReactNode; label: string }) {
   return (

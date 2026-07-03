@@ -12,6 +12,7 @@ function makeBaseConfig(): HarnessConfig {
     connectors: [],
     materials: [],
     protectiveSleeves: [],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
   };
@@ -173,6 +174,7 @@ describe('BOM grouping', () => {
     const config: HarnessConfig = {
       ...makeBaseConfig(),
       protectiveSleeves: [sleeve1, sleeve2],
+      models: [],
     };
 
     const bom = generateBOM(config);

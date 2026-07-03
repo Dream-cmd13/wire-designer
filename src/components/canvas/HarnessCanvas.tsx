@@ -27,6 +27,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper } from '@/lib/commands';
 import {
+  CANVAS_MODEL_SIZE,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
   createDefaultCanvasMaterial,
   lengthMmToCanvasWidth,
@@ -34,6 +35,7 @@ import {
 } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
+  CanvasModel,
   CanvasWireMaterial,
   ConnectorInstance,
   ConnectorSide,
@@ -42,6 +44,7 @@ import type {
   ProtectiveSleeve,
 } from '@/types/harness';
 import { ConnectorNode } from './ConnectorNode';
+import { CanvasModelNode } from './CanvasModelNode';
 import { ContextMenu, type ContextMenuState } from './ContextMenu';
 import { JumperEdge } from './JumperEdge';
 import { setJumperContextMenuHandler } from './jumperContextMenu';
@@ -64,6 +67,7 @@ const nodeTypes: NodeTypes = {
   connector: ConnectorNode,
   material: WireMaterialNode,
   sleeve: ProtectiveSleeveNode,
+  model: CanvasModelNode,
 };
 const edgeTypes: EdgeTypes = {
   attachment: MaterialAttachmentEdge,
@@ -71,6 +75,7 @@ const edgeTypes: EdgeTypes = {
 };
 const EMPTY_MATERIALS: CanvasWireMaterial[] = [];
 const EMPTY_SLEEVES: ProtectiveSleeve[] = [];
+const EMPTY_MODELS: CanvasModel[] = [];
 
 // ============================================================
 // Geometry helpers
@@ -169,53 +174,173 @@ function distanceToRect(
   return Math.hypot(dx, dy);
 }
 
+function getModelRect(model: CanvasModel) {
+  return {
+    x: model.position.x,
+    y: model.position.y,
+    width: model.width,
+    height: model.height,
+  };
+}
+
+function pointInRect(point: { x: number; y: number }, rect: { x: number; y: number; width: number; height: number }) {
+  return (
+    point.x >= rect.x
+    && point.x <= rect.x + rect.width
+    && point.y >= rect.y
+    && point.y <= rect.y + rect.height
+  );
+}
+
+function ccw(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+  return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
+}
+
+function segmentsIntersect(
+  a1: { x: number; y: number },
+  a2: { x: number; y: number },
+  b1: { x: number; y: number },
+  b2: { x: number; y: number },
+) {
+  return ccw(a1, b1, b2) !== ccw(a2, b1, b2) && ccw(a1, a2, b1) !== ccw(a1, a2, b2);
+}
+
+function segmentIntersectsRect(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  rect: { x: number; y: number; width: number; height: number },
+) {
+  if (pointInRect(start, rect) || pointInRect(end, rect)) return true;
+
+  const topLeft = { x: rect.x, y: rect.y };
+  const topRight = { x: rect.x + rect.width, y: rect.y };
+  const bottomLeft = { x: rect.x, y: rect.y + rect.height };
+  const bottomRight = { x: rect.x + rect.width, y: rect.y + rect.height };
+
+  return (
+    segmentsIntersect(start, end, topLeft, topRight)
+    || segmentsIntersect(start, end, topRight, bottomRight)
+    || segmentsIntersect(start, end, bottomRight, bottomLeft)
+    || segmentsIntersect(start, end, bottomLeft, topLeft)
+  );
+}
+
+function findModelPlacement(
+  config: HarnessConfig,
+  flowPosition: { x: number; y: number },
+): { x: number; y: number } {
+  let best:
+    | {
+        distance: number;
+        center: { x: number; y: number };
+      }
+    | undefined;
+
+  for (const material of config.materials) {
+    for (const circuit of material.circuits) {
+      for (const endpoint of ['start', 'end'] as const) {
+        const ref = circuit[endpoint];
+        if (!ref) continue;
+        const connector = config.connectors.find((item) => item.id === ref.connectorId);
+        if (!connector) continue;
+        const materialPoint = getMaterialEndpointPoint(material, endpoint);
+        const connectorPoint = getConnectorPinHandlePosition(connector, ref.connectorSide, ref.pin);
+        const center = {
+          x: (materialPoint.x + connectorPoint.x) / 2,
+          y: (materialPoint.y + connectorPoint.y) / 2,
+        };
+        const distance = Math.hypot(center.x - flowPosition.x, center.y - flowPosition.y);
+        if (!best || distance < best.distance) {
+          best = { distance, center };
+        }
+      }
+    }
+  }
+
+  const center = best?.center ?? flowPosition;
+  return {
+    x: center.x - CANVAS_MODEL_SIZE / 2,
+    y: center.y - CANVAS_MODEL_SIZE / 2,
+  };
+}
+
 // ============================================================
 // Edge generation from config
 // ============================================================
 
 function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge[] {
   const edges: Edge[] = [];
+  const modelRects = config.models.map(getModelRect);
+  const numberTubeRenderedMaterialIds = new Set<string>();
 
   // Material circuit edges
   for (const material of config.materials) {
     for (const circuit of material.circuits) {
       if (circuit.start) {
+        const connector = config.connectors.find((item) => item.id === circuit.start?.connectorId);
+        const hiddenByModel = connector
+          ? modelRects.some((rect) =>
+              segmentIntersectsRect(
+                getMaterialEndpointPoint(material, 'start'),
+                getConnectorPinHandlePosition(connector, circuit.start!.connectorSide, circuit.start!.pin),
+                rect,
+              ))
+          : false;
         const edgeId = `${circuit.id}:start`;
-        edges.push({
-          id: edgeId,
-          source: material.id,
-          sourceHandle: 'start',
-          target: circuit.start.connectorId,
-          targetHandle: `${circuit.start.connectorSide}-pin-${circuit.start.pin}`,
-          type: 'attachment',
-          data: {
-            materialId: material.id,
-            circuitId: circuit.id,
-            side: 'start' as const,
-            solid: material.spec.kind === 'jacketed',
-          },
-          selected: canvasSelection === edgeId,
-          reconnectable: 'target',
-        });
+        if (!hiddenByModel) {
+          const showNumberTubes = !numberTubeRenderedMaterialIds.has(material.id) && (material.numberTubes?.length ?? 0) > 0;
+          if (showNumberTubes) numberTubeRenderedMaterialIds.add(material.id);
+          edges.push({
+            id: edgeId,
+            source: material.id,
+            sourceHandle: 'start',
+            target: circuit.start.connectorId,
+            targetHandle: `${circuit.start.connectorSide}-pin-${circuit.start.pin}`,
+            type: 'attachment',
+            data: {
+              materialId: material.id,
+              circuitId: circuit.id,
+              side: 'start' as const,
+              solid: material.spec.kind === 'jacketed',
+              numberTubes: showNumberTubes ? material.numberTubes : undefined,
+            },
+            selected: canvasSelection === edgeId,
+            reconnectable: 'target',
+          });
+        }
       }
       if (circuit.end) {
+        const connector = config.connectors.find((item) => item.id === circuit.end?.connectorId);
+        const hiddenByModel = connector
+          ? modelRects.some((rect) =>
+              segmentIntersectsRect(
+                getMaterialEndpointPoint(material, 'end'),
+                getConnectorPinHandlePosition(connector, circuit.end!.connectorSide, circuit.end!.pin),
+                rect,
+              ))
+          : false;
         const edgeId = `${circuit.id}:end`;
-        edges.push({
-          id: edgeId,
-          source: material.id,
-          sourceHandle: 'end',
-          target: circuit.end.connectorId,
-          targetHandle: `${circuit.end.connectorSide}-pin-${circuit.end.pin}`,
-          type: 'attachment',
-          data: {
-            materialId: material.id,
-            circuitId: circuit.id,
-            side: 'end' as const,
-            solid: material.spec.kind === 'jacketed',
-          },
-          selected: canvasSelection === edgeId,
-          reconnectable: 'target',
-        });
+        if (!hiddenByModel) {
+          const showNumberTubes = !numberTubeRenderedMaterialIds.has(material.id) && (material.numberTubes?.length ?? 0) > 0;
+          if (showNumberTubes) numberTubeRenderedMaterialIds.add(material.id);
+          edges.push({
+            id: edgeId,
+            source: material.id,
+            sourceHandle: 'end',
+            target: circuit.end.connectorId,
+            targetHandle: `${circuit.end.connectorSide}-pin-${circuit.end.pin}`,
+            type: 'attachment',
+            data: {
+              materialId: material.id,
+              circuitId: circuit.id,
+              side: 'end' as const,
+              solid: material.spec.kind === 'jacketed',
+              numberTubes: showNumberTubes ? material.numberTubes : undefined,
+            },
+            selected: canvasSelection === edgeId,
+            reconnectable: 'target',
+          });
+        }
       }
     }
   }
@@ -294,6 +419,31 @@ function getElectronicMaterialGroups(materials: CanvasWireMaterial[]): Map<strin
   return result;
 }
 
+function nodeStyleEqual(
+  a: Node['style'] | undefined,
+  b: Node['style'] | undefined,
+) {
+  const aWidth = a && 'width' in a ? a.width : undefined;
+  const bWidth = b && 'width' in b ? b.width : undefined;
+  const aHeight = a && 'height' in a ? a.height : undefined;
+  const bHeight = b && 'height' in b ? b.height : undefined;
+  return aWidth === bWidth && aHeight === bHeight;
+}
+
+function canReuseNode(prev: Node | undefined, next: Node) {
+  if (!prev) return false;
+  return (
+    prev.type === next.type
+    && prev.selected === next.selected
+    && prev.dragHandle === next.dragHandle
+    && prev.zIndex === next.zIndex
+    && prev.position.x === next.position.x
+    && prev.position.y === next.position.y
+    && prev.data === next.data
+    && nodeStyleEqual(prev.style, next.style)
+  );
+}
+
 // ============================================================
 // Canvas Component
 // ============================================================
@@ -318,7 +468,7 @@ function HarnessCanvasInner() {
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
   const [sleeveDialog, setSleeveDialog] = useState<SleeveDialogState | null>(null);
-  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [modelDialogPosition, setModelDialogPosition] = useState<{ x: number; y: number } | null>(null);
   const [accessoryDialog, setAccessoryDialog] = useState<AccessoryDialogState | null>(null);
   const [pendingConnectionPoint, setPendingConnectionPoint] = useState<MaterialConnectionPoint | null>(null);
   const pendingConnectionPointRef = useRef<MaterialConnectionPoint | null>(null);
@@ -328,6 +478,7 @@ function HarnessCanvasInner() {
 
   const materials = config.materials ?? EMPTY_MATERIALS;
   const sleeves = config.protectiveSleeves ?? EMPTY_SLEEVES;
+  const models = config.models ?? EMPTY_MODELS;
 
   // Register the jumper context menu handler so ConnectorNode's jumper
   // SVG arcs can trigger this context menu (the arcs are drawn as node
@@ -378,9 +529,31 @@ function HarnessCanvasInner() {
       selected: canvasSelection === sleeve.id,
       zIndex: 4,
     }));
+    const modelNodes: Node[] = models.map((model) => ({
+      id: model.id,
+      type: 'model',
+      position: model.position,
+      data: model as unknown as Node['data'],
+      selected: selection.kind === 'model' && selection.id === model.id,
+      style: { width: model.width, height: model.height },
+      zIndex: 5,
+    }));
 
-    setNodes([...connectorNodes, ...materialNodes, ...sleeveNodes]);
-  }, [canvasSelection, config.connectors, materials, selection, setNodes, sleeves]);
+    const nextNodes = [...connectorNodes, ...materialNodes, ...sleeveNodes, ...modelNodes];
+    setNodes((previousNodes) => {
+      const previousById = new Map(previousNodes.map((node) => [node.id, node]));
+      return nextNodes.map((node) => {
+        const previous = previousById.get(node.id);
+        if (previous && canReuseNode(previous, node)) {
+          return previous;
+        }
+        if (previous) {
+          return { ...previous, ...node };
+        }
+        return node;
+      });
+    });
+  }, [canvasSelection, config.connectors, materials, models, selection, setNodes, sleeves]);
 
   // Build edges from circuits and jumpers
   useEffect(() => {
@@ -424,6 +597,10 @@ function HarnessCanvasInner() {
 
   const handleAddProtectiveSleeve = useCallback((materialId?: string) => {
     setSleeveDialog({ position: currentFlowPosition(), materialId });
+  }, [currentFlowPosition]);
+
+  const handleOpenModelDialog = useCallback(() => {
+    setModelDialogPosition(currentFlowPosition());
   }, [currentFlowPosition]);
 
   // --- Connection handling ---
@@ -745,6 +922,10 @@ function HarnessCanvasInner() {
           attachedMaterialIds: [],
         });
       }
+      return;
+    }
+    if (node.type === 'model') {
+      state.updateModel(node.id, { position: node.position });
     }
   }, [attachNearbyMaterialEndpoints, updateConnector]);
 
@@ -762,6 +943,11 @@ function HarnessCanvasInner() {
     }
     if (node.type === 'sleeve') {
       setSelection({ kind: 'sleeve', id: node.id });
+      setCanvasSelection(node.id);
+      return;
+    }
+    if (node.type === 'model') {
+      setSelection({ kind: 'model', id: node.id });
       setCanvasSelection(node.id);
       return;
     }
@@ -806,6 +992,12 @@ function HarnessCanvasInner() {
       setCanvasSelection(node.id);
       setSelection({ kind: 'sleeve', id: node.id });
       setContextMenu({ x: event.clientX, y: event.clientY, kind: 'sleeve', sleeveId: node.id });
+      return;
+    }
+    if (node.type === 'model') {
+      setCanvasSelection(node.id);
+      setSelection({ kind: 'model', id: node.id });
+      setContextMenu({ x: event.clientX, y: event.clientY, kind: 'model', modelId: node.id });
       return;
     }
     setSelection({ kind: 'connector', id: node.id });
@@ -890,7 +1082,7 @@ function HarnessCanvasInner() {
           onAddConnector={handleAddConnector}
           onAddCanvasWire={handleAddCanvasWire}
           onAddProtectiveSleeve={handleAddProtectiveSleeve}
-          onAddModel={() => setModelDialogOpen(true)}
+          onAddModel={handleOpenModelDialog}
           onAddMaterialLabel={(materialId) => setAccessoryDialog({ materialId, kind: 'label' })}
           onAddMaterialNumberTube={(materialId) => setAccessoryDialog({ materialId, kind: 'number-tube' })}
           onEditConnector={(id) => setSelection({ kind: 'connector', id })}
@@ -927,6 +1119,10 @@ function HarnessCanvasInner() {
           }}
           onDeleteSleeve={(id) => {
             useHarnessStore.getState().removeProtectiveSleeve(id);
+            setCanvasSelection(null);
+          }}
+          onDeleteModel={(id) => {
+            useHarnessStore.getState().removeModel(id);
             setCanvasSelection(null);
           }}
           onDetachEndpoint={handleDetachEndpoint}
@@ -1017,7 +1213,25 @@ function HarnessCanvasInner() {
         }}
       />
 
-      {modelDialogOpen && <CanvasModelDialog onClose={() => setModelDialogOpen(false)} />}
+      {modelDialogPosition && (
+        <CanvasModelDialog
+          onClose={() => setModelDialogPosition(null)}
+          onConfirm={() => {
+            const state = useHarnessStore.getState();
+            const model: CanvasModel = {
+              id: generateId(),
+              kind: 'outer-box',
+              position: findModelPlacement(state.config, modelDialogPosition),
+              width: CANVAS_MODEL_SIZE,
+              height: CANVAS_MODEL_SIZE,
+            };
+            state.addModel(model);
+            setSelection({ kind: 'model', id: model.id });
+            setCanvasSelection(model.id);
+            setModelDialogPosition(null);
+          }}
+        />
+      )}
 
       {accessoryDialog && (() => {
         const material = materials.find((item) => item.id === accessoryDialog.materialId);
