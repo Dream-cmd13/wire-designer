@@ -6,6 +6,7 @@ import {
   addConnectorJumper,
   changeConnectorPart,
   getActiveConnectorSide,
+  updateMaterialCircuit,
   type AttachEndpointInput,
 } from '@/lib/commands';
 import { CONNECTORS } from '@/lib/data';
@@ -402,5 +403,36 @@ describe('reassignMaterialEndpoint', () => {
     });
 
     expect(result).toBe(original);
+  });
+});
+
+describe('updateMaterialCircuit', () => {
+  it('keeps electronic material spec color in sync across all circuits', () => {
+    let config = makeTestConfig();
+
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      endpoint: 'start',
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 1,
+    });
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      endpoint: 'start',
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 2,
+    });
+
+    const targetCircuitId = config.materials[0].circuits[1].id;
+    const result = updateMaterialCircuit(config, 'mat-1', targetCircuitId, { color: 'blue' });
+
+    expect(result.materials[0].spec.kind).toBe('electronic');
+    if (result.materials[0].spec.kind !== 'electronic') return;
+
+    expect(result.materials[0].spec.color).toBe('blue');
+    expect(result.materials[0].circuits).toHaveLength(2);
+    expect(result.materials[0].circuits.every((circuit) => circuit.color === 'blue')).toBe(true);
   });
 });

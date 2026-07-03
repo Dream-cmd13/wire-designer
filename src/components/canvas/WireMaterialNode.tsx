@@ -66,7 +66,7 @@ function connectorRefs(circuit: MaterialCircuit | undefined, connectorId: string
 function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   const [detailsOpen, setDetailsOpen] = useState(data.expandedByDefault ?? false);
   const previousCircuitCountRef = useRef(0);
-  const { config, updateMaterial } = useHarnessStore();
+  const { config } = useHarnessStore();
 
   const spec = data.spec;
   const isElectronic = spec.kind === 'electronic';
@@ -141,13 +141,6 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   const handleRemoveCircuit = (materialId: string, circuitId: string) => {
     const state = useHarnessStore.getState();
     state.replaceDocument(removeMaterialCircuit(state.config, materialId, circuitId));
-  };
-
-  const syncMaterialColor = (material: CanvasWireMaterial, nextColor: string) => {
-    if (material.spec.kind !== 'electronic' || material.spec.color === nextColor) return;
-    updateMaterial(material.id, {
-      spec: { ...material.spec, color: nextColor },
-    });
   };
 
   const materialColumnWidth = estimateColumnWidth(
@@ -323,7 +316,6 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                           onChange={(event) => {
                             const nextColor = event.target.value;
                             handleUpdateCircuit(row.material.id, circuit.id, { color: nextColor });
-                            if (row.material.circuits.length === 1) syncMaterialColor(row.material, nextColor);
                           }}
                           className="absolute inset-0 cursor-pointer opacity-0"
                         >

@@ -580,14 +580,27 @@ export function updateMaterialCircuit(
   circuitId: string,
   patch: Partial<Pick<MaterialCircuit, 'color' | 'signalName' | 'route'>>,
 ): HarnessConfig {
+  const material = config.materials.find((m) => m.id === materialId);
+  if (!material) return config;
+
+  const syncElectronicColor = material.spec.kind === 'electronic' && typeof patch.color === 'string';
+
   return {
     ...config,
     materials: config.materials.map((m) =>
       m.id === materialId
         ? {
             ...m,
+            spec: syncElectronicColor
+              ? {
+                  ...m.spec,
+                  color: patch.color!,
+                }
+              : m.spec,
             circuits: m.circuits.map((c) =>
-              c.id === circuitId ? { ...c, ...patch } : c,
+              syncElectronicColor
+                ? { ...c, ...patch, color: patch.color! }
+                : (c.id === circuitId ? { ...c, ...patch } : c),
             ),
           }
         : m,
