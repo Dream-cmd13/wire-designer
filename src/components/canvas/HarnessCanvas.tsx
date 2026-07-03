@@ -565,6 +565,30 @@ function applyNodePositionsToConfig(
   config: HarnessConfig,
   positions: Map<string, { x: number; y: number }>,
 ) {
+  const nextMaterials = config.materials.map((material) =>
+    positions.has(material.id)
+      ? { ...material, position: positions.get(material.id)! }
+      : material,
+  );
+  const nextProtectiveSleeves = config.protectiveSleeves.map((sleeve) => {
+    const attachedMaterials = sleeve.attachedMaterialIds
+      .map((materialId) => nextMaterials.find((material) => material.id === materialId))
+      .filter((material): material is CanvasWireMaterial => Boolean(material));
+    const placement = placeSleeveAroundMaterials(attachedMaterials, sleeve.width);
+    if (!placement) {
+      return {
+        ...sleeve,
+        attachedMaterialIds: [],
+        height: sleeve.height || 36,
+      };
+    }
+    return {
+      ...sleeve,
+      position: placement.position,
+      height: placement.height,
+    };
+  });
+
   return {
     ...config,
     connectors: config.connectors.map((connector) =>
@@ -572,11 +596,8 @@ function applyNodePositionsToConfig(
         ? { ...connector, position: positions.get(connector.id)! }
         : connector,
     ),
-    materials: config.materials.map((material) =>
-      positions.has(material.id)
-        ? { ...material, position: positions.get(material.id)! }
-        : material,
-    ),
+    materials: nextMaterials,
+    protectiveSleeves: nextProtectiveSleeves,
     models: config.models.map((model) =>
       positions.has(model.id)
         ? { ...model, position: positions.get(model.id)! }
@@ -584,6 +605,38 @@ function applyNodePositionsToConfig(
     ),
     updatedAt: Date.now(),
   };
+}
+
+function getSleevePreviewUpdates(
+  config: HarnessConfig,
+  positions: Map<string, { x: number; y: number }>,
+) {
+  const nextMaterials = config.materials.map((material) =>
+    positions.has(material.id)
+      ? { ...material, position: positions.get(material.id)! }
+      : material,
+  );
+
+  return new Map(
+    config.protectiveSleeves.map((sleeve) => {
+      const attachedMaterials = sleeve.attachedMaterialIds
+        .map((materialId) => nextMaterials.find((material) => material.id === materialId))
+        .filter((material): material is CanvasWireMaterial => Boolean(material));
+      const placement = placeSleeveAroundMaterials(attachedMaterials, sleeve.width);
+      return [
+        sleeve.id,
+        placement
+          ? {
+              position: placement.position,
+              height: placement.height,
+            }
+          : {
+              position: sleeve.position,
+              height: sleeve.height || 36,
+            },
+      ] as const;
+    }),
+  );
 }
 
 function HarnessCanvasInner() {
@@ -1086,25 +1139,65 @@ function HarnessCanvasInner() {
 
   const onNodeDrag: OnNodeDrag = useCallback((_, node) => {
     const dragGroup = dragGroupRef.current;
-    if (!dragGroup || dragGroup.draggedNodeId !== node.id) return;
-    const draggedInitialPosition = dragGroup.initialPositions.get(node.id);
-    if (!draggedInitialPosition) return;
+    if (dragGroup && dragGroup.draggedNodeId === node.id) {
+      const draggedInitialPosition = dragGroup.initialPositions.get(node.id);
+      if (!draggedInitialPosition) return;
 
-    const deltaX = node.position.x - draggedInitialPosition.x;
-    const deltaY = node.position.y - draggedInitialPosition.y;
-
-    setNodes((currentNodes) => currentNodes.map((currentNode) => {
-      if (!dragGroup.nodeIds.includes(currentNode.id)) return currentNode;
-      const initialPosition = dragGroup.initialPositions.get(currentNode.id);
-      if (!initialPosition) return currentNode;
-      return {
-        ...currentNode,
-        position: {
+      const deltaX = node.position.x - draggedInitialPosition.x;
+      const deltaY = node.position.y - draggedInitialPosition.y;
+      const positionOverrides = new Map<string, { x: number; y: number }>();
+      for (const currentNodeId of dragGroup.nodeIds) {
+        const initialPosition = dragGroup.initialPositions.get(currentNodeId);
+        if (!initialPosition) continue;
+        positionOverrides.set(currentNodeId, {
           x: initialPosition.x + deltaX,
           y: initialPosition.y + deltaY,
-        },
-      };
-    }));
+        });
+      }
+      const sleevePreviewUpdates = getSleevePreviewUpdates(useHarnessStore.getState().config, positionOverrides);
+
+      setNodes((currentNodes) => currentNodes.map((currentNode) => {
+        if (positionOverrides.has(currentNode.id)) {
+          return {
+            ...currentNode,
+            position: positionOverrides.get(currentNode.id)!,
+          };
+        }
+        const sleevePreview = sleevePreviewUpdates.get(currentNode.id);
+        if (currentNode.type === 'sleeve' && sleevePreview) {
+          return {
+            ...currentNode,
+            position: sleevePreview.position,
+            data: {
+              ...(currentNode.data as Record<string, unknown>),
+              height: sleevePreview.height,
+            },
+          };
+        }
+        return currentNode;
+      }));
+      return;
+    }
+
+    if (node.type === 'material') {
+      const positionOverrides = new Map<string, { x: number; y: number }>([[node.id, node.position]]);
+      const sleevePreviewUpdates = getSleevePreviewUpdates(useHarnessStore.getState().config, positionOverrides);
+      if (sleevePreviewUpdates.size === 0) return;
+      setNodes((currentNodes) => currentNodes.map((currentNode) => {
+        const sleevePreview = sleevePreviewUpdates.get(currentNode.id);
+        if (currentNode.type === 'sleeve' && sleevePreview) {
+          return {
+            ...currentNode,
+            position: sleevePreview.position,
+            data: {
+              ...(currentNode.data as Record<string, unknown>),
+              height: sleevePreview.height,
+            },
+          };
+        }
+        return currentNode;
+      }));
+    }
   }, [setNodes]);
 
   const onNodeDragStop: OnNodeDrag = useCallback((_, node) => {
