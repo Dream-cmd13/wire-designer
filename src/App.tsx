@@ -78,7 +78,7 @@ export default function App() {
       markSaving();
       const latestConfig = useHarnessStore.getState().config;
       saveCurrentConfig(latestConfig);
-      updateProject(currentProject.id, { updatedAt: Date.now() });
+      updateProject(currentProject.id, { name: latestConfig.name });
       markSaved();
     } catch (error) {
       markSaveError(error instanceof Error ? error.message : '保存失败');
@@ -180,6 +180,9 @@ export default function App() {
 
     if (loadedConfig) {
       replaceDocument(loadedConfig, { markSaved: true });
+      if (loadedConfig.name !== project.name) {
+        updateProject(project.id, { name: loadedConfig.name });
+      }
       setLoadError(null);
       setSaveBlocked(false);
     } else {

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Settings2, Plug, Cable, Layers3, AlertTriangle, AlertCircle, Info } from 'lucide-react';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { validateHarness } from '@/lib/validation';
 import { PropertyInspector } from './PropertyInspector';
 import type { ValidationIssue } from '@/types/harness';
@@ -9,6 +10,8 @@ export function ConfigPanel() {
   const config = useHarnessStore((s) => s.config);
   const selection = useHarnessStore((s) => s.selection);
   const setSelection = useHarnessStore((s) => s.setSelection);
+  const currentProject = useProjectStore((s) => s.currentProject);
+  const updateProject = useProjectStore((s) => s.updateProject);
 
   const hasSelection = selection.kind !== 'none';
   const inspectorKey = selection.kind === 'none' ? 'none' : `${selection.kind}:${selection.id}`;
@@ -40,7 +43,13 @@ export function ConfigPanel() {
         <input
           type="text"
           value={config.name}
-          onChange={(event) => useHarnessStore.getState().setConfig({ name: event.target.value })}
+          onChange={(event) => {
+            const nextName = event.target.value;
+            useHarnessStore.getState().setConfig({ name: nextName });
+            if (currentProject && currentProject.name !== nextName) {
+              updateProject(currentProject.id, { name: nextName });
+            }
+          }}
           className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>

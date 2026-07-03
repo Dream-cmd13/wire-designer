@@ -86,7 +86,18 @@ export const useProjectStore = create<ProjectState>()(
         return newProject;
       },
 
-      updateProject: (id, updates) =>
+      updateProject: (id, updates) => {
+        if (typeof updates.name === 'string') {
+          const config = loadProjectConfig(id);
+          if (config && config.name !== updates.name) {
+            saveProjectConfig(id, {
+              ...config,
+              name: updates.name,
+              updatedAt: Date.now(),
+            });
+          }
+        }
+
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p
@@ -95,7 +106,8 @@ export const useProjectStore = create<ProjectState>()(
             state.currentProject?.id === id
               ? { ...state.currentProject, ...updates, updatedAt: Date.now() }
               : state.currentProject,
-        })),
+        }));
+      },
 
       deleteProject: (id) => {
         deleteProjectConfig(id);
