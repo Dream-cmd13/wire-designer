@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { ConnectorInstance } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { CONNECTOR_NODE_WIDTH } from '@/lib/canvasMaterials';
 import { WIRE_COLORS } from '@/lib/data';
 import { showJumperContextMenu } from './jumperContextMenu';
 import { selectMaterialConnectionPoint } from './materialConnectionClick';
@@ -49,7 +50,7 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
       className={`bg-white border-2 rounded-lg shadow-sm transition-all ${
         selected ? 'border-blue-500 shadow-md' : 'border-slate-300'
       }`}
-      style={{ width: 200, minHeight: nodeHeight }}
+      style={{ width: CONNECTOR_NODE_WIDTH, minHeight: nodeHeight }}
     >
       {/* Header */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-100">

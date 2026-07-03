@@ -19,6 +19,9 @@ import type {
   MaterialCircuit,
   MaterialEndpoint,
 } from '@/types/harness';
+import {
+  openMaterialAccessoryContextMenu,
+} from './materialAccessoryEvents';
 import { selectMaterialConnectionPoint } from './materialConnectionClick';
 
 export interface WireMaterialNodeData extends CanvasWireMaterial {
@@ -46,6 +49,11 @@ function materialDescription(material: CanvasWireMaterial): string {
   return spec.kind === 'electronic'
     ? `UL${spec.ulNumber} · ${spec.awg}AWG · ${spec.lengthMm}mm`
     : `${spec.jacketMaterial} · ${spec.coreCount}芯 · ${spec.lengthMm}mm · OD ${spec.odMm.toFixed(2)}mm${spec.ulNumber ? ` · ${spec.ulNumber}` : ''}`;
+}
+
+function estimateColumnWidth(values: string[], minWidth: number, maxWidth: number, charWidth = 6.4) {
+  const longest = values.reduce((max, value) => Math.max(max, value.length), 0);
+  return Math.min(maxWidth, Math.max(minWidth, Math.round(longest * charWidth)));
 }
 
 function connectorRefs(circuit: MaterialCircuit | undefined, connectorId: string) {
@@ -142,15 +150,22 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
     });
   };
 
-  const materialColumnWidth = Math.min(
+  const materialColumnWidth = estimateColumnWidth(
+    ['线材', ...detailMaterials.map((material) => materialDescription(material))],
+    110,
     280,
-    Math.max(
-      160,
-      ...detailMaterials.map((material) => Math.round(materialDescription(material).length * 6.4)),
-    ),
   );
-  const panelWidth = Math.max(340, materialColumnWidth + connectorColumns.length * 82 + 42 + 92 + 22);
-  const gridColumns = `${materialColumnWidth}px ${connectorColumns.map(() => '76px').join(' ')} 36px minmax(82px, 1fr) 18px`;
+  const signalDefinitionColumnWidth = estimateColumnWidth(
+    ['接线定义', ...rows.map((row) => row.circuit?.signalName?.trim() || '')],
+    56,
+    180,
+    7.2,
+  );
+  const panelWidth = Math.max(
+    300,
+    materialColumnWidth + connectorColumns.length * 82 + 42 + signalDefinitionColumnWidth + 22,
+  );
+  const gridColumns = `${materialColumnWidth}px ${connectorColumns.map(() => '76px').join(' ')} 36px ${signalDefinitionColumnWidth}px 18px`;
   const detailTitle = electronicMaterialCount > 0
     ? `${electronicMaterialCount} 条电子线`
     : `${Math.max(jacketedMaterialCount, detailMaterials.length || 1)} 条护套线`;
@@ -186,9 +201,26 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
       {data.labels?.length ? (
         <div className="pointer-events-none absolute bottom-full left-1/2 mb-0.5 flex -translate-x-1/2 gap-1 whitespace-nowrap">
           {data.labels.map((label) => (
-            <span key={label.id} title={`${label.material} · ${label.lengthMm}mm`} className="rounded bg-amber-100 px-1 text-[8px] text-amber-800">
+            <button
+              key={label.id}
+              type="button"
+              title={`${label.material} · ${label.lengthMm}mm`}
+              onMouseDown={(event) => event.stopPropagation()}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openMaterialAccessoryContextMenu({
+                  x: event.clientX,
+                  y: event.clientY,
+                  materialId: data.id,
+                  kind: 'label',
+                  accessoryId: label.id,
+                });
+              }}
+              className="pointer-events-auto rounded bg-amber-100 px-1 text-[8px] text-amber-800 hover:bg-amber-200"
+            >
               <Tag className="mr-0.5 inline h-2 w-2" />{label.content}
-            </span>
+            </button>
           ))}
         </div>
       ) : null}

@@ -93,6 +93,7 @@ export const CANVAS_MATERIAL_SLEEVE_CENTER_Y =
 export const PROTECTIVE_SLEEVE_HEIGHT = 36;
 export const PROTECTIVE_SLEEVE_VERTICAL_PADDING = 8;
 export const CANVAS_MODEL_SIZE = 84;
+export const CONNECTOR_NODE_WIDTH = 236;
 
 /** Unified mm → canvas-px scale used by both wire materials and protective sleeves. */
 export function lengthMmToCanvasWidth(lengthMm: number): number {

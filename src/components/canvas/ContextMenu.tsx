@@ -12,16 +12,22 @@ import {
   Tag,
   Trash2,
 } from 'lucide-react';
+import type { MaterialAccessoryKind } from './MaterialAccessoryDialog';
 
 export interface ContextMenuState {
   x: number;
   y: number;
-  kind: 'pane' | 'connector' | 'material' | 'sleeve' | 'model' | 'attachment' | 'jumper';
+  kind: 'pane' | 'connector' | 'material' | 'sleeve' | 'model' | 'attachment' | 'jumper' | 'accessory';
   connectorId?: string;
   materialId?: string;
   sleeveId?: string;
   modelId?: string;
   attachmentId?: string;
+  attachmentMaterialId?: string;
+  attachmentCircuitId?: string;
+  attachmentEndpoint?: 'start' | 'end';
+  accessoryKind?: MaterialAccessoryKind;
+  accessoryId?: string;
   jumperId?: string;
   flowPosition?: { x: number; y: number };
 }
@@ -44,6 +50,23 @@ interface ContextMenuProps {
   onEditSleeve: (sleeveId: string) => void;
   onDeleteSleeve: (sleeveId: string) => void;
   onDeleteModel: (modelId: string) => void;
+  onAddAttachmentNumberTube: (
+    materialId: string,
+    circuitId?: string,
+    endpoint?: 'start' | 'end',
+  ) => void;
+  onEditAccessory: (
+    materialId: string,
+    kind: MaterialAccessoryKind,
+    accessoryId: string,
+    circuitId?: string,
+    endpoint?: 'start' | 'end',
+  ) => void;
+  onDeleteAccessory: (
+    materialId: string,
+    kind: MaterialAccessoryKind,
+    accessoryId: string,
+  ) => void;
   onDetachEndpoint: (attachmentId: string) => void;
   onDeleteJumper: (jumperId: string) => void;
   onFitView: () => void;
@@ -100,6 +123,9 @@ export function ContextMenu({
   onEditSleeve,
   onDeleteSleeve,
   onDeleteModel,
+  onAddAttachmentNumberTube,
+  onEditAccessory,
+  onDeleteAccessory,
   onDetachEndpoint,
   onDeleteJumper,
   onFitView,
@@ -198,7 +224,56 @@ export function ContextMenu({
       )}
 
       {state.kind === 'attachment' && state.attachmentId && (
-        <MenuItem icon={<Trash2 className="h-4 w-4" />} label="断开连接" onClick={menuAction(() => onDetachEndpoint(state.attachmentId!), onClose)} destructive />
+        <>
+          {state.attachmentMaterialId && (
+            <MenuItem
+              icon={<Hash className="h-4 w-4" />}
+              label="添加号码管"
+              onClick={menuAction(
+                () => onAddAttachmentNumberTube(
+                  state.attachmentMaterialId!,
+                  state.attachmentCircuitId,
+                  state.attachmentEndpoint,
+                ),
+                onClose,
+              )}
+            />
+          )}
+          <MenuItem icon={<Trash2 className="h-4 w-4" />} label="断开连接" onClick={menuAction(() => onDetachEndpoint(state.attachmentId!), onClose)} destructive />
+        </>
+      )}
+
+      {state.kind === 'accessory' && state.materialId && state.accessoryKind && state.accessoryId && (
+        <>
+          <MenuItem
+            icon={<Edit3 className="h-4 w-4" />}
+            label={state.accessoryKind === 'label' ? '编辑标签' : '编辑号码管'}
+            onClick={menuAction(
+              () => onEditAccessory(
+                state.materialId!,
+                state.accessoryKind!,
+                state.accessoryId!,
+                state.attachmentCircuitId,
+                state.attachmentEndpoint,
+              ),
+              onClose,
+            )}
+          />
+          <div className="my-1 border-t border-slate-100" />
+          <MenuItem
+            icon={<Trash2 className="h-4 w-4" />}
+            label={state.accessoryKind === 'label' ? '删除标签' : '删除号码管'}
+            onClick={menuAction(
+              () => onDeleteAccessory(
+                state.materialId!,
+                state.accessoryKind!,
+                state.accessoryId!,
+              ),
+              onClose,
+            )}
+            destructive
+          />
+        </>
       )}
 
       {state.kind === 'jumper' && state.jumperId && (

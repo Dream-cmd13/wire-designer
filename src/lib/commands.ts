@@ -578,7 +578,7 @@ export function updateMaterialCircuit(
   config: HarnessConfig,
   materialId: string,
   circuitId: string,
-  patch: Partial<Pick<MaterialCircuit, 'color' | 'signalName'>>,
+  patch: Partial<Pick<MaterialCircuit, 'color' | 'signalName' | 'route'>>,
 ): HarnessConfig {
   return {
     ...config,

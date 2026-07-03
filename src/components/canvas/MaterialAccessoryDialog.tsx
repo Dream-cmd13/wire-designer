@@ -1,23 +1,31 @@
 import { useState } from 'react';
-import { Check, Hash, Tag, X } from 'lucide-react';
+import { Check, Hash, Tag, Trash2, X } from 'lucide-react';
 
 export type MaterialAccessoryKind = 'label' | 'number-tube';
 
 export function MaterialAccessoryDialog({
   kind,
   materialName,
+  initialContent = '',
+  initialLengthMm,
+  editing = false,
   onCancel,
   onConfirm,
+  onDelete,
 }: {
   kind: MaterialAccessoryKind;
   materialName: string;
+  initialContent?: string;
+  initialLengthMm?: number;
+  editing?: boolean;
   onCancel: () => void;
   onConfirm: (content: string, lengthMm: number) => void;
+  onDelete?: () => void;
 }) {
-  const [content, setContent] = useState('');
-  const [lengthMm, setLengthMm] = useState(kind === 'label' ? 30 : 20);
-  const [error, setError] = useState<string | null>(null);
   const isLabel = kind === 'label';
+  const [content, setContent] = useState(initialContent);
+  const [lengthMm, setLengthMm] = useState(initialLengthMm ?? (isLabel ? 30 : 20));
+  const [error, setError] = useState<string | null>(null);
 
   const submit = () => {
     if (!content.trim()) {
@@ -25,7 +33,7 @@ export function MaterialAccessoryDialog({
       return;
     }
     if (!Number.isFinite(lengthMm) || lengthMm <= 0) {
-      setError('长度必须是大于 0 的数字');
+      setError('长度必须大于 0');
       return;
     }
     onConfirm(content.trim(), lengthMm);
@@ -41,7 +49,7 @@ export function MaterialAccessoryDialog({
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">
-                {isLabel ? '添加标签' : '添加号码管'}
+                {editing ? (isLabel ? '编辑标签' : '编辑号码管') : (isLabel ? '添加标签' : '添加号码管')}
               </h2>
               <p className="text-xs text-slate-500">应用到线材：{materialName}</p>
             </div>
@@ -76,7 +84,7 @@ export function MaterialAccessoryDialog({
             />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-slate-600">长度（mm）</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-600">长度 (mm)</span>
             <input
               type="number"
               min="1"
@@ -91,14 +99,28 @@ export function MaterialAccessoryDialog({
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3">
-          <button type="button" onClick={onCancel} className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-200">
-            取消
-          </button>
-          <button type="button" onClick={submit} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-            <Check className="h-4 w-4" />
-            确定
-          </button>
+        <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3">
+          <div>
+            {editing && onDelete && (
+              <button
+                type="button"
+                onClick={onDelete}
+                className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                删除
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={onCancel} className="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-200">
+              取消
+            </button>
+            <button type="button" onClick={submit} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              <Check className="h-4 w-4" />
+              确定
+            </button>
+          </div>
         </div>
       </div>
     </div>

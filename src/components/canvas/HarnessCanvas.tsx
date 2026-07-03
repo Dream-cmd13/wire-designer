@@ -29,6 +29,7 @@ import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMateria
 import {
   CANVAS_MODEL_SIZE,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+  CONNECTOR_NODE_WIDTH,
   createDefaultCanvasMaterial,
   lengthMmToCanvasWidth,
   placeSleeveAroundMaterials,
@@ -58,6 +59,10 @@ import {
   MaterialAccessoryDialog,
   type MaterialAccessoryKind,
 } from './MaterialAccessoryDialog';
+import {
+  setMaterialAccessoryContextMenuHandler,
+  setMaterialAccessoryDialogHandler,
+} from './materialAccessoryEvents';
 import {
   setMaterialConnectionPointHandler,
   type MaterialConnectionPoint,
@@ -124,7 +129,7 @@ function getConnectorPinHandlePosition(
 ): { x: number; y: number } {
   const clampedPin = Math.max(1, Math.min(pin, getVisiblePinCount(instance)));
   return {
-    x: instance.position.x + (side === 'left' ? 0 : 200),
+    x: instance.position.x + (side === 'left' ? 0 : CONNECTOR_NODE_WIDTH),
     y: instance.position.y + 52 + (clampedPin - 0.5) * 20,
   };
 }
@@ -271,7 +276,7 @@ function findModelPlacement(
 function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge[] {
   const edges: Edge[] = [];
   const modelRects = config.models.map(getModelRect);
-  const numberTubeRenderedMaterialIds = new Set<string>();
+  const legacyNumberTubeRenderedMaterialIds = new Set<string>();
 
   // Material circuit edges
   for (const material of config.materials) {
@@ -288,8 +293,12 @@ function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge
           : false;
         const edgeId = `${circuit.id}:start`;
         if (!hiddenByModel) {
-          const showNumberTubes = !numberTubeRenderedMaterialIds.has(material.id) && (material.numberTubes?.length ?? 0) > 0;
-          if (showNumberTubes) numberTubeRenderedMaterialIds.add(material.id);
+          const numberTubes = getAttachmentNumberTubes(
+            material,
+            circuit.id,
+            'start',
+            legacyNumberTubeRenderedMaterialIds,
+          );
           edges.push({
             id: edgeId,
             source: material.id,
@@ -301,8 +310,9 @@ function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge
               materialId: material.id,
               circuitId: circuit.id,
               side: 'start' as const,
+              routeOffset: circuit.route?.start,
               solid: material.spec.kind === 'jacketed',
-              numberTubes: showNumberTubes ? material.numberTubes : undefined,
+              numberTubes: numberTubes.length > 0 ? numberTubes : undefined,
             },
             selected: canvasSelection === edgeId,
             reconnectable: 'target',
@@ -321,8 +331,12 @@ function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge
           : false;
         const edgeId = `${circuit.id}:end`;
         if (!hiddenByModel) {
-          const showNumberTubes = !numberTubeRenderedMaterialIds.has(material.id) && (material.numberTubes?.length ?? 0) > 0;
-          if (showNumberTubes) numberTubeRenderedMaterialIds.add(material.id);
+          const numberTubes = getAttachmentNumberTubes(
+            material,
+            circuit.id,
+            'end',
+            legacyNumberTubeRenderedMaterialIds,
+          );
           edges.push({
             id: edgeId,
             source: material.id,
@@ -334,8 +348,9 @@ function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge
               materialId: material.id,
               circuitId: circuit.id,
               side: 'end' as const,
+              routeOffset: circuit.route?.end,
               solid: material.spec.kind === 'jacketed',
-              numberTubes: showNumberTubes ? material.numberTubes : undefined,
+              numberTubes: numberTubes.length > 0 ? numberTubes : undefined,
             },
             selected: canvasSelection === edgeId,
             reconnectable: 'target',
@@ -457,6 +472,118 @@ interface SleeveDialogState {
 interface AccessoryDialogState {
   materialId: string;
   kind: MaterialAccessoryKind;
+  accessoryId?: string;
+  circuitId?: string;
+  endpoint?: MaterialEndpoint;
+}
+
+function getAttachmentNumberTubes(
+  material: CanvasWireMaterial,
+  circuitId: string,
+  endpoint: MaterialEndpoint,
+  legacyRenderedMaterialIds: Set<string>,
+) {
+  const numberTubes = material.numberTubes ?? [];
+  const boundNumberTubes = numberTubes.filter(
+    (tube) => tube.circuitId === circuitId && tube.endpoint === endpoint,
+  );
+  const legacyNumberTubes = numberTubes.filter((tube) => !tube.circuitId && !tube.endpoint);
+
+  if (legacyNumberTubes.length === 0 || legacyRenderedMaterialIds.has(material.id)) {
+    return boundNumberTubes;
+  }
+
+  legacyRenderedMaterialIds.add(material.id);
+  return [...boundNumberTubes, ...legacyNumberTubes];
+}
+
+interface ModelLinkedGroup {
+  modelId: string;
+  connectorIds: Set<string>;
+  materialIds: Set<string>;
+}
+
+function getModelLinkedGroups(config: HarnessConfig): ModelLinkedGroup[] {
+  return config.models.map((model) => {
+    const rect = getModelRect(model);
+    const connectorIds = new Set<string>();
+    const materialIds = new Set<string>();
+
+    for (const material of config.materials) {
+      for (const circuit of material.circuits) {
+        for (const endpoint of ['start', 'end'] as const) {
+          const ref = circuit[endpoint];
+          if (!ref) continue;
+          const connector = config.connectors.find((item) => item.id === ref.connectorId);
+          if (!connector) continue;
+          if (
+            segmentIntersectsRect(
+              getMaterialEndpointPoint(material, endpoint),
+              getConnectorPinHandlePosition(connector, ref.connectorSide, ref.pin),
+              rect,
+            )
+          ) {
+            materialIds.add(material.id);
+            connectorIds.add(connector.id);
+          }
+        }
+      }
+    }
+
+    return {
+      modelId: model.id,
+      connectorIds,
+      materialIds,
+    };
+  });
+}
+
+function getLinkedDragNodeIds(
+  config: HarnessConfig,
+  nodeId: string,
+  nodeType?: string,
+) {
+  const groups = getModelLinkedGroups(config);
+  const matchedGroups = groups.filter((group) =>
+    group.modelId === nodeId
+    || (nodeType === 'connector' && group.connectorIds.has(nodeId))
+    || (nodeType === 'material' && group.materialIds.has(nodeId)),
+  );
+
+  if (matchedGroups.length === 0) return [nodeId];
+
+  const linkedIds = new Set<string>([nodeId]);
+  for (const group of matchedGroups) {
+    linkedIds.add(group.modelId);
+    for (const connectorId of group.connectorIds) linkedIds.add(connectorId);
+    for (const materialId of group.materialIds) linkedIds.add(materialId);
+  }
+  return [...linkedIds];
+}
+
+function applyNodePositionsToConfig(
+  config: HarnessConfig,
+  positions: Map<string, { x: number; y: number }>,
+) {
+  return {
+    ...config,
+    connectors: config.connectors.map((connector) =>
+      positions.has(connector.id)
+        ? { ...connector, position: positions.get(connector.id)! }
+        : connector,
+    ),
+    materials: config.materials.map((material) =>
+      positions.has(material.id)
+        ? { ...material, position: positions.get(material.id)! }
+        : material,
+    ),
+    models: config.models.map((model) =>
+      positions.has(model.id)
+        ? { ...model, position: positions.get(model.id)! }
+        : model,
+    ),
+    updatedAt: Date.now(),
+  };
 }
 
 function HarnessCanvasInner() {
@@ -472,6 +599,12 @@ function HarnessCanvasInner() {
   const [accessoryDialog, setAccessoryDialog] = useState<AccessoryDialogState | null>(null);
   const [pendingConnectionPoint, setPendingConnectionPoint] = useState<MaterialConnectionPoint | null>(null);
   const pendingConnectionPointRef = useRef<MaterialConnectionPoint | null>(null);
+  const nodesRef = useRef<Node[]>([]);
+  const dragGroupRef = useRef<{
+    draggedNodeId: string;
+    nodeIds: string[];
+    initialPositions: Map<string, { x: number; y: number }>;
+  } | null>(null);
   const reconnectSucceeded = useRef(false);
   const hasAutoFitted = useRef(false);
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -488,6 +621,29 @@ function HarnessCanvasInner() {
       setContextMenu({ x, y, kind: 'jumper', jumperId });
     });
     return () => setJumperContextMenuHandler(null);
+  }, []);
+
+  useEffect(() => {
+    setMaterialAccessoryDialogHandler((request) => {
+      setAccessoryDialog(request);
+    });
+    return () => setMaterialAccessoryDialogHandler(null);
+  }, []);
+
+  useEffect(() => {
+    setMaterialAccessoryContextMenuHandler((request) => {
+      setContextMenu({
+        x: request.x,
+        y: request.y,
+        kind: 'accessory',
+        materialId: request.materialId,
+        accessoryKind: request.kind,
+        accessoryId: request.accessoryId,
+        attachmentCircuitId: request.circuitId,
+        attachmentEndpoint: request.endpoint,
+      });
+    });
+    return () => setMaterialAccessoryContextMenuHandler(null);
   }, []);
 
   // Build React Flow nodes from config.
@@ -542,7 +698,7 @@ function HarnessCanvasInner() {
     const nextNodes = [...connectorNodes, ...materialNodes, ...sleeveNodes, ...modelNodes];
     setNodes((previousNodes) => {
       const previousById = new Map(previousNodes.map((node) => [node.id, node]));
-      return nextNodes.map((node) => {
+      const resolvedNodes = nextNodes.map((node) => {
         const previous = previousById.get(node.id);
         if (previous && canReuseNode(previous, node)) {
           return previous;
@@ -552,6 +708,8 @@ function HarnessCanvasInner() {
         }
         return node;
       });
+      nodesRef.current = resolvedNodes;
+      return resolvedNodes;
     });
   }, [canvasSelection, config.connectors, materials, models, selection, setNodes, sleeves]);
 
@@ -559,6 +717,10 @@ function HarnessCanvasInner() {
   useEffect(() => {
     setEdges(buildEdges(config, canvasSelection));
   }, [config, canvasSelection, setEdges]);
+
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
 
   // Auto-fit view on first load
   useEffect(() => {
@@ -843,7 +1005,7 @@ function HarnessCanvasInner() {
           const distance = distanceToRect(point, {
             x: connector.position.x,
             y: connector.position.y,
-            width: 200,
+            width: CONNECTOR_NODE_WIDTH,
             height: getConnectorHeight(connector),
           });
           if (distance > 28) return undefined;
@@ -879,8 +1041,106 @@ function HarnessCanvasInner() {
     }
   }, []);
 
+  const handleDeleteAccessory = useCallback((
+    materialId: string,
+    kind: MaterialAccessoryKind,
+    accessoryId: string,
+  ) => {
+    const state = useHarnessStore.getState();
+    const current = state.config.materials.find((item) => item.id === materialId);
+    if (!current) return;
+    if (kind === 'label') {
+      state.updateMaterial(materialId, {
+        labels: (current.labels ?? []).filter((item) => item.id !== accessoryId),
+      });
+    } else {
+      state.updateMaterial(materialId, {
+        numberTubes: (current.numberTubes ?? []).filter((item) => item.id !== accessoryId),
+      });
+    }
+  }, []);
+
+  const onNodeDragStart: OnNodeDrag = useCallback((_, node) => {
+    const linkedNodeIds = getLinkedDragNodeIds(useHarnessStore.getState().config, node.id, node.type);
+    if (linkedNodeIds.length <= 1) {
+      dragGroupRef.current = null;
+      return;
+    }
+
+    const initialPositions = new Map<string, { x: number; y: number }>();
+    for (const currentNode of nodesRef.current) {
+      if (linkedNodeIds.includes(currentNode.id)) {
+        initialPositions.set(currentNode.id, currentNode.position);
+      }
+    }
+    if (!initialPositions.has(node.id)) {
+      initialPositions.set(node.id, node.position);
+    }
+
+    dragGroupRef.current = {
+      draggedNodeId: node.id,
+      nodeIds: linkedNodeIds,
+      initialPositions,
+    };
+  }, []);
+
+  const onNodeDrag: OnNodeDrag = useCallback((_, node) => {
+    const dragGroup = dragGroupRef.current;
+    if (!dragGroup || dragGroup.draggedNodeId !== node.id) return;
+    const draggedInitialPosition = dragGroup.initialPositions.get(node.id);
+    if (!draggedInitialPosition) return;
+
+    const deltaX = node.position.x - draggedInitialPosition.x;
+    const deltaY = node.position.y - draggedInitialPosition.y;
+
+    setNodes((currentNodes) => currentNodes.map((currentNode) => {
+      if (!dragGroup.nodeIds.includes(currentNode.id)) return currentNode;
+      const initialPosition = dragGroup.initialPositions.get(currentNode.id);
+      if (!initialPosition) return currentNode;
+      return {
+        ...currentNode,
+        position: {
+          x: initialPosition.x + deltaX,
+          y: initialPosition.y + deltaY,
+        },
+      };
+    }));
+  }, [setNodes]);
+
   const onNodeDragStop: OnNodeDrag = useCallback((_, node) => {
     const state = useHarnessStore.getState();
+    const dragGroup = dragGroupRef.current;
+    if (dragGroup && dragGroup.draggedNodeId === node.id) {
+      const draggedInitialPosition = dragGroup.initialPositions.get(node.id);
+      if (draggedInitialPosition) {
+        const deltaX = node.position.x - draggedInitialPosition.x;
+        const deltaY = node.position.y - draggedInitialPosition.y;
+        const finalPositions = new Map<string, { x: number; y: number }>();
+        for (const nodeId of dragGroup.nodeIds) {
+          const initialPosition = dragGroup.initialPositions.get(nodeId);
+          if (!initialPosition) continue;
+          finalPositions.set(nodeId, {
+            x: initialPosition.x + deltaX,
+            y: initialPosition.y + deltaY,
+          });
+        }
+        state.replaceDocument(applyNodePositionsToConfig(state.config, finalPositions));
+        if (node.type === 'connector') {
+          setCanvasSelection(null);
+          setSelection({ kind: 'connector', id: node.id });
+        } else if (node.type === 'material') {
+          setCanvasSelection(node.id);
+          setSelection({ kind: 'material', id: node.id });
+        } else if (node.type === 'model') {
+          setCanvasSelection(node.id);
+          setSelection({ kind: 'model', id: node.id });
+        }
+        dragGroupRef.current = null;
+        return;
+      }
+    }
+    dragGroupRef.current = null;
+
     if (node.type === 'connector') {
       updateConnector(node.id, { position: node.position });
       return;
@@ -927,7 +1187,7 @@ function HarnessCanvasInner() {
     if (node.type === 'model') {
       state.updateModel(node.id, { position: node.position });
     }
-  }, [attachNearbyMaterialEndpoints, updateConnector]);
+  }, [attachNearbyMaterialEndpoints, setSelection, updateConnector]);
 
   // --- Selection ---
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
@@ -1011,7 +1271,20 @@ function HarnessCanvasInner() {
       const { jumperId } = edge.data as { jumperId: string };
       setContextMenu({ x: event.clientX, y: event.clientY, kind: 'jumper', jumperId });
     } else {
-      setContextMenu({ x: event.clientX, y: event.clientY, kind: 'attachment', attachmentId: edge.id });
+      const attachmentData = edge.data as {
+        materialId?: string;
+        circuitId?: string;
+        side?: MaterialEndpoint;
+      } | undefined;
+      setContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        kind: 'attachment',
+        attachmentId: edge.id,
+        attachmentMaterialId: attachmentData?.materialId,
+        attachmentCircuitId: attachmentData?.circuitId,
+        attachmentEndpoint: attachmentData?.side,
+      });
     }
   }, []);
 
@@ -1051,6 +1324,8 @@ function HarnessCanvasInner() {
         }}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
         onNodeDragStop={onNodeDragStop}
         onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu}
@@ -1125,6 +1400,13 @@ function HarnessCanvasInner() {
             useHarnessStore.getState().removeModel(id);
             setCanvasSelection(null);
           }}
+          onAddAttachmentNumberTube={(materialId, circuitId, endpoint) =>
+            setAccessoryDialog({ materialId, kind: 'number-tube', circuitId, endpoint })
+          }
+          onEditAccessory={(materialId, kind, accessoryId, circuitId, endpoint) =>
+            setAccessoryDialog({ materialId, kind, accessoryId, circuitId, endpoint })
+          }
+          onDeleteAccessory={handleDeleteAccessory}
           onDetachEndpoint={handleDetachEndpoint}
           onDeleteJumper={handleDeleteJumper}
           onFitView={() => fitView({ duration: 300 })}
@@ -1236,34 +1518,72 @@ function HarnessCanvasInner() {
       {accessoryDialog && (() => {
         const material = materials.find((item) => item.id === accessoryDialog.materialId);
         if (!material) return null;
+        const editingLabel = accessoryDialog.kind === 'label'
+          ? (material.labels ?? []).find((item) => item.id === accessoryDialog.accessoryId)
+          : undefined;
+        const editingNumberTube = accessoryDialog.kind === 'number-tube'
+          ? (material.numberTubes ?? []).find((item) => item.id === accessoryDialog.accessoryId)
+          : undefined;
         return (
           <MaterialAccessoryDialog
-            key={`${accessoryDialog.materialId}:${accessoryDialog.kind}`}
+            key={`${accessoryDialog.materialId}:${accessoryDialog.kind}:${accessoryDialog.accessoryId ?? 'new'}`}
             kind={accessoryDialog.kind}
             materialName={material.name}
+            editing={Boolean(accessoryDialog.accessoryId)}
+            initialContent={editingLabel?.content ?? editingNumberTube?.content ?? ''}
+            initialLengthMm={editingLabel?.lengthMm ?? editingNumberTube?.lengthMm}
             onCancel={() => setAccessoryDialog(null)}
+            onDelete={() => {
+              if (!accessoryDialog.accessoryId) return;
+              handleDeleteAccessory(material.id, accessoryDialog.kind, accessoryDialog.accessoryId);
+              setAccessoryDialog(null);
+            }}
             onConfirm={(content, lengthMm) => {
               const state = useHarnessStore.getState();
               const current = state.config.materials.find((item) => item.id === material.id);
               if (!current) return;
               if (accessoryDialog.kind === 'label') {
                 state.updateMaterial(material.id, {
-                  labels: [
-                    ...(current.labels ?? []),
-                    {
-                      id: generateId(),
+                  labels: accessoryDialog.accessoryId
+                    ? (current.labels ?? []).map((item) =>
+                        item.id === accessoryDialog.accessoryId
+                          ? { ...item, content, lengthMm }
+                          : item,
+                      )
+                    : [
+                        ...(current.labels ?? []),
+                        {
+                          id: generateId(),
                       material: '五防热敏纸标签纸',
-                      content,
-                      lengthMm,
-                    },
-                  ],
+                          content,
+                          lengthMm,
+                        },
+                      ],
                 });
               } else {
                 state.updateMaterial(material.id, {
-                  numberTubes: [
-                    ...(current.numberTubes ?? []),
-                    { id: generateId(), content, lengthMm },
-                  ],
+                  numberTubes: accessoryDialog.accessoryId
+                    ? (current.numberTubes ?? []).map((item) =>
+                        item.id === accessoryDialog.accessoryId
+                          ? {
+                              ...item,
+                              content,
+                              lengthMm,
+                              circuitId: accessoryDialog.circuitId ?? item.circuitId,
+                              endpoint: accessoryDialog.endpoint ?? item.endpoint,
+                            }
+                          : item,
+                      )
+                    : [
+                        ...(current.numberTubes ?? []),
+                        {
+                          id: generateId(),
+                          content,
+                          lengthMm,
+                          circuitId: accessoryDialog.circuitId,
+                          endpoint: accessoryDialog.endpoint,
+                        },
+                      ],
                 });
               }
               setAccessoryDialog(null);

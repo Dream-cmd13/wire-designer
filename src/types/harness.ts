@@ -94,6 +94,11 @@ export type CanvasWireSpec = ElectronicWireSpec | JacketedWireSpec;
 export type ConnectorSide = 'left' | 'right';
 export type MaterialEndpoint = 'start' | 'end';
 
+export interface MaterialEndpointRouteOffset {
+  offsetX: number;
+  offsetY: number;
+}
+
 /** A reference to a specific pin on a specific side of a connector. */
 export interface ConnectorPinRef {
   connectorId: string;
@@ -118,6 +123,7 @@ export interface MaterialCircuit {
   signalName: string;
   /** For jacketed wires: which core this circuit binds to. */
   coreIndex?: number;
+  route?: Partial<Record<MaterialEndpoint, MaterialEndpointRouteOffset>>;
 }
 
 // ============================================================
@@ -173,6 +179,8 @@ export interface WireNumberTube {
   id: string;
   content: string;
   lengthMm: number;
+  circuitId?: string;
+  endpoint?: MaterialEndpoint;
 }
 
 // ============================================================
