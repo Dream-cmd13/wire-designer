@@ -10,15 +10,16 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
     targetPosition: props.targetPosition,
   });
 
+  const solid = Boolean((props.data as { solid?: boolean } | undefined)?.solid);
+
   return (
     <BaseEdge
       path={path}
       style={{
         stroke: props.selected ? '#2563eb' : '#f59e0b',
         strokeWidth: props.selected ? 3 : 2,
-        strokeDasharray: '7 4',
+        strokeDasharray: solid ? undefined : '7 4',
       }}
     />
   );
 }
-

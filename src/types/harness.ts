@@ -157,7 +157,22 @@ export interface CanvasWireMaterial {
   width: number;
   spec: CanvasWireSpec;
   circuits: MaterialCircuit[];
+  labels?: WireLabel[];
+  numberTubes?: WireNumberTube[];
   expandedByDefault?: boolean;
+}
+
+export interface WireLabel {
+  id: string;
+  material: '五防热敏纸标签纸';
+  content: string;
+  lengthMm: number;
+}
+
+export interface WireNumberTube {
+  id: string;
+  content: string;
+  lengthMm: number;
 }
 
 // ============================================================
@@ -179,8 +194,10 @@ export interface ProtectiveSleeve {
   corrugatedMaterial?: CorrugatedMaterial;
   position: { x: number; y: number };
   width: number;
+  height: number;
   lengthMm: number;
-  attachedMaterialId?: string;
+  /** A sleeve may cover one wire, a subset, or a complete wire group. */
+  attachedMaterialIds: string[];
 }
 
 // ============================================================

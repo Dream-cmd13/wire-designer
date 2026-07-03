@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Plus, Edit3, Copy, Trash2, Cable, Maximize2, Eye, Layers3,
+  Plus, Edit3, Copy, Trash2, Cable, Maximize2, Eye, Layers3, Box, Hash, Tag,
 } from 'lucide-react';
 
 export interface ContextMenuState {
@@ -22,6 +22,9 @@ interface ContextMenuProps {
   onAddConnector: () => void;
   onAddCanvasWire: () => void;
   onAddProtectiveSleeve: (materialId?: string) => void;
+  onAddModel: () => void;
+  onAddMaterialLabel: (materialId: string) => void;
+  onAddMaterialNumberTube: (materialId: string) => void;
   onEditConnector: (connectorId: string) => void;
   onChangeConnector: (connectorId: string) => void;
   onCopyConnector: (connectorId: string) => void;
@@ -66,6 +69,9 @@ export function ContextMenu({
   onAddConnector,
   onAddCanvasWire,
   onAddProtectiveSleeve,
+  onAddModel,
+  onAddMaterialLabel,
+  onAddMaterialNumberTube,
   onEditConnector,
   onChangeConnector,
   onCopyConnector,
@@ -126,6 +132,7 @@ export function ContextMenu({
           <MenuItem icon={<Plus className="w-4 h-4" />} label="添加连接器" onClick={menuAction(onAddConnector, onClose)} />
           <MenuItem icon={<Cable className="w-4 h-4" />} label="添加线材" onClick={menuAction(onAddCanvasWire, onClose)} />
           <MenuItem icon={<Layers3 className="w-4 h-4" />} label="添加保护套" onClick={menuAction(() => onAddProtectiveSleeve(), onClose)} />
+          <MenuItem icon={<Box className="w-4 h-4" />} label="添加模型" onClick={menuAction(onAddModel, onClose)} />
           {hasSelection && (
             <>
               <div className="border-t border-slate-100 my-1" />
@@ -152,6 +159,8 @@ export function ContextMenu({
         <>
           <MenuItem icon={<Edit3 className="w-4 h-4" />} label="编辑线材参数" onClick={menuAction(() => onEditMaterial(state.materialId!), onClose)} />
           <MenuItem icon={<Layers3 className="w-4 h-4" />} label="添加保护套" onClick={menuAction(() => onAddProtectiveSleeve(state.materialId!), onClose)} />
+          <MenuItem icon={<Tag className="w-4 h-4" />} label="添加标签" onClick={menuAction(() => onAddMaterialLabel(state.materialId!), onClose)} />
+          <MenuItem icon={<Hash className="w-4 h-4" />} label="添加号码管" onClick={menuAction(() => onAddMaterialNumberTube(state.materialId!), onClose)} />
           <div className="border-t border-slate-100 my-1" />
           <MenuItem icon={<Trash2 className="w-4 h-4" />} label="删除线材" onClick={menuAction(() => onDeleteMaterial(state.materialId!), onClose)} destructive />
         </>

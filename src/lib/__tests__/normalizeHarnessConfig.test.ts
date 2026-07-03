@@ -86,6 +86,44 @@ describe('normalizeHarnessConfig', () => {
     const result = normalizeHarnessConfig(bad);
     expect(result.leadTime).toBe('standard');
   });
+
+  it('normalizes material accessories and legacy single-wire sleeve attachment', () => {
+    const input = {
+      schemaVersion: 3,
+      id: 'normalized',
+      name: 'normalized',
+      materials: [{
+        id: 'material-1',
+        name: 'W1',
+        position: { x: 0, y: 0 },
+        width: 100,
+        spec: {
+          kind: 'electronic',
+          color: 'red',
+          lengthMm: 100,
+          awg: 26,
+          ulNumber: '1007',
+          endTreatment: { stripped: false },
+        },
+        circuits: [],
+      }],
+      protectiveSleeves: [{
+        id: 'sleeve-1',
+        type: 'heat-shrink',
+        position: { x: 0, y: 0 },
+        width: 60,
+        lengthMm: 100,
+        attachedMaterialId: 'material-1',
+      }],
+    };
+
+    const result = normalizeHarnessConfig(input);
+
+    expect(result.materials[0].labels).toEqual([]);
+    expect(result.materials[0].numberTubes).toEqual([]);
+    expect(result.protectiveSleeves[0].attachedMaterialIds).toEqual(['material-1']);
+    expect(result.protectiveSleeves[0].height).toBe(36);
+  });
 });
 
 describe('createFallbackConfig', () => {

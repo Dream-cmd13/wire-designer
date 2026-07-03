@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { updateMaterial, updateProtectiveSleeve } from '@/lib/commands';
-import { lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import { lengthMmToCanvasWidth, placeSleeveAroundMaterials } from '@/lib/canvasMaterials';
 import type {
   CanvasWireMaterial,
   HarnessConfig,
@@ -35,8 +35,9 @@ function makeConfig(
       y: 194,
     },
     width: sleeveWidth,
+    height: 36,
     lengthMm: sleeveLengthMm,
-    attachedMaterialId: material.id,
+    attachedMaterialIds: [material.id],
   };
 
   return {
@@ -65,7 +66,7 @@ describe('protective sleeve attachment geometry', () => {
 
     expect(next.materials[0].width).toBe(60);
     expect(next.protectiveSleeves[0].position.x).toBe(100);
-    expect(next.protectiveSleeves[0].attachedMaterialId).toBe('material-1');
+    expect(next.protectiveSleeves[0].attachedMaterialIds).toEqual(['material-1']);
   });
 
   it('centers an attached sleeve even when the sleeve is longer than the material', () => {
@@ -80,7 +81,7 @@ describe('protective sleeve attachment geometry', () => {
     expect(next.materials[0].width).toBe(40);
     expect(next.protectiveSleeves[0].width).toBe(120);
     expect(next.protectiveSleeves[0].position.x).toBe(60);
-    expect(next.protectiveSleeves[0].attachedMaterialId).toBe('material-1');
+    expect(next.protectiveSleeves[0].attachedMaterialIds).toEqual(['material-1']);
   });
 
   it('recomputes sleeve width and center when sleeve length changes in the property editor path', () => {
@@ -101,5 +102,37 @@ describe('protective sleeve attachment geometry', () => {
     });
 
     expect(next.protectiveSleeves[0].position).toEqual({ x: 400, y: 493 });
+  });
+
+  it('supports one sleeve around all four arranged electronic wires', () => {
+    const base = makeConfig().materials[0];
+    const materials = [0, 28, 56, 84].map((offset, index) => ({
+      ...base,
+      id: `material-${index + 1}`,
+      position: { x: 100, y: 200 + offset },
+    }));
+
+    const placement = placeSleeveAroundMaterials(materials, 60);
+
+    expect(placement).toEqual({
+      position: { x: 160, y: 198 },
+      height: 110,
+    });
+  });
+
+  it('supports one sleeve around an explicit two-wire subset', () => {
+    const base = makeConfig().materials[0];
+    const subset = [0, 28].map((offset, index) => ({
+      ...base,
+      id: `material-${index + 1}`,
+      position: { x: 100, y: 200 + offset },
+    }));
+
+    const placement = placeSleeveAroundMaterials(subset, 60);
+
+    expect(placement).toEqual({
+      position: { x: 160, y: 198 },
+      height: 54,
+    });
   });
 });

@@ -23,8 +23,12 @@
 - React Flow 画布进行连接器、线材、保护套的可视化编辑
 - 连接器选型和有效侧锁定
 - 线材接线明细（PIN、颜色、SIG）— 支持单端连接和同侧多 PIN
+- 同连接器电子线自动合并信息表（最下方统一展示，每条线一行）
+- 信息表按连接器标签和型号动态生成 PIN 列，并支持 `Pin+数字` 编辑
 - 同侧 PIN 短接（Connector Jumper）
-- 保护套配置（含波纹管材质：PP / PA / 不锈钢）
+- 保护套配置（可覆盖一条、任意子集或整组线材）
+- 线材标签与号码管配置
+- 画布“添加模型”入口（模具外模目录占位界面）
 - 护套线 UL 号（UL2464 / UL20276 / 无）
 - 等距预览（SVG 投影）
 - BOM（物料清单）生成与导出
@@ -84,7 +88,7 @@ Supabase 直连时复用。
 
 1. **连接器** (`ConnectorInstance`) — 含 PIN 定义和短接 (`jumpers`)
 2. **线材** (`CanvasWireMaterial`) — 含接线明细 (`circuits: MaterialCircuit[]`)
-3. **保护套** (`ProtectiveSleeve`) — 含波纹管材质
+3. **保护套** (`ProtectiveSleeve`) — 含波纹管材质及 `attachedMaterialIds` 覆盖线材集合
 
 PIN、颜色、SIG 直接归属于线材的接线明细 (`MaterialCircuit`)，不再通过独立的 Wire / Connection 对象间接表达。
 
@@ -93,6 +97,7 @@ PIN、颜色、SIG 直接归属于线材的接线明细 (`MaterialCircuit`)，�
 - `HarnessConfig` — 顶层配置（schemaVersion 3）
 - `ConnectorInstance` — 连接器实例（含 `jumpers: ConnectorJumper[]`）
 - `CanvasWireMaterial` — 线材（含 `circuits: MaterialCircuit[]`）
+- `WireLabel` / `WireNumberTube` — 线材标签和号码管
 - `MaterialCircuit` — 接线明细（start/end 可选、color、signalName、coreIndex）
 - `ConnectorPinRef` — 连接器 PIN 引用（connectorId + side + pin）
 - `ConnectorJumper` — 同侧 PIN 短接（pins 数组）
@@ -104,6 +109,10 @@ PIN、颜色、SIG 直接归属于线材的接线明细 (`MaterialCircuit`)，�
 - 连接器首次连接后锁定有效侧，另一侧 Handle 隐藏
 - 同侧 PIN 可短接，短接网络可继续扩展
 - 两端触碰后保持原线材，不创建新线材
+- 护套线支持依次点击线材端点和连接器 PIN 建立连接，连接边使用实线
+- PIN 信息输入只接受 `Pin+数字`（不区分大小写）或空白；空白表示断开该端点
+- 多条电子线连接到同一连接器时组成信息展示组，组内最下方线材显示合并信息表
+- 保护套通过 `attachedMaterialIds` 明确选择覆盖线材，可选择四条中的任意两条
 
 ## 前端当前数据存储
 
@@ -113,7 +122,7 @@ PIN、颜色、SIG 直接归属于线材的接线明细 (`MaterialCircuit`)，�
 - 草稿配置：`harness-config`
 - 用户信息：`harness-users`（演示模式）
 
-配置加载时自动通过 `migrateHarnessConfig` 校验 schemaVersion 3 并规范化。
+配置加载时自动通过 `normalizeHarnessConfig` 校验 schemaVersion 3 并规范化。
 非 v3 数据被替换为默认配置（系统处于开发阶段，无需历史数据迁移）。
 
 ## 架构说明

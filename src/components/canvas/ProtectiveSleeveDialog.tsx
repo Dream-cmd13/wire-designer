@@ -8,9 +8,16 @@ interface ProtectiveSleeveDialogProps {
   initialType?: ProtectiveSleeveType;
   initialLengthMm?: number;
   initialCorrugatedMaterial?: CorrugatedMaterial;
+  initialMaterialIds?: string[];
+  materialOptions: Array<{ id: string; name: string; description: string }>;
   editing: boolean;
   onCancel: () => void;
-  onConfirm: (type: ProtectiveSleeveType, lengthMm: number, corrugatedMaterial?: CorrugatedMaterial) => void;
+  onConfirm: (
+    type: ProtectiveSleeveType,
+    lengthMm: number,
+    corrugatedMaterial: CorrugatedMaterial | undefined,
+    materialIds: string[],
+  ) => void;
 }
 
 const sleeveTypes = Object.keys(PROTECTIVE_SLEEVE_LABELS) as ProtectiveSleeveType[];
@@ -20,6 +27,8 @@ export function ProtectiveSleeveDialog({
   initialType = 'heat-shrink',
   initialLengthMm = 100,
   initialCorrugatedMaterial = 'PP',
+  initialMaterialIds = [],
+  materialOptions,
   editing,
   onCancel,
   onConfirm,
@@ -27,6 +36,7 @@ export function ProtectiveSleeveDialog({
   const [type, setType] = useState<ProtectiveSleeveType>(initialType);
   const [lengthMm, setLengthMm] = useState(initialLengthMm);
   const [corrugatedMaterial, setCorrugatedMaterial] = useState<CorrugatedMaterial>(initialCorrugatedMaterial);
+  const [materialIds, setMaterialIds] = useState(initialMaterialIds);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,7 +55,12 @@ export function ProtectiveSleeveDialog({
       setError('长度必须是大于 0 的数字');
       return;
     }
-    onConfirm(type, lengthMm, type === 'corrugated' ? corrugatedMaterial : undefined);
+    onConfirm(
+      type,
+      lengthMm,
+      type === 'corrugated' ? corrugatedMaterial : undefined,
+      materialIds,
+    );
   };
 
   return (
@@ -128,6 +143,46 @@ export function ProtectiveSleeveDialog({
             />
           </label>
 
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-600">覆盖线材（可多选）</span>
+              <span className="text-[10px] text-slate-400">已选 {materialIds.length} 条</span>
+            </div>
+            {materialOptions.length > 0 ? (
+              <div className="max-h-36 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                {materialOptions.map((material) => {
+                  const checked = materialIds.includes(material.id);
+                  return (
+                    <label
+                      key={material.id}
+                      className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                        checked ? 'bg-cyan-50 text-cyan-800' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setMaterialIds((current) =>
+                          checked
+                            ? current.filter((id) => id !== material.id)
+                            : [...current, material.id],
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{material.name}</span>
+                        <span className="block truncate text-[10px] text-slate-400">{material.description}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 px-3 py-3 text-center text-xs text-slate-400">
+                当前没有可选择的线材；保护套将作为未绑定对象添加。
+              </div>
+            )}
+          </div>
+
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
               {error}
@@ -148,4 +203,3 @@ export function ProtectiveSleeveDialog({
     </div>
   );
 }
-

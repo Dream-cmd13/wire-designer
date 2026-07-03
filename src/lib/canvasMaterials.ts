@@ -90,6 +90,7 @@ export const CANVAS_MATERIAL_STRIP_HEIGHT = 10;
 export const CANVAS_MATERIAL_SLEEVE_CENTER_Y =
   CANVAS_MATERIAL_STRIP_TOP + CANVAS_MATERIAL_STRIP_PADDING_Y + CANVAS_MATERIAL_STRIP_HEIGHT / 2;
 export const PROTECTIVE_SLEEVE_HEIGHT = 36;
+export const PROTECTIVE_SLEEVE_VERTICAL_PADDING = 8;
 
 /** Unified mm → canvas-px scale used by both wire materials and protective sleeves. */
 export function lengthMmToCanvasWidth(lengthMm: number): number {
@@ -107,6 +108,38 @@ export function centerSleeveOnMaterial(
   return {
     x: material.position.x + (material.width - sleeveWidth) / 2,
     y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y - PROTECTIVE_SLEEVE_HEIGHT / 2,
+  };
+}
+
+/**
+ * Position a protective sleeve around any selected subset of wires.
+ * The selected wire centers determine the vertical span, so one sleeve
+ * can cover two wires, four wires, or any other explicit combination.
+ */
+export function placeSleeveAroundMaterials(
+  materials: Array<Pick<CanvasWireMaterial, 'position' | 'width'>>,
+  sleeveWidth: number,
+): { position: { x: number; y: number }; height: number } | undefined {
+  if (materials.length === 0) return undefined;
+
+  const centers = materials.map((material) => ({
+    x: material.position.x + material.width / 2,
+    y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+  }));
+  const centerX = centers.reduce((sum, point) => sum + point.x, 0) / centers.length;
+  const minY = Math.min(...centers.map((point) => point.y));
+  const maxY = Math.max(...centers.map((point) => point.y));
+  const height = Math.max(
+    PROTECTIVE_SLEEVE_HEIGHT,
+    maxY - minY + CANVAS_MATERIAL_STRIP_HEIGHT + PROTECTIVE_SLEEVE_VERTICAL_PADDING * 2,
+  );
+
+  return {
+    position: {
+      x: centerX - sleeveWidth / 2,
+      y: (minY + maxY) / 2 - height / 2,
+    },
+    height,
   };
 }
 

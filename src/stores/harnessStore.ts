@@ -12,6 +12,7 @@ import { CONNECTORS } from '@/lib/data';
 import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import {
   generateId,
+  removeMaterial as removeMaterialCommand,
   updateMaterial as updateMaterialCommand,
   updateProtectiveSleeve as updateProtectiveSleeveCommand,
 } from '@/lib/commands';
@@ -221,16 +222,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       removeMaterial: (id) =>
         set((state) => ({
-          config: {
-            ...state.config,
-            materials: state.config.materials.filter((item) => item.id !== id),
-            protectiveSleeves: state.config.protectiveSleeves.map((sleeve) =>
-              sleeve.attachedMaterialId === id
-                ? { ...sleeve, attachedMaterialId: undefined }
-                : sleeve,
-            ),
-            updatedAt: Date.now(),
-          },
+          config: removeMaterialCommand(state.config, id),
           saveState: dirtyState(),
         })),
 

@@ -246,16 +246,16 @@ function validateProtectiveSleeves(config: HarnessConfig, issues: ValidationIssu
       });
     }
 
-    // Attached material must exist
-    if (sleeve.attachedMaterialId) {
-      const exists = config.materials.some((m) => m.id === sleeve.attachedMaterialId);
+    // Every explicitly covered material must exist.
+    for (const materialId of sleeve.attachedMaterialIds) {
+      const exists = config.materials.some((m) => m.id === materialId);
       if (!exists) {
         issues.push({
           id: '',
           severity: 'error',
           code: 'DANGLING_SLEEVE_ATTACHMENT',
           entity: { kind: 'sleeve', id: sleeve.id },
-          message: '保护套引用了不存在的线材',
+          message: `保护套引用了不存在的线材 (${materialId})`,
           suggestedAction: '解除保护套的线材绑定或删除保护套',
         });
       }

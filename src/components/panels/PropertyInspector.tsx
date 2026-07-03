@@ -27,7 +27,7 @@ export function PropertyInspector() {
 // ============================================================
 
 function ConnectorEditor({ connectorId }: { connectorId: string }) {
-  const { config, updateConnector } = useHarnessStore();
+  const { config, updateConnector, setSelection } = useHarnessStore();
   const instance = config.connectors.find((c) => c.id === connectorId);
   const [label, setLabel] = useState(instance?.label ?? '');
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -46,12 +46,11 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
 
   const handlePartChange = (connector: Connector) => {
     const result = changeConnectorPart(config, connectorId, connector.id);
-    if (result.warnings.length > 0) {
-      setError(result.warnings.join('; '));
-      return;
-    }
     useHarnessStore.getState().replaceDocument(result.config);
-    setError(null);
+    // Replacing the connector part must not clear the selected connector:
+    // the left-side editor stays open so consecutive properties can be edited.
+    setSelection({ kind: 'connector', id: connectorId });
+    setError(result.warnings.length > 0 ? result.warnings.join('; ') : null);
   };
 
   return (

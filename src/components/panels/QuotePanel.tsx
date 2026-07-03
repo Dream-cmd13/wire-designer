@@ -10,7 +10,7 @@ export function QuotePanel() {
   const sleeveSummary = config.protectiveSleeves.map((sleeve) => ({
     name: getProtectiveSleeveDisplayName(sleeve),
     lengthMm: sleeve.lengthMm,
-    attachedMaterialId: sleeve.attachedMaterialId ?? null,
+    attachedMaterialIds: sleeve.attachedMaterialIds,
   }));
 
   const handleExportEstimate = () => {

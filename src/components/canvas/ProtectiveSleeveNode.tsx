@@ -1,4 +1,4 @@
-import { PROTECTIVE_SLEEVE_HEIGHT, getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
+import { getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
 import type { ProtectiveSleeve } from '@/types/harness';
 
 interface ProtectiveSleeveNodeProps {
@@ -37,8 +37,8 @@ export function ProtectiveSleeveNode({ data, selected }: ProtectiveSleeveNodePro
       }`}
       style={{
         width: data.width,
-        height: PROTECTIVE_SLEEVE_HEIGHT,
-        minHeight: PROTECTIVE_SLEEVE_HEIGHT,
+        height: data.height,
+        minHeight: data.height,
         ...sleeveStyles[data.type],
       }}
     >
@@ -49,6 +49,11 @@ export function ProtectiveSleeveNode({ data, selected }: ProtectiveSleeveNodePro
         <span className="text-[10px] font-semibold leading-none text-white drop-shadow">
           {data.lengthMm ?? 100}mm
         </span>
+        {data.attachedMaterialIds.length > 1 && (
+          <span className="text-[9px] leading-none text-cyan-50 drop-shadow">
+            覆盖 {data.attachedMaterialIds.length} 条线材
+          </span>
+        )}
       </div>
     </div>
   );

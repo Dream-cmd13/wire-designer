@@ -5,6 +5,7 @@ import type { ConnectorInstance } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { WIRE_COLORS } from '@/lib/data';
 import { showJumperContextMenu } from './jumperContextMenu';
+import { selectMaterialConnectionPoint } from './materialConnectionClick';
 import {
   getActiveConnectorSide,
   getConnectorPinBindings,
@@ -85,6 +86,15 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
                   id={`left-pin-${pinNum}`}
                   type="target"
                   position={Position.Left}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    selectMaterialConnectionPoint({
+                      kind: 'connector',
+                      connectorId: data.id,
+                      connectorSide: 'left',
+                      pin: pinNum,
+                    });
+                  }}
                   className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
                 />
               )}
@@ -142,6 +152,15 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
                   id={`right-pin-${pinNum}`}
                   type="source"
                   position={Position.Right}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    selectMaterialConnectionPoint({
+                      kind: 'connector',
+                      connectorId: data.id,
+                      connectorSide: 'right',
+                      pin: pinNum,
+                    });
+                  }}
                   className="!h-3 !w-3 !border-2 !border-white !bg-blue-500"
                 />
               )}

@@ -19,9 +19,9 @@ import type {
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
 import {
-  centerSleeveOnMaterial,
   createDefaultWireSpec,
   lengthMmToCanvasWidth,
+  placeSleeveAroundMaterials,
 } from '@/lib/canvasMaterials';
 
 // ============================================================
@@ -237,7 +237,10 @@ export function addMaterial(
 export function updateMaterial(
   config: HarnessConfig,
   materialId: string,
-  patch: Partial<Pick<CanvasWireMaterial, 'name' | 'position' | 'width' | 'spec' | 'expandedByDefault'>>,
+  patch: Partial<Pick<
+    CanvasWireMaterial,
+    'name' | 'position' | 'width' | 'spec' | 'labels' | 'numberTubes' | 'expandedByDefault'
+  >>,
 ): HarnessConfig {
   const current = config.materials.find((material) => material.id === materialId);
   if (!current) return config;
@@ -248,40 +251,38 @@ export function updateMaterial(
       ? lengthMmToCanvasWidth(patch.spec.lengthMm)
       : current.width);
   const nextMaterial = { ...current, ...patch, width };
+  const nextMaterials = config.materials.map((material) =>
+    material.id === materialId ? nextMaterial : material,
+  );
 
   return {
     ...config,
-    materials: config.materials.map((m) =>
-      m.id === materialId ? nextMaterial : m,
-    ),
+    materials: nextMaterials,
     protectiveSleeves: config.protectiveSleeves.map((sleeve) =>
-      sleeve.attachedMaterialId === materialId
-        ? {
-            ...sleeve,
-            position: centerSleeveOnMaterial(nextMaterial, sleeve.width),
-          }
-        : sleeve,
+      sleeve.attachedMaterialIds.includes(materialId)
+        ? repositionSleeve(sleeve, nextMaterials)
+        : sleeve
     ),
     updatedAt: Date.now(),
   };
 }
 
 /**
- * Remove a material. Protective sleeves attached to it have their
- * `attachedMaterialId` cleared (the sleeve body is preserved).
+ * Remove a material. Protective sleeves keep their remaining explicit
+ * wire subset; a sleeve with no remaining wires becomes unattached.
  */
 export function removeMaterial(
   config: HarnessConfig,
   materialId: string,
 ): HarnessConfig {
+  const materials = config.materials.filter((material) => material.id !== materialId);
   return {
     ...config,
-    materials: config.materials.filter((m) => m.id !== materialId),
-    protectiveSleeves: config.protectiveSleeves.map((s) =>
-      s.attachedMaterialId === materialId
-        ? { ...s, attachedMaterialId: undefined }
-        : s,
-    ),
+    materials,
+    protectiveSleeves: config.protectiveSleeves.map((sleeve) => {
+      const attachedMaterialIds = sleeve.attachedMaterialIds.filter((id) => id !== materialId);
+      return repositionSleeve({ ...sleeve, attachedMaterialIds }, materials);
+    }),
     updatedAt: Date.now(),
   };
 }
@@ -741,13 +742,7 @@ export function updateProtectiveSleeve(
     ?? (patch.lengthMm !== undefined
       ? lengthMmToCanvasWidth(patch.lengthMm)
       : current.width);
-  const nextSleeve = { ...current, ...patch, width };
-  const attachedMaterial = nextSleeve.attachedMaterialId
-    ? config.materials.find((material) => material.id === nextSleeve.attachedMaterialId)
-    : undefined;
-  if (attachedMaterial) {
-    nextSleeve.position = centerSleeveOnMaterial(attachedMaterial, width);
-  }
+  const nextSleeve = repositionSleeve({ ...current, ...patch, width }, config.materials);
 
   return {
     ...config,
@@ -755,6 +750,28 @@ export function updateProtectiveSleeve(
       s.id === sleeveId ? nextSleeve : s,
     ),
     updatedAt: Date.now(),
+  };
+}
+
+function repositionSleeve(
+  sleeve: ProtectiveSleeve,
+  materials: CanvasWireMaterial[],
+): ProtectiveSleeve {
+  const attachedMaterials = sleeve.attachedMaterialIds
+    .map((materialId) => materials.find((material) => material.id === materialId))
+    .filter((material): material is CanvasWireMaterial => Boolean(material));
+  const placement = placeSleeveAroundMaterials(attachedMaterials, sleeve.width);
+  if (!placement) {
+    return {
+      ...sleeve,
+      attachedMaterialIds: [],
+      height: sleeve.height || 36,
+    };
+  }
+  return {
+    ...sleeve,
+    position: placement.position,
+    height: placement.height,
   };
 }
 

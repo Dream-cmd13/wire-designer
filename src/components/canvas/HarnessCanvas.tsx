@@ -27,12 +27,10 @@ import {
 import '@xyflow/react/dist/style.css';
 import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper } from '@/lib/commands';
 import {
-  CANVAS_MATERIAL_HEIGHT,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
-  centerSleeveOnMaterial,
   createDefaultCanvasMaterial,
   lengthMmToCanvasWidth,
-  PROTECTIVE_SLEEVE_HEIGHT,
+  placeSleeveAroundMaterials,
 } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
@@ -51,7 +49,16 @@ import { MaterialAttachmentEdge } from './MaterialAttachmentEdge';
 import { ProtectiveSleeveDialog } from './ProtectiveSleeveDialog';
 import { ProtectiveSleeveNode } from './ProtectiveSleeveNode';
 import { WireMaterialDialog } from './WireMaterialDialog';
-import { WireMaterialNode } from './WireMaterialNode';
+import { WireMaterialNode, type WireMaterialNodeData } from './WireMaterialNode';
+import { CanvasModelDialog } from './CanvasModelDialog';
+import {
+  MaterialAccessoryDialog,
+  type MaterialAccessoryKind,
+} from './MaterialAccessoryDialog';
+import {
+  setMaterialConnectionPointHandler,
+  type MaterialConnectionPoint,
+} from './materialConnectionClick';
 
 const nodeTypes: NodeTypes = {
   connector: ConnectorNode,
@@ -181,7 +188,12 @@ function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge
           target: circuit.start.connectorId,
           targetHandle: `${circuit.start.connectorSide}-pin-${circuit.start.pin}`,
           type: 'attachment',
-          data: { materialId: material.id, circuitId: circuit.id, side: 'start' as const },
+          data: {
+            materialId: material.id,
+            circuitId: circuit.id,
+            side: 'start' as const,
+            solid: material.spec.kind === 'jacketed',
+          },
           selected: canvasSelection === edgeId,
           reconnectable: 'target',
         });
@@ -195,7 +207,12 @@ function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge
           target: circuit.end.connectorId,
           targetHandle: `${circuit.end.connectorSide}-pin-${circuit.end.pin}`,
           type: 'attachment',
-          data: { materialId: material.id, circuitId: circuit.id, side: 'end' as const },
+          data: {
+            materialId: material.id,
+            circuitId: circuit.id,
+            side: 'end' as const,
+            solid: material.spec.kind === 'jacketed',
+          },
           selected: canvasSelection === edgeId,
           reconnectable: 'target',
         });
@@ -227,6 +244,56 @@ function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge
   return edges;
 }
 
+function getMaterialConnectorIds(material: CanvasWireMaterial): Set<string> {
+  const connectorIds = new Set<string>();
+  for (const circuit of material.circuits) {
+    if (circuit.start) connectorIds.add(circuit.start.connectorId);
+    if (circuit.end) connectorIds.add(circuit.end.connectorId);
+  }
+  return connectorIds;
+}
+
+/**
+ * Electronic wires form one display group when they share any connector.
+ * Connected components are used so A↔B and B↔C also become one group.
+ */
+function getElectronicMaterialGroups(materials: CanvasWireMaterial[]): Map<string, string[]> {
+  const electronic = materials.filter((material) => material.spec.kind === 'electronic');
+  const connectorIdsByMaterial = new Map(
+    electronic.map((material) => [material.id, getMaterialConnectorIds(material)]),
+  );
+  const visited = new Set<string>();
+  const result = new Map<string, string[]>();
+
+  for (const material of electronic) {
+    if (visited.has(material.id)) continue;
+    const group: CanvasWireMaterial[] = [];
+    const queue = [material];
+    visited.add(material.id);
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      group.push(current);
+      const currentConnectors = connectorIdsByMaterial.get(current.id) ?? new Set<string>();
+      for (const candidate of electronic) {
+        if (visited.has(candidate.id)) continue;
+        const candidateConnectors = connectorIdsByMaterial.get(candidate.id) ?? new Set<string>();
+        if ([...currentConnectors].some((connectorId) => candidateConnectors.has(connectorId))) {
+          visited.add(candidate.id);
+          queue.push(candidate);
+        }
+      }
+    }
+
+    const sortedIds = group
+      .sort((a, b) => a.position.y - b.position.y || a.position.x - b.position.x)
+      .map((item) => item.id);
+    for (const materialId of sortedIds) result.set(materialId, sortedIds);
+  }
+
+  return result;
+}
+
 // ============================================================
 // Canvas Component
 // ============================================================
@@ -235,6 +302,11 @@ interface SleeveDialogState {
   position: { x: number; y: number };
   materialId?: string;
   sleeveId?: string;
+}
+
+interface AccessoryDialogState {
+  materialId: string;
+  kind: MaterialAccessoryKind;
 }
 
 function HarnessCanvasInner() {
@@ -246,6 +318,10 @@ function HarnessCanvasInner() {
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
   const [sleeveDialog, setSleeveDialog] = useState<SleeveDialogState | null>(null);
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [accessoryDialog, setAccessoryDialog] = useState<AccessoryDialogState | null>(null);
+  const [pendingConnectionPoint, setPendingConnectionPoint] = useState<MaterialConnectionPoint | null>(null);
+  const pendingConnectionPointRef = useRef<MaterialConnectionPoint | null>(null);
   const reconnectSucceeded = useRef(false);
   const hasAutoFitted = useRef(false);
   const { fitView, screenToFlowPosition } = useReactFlow();
@@ -269,6 +345,7 @@ function HarnessCanvasInner() {
   // with a centralized cast helper. This is the ONLY place the cast
   // happens — downstream components receive properly typed props.
   useEffect(() => {
+    const electronicGroups = getElectronicMaterialGroups(materials);
     const connectorNodes: Node[] = config.connectors.map((instance) => ({
       id: instance.id,
       type: 'connector',
@@ -276,15 +353,23 @@ function HarnessCanvasInner() {
       data: instance as unknown as Node['data'],
       selected: selection.kind === 'connector' && selection.id === instance.id,
     }));
-    const materialNodes: Node[] = materials.map((material) => ({
-      id: material.id,
-      type: 'material',
-      position: material.position,
-      data: material as unknown as Node['data'],
-      selected: canvasSelection === material.id,
-      dragHandle: '.wire-material-drag',
-      zIndex: 2,
-    }));
+    const materialNodes: Node[] = materials.map((material) => {
+      const detailMaterialIds = electronicGroups.get(material.id) ?? [material.id];
+      const nodeData: WireMaterialNodeData = {
+        ...material,
+        detailMaterialIds,
+        showMergedDetails: detailMaterialIds[detailMaterialIds.length - 1] === material.id,
+      };
+      return {
+        id: material.id,
+        type: 'material',
+        position: material.position,
+        data: nodeData as unknown as Node['data'],
+        selected: canvasSelection === material.id,
+        dragHandle: '.wire-material-drag',
+        zIndex: 2,
+      };
+    });
     const sleeveNodes: Node[] = sleeves.map((sleeve) => ({
       id: sleeve.id,
       type: 'sleeve',
@@ -364,6 +449,38 @@ function HarnessCanvasInner() {
       // Side conflict or pin out of range — ignore.
     }
   }, []);
+
+  useEffect(() => {
+    setMaterialConnectionPointHandler((point) => {
+      const pending = pendingConnectionPointRef.current;
+      if (!pending || pending.kind === point.kind) {
+        pendingConnectionPointRef.current = point;
+        setPendingConnectionPoint(point);
+        return;
+      }
+
+      if (pending.kind === 'material' && point.kind === 'connector') {
+        handleAttachEndpoint(
+          pending.materialId,
+          pending.endpoint,
+          point.connectorId,
+          point.connectorSide,
+          point.pin,
+        );
+      } else if (pending.kind === 'connector' && point.kind === 'material') {
+        handleAttachEndpoint(
+          point.materialId,
+          point.endpoint,
+          pending.connectorId,
+          pending.connectorSide,
+          pending.pin,
+        );
+      }
+      pendingConnectionPointRef.current = null;
+      setPendingConnectionPoint(null);
+    });
+    return () => setMaterialConnectionPointHandler(null);
+  }, [handleAttachEndpoint]);
 
   const handleAddJumper = useCallback((
     connectorId: string,
@@ -603,24 +720,29 @@ function HarnessCanvasInner() {
       if (!sleeve) return;
       const center = {
         x: node.position.x + sleeve.width / 2,
-        y: node.position.y + PROTECTIVE_SLEEVE_HEIGHT / 2,
+        y: node.position.y + sleeve.height / 2,
       };
-      const targetMaterial = state.config.materials.find((m) =>
-        center.x >= m.position.x - 15 &&
-        center.x <= m.position.x + m.width + 15 &&
-        center.y >= m.position.y - 20 &&
-        center.y <= m.position.y + CANVAS_MATERIAL_HEIGHT + 20,
-      );
+      const targetMaterials = state.config.materials.filter((material) => {
+        const materialCenterY = material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y;
+        return (
+          center.x >= material.position.x - 15
+          && center.x <= material.position.x + material.width + 15
+          && materialCenterY >= node.position.y
+          && materialCenterY <= node.position.y + sleeve.height
+        );
+      });
 
-      if (targetMaterial) {
+      if (targetMaterials.length > 0) {
+        const placement = placeSleeveAroundMaterials(targetMaterials, sleeve.width);
         state.updateProtectiveSleeve(node.id, {
-          position: centerSleeveOnMaterial(targetMaterial, sleeve.width),
-          attachedMaterialId: targetMaterial.id,
+          position: placement?.position ?? node.position,
+          height: placement?.height ?? sleeve.height,
+          attachedMaterialIds: targetMaterials.map((material) => material.id),
         });
       } else {
         state.updateProtectiveSleeve(node.id, {
           position: node.position,
-          attachedMaterialId: undefined,
+          attachedMaterialIds: [],
         });
       }
     }
@@ -656,6 +778,8 @@ function HarnessCanvasInner() {
     setCanvasSelection(null);
     setSelection({ kind: 'none' });
     setContextMenu(null);
+    pendingConnectionPointRef.current = null;
+    setPendingConnectionPoint(null);
   }, [setSelection]);
 
   const onPaneContextMenu = useCallback((event: ReactMouseEvent | MouseEvent) => {
@@ -700,6 +824,18 @@ function HarnessCanvasInner() {
   }, []);
 
   const editingMaterial = materials.find((m) => m.id === editingMaterialId) ?? null;
+  const editingSleeve = sleeves.find((item) => item.id === sleeveDialog?.sleeveId);
+  const electronicGroups = getElectronicMaterialGroups(materials);
+  const candidateMaterialIds = sleeveDialog?.materialId
+    ? (electronicGroups.get(sleeveDialog.materialId) ?? [sleeveDialog.materialId])
+    : materials.map((material) => material.id);
+  const sleeveMaterialOptions = materials
+    .filter((material) => candidateMaterialIds.includes(material.id))
+    .map((material) => ({
+      id: material.id,
+      name: material.name,
+      description: materialDescriptionForOption(material),
+    }));
 
   return (
     <div className="relative h-full w-full">
@@ -739,6 +875,14 @@ function HarnessCanvasInner() {
         <Controls />
       </ReactFlow>
 
+      {pendingConnectionPoint && (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full border border-blue-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-blue-700 shadow">
+          {pendingConnectionPoint.kind === 'material'
+            ? '已选择线材端点，请点击连接器 PIN 点'
+            : '已选择连接器 PIN 点，请点击线材端点'}
+        </div>
+      )}
+
       {contextMenu && (
         <ContextMenu
           state={contextMenu}
@@ -746,6 +890,9 @@ function HarnessCanvasInner() {
           onAddConnector={handleAddConnector}
           onAddCanvasWire={handleAddCanvasWire}
           onAddProtectiveSleeve={handleAddProtectiveSleeve}
+          onAddModel={() => setModelDialogOpen(true)}
+          onAddMaterialLabel={(materialId) => setAccessoryDialog({ materialId, kind: 'label' })}
+          onAddMaterialNumberTube={(materialId) => setAccessoryDialog({ materialId, kind: 'number-tube' })}
           onEditConnector={(id) => setSelection({ kind: 'connector', id })}
           onChangeConnector={(id) => setSelection({ kind: 'connector', id })}
           onCopyConnector={(connectorId) => {
@@ -775,7 +922,7 @@ function HarnessCanvasInner() {
             setSleeveDialog({
               sleeveId: sleeve.id,
               position: sleeve.position,
-              materialId: sleeve.attachedMaterialId,
+              materialId: sleeve.attachedMaterialIds[0],
             });
           }}
           onDeleteSleeve={(id) => {
@@ -824,24 +971,31 @@ function HarnessCanvasInner() {
           sleeves.find((item) => item.id === sleeveDialog?.sleeveId)?.corrugatedMaterial
           ?? 'PP'
         }
+        initialMaterialIds={
+          editingSleeve?.attachedMaterialIds
+          ?? (sleeveDialog?.materialId ? [sleeveDialog.materialId] : [])
+        }
+        materialOptions={sleeveMaterialOptions}
         onCancel={() => setSleeveDialog(null)}
-        onConfirm={(type, lengthMm, corrugatedMaterial) => {
+        onConfirm={(type, lengthMm, corrugatedMaterial, materialIds) => {
           if (!sleeveDialog) return;
           const state = useHarnessStore.getState();
           const width = lengthMmToCanvasWidth(lengthMm);
-          const attachedMaterial = sleeveDialog.materialId
-            ? state.config.materials.find((m) => m.id === sleeveDialog.materialId)
-            : undefined;
-          const position = attachedMaterial
-            ? centerSleeveOnMaterial(attachedMaterial, width)
-            : sleeveDialog.position;
+          const attachedMaterials = materialIds
+            .map((materialId) => state.config.materials.find((material) => material.id === materialId))
+            .filter((material): material is CanvasWireMaterial => Boolean(material));
+          const placement = placeSleeveAroundMaterials(attachedMaterials, width);
+          const position = placement?.position ?? sleeveDialog.position;
+          const height = placement?.height ?? 36;
 
           if (sleeveDialog.sleeveId) {
             state.updateProtectiveSleeve(sleeveDialog.sleeveId, {
               type,
               lengthMm,
               width,
+              height,
               position,
+              attachedMaterialIds: materialIds,
               corrugatedMaterial: type === 'corrugated' ? corrugatedMaterial : undefined,
             });
             setCanvasSelection(sleeveDialog.sleeveId);
@@ -851,8 +1005,9 @@ function HarnessCanvasInner() {
               type,
               lengthMm,
               width,
+              height,
               position,
-              attachedMaterialId: attachedMaterial?.id,
+              attachedMaterialIds: materialIds,
               corrugatedMaterial: type === 'corrugated' ? corrugatedMaterial : undefined,
             };
             state.addProtectiveSleeve(sleeve);
@@ -861,8 +1016,55 @@ function HarnessCanvasInner() {
           setSleeveDialog(null);
         }}
       />
+
+      {modelDialogOpen && <CanvasModelDialog onClose={() => setModelDialogOpen(false)} />}
+
+      {accessoryDialog && (() => {
+        const material = materials.find((item) => item.id === accessoryDialog.materialId);
+        if (!material) return null;
+        return (
+          <MaterialAccessoryDialog
+            key={`${accessoryDialog.materialId}:${accessoryDialog.kind}`}
+            kind={accessoryDialog.kind}
+            materialName={material.name}
+            onCancel={() => setAccessoryDialog(null)}
+            onConfirm={(content, lengthMm) => {
+              const state = useHarnessStore.getState();
+              const current = state.config.materials.find((item) => item.id === material.id);
+              if (!current) return;
+              if (accessoryDialog.kind === 'label') {
+                state.updateMaterial(material.id, {
+                  labels: [
+                    ...(current.labels ?? []),
+                    {
+                      id: generateId(),
+                      material: '五防热敏纸标签纸',
+                      content,
+                      lengthMm,
+                    },
+                  ],
+                });
+              } else {
+                state.updateMaterial(material.id, {
+                  numberTubes: [
+                    ...(current.numberTubes ?? []),
+                    { id: generateId(), content, lengthMm },
+                  ],
+                });
+              }
+              setAccessoryDialog(null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
+}
+
+function materialDescriptionForOption(material: CanvasWireMaterial): string {
+  return material.spec.kind === 'electronic'
+    ? `电子线 · ${material.spec.color} · ${material.spec.lengthMm}mm`
+    : `护套线 · ${material.spec.coreCount}芯 · ${material.spec.lengthMm}mm`;
 }
 
 export function HarnessCanvas() {

@@ -156,7 +156,9 @@ describe('BOM grouping', () => {
       corrugatedMaterial: 'PP',
       position: { x: 0, y: 0 },
       width: 100,
+      height: 36,
       lengthMm: 100,
+      attachedMaterialIds: [],
     };
     const sleeve2: ProtectiveSleeve = {
       id: 's2',
@@ -164,7 +166,9 @@ describe('BOM grouping', () => {
       corrugatedMaterial: 'PA',
       position: { x: 0, y: 0 },
       width: 100,
+      height: 36,
       lengthMm: 100,
+      attachedMaterialIds: [],
     };
     const config: HarnessConfig = {
       ...makeBaseConfig(),

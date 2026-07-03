@@ -12,7 +12,7 @@
 // ============================================================
 
 import { generateId } from '@/lib/commands';
-import type { HarnessConfig } from '@/types/harness';
+import type { CanvasWireMaterial, HarnessConfig, ProtectiveSleeve } from '@/types/harness';
 
 const V3 = 3 as const;
 
@@ -56,6 +56,34 @@ export function normalizeHarnessConfig(input: unknown): HarnessConfig {
     return createFallbackConfig();
   }
 
+  const materials = Array.isArray(raw.materials)
+    ? raw.materials.map((material) => {
+        const current = material as CanvasWireMaterial;
+        return {
+          ...current,
+          labels: Array.isArray(current.labels) ? current.labels : [],
+          numberTubes: Array.isArray(current.numberTubes) ? current.numberTubes : [],
+        };
+      })
+    : [];
+  const protectiveSleeves = Array.isArray(raw.protectiveSleeves)
+    ? raw.protectiveSleeves.map((sleeve) => {
+        const current = sleeve as ProtectiveSleeve & { attachedMaterialId?: string };
+        const attachedMaterialIds = Array.isArray(current.attachedMaterialIds)
+          ? current.attachedMaterialIds
+          : current.attachedMaterialId
+            ? [current.attachedMaterialId]
+            : [];
+        const { attachedMaterialId: _legacyAttachedMaterialId, ...rest } = current;
+        void _legacyAttachedMaterialId;
+        return {
+          ...rest,
+          height: typeof current.height === 'number' ? current.height : 36,
+          attachedMaterialIds,
+        };
+      })
+    : [];
+
   // Must have the three core arrays (or absence is fine — normalized to []).
   return {
     schemaVersion: V3,
@@ -64,8 +92,8 @@ export function normalizeHarnessConfig(input: unknown): HarnessConfig {
     createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
     connectors: Array.isArray(raw.connectors) ? raw.connectors : [],
-    materials: Array.isArray(raw.materials) ? raw.materials : [],
-    protectiveSleeves: Array.isArray(raw.protectiveSleeves) ? raw.protectiveSleeves : [],
+    materials,
+    protectiveSleeves,
     quantity: typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : 1,
     leadTime: raw.leadTime === 'rush' || raw.leadTime === 'standard' || raw.leadTime === 'economy'
       ? raw.leadTime
