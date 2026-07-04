@@ -8,7 +8,7 @@ import {
   getWireEndTreatmentSummary,
 } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
-import type { Connector } from '@/types/harness';
+import type { Connector, HarnessConfig } from '@/types/harness';
 
 const PartPickerDialog = lazy(() =>
   import('@/components/shared/PartPickerDialog').then((module) => ({ default: module.PartPickerDialog })));
@@ -150,6 +150,53 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
   );
 }
 
+function getLinkedModels(config: HarnessConfig, materialId: string) {
+  const material = config.materials.find((m) => m.id === materialId);
+  if (!material) return [];
+
+  const leftX = material.position.x;
+  const rightX = material.position.x + material.width;
+  const wireY = material.position.y + 10;
+
+  return config.models.filter((model) => {
+    const modelCenterX = model.position.x + model.width / 2;
+    const modelCenterY = model.position.y + model.height / 2;
+
+    const isYClose = Math.abs(modelCenterY - wireY) < (model.height / 2 + 20);
+    if (!isYClose) return false;
+
+    const isLeftClose = Math.abs(modelCenterX - leftX) < (model.width / 2 + 20);
+    const isRightClose = Math.abs(modelCenterX - rightX) < (model.width / 2 + 20);
+
+    return isLeftClose || isRightClose;
+  });
+}
+
+function getLinkedMaterialAndConnector(config: HarnessConfig, modelId: string) {
+  const model = config.models.find((m) => m.id === modelId);
+  if (!model) return null;
+
+  const modelCenterX = model.position.x + model.width / 2;
+  const modelCenterY = model.position.y + model.height / 2;
+
+  for (const material of config.materials) {
+    const wireY = material.position.y + 10;
+    const isYClose = Math.abs(modelCenterY - wireY) < (model.height / 2 + 20);
+    if (!isYClose) continue;
+
+    const leftX = material.position.x;
+    const rightX = material.position.x + material.width;
+
+    const isLeftClose = Math.abs(modelCenterX - leftX) < (model.width / 2 + 20);
+    const isRightClose = Math.abs(modelCenterX - rightX) < (model.width / 2 + 20);
+
+    if (isLeftClose || isRightClose) {
+      return material;
+    }
+  }
+  return null;
+}
+
 function MaterialEditor({ materialId }: { materialId: string }) {
   const { config } = useHarnessStore();
   const material = config.materials.find((item) => item.id === materialId);
@@ -160,6 +207,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
 
   const spec = material.spec;
   const circuitCount = material.circuits.length;
+  const linkedModels = getLinkedModels(config, materialId);
 
   return (
     <div className="space-y-3">
@@ -182,6 +230,18 @@ function MaterialEditor({ materialId }: { materialId: string }) {
         )}
       </div>
 
+      {linkedModels.length > 0 && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-2 text-xs text-slate-600 space-y-1">
+          <p className="font-semibold text-indigo-700">端部关联外模 ({linkedModels.length})</p>
+          {linkedModels.map((m) => (
+            <div key={m.id} className="flex justify-between items-center text-[10px] text-slate-500">
+              <span>{getCanvasModelDisplayName(m)}</span>
+              <span className="font-mono text-slate-400">{Math.round(m.width)}x{Math.round(m.height)} px</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center justify-between text-xs">
         <span className="text-slate-500">接线明细</span>
         <span className="font-semibold text-blue-600">{circuitCount} 条</span>
@@ -202,6 +262,8 @@ function ModelEditor({ modelId }: { modelId: string }) {
     return <div className="text-sm text-slate-400">外模不存在</div>;
   }
 
+  const linkedMaterial = getLinkedMaterialAndConnector(config, modelId);
+
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold text-slate-700">外模属性</h3>
@@ -211,6 +273,16 @@ function ModelEditor({ modelId }: { modelId: string }) {
         <p>宽度：{Math.round(model.width)} px</p>
         <p>高度：{Math.round(model.height)} px</p>
       </div>
+
+      {linkedMaterial && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-2 text-xs text-slate-600 space-y-1">
+          <p className="font-semibold text-slate-700">包覆线材参数</p>
+          <p>类型：{linkedMaterial.spec.kind === 'electronic' ? '电子线' : '护套线'}</p>
+          <p>线号：{linkedMaterial.spec.awg} AWG</p>
+          <p>长度：{linkedMaterial.spec.lengthMm} mm</p>
+          <p>工艺：{getWireEndTreatmentSummary(linkedMaterial.spec.endTreatment)}</p>
+        </div>
+      )}
     </div>
   );
 }

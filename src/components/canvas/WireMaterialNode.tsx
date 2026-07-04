@@ -41,9 +41,40 @@ interface DetailRow {
   circuit?: MaterialCircuit;
 }
 
-function getColorHex(colorId: string): string {
-  return WIRE_COLORS.find((color) => color.id === colorId)?.hex ?? '#6B7280';
+// Map Chinese core color names (used in jacketed coreColors) → WIRE_COLORS entry.
+const CHINESE_NAME_TO_WIRE_COLOR = new Map(
+  WIRE_COLORS.map((c) => [c.name, c]),
+);
+// Additional Chinese names not in WIRE_COLORS that appear in CORE_COLOR_OPTIONS.
+const EXTRA_CORE_COLOR_HEX: Record<string, string> = {
+  '浅蓝色': '#7DD3FC',
+  '黄绿色': '#A3E635',
+  '米白色': '#F5F0E8',
+  '深蓝色': '#1E3A8A',
+  '浅绿色': '#86EFAC',
+  '透明': '#E2E8F066',
+};
+
+/**
+ * Resolve a color value that may be either:
+ *   - an English WIRE_COLORS id (e.g. 'red', 'gray')
+ *   - a Chinese display name from CORE_COLOR_OPTIONS (e.g. '红色', '灰色')
+ * Returns { hex, name } for display.
+ */
+function resolveColor(value: string): { hex: string; name: string } {
+  // Try English ID first (electronic wires)
+  const byId = WIRE_COLORS.find((c) => c.id === value);
+  if (byId) return { hex: byId.hex, name: byId.name };
+  // Try Chinese name (jacketed core colors)
+  const byName = CHINESE_NAME_TO_WIRE_COLOR.get(value);
+  if (byName) return { hex: byName.hex, name: byName.name };
+  // Extra names not in WIRE_COLORS
+  const extraHex = EXTRA_CORE_COLOR_HEX[value];
+  if (extraHex) return { hex: extraHex, name: value };
+  // Fallback
+  return { hex: '#6B7280', name: value || '灰色' };
 }
+
 
 function materialDescription(material: CanvasWireMaterial): string {
   const spec = material.spec;
@@ -72,7 +103,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   const spec = data.spec;
   const isElectronic = spec.kind === 'electronic';
   const electronicColor = isElectronic
-    ? WIRE_COLORS.find((color) => color.id === spec.color)?.hex ?? '#64748b'
+    ? resolveColor(spec.color).hex
     : null;
   const bodyColor = isElectronic
     ? electronicColor
@@ -118,17 +149,27 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
     return config.connectors.filter((connector) => connectedIds.has(connector.id));
   }, [config.connectors, detailMaterials]);
 
-  const circuitCount = detailMaterials.reduce((sum, material) => sum + material.circuits.length, 0);
+  const connectedCircuitCount = detailMaterials.reduce(
+    (sum, material) => sum + material.circuits.filter((c) => c.start || c.end).length,
+    0,
+  );
   const electronicMaterialCount = detailMaterials.filter((material) => material.spec.kind === 'electronic').length;
   const jacketedMaterialCount = detailMaterials.filter((material) => material.spec.kind === 'jacketed').length;
   const showMergedDetails = data.showMergedDetails ?? true;
 
+  // Detect if any protective sleeve is attached to this material (or its group).
+  // If yes, we reposition labels below the wire to avoid overlapping the sleeve.
+  const materialIds = new Set(detailMaterials.map((m) => m.id));
+  const hasSleeve = config.protectiveSleeves.some((s) =>
+    s.attachedMaterialIds.some((id) => materialIds.has(id)),
+  );
+
   useEffect(() => {
-    if (circuitCount > previousCircuitCountRef.current) {
+    if (connectedCircuitCount > previousCircuitCountRef.current) {
       setDetailsOpen(true);
     }
-    previousCircuitCountRef.current = circuitCount;
-  }, [circuitCount]);
+    previousCircuitCountRef.current = connectedCircuitCount;
+  }, [connectedCircuitCount]);
 
   const handleUpdateCircuit = (
     materialId: string,
@@ -197,7 +238,13 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
       />
 
       {data.labels?.length ? (
-        <div className="pointer-events-none absolute bottom-full left-1/2 mb-0.5 flex -translate-x-1/2 gap-1 whitespace-nowrap">
+        <div
+          className={`pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1 whitespace-nowrap ${
+            hasSleeve
+              ? 'top-full mt-0.5'   // below the wire, clear of the sleeve above
+              : 'bottom-full mb-0.5' // above the wire (default)
+          }`}
+        >
           {data.labels.map((label) => (
             <button
               key={label.id}
@@ -253,7 +300,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
 
       {showMergedDetails && detailsOpen && (
         <div
-          className="relative left-1/2 mt-2 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md"
+          className="relative left-1/2 mt-[44px] -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-600 shadow-md"
           style={{ width: panelWidth }}
         >
           <div className="mb-1 border-b border-slate-100 pb-1 text-center font-semibold text-slate-700">
@@ -309,27 +356,29 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                   })}
 
                   <div className="flex justify-center">
-                    {circuit ? (
-                      <label className="nodrag nopan relative flex h-3 w-3 cursor-pointer items-center justify-center rounded-full border border-slate-200">
-                        <span
-                          className="h-full w-full rounded-full"
-                          title={WIRE_COLORS.find((color) => color.id === circuit.color)?.name ?? circuit.color}
-                          style={{ backgroundColor: getColorHex(circuit.color) }}
-                        />
-                        <select
-                          value={circuit.color}
-                          onChange={(event) => {
-                            const nextColor = event.target.value;
-                            handleUpdateCircuit(row.material.id, circuit.id, { color: nextColor });
-                          }}
-                          className="absolute inset-0 cursor-pointer opacity-0"
-                        >
-                          {WIRE_COLORS.map((color) => (
-                            <option key={color.id} value={color.id}>{color.name}</option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
+                    {circuit ? (() => {
+                      const colorEntry = resolveColor(circuit.color);
+                      return (
+                        <label className="nodrag nopan relative flex h-3 w-3 cursor-pointer items-center justify-center rounded-full border border-slate-200">
+                          <span
+                            className="h-full w-full rounded-full"
+                            title={colorEntry.name}
+                            style={{ backgroundColor: colorEntry.hex }}
+                          />
+                          <select
+                            value={WIRE_COLORS.find((c) => c.id === circuit.color || c.name === circuit.color)?.id ?? circuit.color}
+                            onChange={(event) => {
+                              handleUpdateCircuit(row.material.id, circuit.id, { color: event.target.value });
+                            }}
+                            className="absolute inset-0 cursor-pointer opacity-0"
+                          >
+                            {WIRE_COLORS.map((color) => (
+                              <option key={color.id} value={color.id}>{color.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      );
+                    })() : null}
                   </div>
 
                   <input
@@ -345,7 +394,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                     className="nodrag nopan min-w-0 rounded border border-transparent bg-transparent px-1 py-0 font-medium text-slate-700 outline-none focus:border-slate-200 focus:bg-slate-50 disabled:text-slate-300"
                   />
 
-                  {circuit ? (
+                  {circuit && (circuit.start || circuit.end) ? (
                     <button
                       type="button"
                       onClick={() => handleRemoveCircuit(row.material.id, circuit.id)}
@@ -359,7 +408,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
               );
             })}
 
-            {circuitCount === 0 && (
+            {connectedCircuitCount === 0 && (
               <div className="py-1 text-center text-[10px] text-slate-400">
                 点击线材端点和连接器 PIN 点即可建立连接。
               </div>

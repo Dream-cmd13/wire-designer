@@ -383,15 +383,21 @@ function EndTreatmentFields({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 p-4">
-      <div className="mb-3">
-        <div className="mb-1.5 text-xs font-medium text-slate-600">剥皮方式（先）</div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          <TypeButton active={currentMode === 'none'} label="不剥皮" onClick={() => setMode('none')} />
-          <TypeButton active={currentMode === 'start'} label="左端剥皮" onClick={() => setMode('start')} />
-          <TypeButton active={currentMode === 'end'} label="右端剥皮" onClick={() => setMode('end')} />
-          <TypeButton active={currentMode === 'both'} label="两端剥皮" onClick={() => setMode('both')} />
-        </div>
+    <div className="rounded-xl border border-slate-200 p-4 space-y-4">
+      <div className="mb-1">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-medium text-slate-600">剥皮方式</span>
+          <select
+            value={currentMode}
+            onChange={(event) => setMode(event.target.value as 'none' | 'start' | 'end' | 'both')}
+            className={fieldClass}
+          >
+            <option value="none">不剥皮</option>
+            <option value="start">左端剥皮</option>
+            <option value="end">右端剥皮</option>
+            <option value="both">两端剥皮</option>
+          </select>
+        </label>
       </div>
 
       {(value.start.stripped || value.end.stripped) && (
@@ -400,16 +406,16 @@ function EndTreatmentFields({
             const end = value[key];
             if (!end.stripped) {
               return (
-                <div key={key} className="rounded-xl border border-dashed border-slate-200 p-3 text-xs text-slate-400">
+                <div key={key} className="rounded-xl border border-dashed border-slate-200 p-4 flex items-center justify-center text-xs text-slate-400 bg-slate-50/50">
                   {key === 'start' ? '左端' : '右端'}不剥皮
                 </div>
               );
             }
 
             return (
-              <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="mb-3 text-sm font-semibold text-slate-700">{key === 'start' ? '左端' : '右端'}</div>
-                <div className="space-y-3">
+              <div key={key} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 text-xs font-bold text-slate-700 tracking-wide uppercase">{key === 'start' ? '左端工艺' : '右端工艺'}</div>
+                <div className="space-y-4">
                   <Field label="剥皮长度 (mm)">
                     <NumberInput
                       min={1}
@@ -419,7 +425,7 @@ function EndTreatmentFields({
                   </Field>
                   <div>
                     <div className="mb-1.5 text-xs font-medium text-slate-600">后处理（二选一）</div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-200/50 p-1">
                       <TypeButton
                         active={end.termination === 'tinned'}
                         label="沾锡"
@@ -434,7 +440,7 @@ function EndTreatmentFields({
                   </div>
                   {end.termination === 'terminal' && (
                     <Field label="端子型号">
-                      <select value={end.terminalModel ?? 'cold-press-terminal'} disabled className={`${fieldClass} disabled:bg-slate-50`}>
+                      <select value={end.terminalModel ?? 'cold-press-terminal'} disabled className={`${fieldClass} disabled:bg-slate-100 disabled:text-slate-500`}>
                         <option value="cold-press-terminal">冷压端子</option>
                       </select>
                     </Field>
@@ -448,3 +454,4 @@ function EndTreatmentFields({
     </div>
   );
 }
+

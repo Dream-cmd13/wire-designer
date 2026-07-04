@@ -149,15 +149,93 @@ function normalizeReadableAngle(angleDeg: number) {
   return angleDeg;
 }
 
+function isEdgeIntersectingAnyModel(
+  sourceX: number,
+  sourceY: number,
+  targetX: number,
+  targetY: number,
+  models: any[]
+): boolean {
+  const getModelRect = (model: any) => ({
+    x: model.position.x,
+    y: model.position.y,
+    width: model.width,
+    height: model.height,
+  });
+
+  const pointInRect = (point: { x: number; y: number }, rect: { x: number; y: number; width: number; height: number }) => (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  );
+
+  const ccw = (a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) => (
+    (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x)
+  );
+
+  const segmentsIntersect = (
+    a1: { x: number; y: number },
+    a2: { x: number; y: number },
+    b1: { x: number; y: number },
+    b2: { x: number; y: number }
+  ) => (
+    ccw(a1, b1, b2) !== ccw(a2, b1, b2) && ccw(a1, a2, b1) !== ccw(a1, a2, b2)
+  );
+
+  const segmentIntersectsRect = (
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    rect: { x: number; y: number; width: number; height: number }
+  ) => {
+    if (pointInRect(start, rect) || pointInRect(end, rect)) return true;
+
+    const topLeft = { x: rect.x, y: rect.y };
+    const topRight = { x: rect.x + rect.width, y: rect.y };
+    const bottomLeft = { x: rect.x, y: rect.y + rect.height };
+    const bottomRight = { x: rect.x + rect.width, y: rect.y + rect.height };
+
+    return (
+      segmentsIntersect(start, end, topLeft, topRight) ||
+      segmentsIntersect(start, end, topRight, bottomRight) ||
+      segmentsIntersect(start, end, bottomRight, bottomLeft) ||
+      segmentsIntersect(start, end, bottomLeft, topLeft)
+    );
+  };
+
+  const start = { x: sourceX, y: sourceY };
+  const end = { x: targetX, y: targetY };
+
+  for (const model of models) {
+    const rect = getModelRect(model);
+    if (segmentIntersectsRect(start, end, rect)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function estimateTubeWidth(content: string) {
   return Math.max(28, 12 + content.length * 7);
 }
 
 export function MaterialAttachmentEdge(props: EdgeProps) {
   const { screenToFlowPosition } = useReactFlow();
+  const config = useHarnessStore((state) => state.config);
   const dragCleanupRef = useRef<(() => void) | null>(null);
   const [hoveredTubeId, setHoveredTubeId] = useState<string | null>(null);
   const [activeTubeId, setActiveTubeId] = useState<string | null>(null);
+
+  const isHidden = useMemo(() => {
+    return isEdgeIntersectingAnyModel(
+      props.sourceX,
+      props.sourceY,
+      props.targetX,
+      props.targetY,
+      config.models
+    );
+  }, [props.sourceX, props.sourceY, props.targetX, props.targetY, config.models]);
 
   const edgeData = useMemo(
     () =>
@@ -381,13 +459,13 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
       <BaseEdge
         path={path}
         style={{
-          stroke: props.selected ? '#2563eb' : '#f59e0b',
-          strokeWidth: props.selected ? 3 : 2,
+          stroke: isHidden ? 'transparent' : props.selected ? '#2563eb' : '#f59e0b',
+          strokeWidth: isHidden ? 0 : props.selected ? 3 : 2,
           strokeDasharray: solid ? undefined : '7 4',
         }}
       />
 
-      {props.selected && (
+      {props.selected && !isHidden && (
         <EdgeLabelRenderer>
           <button
             type="button"

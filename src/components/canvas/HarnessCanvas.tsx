@@ -284,87 +284,64 @@ function findModelPlacement(
 
 function buildEdges(config: HarnessConfig, canvasSelection: string | null): Edge[] {
   const edges: Edge[] = [];
-  const modelRects = config.models.map(getModelRect);
   const legacyNumberTubeRenderedMaterialIds = new Set<string>();
 
   // Material circuit edges
   for (const material of config.materials) {
     for (const circuit of material.circuits) {
       if (circuit.start) {
-        const connector = config.connectors.find((item) => item.id === circuit.start?.connectorId);
-        const hiddenByModel = connector
-          ? modelRects.some((rect) =>
-              segmentIntersectsRect(
-                getMaterialEndpointPoint(material, 'start'),
-                getConnectorPinHandlePosition(connector, circuit.start!.connectorSide, circuit.start!.pin),
-                rect,
-              ))
-          : false;
         const edgeId = `${circuit.id}:start`;
-        if (!hiddenByModel) {
-          const numberTubes = getAttachmentNumberTubes(
-            material,
-            circuit.id,
-            'start',
-            legacyNumberTubeRenderedMaterialIds,
-          );
-          edges.push({
-            id: edgeId,
-            source: material.id,
-            sourceHandle: 'start',
-            target: circuit.start.connectorId,
-            targetHandle: `${circuit.start.connectorSide}-pin-${circuit.start.pin}`,
-            type: 'attachment',
-            data: {
-              materialId: material.id,
-              circuitId: circuit.id,
-              side: 'start' as const,
-              routeOffset: circuit.route?.start,
-              solid: material.spec.kind === 'jacketed',
-              numberTubes: numberTubes.length > 0 ? numberTubes : undefined,
-            },
-            selected: canvasSelection === edgeId,
-            reconnectable: 'target',
-          });
-        }
+        const numberTubes = getAttachmentNumberTubes(
+          material,
+          circuit.id,
+          'start',
+          legacyNumberTubeRenderedMaterialIds,
+        );
+        edges.push({
+          id: edgeId,
+          source: material.id,
+          sourceHandle: 'start',
+          target: circuit.start.connectorId,
+          targetHandle: `${circuit.start.connectorSide}-pin-${circuit.start.pin}`,
+          type: 'attachment',
+          data: {
+            materialId: material.id,
+            circuitId: circuit.id,
+            side: 'start' as const,
+            routeOffset: circuit.route?.start,
+            solid: material.spec.kind === 'jacketed',
+            numberTubes: numberTubes.length > 0 ? numberTubes : undefined,
+          },
+          selected: canvasSelection === edgeId,
+          reconnectable: 'target',
+        });
       }
       if (circuit.end) {
-        const connector = config.connectors.find((item) => item.id === circuit.end?.connectorId);
-        const hiddenByModel = connector
-          ? modelRects.some((rect) =>
-              segmentIntersectsRect(
-                getMaterialEndpointPoint(material, 'end'),
-                getConnectorPinHandlePosition(connector, circuit.end!.connectorSide, circuit.end!.pin),
-                rect,
-              ))
-          : false;
         const edgeId = `${circuit.id}:end`;
-        if (!hiddenByModel) {
-          const numberTubes = getAttachmentNumberTubes(
-            material,
-            circuit.id,
-            'end',
-            legacyNumberTubeRenderedMaterialIds,
-          );
-          edges.push({
-            id: edgeId,
-            source: material.id,
-            sourceHandle: 'end',
-            target: circuit.end.connectorId,
-            targetHandle: `${circuit.end.connectorSide}-pin-${circuit.end.pin}`,
-            type: 'attachment',
-            data: {
-              materialId: material.id,
-              circuitId: circuit.id,
-              side: 'end' as const,
-              routeOffset: circuit.route?.end,
-              solid: material.spec.kind === 'jacketed',
-              numberTubes: numberTubes.length > 0 ? numberTubes : undefined,
-            },
-            selected: canvasSelection === edgeId,
-            reconnectable: 'target',
-          });
-        }
+        const numberTubes = getAttachmentNumberTubes(
+          material,
+          circuit.id,
+          'end',
+          legacyNumberTubeRenderedMaterialIds,
+        );
+        edges.push({
+          id: edgeId,
+          source: material.id,
+          sourceHandle: 'end',
+          target: circuit.end.connectorId,
+          targetHandle: `${circuit.end.connectorSide}-pin-${circuit.end.pin}`,
+          type: 'attachment',
+          data: {
+            materialId: material.id,
+            circuitId: circuit.id,
+            side: 'end' as const,
+            routeOffset: circuit.route?.end,
+            solid: material.spec.kind === 'jacketed',
+            numberTubes: numberTubes.length > 0 ? numberTubes : undefined,
+          },
+          selected: canvasSelection === edgeId,
+          reconnectable: 'target',
+        });
       }
     }
   }
@@ -554,24 +531,53 @@ function getModelLinkedGroups(config: HarnessConfig): ModelLinkedGroup[] {
 function getLinkedDragNodeIds(
   config: HarnessConfig,
   nodeId: string,
-  nodeType?: string,
+  _nodeType?: string,
 ) {
   const groups = getModelLinkedGroups(config);
-  const matchedGroups = groups.filter((group) =>
-    group.modelId === nodeId
-    || (nodeType === 'connector' && group.connectorIds.has(nodeId))
-    || (nodeType === 'material' && group.materialIds.has(nodeId)),
-  );
+  if (groups.length === 0) return [nodeId];
 
-  if (matchedGroups.length === 0) return [nodeId];
+  // Map each group to a set of all its member IDs
+  const sets = groups.map((g) => {
+    const s = new Set<string>();
+    s.add(g.modelId);
+    for (const cid of g.connectorIds) s.add(cid);
+    for (const mid of g.materialIds) s.add(mid);
+    return s;
+  });
 
-  const linkedIds = new Set<string>([nodeId]);
-  for (const group of matchedGroups) {
-    linkedIds.add(group.modelId);
-    for (const connectorId of group.connectorIds) linkedIds.add(connectorId);
-    for (const materialId of group.materialIds) linkedIds.add(materialId);
+  // Transitively merge sets that share any overlap.
+  // This satisfies the request that if a wire has two outer molds,
+  // or a model spans multiple wires/connectors, they form a single unified block.
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < sets.length; i++) {
+      for (let j = i + 1; j < sets.length; j++) {
+        let hasOverlap = false;
+        for (const item of sets[i]) {
+          if (sets[j].has(item)) {
+            hasOverlap = true;
+            break;
+          }
+        }
+        if (hasOverlap) {
+          for (const item of sets[j]) {
+            sets[i].add(item);
+          }
+          sets.splice(j, 1);
+          merged = true;
+          break;
+        }
+      }
+      if (merged) break;
+    }
   }
-  return [...linkedIds];
+
+  // Find the merged set containing our dragged node ID
+  const matchedSet = sets.find((s) => s.has(nodeId));
+  if (!matchedSet) return [nodeId];
+
+  return [...matchedSet];
 }
 
 function applyNodePositionsToConfig(
@@ -796,6 +802,7 @@ function HarnessCanvasInner() {
       position: instance.position,
       data: instance as unknown as Node['data'],
       selected: selection.kind === 'connector' && selection.id === instance.id,
+      zIndex: 6,
     }));
     const materialNodes: Node[] = materials.map((material) => {
       const detailMaterialIds = electronicGroups.get(material.id) ?? [material.id];
@@ -812,7 +819,7 @@ function HarnessCanvasInner() {
         data: nodeData as unknown as Node['data'],
         selected: canvasSelection === material.id,
         dragHandle: '.wire-material-drag',
-        zIndex: 2,
+        zIndex: 4,
       };
     });
     const sleeveNodes: Node[] = sleeves.map((sleeve) => ({
@@ -821,7 +828,7 @@ function HarnessCanvasInner() {
       position: sleeve.position,
       data: sleeve as unknown as Node['data'],
       selected: canvasSelection === sleeve.id,
-      zIndex: 4,
+      zIndex: 5,
     }));
     const modelNodes: Node[] = models.map((model) => ({
       id: model.id,
@@ -830,7 +837,7 @@ function HarnessCanvasInner() {
       data: model as unknown as Node['data'],
       selected: selection.kind === 'model' && selection.id === model.id,
       style: { width: model.width, height: model.height },
-      zIndex: 5,
+      zIndex: 1,
     }));
 
     const nextNodes = [...connectorNodes, ...materialNodes, ...sleeveNodes, ...modelNodes];

@@ -42,6 +42,50 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
+export function alignCircuits(
+  spec: CanvasWireMaterial['spec'],
+  circuits: MaterialCircuit[],
+): MaterialCircuit[] {
+  if (spec.kind === 'electronic') {
+    if (circuits.length === 0) {
+      return [{
+        id: generateId(),
+        color: spec.color,
+        signalName: '',
+      }];
+    }
+    const first = circuits[0];
+    return [{
+      ...first,
+      color: spec.color,
+    }];
+  } else {
+    const targetCount = spec.coreCount;
+    const result: MaterialCircuit[] = [...circuits];
+
+    if (result.length < targetCount) {
+      for (let i = result.length; i < targetCount; i++) {
+        result.push({
+          id: generateId(),
+          color: spec.coreColors[i] || 'red',
+          signalName: '',
+          coreIndex: i,
+        });
+      }
+    } else if (result.length > targetCount) {
+      result.splice(targetCount);
+    }
+
+    return result.map((c, i) => ({
+      ...c,
+      coreIndex: i,
+      // Always use the spec-defined color for this core index so the panel
+      // shows each core's actual color rather than a shared fallback.
+      color: spec.coreColors[i] || c.color || 'red',
+    }));
+  }
+}
+
 // ============================================================
 // Connector Commands
 // ============================================================
@@ -121,8 +165,7 @@ export function changeConnectorPart(
 
   // Prune circuits that reference out-of-range pins on this connector.
   const materials = config.materials.map((material) => {
-    const nextCircuits: MaterialCircuit[] = [];
-    for (const circuit of material.circuits) {
+    const rawCircuits = material.circuits.map((circuit) => {
       const pruned = { ...circuit };
       if (pruned.start?.connectorId === connectorId && pruned.start.pin > newPinCount) {
         warnings.push(`线材"${material.name}"的接线 Pin${pruned.start.pin} 超出新连接器范围，已移除`);
@@ -132,11 +175,9 @@ export function changeConnectorPart(
         warnings.push(`线材"${material.name}"的接线 Pin${pruned.end.pin} 超出新连接器范围，已移除`);
         pruned.end = undefined;
       }
-      // Keep circuit only if at least one side remains.
-      if (pruned.start || pruned.end) {
-        nextCircuits.push(pruned);
-      }
-    }
+      return pruned;
+    });
+    const nextCircuits = alignCircuits(material.spec, rawCircuits);
     return { ...material, circuits: nextCircuits };
   });
 
@@ -177,14 +218,13 @@ export function removeConnector(
   connectorId: string,
 ): HarnessConfig {
   const materials = config.materials.map((material) => {
-    const nextCircuits = material.circuits
-      .map((circuit) => {
-        const next = { ...circuit };
-        if (next.start?.connectorId === connectorId) next.start = undefined;
-        if (next.end?.connectorId === connectorId) next.end = undefined;
-        return next;
-      })
-      .filter((c) => c.start || c.end);
+    const rawCircuits = material.circuits.map((circuit) => {
+      const next = { ...circuit };
+      if (next.start?.connectorId === connectorId) next.start = undefined;
+      if (next.end?.connectorId === connectorId) next.end = undefined;
+      return next;
+    });
+    const nextCircuits = alignCircuits(material.spec, rawCircuits);
     return { ...material, circuits: nextCircuits };
   });
 
@@ -219,7 +259,7 @@ export function addMaterial(
     position: input.position ?? { x: 300, y: 300 },
     width: lengthMmToCanvasWidth(spec.lengthMm),
     spec,
-    circuits: [],
+    circuits: alignCircuits(spec, []),
     expandedByDefault: true,
   };
 
@@ -250,7 +290,9 @@ export function updateMaterial(
     ?? (patch.spec && patch.spec.lengthMm !== current.spec.lengthMm
       ? lengthMmToCanvasWidth(patch.spec.lengthMm)
       : current.width);
-  const nextMaterial = { ...current, ...patch, width };
+  const nextSpec = patch.spec ?? current.spec;
+  const nextCircuits = alignCircuits(nextSpec, current.circuits);
+  const nextMaterial = { ...current, ...patch, width, circuits: nextCircuits };
   const nextMaterials = config.materials.map((material) =>
     material.id === materialId ? nextMaterial : material,
   );
@@ -380,6 +422,16 @@ export function attachMaterialEndpoint(
   });
 
   if (!completed) {
+    const emptySlotIdx = nextCircuits.findIndex((c) => c[endpoint] === undefined);
+    if (emptySlotIdx !== -1) {
+      nextCircuits = nextCircuits.map((c, idx) =>
+        idx === emptySlotIdx ? { ...c, [endpoint]: pinRef } : c
+      );
+      completed = true;
+    }
+  }
+
+  if (!completed) {
     // No circuit to complete — create a new single-end circuit.
     const newCircuit: MaterialCircuit = {
       id: generateId(),
@@ -401,7 +453,7 @@ export function attachMaterialEndpoint(
 
 /**
  * Detach one side of a circuit. If both sides become empty the circuit
- * is removed entirely.
+ * is kept and aligned with the wire specification so properties remain editable.
  */
 export function detachMaterialEndpoint(
   config: HarnessConfig,
@@ -412,12 +464,11 @@ export function detachMaterialEndpoint(
   const material = config.materials.find((m) => m.id === materialId);
   if (!material) return config;
 
-  const nextCircuits = material.circuits
-    .map((circuit) => {
-      if (circuit.id !== circuitId) return circuit;
-      return { ...circuit, [side]: undefined };
-    })
-    .filter((c) => c.start || c.end);
+  const rawCircuits = material.circuits.map((circuit) => {
+    if (circuit.id !== circuitId) return circuit;
+    return { ...circuit, [side]: undefined };
+  });
+  const nextCircuits = alignCircuits(material.spec, rawCircuits);
 
   return {
     ...config,
@@ -585,6 +636,18 @@ export function updateMaterialCircuit(
 
   const syncElectronicColor = material.spec.kind === 'electronic' && typeof patch.color === 'string';
 
+  // For jacketed wires, when the user changes a core's color, persist it back
+  // into spec.coreColors so alignCircuits doesn't revert it on the next call.
+  let nextSpec = material.spec;
+  if (!syncElectronicColor && material.spec.kind === 'jacketed' && typeof patch.color === 'string') {
+    const circuit = material.circuits.find((c) => c.id === circuitId);
+    if (circuit?.coreIndex !== undefined) {
+      const nextCoreColors = [...material.spec.coreColors];
+      nextCoreColors[circuit.coreIndex] = patch.color;
+      nextSpec = { ...material.spec, coreColors: nextCoreColors };
+    }
+  }
+
   return {
     ...config,
     materials: config.materials.map((m) =>
@@ -592,11 +655,8 @@ export function updateMaterialCircuit(
         ? {
             ...m,
             spec: syncElectronicColor
-              ? {
-                  ...m.spec,
-                  color: patch.color!,
-                }
-              : m.spec,
+              ? { ...m.spec, color: patch.color! }
+              : nextSpec,
             circuits: m.circuits.map((c) =>
               syncElectronicColor
                 ? { ...c, ...patch, color: patch.color! }

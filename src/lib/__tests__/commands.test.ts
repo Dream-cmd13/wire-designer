@@ -245,8 +245,8 @@ describe('changeConnectorPart', () => {
     if (!twoPin) return;
 
     const result = changeConnectorPart(config, 'conn-b', twoPin.id);
-    // Circuit referencing pin 4 should be removed.
-    expect(result.config.materials[0].circuits).toHaveLength(0);
+    // Circuit referencing pin 4 should have its endpoint cleared.
+    expect(result.config.materials[0].circuits[0]?.start).toBeUndefined();
     expect(result.warnings.length).toBeGreaterThan(0);
   });
 });
@@ -270,7 +270,7 @@ describe('detachMaterialEndpoint', () => {
     expect(circuit.end).toBeDefined();
   });
 
-  it('removes the circuit entirely when both sides become empty', () => {
+  it('keeps both endpoints undefined when both sides become empty', () => {
     let config = makeTestConfig();
 
     config = attachMaterialEndpoint(config, {
@@ -280,7 +280,9 @@ describe('detachMaterialEndpoint', () => {
     const circuitId = config.materials[0].circuits[0].id;
     config = detachMaterialEndpoint(config, 'mat-1', circuitId, 'start');
 
-    expect(config.materials[0].circuits.find((c) => c.id === circuitId)).toBeUndefined();
+    const circuit = config.materials[0].circuits.find((c) => c.id === circuitId)!;
+    expect(circuit.start).toBeUndefined();
+    expect(circuit.end).toBeUndefined();
   });
 });
 
