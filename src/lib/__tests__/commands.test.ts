@@ -6,6 +6,7 @@ import {
   addConnectorJumper,
   changeConnectorPart,
   getActiveConnectorSide,
+  removeConnector,
   updateMaterialCircuit,
   type AttachEndpointInput,
 } from '@/lib/commands';
@@ -248,6 +249,88 @@ describe('changeConnectorPart', () => {
     // Circuit referencing pin 4 should have its endpoint cleared.
     expect(result.config.materials[0].circuits[0]?.start).toBeUndefined();
     expect(result.warnings.length).toBeGreaterThan(0);
+  });
+});
+
+describe('removeConnector', () => {
+  it('preserves editable placeholder circuits after disconnecting an electronic wire', () => {
+    let config = makeTestConfig();
+
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      endpoint: 'start',
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 1,
+    });
+
+    const result = removeConnector(config, 'conn-a');
+
+    expect(result.connectors.map((connector) => connector.id)).toEqual(['conn-b']);
+    expect(result.materials[0].circuits).toHaveLength(1);
+    expect(result.materials[0].circuits[0].start).toBeUndefined();
+    expect(result.materials[0].circuits[0].end).toBeUndefined();
+    expect(result.materials[0].circuits[0].color).toBe('red');
+  });
+
+  it('keeps all jacketed-core rows aligned after disconnecting a connector', () => {
+    const config: HarnessConfig = {
+      ...makeTestConfig(),
+      materials: [{
+        id: 'mat-jacketed',
+        name: 'WJ1',
+        position: { x: 300, y: 220 },
+        width: 180,
+        spec: {
+          kind: 'jacketed',
+          jacketMaterial: 'PVC',
+          jacketColor: 'black',
+          awg: 24,
+          coreCount: 3,
+          shielded: false,
+          odMm: 4.2,
+          coreColors: ['红色', '黑色', '白色'],
+          endTreatment: {
+            start: { stripped: false, termination: 'none' },
+            end: { stripped: false, termination: 'none' },
+          },
+          lengthMm: 300,
+        },
+        circuits: [
+          {
+            id: 'c-1',
+            start: { connectorId: 'conn-a', connectorSide: 'right', pin: 1 },
+            color: '红色',
+            signalName: '',
+            coreIndex: 0,
+          },
+          {
+            id: 'c-2',
+            start: { connectorId: 'conn-a', connectorSide: 'right', pin: 2 },
+            color: '黑色',
+            signalName: '',
+            coreIndex: 1,
+          },
+          {
+            id: 'c-3',
+            color: '白色',
+            signalName: '',
+            coreIndex: 2,
+          },
+        ],
+      }],
+    };
+
+    const result = removeConnector(config, 'conn-a');
+
+    expect(result.materials[0].circuits).toHaveLength(3);
+    expect(result.materials[0].circuits.map((circuit) => circuit.start)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(result.materials[0].circuits.map((circuit) => circuit.coreIndex)).toEqual([0, 1, 2]);
+    expect(result.materials[0].circuits.map((circuit) => circuit.color)).toEqual(['红色', '黑色', '白色']);
   });
 });
 

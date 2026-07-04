@@ -157,12 +157,15 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   const jacketedMaterialCount = detailMaterials.filter((material) => material.spec.kind === 'jacketed').length;
   const showMergedDetails = data.showMergedDetails ?? true;
 
-  // Detect if any protective sleeve is attached to this material (or its group).
-  // If yes, we reposition labels below the wire to avoid overlapping the sleeve.
-  const materialIds = new Set(detailMaterials.map((m) => m.id));
-  const hasSleeve = config.protectiveSleeves.some((s) =>
-    s.attachedMaterialIds.some((id) => materialIds.has(id)),
-  );
+  const labelOffset = useMemo(() => {
+    const attachedSleeves = config.protectiveSleeves.filter((sleeve) =>
+      sleeve.attachedMaterialIds.includes(data.id),
+    );
+    const overlapAboveWire = attachedSleeves.reduce((max, sleeve) => (
+      Math.max(max, Math.max(0, data.position.y - sleeve.position.y))
+    ), 0);
+    return overlapAboveWire > 0 ? overlapAboveWire + 6 : 2;
+  }, [config.protectiveSleeves, data.id, data.position.y]);
 
   useEffect(() => {
     if (connectedCircuitCount > previousCircuitCountRef.current) {
@@ -239,11 +242,8 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
 
       {data.labels?.length ? (
         <div
-          className={`pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-1 whitespace-nowrap ${
-            hasSleeve
-              ? 'top-full mt-0.5'   // below the wire, clear of the sleeve above
-              : 'bottom-full mb-0.5' // above the wire (default)
-          }`}
+          className="pointer-events-none absolute bottom-full left-1/2 z-10 flex -translate-x-1/2 gap-1 whitespace-nowrap"
+          style={{ marginBottom: labelOffset }}
         >
           {data.labels.map((label) => (
             <button

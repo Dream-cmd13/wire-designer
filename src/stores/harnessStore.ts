@@ -12,6 +12,7 @@ import { CONNECTORS } from '@/lib/data';
 import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import {
   generateId,
+  removeConnector as removeConnectorCommand,
   removeMaterial as removeMaterialCommand,
   updateMaterial as updateMaterialCommand,
   updateProtectiveSleeve as updateProtectiveSleeveCommand,
@@ -183,26 +184,8 @@ export const useHarnessStore = create<HarnessState>()(
               ? ({ kind: 'none' } as const)
               : state.selection;
 
-          // Clear pin refs in circuits, keep materials.
-          const materials = state.config.materials.map((material) => {
-            const nextCircuits = material.circuits
-              .map((circuit) => {
-                const next = { ...circuit };
-                if (next.start?.connectorId === id) next.start = undefined;
-                if (next.end?.connectorId === id) next.end = undefined;
-                return next;
-              })
-              .filter((c) => c.start || c.end);
-            return { ...material, circuits: nextCircuits };
-          });
-
           return {
-            config: {
-              ...state.config,
-              connectors: state.config.connectors.filter((c) => c.id !== id),
-              materials,
-              updatedAt: Date.now(),
-            },
+            config: removeConnectorCommand(state.config, id),
             selection: nextSelection,
             saveState: dirtyState(),
           };
