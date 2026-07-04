@@ -5,3 +5,34 @@ body {
   padding: 0;
   overflow: hidden;
 }
+
+@keyframes toast-in-top {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes toast-in-center {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 24px)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.animate-toast-in-top {
+  animation: toast-in-top 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-toast-in-center {
+  animation: toast-in-center 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

@@ -27,7 +27,7 @@ import {
   type IsValidConnection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper } from '@/lib/commands';
+import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper, removeMaterialCircuit } from '@/lib/commands';
 import {
   CANVAS_MODEL_SIZE,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
@@ -63,6 +63,7 @@ import {
   setMaterialConnectionPointHandler,
   type MaterialConnectionPoint,
 } from './materialConnectionClick';
+import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { UndoToast } from '@/components/shared/UndoToast';
 
 const WireMaterialDialog = lazy(() =>
@@ -664,6 +665,12 @@ function HarnessCanvasInner() {
   const [modelDialogPosition, setModelDialogPosition] = useState<{ x: number; y: number } | null>(null);
   const [accessoryDialog, setAccessoryDialog] = useState<AccessoryDialogState | null>(null);
   const [pendingConnectionPoint, setPendingConnectionPoint] = useState<MaterialConnectionPoint | null>(null);
+  const [deleteConfirmToast, setDeleteConfirmToast] = useState<{
+    title?: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [deletionNotice, setDeletionNotice] = useState<{
     message: string;
     snapshot: HarnessConfig;
@@ -701,6 +708,12 @@ function HarnessCanvasInner() {
   }, [deletionNotice]);
 
   useEffect(() => {
+    if (!deleteConfirmToast) return;
+    const timer = window.setTimeout(() => setDeleteConfirmToast(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [deleteConfirmToast]);
+
+  useEffect(() => {
     setMaterialAccessoryDialogHandler((request) => {
       setAccessoryDialog(request);
     });
@@ -723,6 +736,53 @@ function HarnessCanvasInner() {
     return () => setMaterialAccessoryContextMenuHandler(null);
   }, []);
 
+  const deleteWithUndo = useCallback((
+    message: string,
+    action: (state: ReturnType<typeof useHarnessStore.getState>) => void,
+    afterDelete?: () => void,
+  ) => {
+    const state = useHarnessStore.getState();
+    const snapshot = state.config;
+    action(state);
+    afterDelete?.();
+    setDeletionNotice({
+      message,
+      snapshot,
+      afterConfig: useHarnessStore.getState().config,
+    });
+  }, []);
+
+  const requestDeleteConfirmation = useCallback((options: {
+    title?: string;
+    message: string;
+    confirmLabel?: string;
+    undoMessage: string;
+    action: (state: ReturnType<typeof useHarnessStore.getState>) => void;
+    afterDelete?: () => void;
+  }) => {
+    setDeleteConfirmToast({
+      title: options.title,
+      message: options.message,
+      confirmLabel: options.confirmLabel,
+      onConfirm: () => {
+        setDeleteConfirmToast(null);
+        deleteWithUndo(options.undoMessage, options.action, options.afterDelete);
+      },
+    });
+  }, [deleteWithUndo]);
+
+  const handleRequestRemoveCircuit = useCallback((materialId: string, circuitId: string) => {
+    const material = config.materials.find((item) => item.id === materialId);
+    if (!material) return;
+    requestDeleteConfirmation({
+      message: `删除线材“${material.name}”上的这条接线？`,
+      undoMessage: `已删除线材“${material.name}”上的接线`,
+      action: (state) => {
+        state.replaceDocument(removeMaterialCircuit(state.config, materialId, circuitId));
+      },
+    });
+  }, [config.materials, requestDeleteConfirmation]);
+
   // Build React Flow nodes from config.
   // React Flow 12's Node<T> requires T extends Record<string, unknown>;
   // our domain interfaces don't satisfy that constraint, so we bridge
@@ -743,6 +803,7 @@ function HarnessCanvasInner() {
         ...material,
         detailMaterialIds,
         showMergedDetails: detailMaterialIds[detailMaterialIds.length - 1] === material.id,
+        onRequestRemoveCircuit: handleRequestRemoveCircuit,
       };
       return {
         id: material.id,
@@ -788,7 +849,7 @@ function HarnessCanvasInner() {
       nodesRef.current = resolvedNodes;
       return resolvedNodes;
     });
-  }, [canvasSelection, config.connectors, materials, models, selection, setNodes, sleeves]);
+  }, [canvasSelection, config.connectors, handleRequestRemoveCircuit, materials, models, selection, setNodes, sleeves]);
 
   // Build edges from circuits and jumpers
   useEffect(() => {
@@ -827,20 +888,6 @@ function HarnessCanvasInner() {
     setNewMaterialDraft(createDefaultCanvasMaterial(id, currentFlowPosition()));
     setEditingMaterialId(id);
   }, [currentFlowPosition]);
-
-  const deleteWithUndo = useCallback((
-    message: string,
-    action: (state: ReturnType<typeof useHarnessStore.getState>) => void,
-  ) => {
-    const state = useHarnessStore.getState();
-    const snapshot = state.config;
-    action(state);
-    setDeletionNotice({
-      message,
-      snapshot,
-      afterConfig: useHarnessStore.getState().config,
-    });
-  }, []);
 
   const handleAddProtectiveSleeve = useCallback((materialId?: string) => {
     setSleeveDialog({ position: currentFlowPosition(), materialId });
@@ -1049,11 +1096,20 @@ function HarnessCanvasInner() {
       m.circuits.some((c) => c.id === circuitId),
     );
     if (!material) return;
-
-    const nextConfig = detachMaterialEndpoint(state.config, material.id, circuitId, side);
-    state.replaceDocument(nextConfig);
-    setCanvasSelection(null);
-  }, []);
+    requestDeleteConfirmation({
+      title: '确认断开',
+      message: `断开线材“${material.name}”的${side === 'start' ? '起点' : '终点'}连接？`,
+      confirmLabel: '断开',
+      undoMessage: `已断开线材“${material.name}”的连接`,
+      action: (store) => {
+        const nextConfig = detachMaterialEndpoint(store.config, material.id, circuitId, side);
+        store.replaceDocument(nextConfig);
+      },
+      afterDelete: () => {
+        setCanvasSelection(null);
+      },
+    });
+  }, [requestDeleteConfirmation]);
 
   const handleDeleteJumper = useCallback((jumperId: string) => {
     const state = useHarnessStore.getState();
@@ -1062,11 +1118,18 @@ function HarnessCanvasInner() {
       c.jumpers.some((j) => j.id === jumperId),
     );
     if (!connector) return;
-
-    const nextConfig = removeConnectorJumper(state.config, connector.id, jumperId);
-    state.replaceDocument(nextConfig);
-    setCanvasSelection(null);
-  }, []);
+    requestDeleteConfirmation({
+      message: `删除连接器“${connector.label}”上的短接？`,
+      undoMessage: `已删除连接器“${connector.label}”上的短接`,
+      action: (store) => {
+        const nextConfig = removeConnectorJumper(store.config, connector.id, jumperId);
+        store.replaceDocument(nextConfig);
+      },
+      afterDelete: () => {
+        setCanvasSelection(null);
+      },
+    });
+  }, [requestDeleteConfirmation]);
 
   // --- Drag-stop: snap material endpoints to nearby connectors ---
   // IMPORTANT: re-read the latest config on every iteration. The store
@@ -1134,16 +1197,26 @@ function HarnessCanvasInner() {
     const state = useHarnessStore.getState();
     const current = state.config.materials.find((item) => item.id === materialId);
     if (!current) return;
-    if (kind === 'label') {
-      state.updateMaterial(materialId, {
-        labels: (current.labels ?? []).filter((item) => item.id !== accessoryId),
-      });
-    } else {
-      state.updateMaterial(materialId, {
-        numberTubes: (current.numberTubes ?? []).filter((item) => item.id !== accessoryId),
-      });
-    }
-  }, []);
+    requestDeleteConfirmation({
+      message: kind === 'label'
+        ? `删除线材“${current.name}”上的标签？`
+        : `删除线材“${current.name}”上的号码管？`,
+      undoMessage: kind === 'label' ? '已删除标签' : '已删除号码管',
+      action: (store) => {
+        const latest = store.config.materials.find((item) => item.id === materialId);
+        if (!latest) return;
+        if (kind === 'label') {
+          store.updateMaterial(materialId, {
+            labels: (latest.labels ?? []).filter((item) => item.id !== accessoryId),
+          });
+          return;
+        }
+        store.updateMaterial(materialId, {
+          numberTubes: (latest.numberTubes ?? []).filter((item) => item.id !== accessoryId),
+        });
+      },
+    });
+  }, [requestDeleteConfirmation]);
 
   const onNodeDragStart: OnNodeDrag = useCallback((_, node) => {
     const linkedNodeIds = getLinkedDragNodeIds(useHarnessStore.getState().config, node.id, node.type);
@@ -1510,18 +1583,14 @@ function HarnessCanvasInner() {
               0,
             );
             const jumperCount = connector.jumpers.length;
-            if (
-              (disconnectedCount > 0 || jumperCount > 0)
-              && !confirm(
-                `删除“${connector.label}”将断开 ${disconnectedCount} 条接线`
-                + (jumperCount > 0 ? `，并删除 ${jumperCount} 个短接` : '')
-                + '。是否继续？',
-              )
-            ) return;
-            deleteWithUndo(
-              `已删除连接器“${connector.label}”`,
-              (state) => state.removeConnector(id),
-            );
+            requestDeleteConfirmation({
+              message:
+                disconnectedCount > 0 || jumperCount > 0
+                  ? `删除“${connector.label}”将断开 ${disconnectedCount} 条接线${jumperCount > 0 ? `，并删除 ${jumperCount} 个短接` : ''}。`
+                  : `删除连接器“${connector.label}”？`,
+              undoMessage: `已删除连接器“${connector.label}”`,
+              action: (state) => state.removeConnector(id),
+            });
           }}
           onEditMaterial={(id) => {
             setNewMaterialDraft(null);
@@ -1530,8 +1599,14 @@ function HarnessCanvasInner() {
           onDeleteMaterial={(id) => {
             const material = config.materials.find((item) => item.id === id);
             if (!material) return;
-            deleteWithUndo(`已删除线材“${material.name}”`, (state) => state.removeMaterial(id));
-            setCanvasSelection(null);
+            requestDeleteConfirmation({
+              message: `删除线材“${material.name}”？`,
+              undoMessage: `已删除线材“${material.name}”`,
+              action: (state) => state.removeMaterial(id),
+              afterDelete: () => {
+                setCanvasSelection(null);
+              },
+            });
           }}
           onEditSleeve={(id) => {
             const sleeve = sleeves.find((item) => item.id === id);
@@ -1543,12 +1618,24 @@ function HarnessCanvasInner() {
             });
           }}
           onDeleteSleeve={(id) => {
-            deleteWithUndo('已删除保护套', (state) => state.removeProtectiveSleeve(id));
-            setCanvasSelection(null);
+            requestDeleteConfirmation({
+              message: '删除当前保护套？',
+              undoMessage: '已删除保护套',
+              action: (state) => state.removeProtectiveSleeve(id),
+              afterDelete: () => {
+                setCanvasSelection(null);
+              },
+            });
           }}
           onDeleteModel={(id) => {
-            deleteWithUndo('已删除外模', (state) => state.removeModel(id));
-            setCanvasSelection(null);
+            requestDeleteConfirmation({
+              message: '删除当前外模？',
+              undoMessage: '已删除外模',
+              action: (state) => state.removeModel(id),
+              afterDelete: () => {
+                setCanvasSelection(null);
+              },
+            });
           }}
           onAddAttachmentNumberTube={(materialId, circuitId, endpoint) =>
             setAccessoryDialog({ materialId, kind: 'number-tube', circuitId, endpoint })
@@ -1786,6 +1873,15 @@ function HarnessCanvasInner() {
             setDeletionNotice(null);
           }}
           onClose={() => setDeletionNotice(null)}
+        />
+      )}
+      {deleteConfirmToast && (
+        <DeleteConfirmToast
+          title={deleteConfirmToast.title}
+          message={deleteConfirmToast.message}
+          confirmLabel={deleteConfirmToast.confirmLabel}
+          onConfirm={deleteConfirmToast.onConfirm}
+          onCancel={() => setDeleteConfirmToast(null)}
         />
       )}
     </div>

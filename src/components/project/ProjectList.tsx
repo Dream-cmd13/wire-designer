@@ -1,6 +1,8 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Download, Edit3, FolderOpen, HardDrive, History, Plus, Trash2, Upload } from 'lucide-react';
 import { createDesignFile, downloadTextFile, safeFilename, type DesignFilePreview } from '@/lib/designFile';
+import { ActionToast } from '@/components/shared/ActionToast';
+import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
@@ -21,18 +23,49 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
   const [editName, setEditName] = useState('');
   const [importOpen, setImportOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [deleteToast, setDeleteToast] = useState<Project | null>(null);
+  const [statusToast, setStatusToast] = useState<{
+    tone: 'success' | 'danger';
+    message: string;
+  } | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
 
   const userProjects = projects
     .filter((project) => project.userId === currentUser?.id)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
+  useEffect(() => {
+    if (!deleteToast) return;
+    const timer = window.setTimeout(() => setDeleteToast(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [deleteToast]);
+
+  useEffect(() => {
+    if (!statusToast) return;
+    const timer = window.setTimeout(() => setStatusToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [statusToast]);
+
+  const confirmDelete = (project: Project) => {
+    setDeleteToast(project);
+  };
+
   const handleDelete = async (project: Project) => {
-    if (!confirm(`确定要删除项目“${project.name}”吗？此操作不可撤销。`)) return;
+    setDeleteToast(null);
+    setDeletingProjectId(project.id);
     try {
       await deleteProject(project.id);
-      setNotice(`已删除项目“${project.name}”`);
+      setStatusToast({
+        tone: 'success',
+        message: `已删除项目“${project.name}”`,
+      });
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '删除失败');
+      setStatusToast({
+        tone: 'danger',
+        message: error instanceof Error ? error.message : '删除失败',
+      });
+    } finally {
+      setDeletingProjectId(null);
     }
   };
 
@@ -249,7 +282,8 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleDelete(project)}
+                  onClick={() => confirmDelete(project)}
+                  disabled={deletingProjectId === project.id}
                   className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   title="删除"
                   aria-label={`删除项目 ${project.name}`}
@@ -269,6 +303,20 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
           onImport={handleImport}
         />
       </Suspense>
+      {deleteToast && (
+        <DeleteConfirmToast
+          message={`删除项目“${deleteToast.name}”？此操作不可撤销。`}
+          onConfirm={() => void handleDelete(deleteToast)}
+          onCancel={() => setDeleteToast(null)}
+        />
+      )}
+      {statusToast && (
+        <ActionToast
+          tone={statusToast.tone}
+          message={statusToast.message}
+          onClose={() => setStatusToast(null)}
+        />
+      )}
     </div>
   );
 }

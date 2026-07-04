@@ -27,6 +27,7 @@ import { selectMaterialConnectionPoint } from './materialConnectionClick';
 export interface WireMaterialNodeData extends CanvasWireMaterial {
   detailMaterialIds?: string[];
   showMergedDetails?: boolean;
+  onRequestRemoveCircuit?: (materialId: string, circuitId: string) => void;
 }
 
 interface WireMaterialNodeProps {
@@ -139,6 +140,10 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   };
 
   const handleRemoveCircuit = (materialId: string, circuitId: string) => {
+    if (data.onRequestRemoveCircuit) {
+      data.onRequestRemoveCircuit(materialId, circuitId);
+      return;
+    }
     const state = useHarnessStore.getState();
     state.replaceDocument(removeMaterialCircuit(state.config, materialId, circuitId));
   };
