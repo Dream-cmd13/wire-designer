@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeHarnessConfig, createFallbackConfig } from '@/lib/normalizeHarnessConfig';
+import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
 import type { HarnessConfig } from '@/types/harness';
 
 describe('normalizeHarnessConfig', () => {
@@ -50,18 +51,18 @@ describe('normalizeHarnessConfig', () => {
     expect(normalizeHarnessConfig('string').schemaVersion).toBe(3);
   });
 
-  it('normalizes missing arrays to empty arrays', () => {
+  it('rejects a partial v3 shape instead of trusting missing arrays', () => {
     const partial = {
       schemaVersion: 3,
       id: 'partial',
       name: '部分配置',
-      // Missing connectors, materials, protectiveSleeves
     };
 
     const result = normalizeHarnessConfig(partial);
     expect(result.connectors).toEqual([]);
     expect(result.materials).toEqual([]);
     expect(result.protectiveSleeves).toEqual([]);
+    expect(result.id).not.toBe('partial');
   });
 
   it('normalizes invalid quantity to 1', () => {
@@ -88,11 +89,13 @@ describe('normalizeHarnessConfig', () => {
     expect(result.leadTime).toBe('standard');
   });
 
-  it('normalizes material accessories and legacy single-wire sleeve attachment', () => {
+  it('normalizes optional material accessory arrays on an otherwise valid document', () => {
     const input = {
       schemaVersion: 3,
       id: 'normalized',
       name: 'normalized',
+      createdAt: 100,
+      updatedAt: 200,
       materials: [{
         id: 'material-1',
         name: 'W1',
@@ -113,10 +116,14 @@ describe('normalizeHarnessConfig', () => {
         type: 'heat-shrink',
         position: { x: 0, y: 0 },
         width: 60,
+        height: 36,
         lengthMm: 100,
-        attachedMaterialId: 'material-1',
+        attachedMaterialIds: ['material-1'],
       }],
+      connectors: [],
       models: [],
+      quantity: 1,
+      leadTime: 'standard',
     };
 
     const result = normalizeHarnessConfig(input);
@@ -125,6 +132,72 @@ describe('normalizeHarnessConfig', () => {
     expect(result.materials[0].numberTubes).toEqual([]);
     expect(result.protectiveSleeves[0].attachedMaterialIds).toEqual(['material-1']);
     expect(result.protectiveSleeves[0].height).toBe(36);
+  });
+
+  it('rejects nested material data with a missing spec', () => {
+    const input = {
+      schemaVersion: 3,
+      id: 'broken',
+      name: 'broken',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [],
+      materials: [{
+        id: 'material-1',
+        name: 'W1',
+        position: { x: 0, y: 0 },
+        width: 100,
+        circuits: [],
+      }],
+      protectiveSleeves: [],
+      models: [],
+      quantity: 1,
+      leadTime: 'standard',
+    };
+
+    const parsed = parseHarnessConfig(input);
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.issues.some((issue) => issue.includes('materials[0].spec'))).toBe(true);
+    }
+  });
+
+  it('rejects nested connector pin references with invalid PIN values', () => {
+    const input: HarnessConfig = {
+      schemaVersion: 3,
+      id: 'broken-pin',
+      name: 'broken-pin',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [],
+      materials: [{
+        id: 'material-1',
+        name: 'W1',
+        position: { x: 0, y: 0 },
+        width: 100,
+        spec: {
+          kind: 'electronic',
+          color: 'red',
+          lengthMm: 100,
+          awg: 26,
+          ulNumber: '1007',
+          endTreatment: { stripped: false },
+        },
+        circuits: [{
+          id: 'circuit-1',
+          color: 'red',
+          signalName: 'VCC',
+          start: { connectorId: 'missing', connectorSide: 'left', pin: 0 },
+        }],
+      }],
+      protectiveSleeves: [],
+      models: [],
+      quantity: 1,
+      leadTime: 'standard',
+    };
+
+    const parsed = parseHarnessConfig(input);
+    expect(parsed.success).toBe(false);
   });
 });
 

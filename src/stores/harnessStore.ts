@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type {
   CanvasModel,
   CanvasWireMaterial,
@@ -17,7 +16,6 @@ import {
   updateMaterial as updateMaterialCommand,
   updateProtectiveSleeve as updateProtectiveSleeveCommand,
 } from '@/lib/commands';
-import { normalizeHarnessConfig } from '@/lib/normalizeHarnessConfig';
 
 export function createDefaultConfig(): HarnessConfig {
   const connectorA: typeof CONNECTORS[number] = CONNECTORS[0]; // JST XH 2P
@@ -128,7 +126,6 @@ function dirtyState() {
 }
 
 export const useHarnessStore = create<HarnessState>()(
-  persist(
     (set) => ({
       config: createDefaultConfig(),
       selection: { kind: 'none' },
@@ -303,66 +300,4 @@ export const useHarnessStore = create<HarnessState>()(
           saveState: dirtyState(),
         }),
     }),
-    {
-      name: 'harness-config',
-      version: 3,
-      partialize: (state) => ({ config: state.config, saveState: state.saveState }),
-      // Normalize any persisted shape to v3. Non-v3 data is discarded
-      // (the project is pre-release; legacy data is not needed).
-      merge: (persisted, current) => {
-        const incoming = persisted as Partial<{ config: unknown; saveState: SaveState }> | undefined;
-        const normalizedConfig = incoming?.config
-          ? normalizeHarnessConfig(incoming.config)
-          : current.config;
-        return {
-          ...current,
-          config: normalizedConfig,
-          saveState: incoming?.saveState ?? current.saveState,
-        };
-      },
-      // Defensive storage: catch quota exceeded and degrade gracefully.
-      storage: createSafeStorage(),
-    },
-  ),
 );
-
-/**
- * Wraps zustand's default JSON storage with quota-exceeded handling.
- * On failure, sets a flag key the UI can detect and degrades to
- * in-memory-only mode (the in-memory state stays intact).
- *
- * Writes are synchronous (no debouncing) to avoid losing the last
- * draft when the page closes. For a single-user design tool the write
- * frequency is low enough that debouncing is premature optimization.
- */
-function createSafeStorage() {
-  return {
-    getItem: (name: string) => {
-      try {
-        const v = localStorage.getItem(name);
-        return v ? JSON.parse(v) : null;
-      } catch {
-        return null;
-      }
-    },
-    setItem: (name: string, value: unknown) => {
-      try {
-        localStorage.setItem(name, JSON.stringify(value));
-      } catch {
-        // Quota exceeded — mark a flag the UI can read.
-        try {
-          localStorage.setItem('harness-config-quota-exceeded', '1');
-        } catch {
-          // Even the flag failed; nothing more we can do.
-        }
-      }
-    },
-    removeItem: (name: string) => {
-      try {
-        localStorage.removeItem(name);
-      } catch {
-        // ignored
-      }
-    },
-  };
-}

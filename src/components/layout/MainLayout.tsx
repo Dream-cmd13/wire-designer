@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react';
 
 interface MainLayoutProps {
@@ -9,12 +9,21 @@ interface MainLayoutProps {
 
 export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps) {
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1280px)');
+    const handleViewportChange = (event: MediaQueryListEvent) => {
+      if (!event.matches) setRightOpen(false);
+    };
+    desktop.addEventListener('change', handleViewportChange);
+    return () => desktop.removeEventListener('change', handleViewportChange);
+  }, []);
 
   return (
     <div className="flex h-full flex-col bg-slate-50">
-      <div className="hidden border-b border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-700 max-md:block">
-        建议使用桌面端（1024px 以上）进行线束设计，当前屏幕宽度下体验可能受限。
+      <div className="hidden border-b border-blue-200 bg-blue-50 px-3 py-2 text-center text-xs text-blue-700 max-xl:block">
+        窄屏模式已自动收起右侧面板和等距预览；可按需展开右侧面板。
       </div>
 
       <div className="flex flex-1 overflow-hidden">

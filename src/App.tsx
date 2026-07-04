@@ -1,18 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronDown, ChevronUp, FolderOpen, Redo2, Undo2, User } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ChevronDown, ChevronUp, Download, FolderOpen, Redo2, Undo2, User } from 'lucide-react';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { ConfigPanel } from '@/components/panels/ConfigPanel';
-import { QuotePanel } from '@/components/panels/QuotePanel';
-import { BomPanel } from '@/components/panels/BomPanel';
-import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
-import { Preview3D } from '@/components/preview3d/Preview3D';
-import { AuthModal } from '@/components/auth/AuthModal';
 import { ProjectList } from '@/components/project/ProjectList';
-import { ProjectWizard } from '@/components/project/ProjectWizard';
+import { downloadTextFile, safeFilename } from '@/lib/designFile';
+import { projectRepository } from '@/repositories/projectRepository';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
-import { loadProjectConfig, useProjectStore } from '@/stores/projectStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import { useHistoryStore } from '@/stores/historyStore';
+
+const ConfigPanel = lazy(() =>
+  import('@/components/panels/ConfigPanel').then((module) => ({ default: module.ConfigPanel })));
+const QuotePanel = lazy(() =>
+  import('@/components/panels/QuotePanel').then((module) => ({ default: module.QuotePanel })));
+const BomPanel = lazy(() =>
+  import('@/components/panels/BomPanel').then((module) => ({ default: module.BomPanel })));
+const HarnessCanvas = lazy(() =>
+  import('@/components/canvas/HarnessCanvas').then((module) => ({ default: module.HarnessCanvas })));
+const Preview3D = lazy(() =>
+  import('@/components/preview3d/Preview3D').then((module) => ({ default: module.Preview3D })));
+const AuthModal = lazy(() =>
+  import('@/components/auth/AuthModal').then((module) => ({ default: module.AuthModal })));
+const ProjectWizard = lazy(() =>
+  import('@/components/project/ProjectWizard').then((module) => ({ default: module.ProjectWizard })));
+
+function LoadingPanel() {
+  return <div className="flex h-full items-center justify-center text-sm text-slate-400">正在加载...</div>;
+}
 
 function RightPanel() {
   const [bomCollapsed, setBomCollapsed] = useState(false);
@@ -40,19 +54,30 @@ function RightPanel() {
 
 function DesignerView() {
   return (
-    <MainLayout leftPanel={<ConfigPanel />} rightPanel={<RightPanel />}>
-      <HarnessCanvas />
-      <Preview3D />
-    </MainLayout>
+    <Suspense fallback={<LoadingPanel />}>
+      <MainLayout leftPanel={<ConfigPanel />} rightPanel={<RightPanel />}>
+        <HarnessCanvas />
+        <div className="hidden xl:block">
+          <Preview3D />
+        </div>
+      </MainLayout>
+    </Suspense>
   );
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
 export default function App() {
   const [view, setView] = useState<'projectList' | 'designer' | 'wizard'>('projectList');
   const [authOpen, setAuthOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [recoveryRaw, setRecoveryRaw] = useState<string | null>(null);
   const [saveBlocked, setSaveBlocked] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
 
   const currentUser = useUserStore((state) => state.currentUser);
   const { currentProject, saveCurrentConfig, setCurrentProject, updateProject } = useProjectStore();
@@ -69,19 +94,34 @@ export default function App() {
     history.resume();
   }, [replaceDocument]);
 
-  const doSave = useCallback(() => {
+  const doSave = useCallback(async () => {
     if (!currentProject || saveBlocked) {
       return;
     }
+    if (saveInFlightRef.current) {
+      await saveInFlightRef.current;
+      return;
+    }
 
-    try {
-      markSaving();
+    const task = (async () => {
       const latestConfig = useHarnessStore.getState().config;
-      saveCurrentConfig(latestConfig);
-      updateProject(currentProject.id, { name: latestConfig.name });
-      markSaved();
-    } catch (error) {
-      markSaveError(error instanceof Error ? error.message : '保存失败');
+      markSaving();
+      try {
+        await saveCurrentConfig(latestConfig);
+        await updateProject(currentProject.id, { name: latestConfig.name });
+        if (useHarnessStore.getState().config.updatedAt === latestConfig.updatedAt) {
+          markSaved();
+        }
+      } catch (error) {
+        markSaveError(error instanceof Error ? error.message : '保存失败');
+      }
+    })();
+
+    saveInFlightRef.current = task;
+    try {
+      await task;
+    } finally {
+      saveInFlightRef.current = null;
     }
   }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig, updateProject]);
 
@@ -94,7 +134,7 @@ export default function App() {
       clearTimeout(saveTimerRef.current);
     }
 
-    saveTimerRef.current = setTimeout(doSave, 2000);
+    saveTimerRef.current = setTimeout(() => void doSave(), 2000);
 
     return () => {
       if (saveTimerRef.current) {
@@ -120,7 +160,7 @@ export default function App() {
       if (view !== 'designer') return;
 
       const isCtrlOrCmd = event.ctrlKey || event.metaKey;
-      if (!isCtrlOrCmd) return;
+      if (!isCtrlOrCmd || isEditableTarget(event.target)) return;
 
       if (event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
@@ -147,7 +187,7 @@ export default function App() {
       }
 
       try {
-        saveCurrentConfig(useHarnessStore.getState().config);
+        projectRepository.emergencySave(currentProject.id, useHarnessStore.getState().config);
       } catch {
         // best effort flush only
       }
@@ -155,7 +195,7 @@ export default function App() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentProject, saveBlocked, saveCurrentConfig]);
+  }, [currentProject, saveBlocked]);
 
   const handleNewProject = () => {
     if (!currentUser) {
@@ -164,11 +204,12 @@ export default function App() {
     }
 
     setLoadError(null);
+    setRecoveryRaw(null);
     setSaveBlocked(false);
     setView('wizard');
   };
 
-  const handleOpenProject = (project: typeof currentProject) => {
+  const handleOpenProject = async (project: typeof currentProject) => {
     if (!project) return;
 
     setCurrentProject(project);
@@ -176,18 +217,27 @@ export default function App() {
     history.clear();
     history.pause();
 
-    const loadedConfig = loadProjectConfig(project.id);
+    const result = await projectRepository.load(project.id);
 
-    if (loadedConfig) {
-      replaceDocument(loadedConfig, { markSaved: true });
-      if (loadedConfig.name !== project.name) {
-        updateProject(project.id, { name: loadedConfig.name });
+    if (result.status === 'ok') {
+      replaceDocument(result.config, { markSaved: true });
+      if (result.config.name !== project.name) {
+        await updateProject(project.id, { name: result.config.name });
       }
       setLoadError(null);
+      setRecoveryRaw(null);
       setSaveBlocked(false);
     } else {
       replaceDocument(createDefaultConfig(), { markSaved: true });
-      setLoadError(`无法加载项目“${project.name}”的配置数据，已回退为默认示例。`);
+      if (result.status === 'invalid') {
+        setLoadError(
+          `项目“${project.name}”的结构校验失败，已保留原始恢复副本（${result.issues.slice(0, 2).join('；')}）。`,
+        );
+        setRecoveryRaw(result.raw);
+      } else {
+        setLoadError(`无法加载项目“${project.name}”的配置数据，已回退为默认示例。`);
+        setRecoveryRaw(null);
+      }
       setSaveBlocked(true);
     }
 
@@ -197,6 +247,7 @@ export default function App() {
 
   const handleWizardComplete = () => {
     setLoadError(null);
+    setRecoveryRaw(null);
     setSaveBlocked(false);
     useHistoryStore.getState().clear();
     setView('designer');
@@ -209,7 +260,7 @@ export default function App() {
 
     if (currentProject && !saveBlocked) {
       try {
-        saveCurrentConfig(useHarnessStore.getState().config);
+        projectRepository.emergencySave(currentProject.id, useHarnessStore.getState().config);
       } catch {
         // best effort flush only
       }
@@ -217,6 +268,7 @@ export default function App() {
 
     setCurrentProject(null);
     setLoadError(null);
+    setRecoveryRaw(null);
     setSaveBlocked(false);
     useHistoryStore.getState().clear();
     setView('projectList');
@@ -331,7 +383,10 @@ export default function App() {
 
       <div className="h-[calc(100vh-56px)]">
         {view === 'projectList' && (
-          <ProjectList onNewProject={handleNewProject} onOpenProject={handleOpenProject} />
+          <ProjectList
+            onNewProject={handleNewProject}
+            onOpenProject={(project) => void handleOpenProject(project)}
+          />
         )}
 
         {view === 'designer' && (
@@ -352,6 +407,19 @@ export default function App() {
                 >
                   ✕
                 </button>
+                {recoveryRaw && (
+                  <button
+                    type="button"
+                    onClick={() => downloadTextFile(
+                      recoveryRaw,
+                      `${safeFilename(currentProject?.name ?? 'damaged-project')}.recovery.json`,
+                    )}
+                    className="flex shrink-0 cursor-pointer items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    下载原始副本
+                  </button>
+                )}
               </div>
             )}
 
@@ -360,13 +428,17 @@ export default function App() {
         )}
       </div>
 
-      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
+      <Suspense fallback={null}>
+        {authOpen && <AuthModal isOpen onClose={() => setAuthOpen(false)} />}
+      </Suspense>
 
       {view === 'wizard' && (
-        <ProjectWizard
-          onComplete={handleWizardComplete}
-          onCancel={() => setView('projectList')}
-        />
+        <Suspense fallback={<LoadingPanel />}>
+          <ProjectWizard
+            onComplete={handleWizardComplete}
+            onCancel={() => setView('projectList')}
+          />
+        </Suspense>
       )}
     </div>
   );

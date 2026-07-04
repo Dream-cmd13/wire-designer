@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Check, Search } from 'lucide-react';
 import { CONNECTORS } from '@/lib/data';
 import { changeConnectorPart, getActiveConnectorSide } from '@/lib/commands';
 import { getCanvasModelDisplayName, getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { Connector } from '@/types/harness';
-import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
+
+const PartPickerDialog = lazy(() =>
+  import('@/components/shared/PartPickerDialog').then((module) => ({ default: module.PartPickerDialog })));
 
 export function PropertyInspector() {
   const { selection } = useHarnessStore();
@@ -124,14 +126,23 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
         </div>
       )}
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && (
+        <div role="status" className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+          <p className="font-medium">更换型号时已移除越界 PIN 引用</p>
+          <p className="mt-1">{error}</p>
+        </div>
+      )}
 
-      <PartPickerDialog
-        isOpen={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onSelect={handlePartChange}
-        currentConnectorId={instance.connector?.id}
-      />
+      <Suspense fallback={null}>
+        {pickerOpen && (
+          <PartPickerDialog
+            isOpen
+            onClose={() => setPickerOpen(false)}
+            onSelect={handlePartChange}
+            currentConnectorId={instance.connector?.id}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

@@ -2,7 +2,10 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Project } from '@/types/user';
 import type { HarnessConfig } from '@/types/harness';
-import { normalizeHarnessConfig } from '@/lib/normalizeHarnessConfig';
+import {
+  projectRepository,
+  type ProjectLoadResult,
+} from '@/repositories/projectRepository';
 
 const generateId = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -10,29 +13,6 @@ const generateId = (): string => {
   }
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
-
-// Project configs are stored separately to avoid nesting issues with persist
-const PROJECT_CONFIG_PREFIX = 'harness-project-config-';
-
-export function saveProjectConfig(projectId: string, config: HarnessConfig) {
-  localStorage.setItem(PROJECT_CONFIG_PREFIX + projectId, JSON.stringify(config));
-}
-
-export function loadProjectConfig(projectId: string): HarnessConfig | null {
-  try {
-    const data = localStorage.getItem(PROJECT_CONFIG_PREFIX + projectId);
-    if (!data) return null;
-    const raw = JSON.parse(data);
-    // Normalize: validates v3 shape; discards non-v3 data.
-    return normalizeHarnessConfig(raw);
-  } catch {
-    return null;
-  }
-}
-
-export function deleteProjectConfig(projectId: string) {
-  localStorage.removeItem(PROJECT_CONFIG_PREFIX + projectId);
-}
 
 interface ProjectState {
   projects: Project[];
@@ -44,14 +24,14 @@ interface ProjectState {
     name: string,
     description: string,
     initialConfig: HarnessConfig
-  ) => Project;
-  updateProject: (id: string, updates: Partial<Project>) => void;
-  deleteProject: (id: string) => void;
+  ) => Promise<Project>;
+  updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
   setCurrentProject: (project: Project | null) => void;
 
   // --- Config management ---
-  saveCurrentConfig: (config: HarnessConfig) => void;
-  loadCurrentConfig: () => HarnessConfig | null;
+  saveCurrentConfig: (config: HarnessConfig) => Promise<void>;
+  loadCurrentConfig: () => Promise<ProjectLoadResult>;
 
   // --- Query ---
   getUserProjects: (userId: string) => Project[];
@@ -63,7 +43,7 @@ export const useProjectStore = create<ProjectState>()(
       projects: [],
       currentProject: null,
 
-      createProject: (userId, name, description, initialConfig) => {
+      createProject: async (userId, name, description, initialConfig) => {
         const projectId = generateId();
         const configId = generateId();
         const newProject: Project = {
@@ -76,9 +56,8 @@ export const useProjectStore = create<ProjectState>()(
           updatedAt: Date.now(),
           status: 'draft',
         };
-        // Save config separately
         const configToSave = { ...initialConfig, id: configId };
-        saveProjectConfig(projectId, configToSave);
+        await projectRepository.save(projectId, configToSave);
         set((state) => ({
           projects: [...state.projects, newProject],
           currentProject: newProject,
@@ -86,18 +65,7 @@ export const useProjectStore = create<ProjectState>()(
         return newProject;
       },
 
-      updateProject: (id, updates) => {
-        if (typeof updates.name === 'string') {
-          const config = loadProjectConfig(id);
-          if (config && config.name !== updates.name) {
-            saveProjectConfig(id, {
-              ...config,
-              name: updates.name,
-              updatedAt: Date.now(),
-            });
-          }
-        }
-
+      updateProject: async (id, updates) => {
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p
@@ -109,8 +77,8 @@ export const useProjectStore = create<ProjectState>()(
         }));
       },
 
-      deleteProject: (id) => {
-        deleteProjectConfig(id);
+      deleteProject: async (id) => {
+        await projectRepository.remove(id);
         set((state) => ({
           projects: state.projects.filter((p) => p.id !== id),
           currentProject: state.currentProject?.id === id ? null : state.currentProject,
@@ -119,17 +87,17 @@ export const useProjectStore = create<ProjectState>()(
 
       setCurrentProject: (project) => set({ currentProject: project }),
 
-      saveCurrentConfig: (config) => {
+      saveCurrentConfig: async (config) => {
         const { currentProject } = get();
         if (currentProject) {
-          saveProjectConfig(currentProject.id, config);
+          await projectRepository.save(currentProject.id, config);
         }
       },
 
-      loadCurrentConfig: () => {
+      loadCurrentConfig: async () => {
         const { currentProject } = get();
-        if (!currentProject) return null;
-        return loadProjectConfig(currentProject.id);
+        if (!currentProject) return { status: 'missing' };
+        return projectRepository.load(currentProject.id);
       },
 
       getUserProjects: (userId) =>

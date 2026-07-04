@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -50,15 +52,9 @@ import { ContextMenu, type ContextMenuState } from './ContextMenu';
 import { JumperEdge } from './JumperEdge';
 import { setJumperContextMenuHandler } from './jumperContextMenu';
 import { MaterialAttachmentEdge } from './MaterialAttachmentEdge';
-import { ProtectiveSleeveDialog } from './ProtectiveSleeveDialog';
 import { ProtectiveSleeveNode } from './ProtectiveSleeveNode';
-import { WireMaterialDialog } from './WireMaterialDialog';
 import { WireMaterialNode, type WireMaterialNodeData } from './WireMaterialNode';
-import { CanvasModelDialog } from './CanvasModelDialog';
-import {
-  MaterialAccessoryDialog,
-  type MaterialAccessoryKind,
-} from './MaterialAccessoryDialog';
+import type { MaterialAccessoryKind } from './MaterialAccessoryDialog';
 import {
   setMaterialAccessoryContextMenuHandler,
   setMaterialAccessoryDialogHandler,
@@ -67,6 +63,16 @@ import {
   setMaterialConnectionPointHandler,
   type MaterialConnectionPoint,
 } from './materialConnectionClick';
+import { UndoToast } from '@/components/shared/UndoToast';
+
+const WireMaterialDialog = lazy(() =>
+  import('./WireMaterialDialog').then((module) => ({ default: module.WireMaterialDialog })));
+const ProtectiveSleeveDialog = lazy(() =>
+  import('./ProtectiveSleeveDialog').then((module) => ({ default: module.ProtectiveSleeveDialog })));
+const CanvasModelDialog = lazy(() =>
+  import('./CanvasModelDialog').then((module) => ({ default: module.CanvasModelDialog })));
+const MaterialAccessoryDialog = lazy(() =>
+  import('./MaterialAccessoryDialog').then((module) => ({ default: module.MaterialAccessoryDialog })));
 
 const nodeTypes: NodeTypes = {
   connector: ConnectorNode,
@@ -646,11 +652,16 @@ function HarnessCanvasInner() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [canvasSelection, setCanvasSelection] = useState<string | null>(null);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
-  const [newMaterialId, setNewMaterialId] = useState<string | null>(null);
+  const [newMaterialDraft, setNewMaterialDraft] = useState<CanvasWireMaterial | null>(null);
   const [sleeveDialog, setSleeveDialog] = useState<SleeveDialogState | null>(null);
   const [modelDialogPosition, setModelDialogPosition] = useState<{ x: number; y: number } | null>(null);
   const [accessoryDialog, setAccessoryDialog] = useState<AccessoryDialogState | null>(null);
   const [pendingConnectionPoint, setPendingConnectionPoint] = useState<MaterialConnectionPoint | null>(null);
+  const [deletionNotice, setDeletionNotice] = useState<{
+    message: string;
+    snapshot: HarnessConfig;
+    afterConfig: HarnessConfig;
+  } | null>(null);
   const pendingConnectionPointRef = useRef<MaterialConnectionPoint | null>(null);
   const nodesRef = useRef<Node[]>([]);
   const dragGroupRef = useRef<{
@@ -675,6 +686,12 @@ function HarnessCanvasInner() {
     });
     return () => setJumperContextMenuHandler(null);
   }, []);
+
+  useEffect(() => {
+    if (!deletionNotice) return;
+    const timer = window.setTimeout(() => setDeletionNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [deletionNotice]);
 
   useEffect(() => {
     setMaterialAccessoryDialogHandler((request) => {
@@ -802,13 +819,23 @@ function HarnessCanvasInner() {
 
   const handleAddCanvasWire = useCallback(() => {
     const id = generateId();
-    useHarnessStore.getState().addMaterial(
-      createDefaultCanvasMaterial(id, currentFlowPosition()),
-    );
-    setNewMaterialId(id);
+    setNewMaterialDraft(createDefaultCanvasMaterial(id, currentFlowPosition()));
     setEditingMaterialId(id);
-    setCanvasSelection(id);
   }, [currentFlowPosition]);
+
+  const deleteWithUndo = useCallback((
+    message: string,
+    action: (state: ReturnType<typeof useHarnessStore.getState>) => void,
+  ) => {
+    const state = useHarnessStore.getState();
+    const snapshot = state.config;
+    action(state);
+    setDeletionNotice({
+      message,
+      snapshot,
+      afterConfig: useHarnessStore.getState().config,
+    });
+  }, []);
 
   const handleAddProtectiveSleeve = useCallback((materialId?: string) => {
     setSleeveDialog({ position: currentFlowPosition(), materialId });
@@ -1381,7 +1408,9 @@ function HarnessCanvasInner() {
     }
   }, []);
 
-  const editingMaterial = materials.find((m) => m.id === editingMaterialId) ?? null;
+  const editingMaterial = newMaterialDraft
+    ?? materials.find((material) => material.id === editingMaterialId)
+    ?? null;
   const editingSleeve = sleeves.find((item) => item.id === sleeveDialog?.sleeveId);
   const electronicGroups = getElectronicMaterialGroups(materials);
   const candidateMaterialIds = sleeveDialog?.materialId
@@ -1467,13 +1496,36 @@ function HarnessCanvasInner() {
             };
             useHarnessStore.getState().addConnector(newInstance);
           }}
-          onDeleteConnector={(id) => useHarnessStore.getState().removeConnector(id)}
+          onDeleteConnector={(id) => {
+            const connector = config.connectors.find((item) => item.id === id);
+            if (!connector) return;
+            const disconnectedCount = config.materials.reduce(
+              (count, material) => count + material.circuits.filter((circuit) =>
+                circuit.start?.connectorId === id || circuit.end?.connectorId === id).length,
+              0,
+            );
+            const jumperCount = connector.jumpers.length;
+            if (
+              (disconnectedCount > 0 || jumperCount > 0)
+              && !confirm(
+                `删除“${connector.label}”将断开 ${disconnectedCount} 条接线`
+                + (jumperCount > 0 ? `，并删除 ${jumperCount} 个短接` : '')
+                + '。是否继续？',
+              )
+            ) return;
+            deleteWithUndo(
+              `已删除连接器“${connector.label}”`,
+              (state) => state.removeConnector(id),
+            );
+          }}
           onEditMaterial={(id) => {
-            setNewMaterialId(null);
+            setNewMaterialDraft(null);
             setEditingMaterialId(id);
           }}
           onDeleteMaterial={(id) => {
-            useHarnessStore.getState().removeMaterial(id);
+            const material = config.materials.find((item) => item.id === id);
+            if (!material) return;
+            deleteWithUndo(`已删除线材“${material.name}”`, (state) => state.removeMaterial(id));
             setCanvasSelection(null);
           }}
           onEditSleeve={(id) => {
@@ -1486,11 +1538,11 @@ function HarnessCanvasInner() {
             });
           }}
           onDeleteSleeve={(id) => {
-            useHarnessStore.getState().removeProtectiveSleeve(id);
+            deleteWithUndo('已删除保护套', (state) => state.removeProtectiveSleeve(id));
             setCanvasSelection(null);
           }}
           onDeleteModel={(id) => {
-            useHarnessStore.getState().removeModel(id);
+            deleteWithUndo('已删除外模', (state) => state.removeModel(id));
             setCanvasSelection(null);
           }}
           onAddAttachmentNumberTube={(materialId, circuitId, endpoint) =>
@@ -1507,29 +1559,33 @@ function HarnessCanvasInner() {
         />
       )}
 
-      <WireMaterialDialog
-        key={editingMaterialId ?? 'closed'}
-        material={editingMaterial}
-        onCancel={() => {
-          if (newMaterialId) {
-            useHarnessStore.getState().removeMaterial(newMaterialId);
-          }
-          setEditingMaterialId(null);
-          setNewMaterialId(null);
-        }}
-        onConfirm={(updates) => {
-          if (editingMaterialId) {
-            useHarnessStore.getState().updateMaterial(editingMaterialId, updates);
-          }
-          setEditingMaterialId(null);
-          setNewMaterialId(null);
-        }}
-      />
+      <Suspense fallback={null}>
+      {editingMaterial && (
+        <WireMaterialDialog
+          key={editingMaterialId ?? 'closed'}
+          material={editingMaterial}
+          onCancel={() => {
+            setEditingMaterialId(null);
+            setNewMaterialDraft(null);
+          }}
+          onConfirm={(updates) => {
+            if (newMaterialDraft) {
+              useHarnessStore.getState().addMaterial({ ...newMaterialDraft, ...updates });
+              setCanvasSelection(newMaterialDraft.id);
+            } else if (editingMaterialId) {
+              useHarnessStore.getState().updateMaterial(editingMaterialId, updates);
+            }
+            setEditingMaterialId(null);
+            setNewMaterialDraft(null);
+          }}
+        />
+      )}
 
-      <ProtectiveSleeveDialog
-        key={sleeveDialog?.sleeveId ?? `${sleeveDialog?.materialId ?? 'pane'}-${sleeveDialog ? 'open' : 'closed'}`}
-        isOpen={sleeveDialog !== null}
-        editing={Boolean(sleeveDialog?.sleeveId)}
+      {sleeveDialog && (
+        <ProtectiveSleeveDialog
+        key={sleeveDialog.sleeveId ?? `${sleeveDialog.materialId ?? 'pane'}-open`}
+        isOpen
+        editing={Boolean(sleeveDialog.sleeveId)}
         initialType={
           sleeves.find((item) => item.id === sleeveDialog?.sleeveId)?.type
           ?? 'heat-shrink'
@@ -1586,7 +1642,8 @@ function HarnessCanvasInner() {
           }
           setSleeveDialog(null);
         }}
-      />
+        />
+      )}
 
       {modelDialogPosition && (
         <CanvasModelDialog
@@ -1684,6 +1741,20 @@ function HarnessCanvasInner() {
           />
         );
       })()}
+      </Suspense>
+
+      {deletionNotice && (
+        <UndoToast
+          message={deletionNotice.message}
+          canUndo={config === deletionNotice.afterConfig}
+          onUndo={() => {
+            if (useHarnessStore.getState().config !== deletionNotice.afterConfig) return;
+            useHarnessStore.getState().replaceDocument(deletionNotice.snapshot);
+            setDeletionNotice(null);
+          }}
+          onClose={() => setDeletionNotice(null)}
+        />
+      )}
     </div>
   );
 }

@@ -253,10 +253,10 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
 
   const canNext = step === 1 ? projectName.trim().length > 0 : true;
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (!currentUser) return;
     const config = createConfigFromTemplate(selectedTemplate, projectName, connectorA, connectorB, pinCount);
-    const project = createProject(currentUser.id, projectName, projectDesc, config);
+    const project = await createProject(currentUser.id, projectName, projectDesc, config);
     replaceDocument({ ...config, id: project.harnessConfigId }, { markSaved: true });
     onComplete();
   };
@@ -478,7 +478,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
             </button>
           ) : (
             <button
-              onClick={handleComplete}
+              onClick={() => void handleComplete()}
               className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1 cursor-pointer"
             >
               <Check className="w-4 h-4" /> 创建项目

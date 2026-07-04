@@ -12,7 +12,8 @@
 // ============================================================
 
 import { generateId } from '@/lib/commands';
-import type { CanvasWireMaterial, HarnessConfig, ProtectiveSleeve } from '@/types/harness';
+import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
+import type { HarnessConfig } from '@/types/harness';
 
 const V3 = 3 as const;
 
@@ -37,69 +38,14 @@ export function createFallbackConfig(): HarnessConfig {
 /**
  * Normalize any persisted shape into a valid v3 config.
  *
- * - If input is already a valid v3 config, fill in any missing arrays
- *   and return it.
- * - If input is missing/invalid/legacy (not schemaVersion 3), discard
- *   it and return a fresh default config. No backup is performed
- *   because the project is pre-release and legacy data is not needed.
+ * - If input is a deeply valid v3 config, return a normalized copy.
+ * - If input is missing, structurally invalid, or legacy, return a fresh
+ *   fallback. Callers that need to report errors or preserve the raw input
+ *   must use `parseHarnessConfig` before falling back.
  *
  * Never throws.
  */
 export function normalizeHarnessConfig(input: unknown): HarnessConfig {
-  if (!input || typeof input !== 'object') {
-    return createFallbackConfig();
-  }
-
-  const raw = input as Partial<HarnessConfig>;
-
-  // Must be v3. Legacy schemas (no schemaVersion, or v1/v2) are discarded.
-  if (raw.schemaVersion !== V3) {
-    return createFallbackConfig();
-  }
-
-  const materials = Array.isArray(raw.materials)
-    ? raw.materials.map((material) => {
-        const current = material as CanvasWireMaterial;
-        return {
-          ...current,
-          labels: Array.isArray(current.labels) ? current.labels : [],
-          numberTubes: Array.isArray(current.numberTubes) ? current.numberTubes : [],
-        };
-      })
-    : [];
-  const protectiveSleeves = Array.isArray(raw.protectiveSleeves)
-    ? raw.protectiveSleeves.map((sleeve) => {
-        const current = sleeve as ProtectiveSleeve & { attachedMaterialId?: string };
-        const attachedMaterialIds = Array.isArray(current.attachedMaterialIds)
-          ? current.attachedMaterialIds
-          : current.attachedMaterialId
-            ? [current.attachedMaterialId]
-            : [];
-        const { attachedMaterialId: _legacyAttachedMaterialId, ...rest } = current;
-        void _legacyAttachedMaterialId;
-        return {
-          ...rest,
-          height: typeof current.height === 'number' ? current.height : 36,
-          attachedMaterialIds,
-        };
-      })
-    : [];
-  const models = Array.isArray(raw.models) ? raw.models : [];
-
-  // Must have the three core arrays (or absence is fine — normalized to []).
-  return {
-    schemaVersion: V3,
-    id: raw.id ?? generateId(),
-    name: typeof raw.name === 'string' ? raw.name : '未命名线束',
-    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
-    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
-    connectors: Array.isArray(raw.connectors) ? raw.connectors : [],
-    materials,
-    protectiveSleeves,
-    models,
-    quantity: typeof raw.quantity === 'number' && raw.quantity > 0 ? raw.quantity : 1,
-    leadTime: raw.leadTime === 'rush' || raw.leadTime === 'standard' || raw.leadTime === 'economy'
-      ? raw.leadTime
-      : 'standard',
-  };
+  const result = parseHarnessConfig(input);
+  return result.success ? result.data : createFallbackConfig();
 }
