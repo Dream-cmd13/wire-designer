@@ -1682,6 +1682,7 @@ function HarnessCanvasInner() {
           onConfirm={(updates) => {
             if (newMaterialDraft) {
               useHarnessStore.getState().addMaterial({ ...newMaterialDraft, ...updates });
+              setSelection({ kind: 'material', id: newMaterialDraft.id });
               setCanvasSelection(newMaterialDraft.id);
             } else if (editingMaterialId) {
               useHarnessStore.getState().updateMaterial(editingMaterialId, updates);
@@ -1740,6 +1741,7 @@ function HarnessCanvasInner() {
               corrugatedFixing: type === 'corrugated' ? corrugatedFixing : undefined,
               remark,
             });
+            setSelection({ kind: 'sleeve', id: sleeveDialog.sleeveId });
             setCanvasSelection(sleeveDialog.sleeveId);
           } else {
             const sleeve: ProtectiveSleeve = {
@@ -1755,6 +1757,7 @@ function HarnessCanvasInner() {
               remark,
             };
             state.addProtectiveSleeve(sleeve);
+            setSelection({ kind: 'sleeve', id: sleeve.id });
             setCanvasSelection(sleeve.id);
           }
           setSleeveDialog(null);
