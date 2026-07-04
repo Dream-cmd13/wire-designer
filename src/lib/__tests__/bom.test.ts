@@ -35,7 +35,10 @@ function makeElectronicMaterial(
       lengthMm,
       awg,
       ulNumber: '1007',
-      endTreatment: { stripped: false },
+      endTreatment: {
+        start: { stripped: false, termination: 'none' },
+        end: { stripped: false, termination: 'none' },
+      },
     },
     circuits: [],
   };
@@ -63,7 +66,10 @@ function makeJacketedMaterial(
       shielded,
       odMm,
       coreColors: ['红色', '黑色'],
-      endTreatment: { stripped: false },
+      endTreatment: {
+        start: { stripped: false, termination: 'none' },
+        end: { stripped: false, termination: 'none' },
+      },
       lengthMm: 300,
       ulNumber,
     },

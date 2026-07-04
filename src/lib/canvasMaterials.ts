@@ -7,6 +7,8 @@ import type {
   JacketUlNumber,
   ProtectiveSleeve,
   ProtectiveSleeveType,
+  WireEndProcessing,
+  WireEndTreatment,
 } from '@/types/harness';
 
 export const JACKET_CORE_COUNTS: JacketCoreCount[] = [1, 2, 3, 4, 5, 6, 8, 12, 17];
@@ -14,7 +16,7 @@ export const JACKET_CORE_COUNTS: JacketCoreCount[] = [1, 2, 3, 4, 5, 6, 8, 12, 1
 /** Allowed UL numbers for jacketed wires (single-select, may be absent). */
 export const JACKET_UL_NUMBERS: JacketUlNumber[] = ['UL2464', 'UL20276'];
 
-const CORE_COLOR_SEQUENCE = [
+export const CORE_COLOR_OPTIONS = [
   '红色',
   '黑色',
   '白色',
@@ -32,7 +34,9 @@ const CORE_COLOR_SEQUENCE = [
   '深蓝色',
   '浅绿色',
   '透明',
-];
+] as const;
+
+const CORE_COLOR_SEQUENCE = [...CORE_COLOR_OPTIONS];
 
 export const PROTECTIVE_SLEEVE_LABELS: Record<ProtectiveSleeveType, string> = {
   'acetate-cloth': '醋酸布',
@@ -94,8 +98,10 @@ export const PROTECTIVE_SLEEVE_HEIGHT = 36;
 export const PROTECTIVE_SLEEVE_VERTICAL_PADDING = 8;
 export const CANVAS_MODEL_SIZE = 84;
 export const CONNECTOR_NODE_WIDTH = 236;
+export const CORRUGATED_ENDCAP_WIDTH = 16;
+export const CORRUGATED_ENDCAP_HEIGHT = 18;
 
-/** Unified mm → canvas-px scale used by both wire materials and protective sleeves. */
+/** Unified mm -> canvas-px scale used by both wire materials and protective sleeves. */
 export function lengthMmToCanvasWidth(lengthMm: number): number {
   return Math.max(40, Math.min(600, lengthMm * 0.6));
 }
@@ -168,6 +174,32 @@ export function getCoreColors(coreCount: JacketCoreCount): string[] {
   return CORE_COLOR_SEQUENCE.slice(0, coreCount);
 }
 
+export function createDefaultWireEndProcessing(): WireEndProcessing {
+  return {
+    stripped: false,
+    termination: 'none',
+  };
+}
+
+export function createDefaultWireEndTreatment(): WireEndTreatment {
+  return {
+    start: createDefaultWireEndProcessing(),
+    end: createDefaultWireEndProcessing(),
+  };
+}
+
+export function getWireEndTreatmentSummary(endTreatment: WireEndTreatment): string {
+  const formatEnd = (label: string, end: WireEndProcessing) => {
+    if (!end.stripped) return `${label}不剥皮`;
+    const strip = `剥皮${end.stripLengthMm ?? 0}mm`;
+    if (end.termination === 'tinned') return `${label}${strip}后沾锡`;
+    if (end.termination === 'terminal') return `${label}${strip}后打端子`;
+    return `${label}${strip}`;
+  };
+
+  return `${formatEnd('左端', endTreatment.start)} / ${formatEnd('右端', endTreatment.end)}`;
+}
+
 export function calculateCableOd(awg: number, coreCount: JacketCoreCount, shielded: boolean): number {
   const safeAwg = Math.min(40, Math.max(4, awg));
   const conductorDiameter = 0.127 * Math.pow(92, (36 - safeAwg) / 39);
@@ -184,7 +216,7 @@ export function createDefaultWireSpec(): CanvasWireSpec {
     lengthMm: 300,
     awg: 26,
     ulNumber: '1007',
-    endTreatment: { stripped: false },
+    endTreatment: createDefaultWireEndTreatment(),
   };
 }
 

@@ -5,7 +5,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { CONNECTORS } from '@/lib/data';
 import { generateId } from '@/lib/commands';
-import { lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import { createDefaultWireEndTreatment, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import type {
   CanvasWireMaterial,
   ConnectorInstance,
@@ -81,7 +81,7 @@ function makeMaterial(
       lengthMm,
       awg: 26,
       ulNumber: '1007',
-      endTreatment: { stripped: false },
+      endTreatment: createDefaultWireEndTreatment(),
     },
     circuits,
     expandedByDefault: true,

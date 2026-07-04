@@ -1,4 +1,8 @@
-import { getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
+import {
+  CORRUGATED_ENDCAP_HEIGHT,
+  CORRUGATED_ENDCAP_WIDTH,
+  getProtectiveSleeveDisplayName,
+} from '@/lib/canvasMaterials';
 import type { ProtectiveSleeve } from '@/types/harness';
 
 interface ProtectiveSleeveNodeProps {
@@ -30,9 +34,13 @@ const sleeveStyles: Record<ProtectiveSleeve['type'], React.CSSProperties> = {
 };
 
 export function ProtectiveSleeveNode({ data, selected }: ProtectiveSleeveNodeProps) {
+  const fixing = data.corrugatedFixing;
+  const startGapPx = (fixing?.startDistanceMm ?? 0) * 0.6;
+  const endGapPx = (fixing?.endDistanceMm ?? 0) * 0.6;
+
   return (
     <div
-      className={`relative flex items-center justify-center overflow-hidden rounded-md border-2 px-2 shadow-md ${
+      className={`relative flex items-center justify-center overflow-visible rounded-md border-2 px-2 shadow-md ${
         selected ? 'border-cyan-500 ring-4 ring-cyan-100' : 'border-white/80'
       }`}
       style={{
@@ -41,20 +49,56 @@ export function ProtectiveSleeveNode({ data, selected }: ProtectiveSleeveNodePro
         minHeight: data.height,
         ...sleeveStyles[data.type],
       }}
+      title={data.remark || getProtectiveSleeveDisplayName(data)}
     >
+      {data.type === 'corrugated' && fixing?.startHeatShrink && (
+        <div
+          className="absolute top-1/2 rounded-sm border border-slate-200/70 bg-slate-800 shadow"
+          style={{
+            left: -(CORRUGATED_ENDCAP_WIDTH + startGapPx),
+            width: CORRUGATED_ENDCAP_WIDTH,
+            height: CORRUGATED_ENDCAP_HEIGHT,
+            transform: 'translateY(-50%)',
+          }}
+        />
+      )}
+      {data.type === 'corrugated' && fixing?.endHeatShrink && (
+        <div
+          className="absolute top-1/2 rounded-sm border border-slate-200/70 bg-slate-800 shadow"
+          style={{
+            left: data.width + endGapPx,
+            width: CORRUGATED_ENDCAP_WIDTH,
+            height: CORRUGATED_ENDCAP_HEIGHT,
+            transform: 'translateY(-50%)',
+          }}
+        />
+      )}
+
       <div className="relative z-10 flex w-full flex-col items-center gap-0.5">
         <span className="text-[10px] font-semibold leading-none text-white drop-shadow">
           {getProtectiveSleeveDisplayName(data)}
         </span>
         <span className="text-[10px] font-semibold leading-none text-white drop-shadow">
-          {data.lengthMm ?? 100}mm
+          {data.lengthMm}mm
         </span>
         {data.attachedMaterialIds.length > 1 && (
           <span className="text-[9px] leading-none text-cyan-50 drop-shadow">
             覆盖 {data.attachedMaterialIds.length} 条线材
           </span>
         )}
+        {data.remark && (
+          <span className="max-w-full truncate text-[9px] leading-none text-white/90 drop-shadow">
+            {data.remark}
+          </span>
+        )}
       </div>
+
+      {selected && data.type === 'corrugated' && fixing && (
+        <div className="pointer-events-none absolute -bottom-7 left-1/2 flex -translate-x-1/2 gap-2 rounded-full border border-cyan-200 bg-white/95 px-3 py-1 text-[10px] font-medium text-cyan-700 shadow">
+          <span>左距 {fixing.startDistanceMm}mm</span>
+          <span>右距 {fixing.endDistanceMm}mm</span>
+        </div>
+      )}
     </div>
   );
 }

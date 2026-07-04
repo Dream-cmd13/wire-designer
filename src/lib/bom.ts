@@ -1,41 +1,41 @@
-import type { HarnessConfig, BOMItem, CanvasWireMaterial } from '@/types/harness';
+import type { BOMItem, CanvasWireMaterial, HarnessConfig } from '@/types/harness';
 import {
   calculateProtectiveSleevePrice,
   getProtectiveSleeveDisplayName,
+  getWireEndTreatmentSummary,
 } from './canvasMaterials';
 import { BASE_PRICES } from './data';
 
 function getMaterialDescription(material: CanvasWireMaterial): string {
   const spec = material.spec;
   if (spec.kind === 'electronic') {
-    return `${spec.awg}AWG 电子线 ${spec.color} ${spec.lengthMm}mm`;
+    return `${spec.awg}AWG 电子线 ${spec.color} ${spec.lengthMm}mm ${getWireEndTreatmentSummary(spec.endTreatment)}`;
   }
   const ul = spec.ulNumber ? ` ${spec.ulNumber}` : '';
-  return `${spec.jacketMaterial}护套线${ul} ${spec.coreCount}芯 ${spec.awg}AWG ${spec.lengthMm}mm`;
+  return `${spec.jacketMaterial}护套线${ul} ${spec.coreCount}芯 ${spec.awg}AWG ${spec.lengthMm}mm ${getWireEndTreatmentSummary(spec.endTreatment)}`;
+}
+
+function getEndTreatmentKey(material: CanvasWireMaterial) {
+  const formatEnd = (key: 'start' | 'end') => {
+    const end = material.spec.endTreatment[key];
+    if (!end.stripped) return `${key}:none`;
+    return `${key}:${end.stripLengthMm}:${end.termination}:${end.terminalModel ?? 'none'}`;
+  };
+
+  return `${formatEnd('start')}|${formatEnd('end')}`;
 }
 
 /**
- * Build a grouping key that captures EVERY distinguishing spec field.
- * Two materials with the same key are truly identical and can share a
- * BOM line. Fields omitted from the description (jacket color, shielded,
- * OD, core colors, end treatment, UL) are all included here.
+ * Build a grouping key that captures every distinguishing spec field.
+ * Two materials with the same key are truly identical and can share one BOM line.
  */
 function getMaterialGroupKey(material: CanvasWireMaterial): string {
   const spec = material.spec;
   if (spec.kind === 'electronic') {
-    const endKey = spec.endTreatment.stripped
-      ? spec.endTreatment.method === 'tinned'
-        ? `tinned:${spec.endTreatment.lengthMm}`
-        : 'terminal'
-      : 'unstripped';
-    return `elec|${spec.awg}|${spec.color}|${spec.lengthMm}|${spec.ulNumber}|${endKey}`;
+    return `elec|${spec.awg}|${spec.color}|${spec.lengthMm}|${spec.ulNumber}|${getEndTreatmentKey(material)}`;
   }
-  const endKey = spec.endTreatment.stripped
-    ? spec.endTreatment.method === 'tinned'
-      ? `tinned:${spec.endTreatment.lengthMm}`
-      : 'terminal'
-    : 'unstripped';
-  return `jack|${spec.jacketMaterial}|${spec.jacketColor}|${spec.awg}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${endKey}`;
+
+  return `jack|${spec.jacketMaterial}|${spec.jacketColor}|${spec.awg}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${getEndTreatmentKey(material)}`;
 }
 
 function getMaterialUnitPrice(material: CanvasWireMaterial): number {
@@ -44,37 +44,27 @@ function getMaterialUnitPrice(material: CanvasWireMaterial): number {
   if (spec.kind === 'electronic') {
     return BASE_PRICES.wirePerMeter(spec.awg, 'ul1007') * lengthM;
   }
-  // Jacketed: price by outer cable, cores don't multiply cost
   return BASE_PRICES.wirePerMeter(spec.awg, 'ul1007') * lengthM * spec.coreCount * 0.6;
 }
 
-/**
- * Generate a Bill of Materials (BOM) from a harness configuration.
- *
- * - Connectors: deduplicate by connector id.
- * - Materials: group by spec (kind + awg + length + color / coreCount + material).
- * - Protective sleeves: group by type + material + length.
- */
 export function generateBOM(config: HarnessConfig): BOMItem[] {
   const items: BOMItem[] = [];
 
-  // --- Connectors ---
   const connectorMap = new Map<string, { count: number; manufacturer: string; description: string; pinCount: number }>();
-
   for (const instance of config.connectors) {
-    if (instance.connector) {
-      const key = instance.connector.id;
-      const existing = connectorMap.get(key);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        connectorMap.set(key, {
-          count: 1,
-          manufacturer: instance.connector.manufacturer,
-          description: `${instance.connector.name} (${instance.connector.pinCount}P)`,
-          pinCount: instance.connector.pinCount,
-        });
-      }
+    const connector = instance.connector;
+    if (!connector) continue;
+    const key = connector.id;
+    const existing = connectorMap.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      connectorMap.set(key, {
+        count: 1,
+        manufacturer: connector.manufacturer,
+        description: `${connector.name} (${connector.pinCount}P)`,
+        pinCount: connector.pinCount,
+      });
     }
   }
 
@@ -91,12 +81,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     });
   }
 
-  // --- Materials (wire / cable) ---
-  // Group by a key that captures EVERY distinguishing spec field so
-  // different jacket colors, shielding, OD, end treatment, etc. are
-  // never merged into one BOM line.
   const materialMap = new Map<string, { count: number; description: string; unitPrice: number }>();
-
   for (const material of config.materials) {
     const key = getMaterialGroupKey(material);
     const existing = materialMap.get(key);
@@ -122,11 +107,19 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     });
   }
 
-  // --- Protective sleeves: group by type + material + length ---
   const sleeveMap = new Map<string, { count: number; description: string; unitPrice: number }>();
-
   for (const sleeve of config.protectiveSleeves) {
-    const key = `${sleeve.type}-${sleeve.corrugatedMaterial ?? 'none'}-${sleeve.lengthMm}`;
+    const key = [
+      sleeve.type,
+      sleeve.corrugatedMaterial ?? 'none',
+      sleeve.lengthMm,
+      sleeve.corrugatedFixing?.startHeatShrink ?? false,
+      sleeve.corrugatedFixing?.endHeatShrink ?? false,
+      sleeve.corrugatedFixing?.startDistanceMm ?? 0,
+      sleeve.corrugatedFixing?.endDistanceMm ?? 0,
+      sleeve.remark ?? '',
+    ].join('|');
+
     const existing = sleeveMap.get(key);
     if (existing) {
       existing.count += 1;
@@ -136,7 +129,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     const unitPrice = calculateProtectiveSleevePrice(sleeve);
     sleeveMap.set(key, {
       count: 1,
-      description: `${getProtectiveSleeveDisplayName(sleeve)} ${sleeve.lengthMm}mm`,
+      description: `${getProtectiveSleeveDisplayName(sleeve)} ${sleeve.lengthMm}mm${sleeve.remark ? ` (${sleeve.remark})` : ''}`,
       unitPrice,
     });
   }

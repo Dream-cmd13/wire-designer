@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Hash, Tag, Trash2, X } from 'lucide-react';
 
 export type MaterialAccessoryKind = 'label' | 'number-tube';
@@ -8,6 +8,7 @@ export function MaterialAccessoryDialog({
   materialName,
   initialContent = '',
   initialLengthMm,
+  initialDistanceMm,
   editing = false,
   onCancel,
   onConfirm,
@@ -17,15 +18,25 @@ export function MaterialAccessoryDialog({
   materialName: string;
   initialContent?: string;
   initialLengthMm?: number;
+  initialDistanceMm?: number;
   editing?: boolean;
   onCancel: () => void;
-  onConfirm: (content: string, lengthMm: number) => void;
+  onConfirm: (content: string, lengthMm: number, distanceMm?: number) => void;
   onDelete?: () => void;
 }) {
   const isLabel = kind === 'label';
   const [content, setContent] = useState(initialContent);
   const [lengthMm, setLengthMm] = useState(initialLengthMm ?? (isLabel ? 30 : 20));
+  const [distanceMm, setDistanceMm] = useState(initialDistanceMm ?? 0);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onCancel]);
 
   const submit = () => {
     if (!content.trim()) {
@@ -36,12 +47,16 @@ export function MaterialAccessoryDialog({
       setError('长度必须大于 0');
       return;
     }
-    onConfirm(content.trim(), lengthMm);
+    if (!isLabel && (!Number.isFinite(distanceMm) || distanceMm < 0)) {
+      setError('号码管距离不能小于 0');
+      return;
+    }
+    onConfirm(content.trim(), lengthMm, isLabel ? undefined : distanceMm);
   };
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 p-4">
-      <div className="w-full max-w-[480px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div className="w-full max-w-[520px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className={`rounded-xl p-2 ${isLabel ? 'bg-amber-50 text-amber-600' : 'bg-sky-50 text-sky-600'}`}>
@@ -96,6 +111,22 @@ export function MaterialAccessoryDialog({
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
           </label>
+          {!isLabel && (
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-slate-600">距连接器长度 (mm)</span>
+              <input
+                type="number"
+                min="0"
+                value={Number.isNaN(distanceMm) ? '' : distanceMm}
+                onChange={(event) => {
+                  setDistanceMm(event.target.value === '' ? Number.NaN : Number(event.target.value));
+                  setError(null);
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+              <p className="mt-1 text-[11px] text-slate-400">默认 0，表示号码管直接贴着连接器。</p>
+            </label>
+          )}
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
         </div>
 
@@ -118,7 +149,7 @@ export function MaterialAccessoryDialog({
             </button>
             <button type="button" onClick={submit} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
               <Check className="h-4 w-4" />
-              确定
+              确认
             </button>
           </div>
         </div>

@@ -22,7 +22,10 @@ function makeConfig(
       lengthMm: materialLengthMm,
       awg: 26,
       ulNumber: '1007',
-      endTreatment: { stripped: false },
+      endTreatment: {
+        start: { stripped: false, termination: 'none' },
+        end: { stripped: false, termination: 'none' },
+      },
     },
     circuits: [],
   };

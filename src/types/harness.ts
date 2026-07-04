@@ -49,10 +49,19 @@ export interface WireGauge {
 // Wire Material Specs
 // ============================================================
 
-export type WireEndTreatment =
-  | { stripped: false }
-  | { stripped: true; method: 'tinned'; lengthMm: number }
-  | { stripped: true; method: 'terminal'; terminalModel: 'cold-press-terminal' };
+export type WireTerminationMethod = 'none' | 'tinned' | 'terminal';
+
+export interface WireEndProcessing {
+  stripped: boolean;
+  stripLengthMm?: number;
+  termination: WireTerminationMethod;
+  terminalModel?: 'cold-press-terminal';
+}
+
+export interface WireEndTreatment {
+  start: WireEndProcessing;
+  end: WireEndProcessing;
+}
 
 export interface ElectronicWireSpec {
   kind: 'electronic';
@@ -63,7 +72,7 @@ export interface ElectronicWireSpec {
   endTreatment: WireEndTreatment;
 }
 
-export type JacketMaterial = 'PVC' | 'PVR';
+export type JacketMaterial = 'PVC' | 'PUR';
 export type JacketColor = 'black' | 'green';
 export type JacketCoreCount = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 12 | 17;
 
@@ -170,7 +179,7 @@ export interface CanvasWireMaterial {
 
 export interface WireLabel {
   id: string;
-  material: '五防热敏纸标签纸';
+  material: string;
   content: string;
   lengthMm: number;
 }
@@ -181,6 +190,7 @@ export interface WireNumberTube {
   lengthMm: number;
   circuitId?: string;
   endpoint?: MaterialEndpoint;
+  distanceMm?: number;
 }
 
 // ============================================================
@@ -200,12 +210,19 @@ export interface ProtectiveSleeve {
   id: string;
   type: ProtectiveSleeveType;
   corrugatedMaterial?: CorrugatedMaterial;
+  corrugatedFixing?: {
+    startHeatShrink: boolean;
+    endHeatShrink: boolean;
+    startDistanceMm: number;
+    endDistanceMm: number;
+  };
   position: { x: number; y: number };
   width: number;
   height: number;
   lengthMm: number;
   /** A sleeve may cover one wire, a subset, or a complete wire group. */
   attachedMaterialIds: string[];
+  remark?: string;
 }
 
 // ============================================================

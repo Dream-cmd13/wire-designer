@@ -73,6 +73,8 @@ const CanvasModelDialog = lazy(() =>
   import('./CanvasModelDialog').then((module) => ({ default: module.CanvasModelDialog })));
 const MaterialAccessoryDialog = lazy(() =>
   import('./MaterialAccessoryDialog').then((module) => ({ default: module.MaterialAccessoryDialog })));
+const PartPickerDialog = lazy(() =>
+  import('@/components/shared/PartPickerDialog').then((module) => ({ default: module.PartPickerDialog })));
 
 const nodeTypes: NodeTypes = {
   connector: ConnectorNode,
@@ -475,6 +477,10 @@ interface SleeveDialogState {
   sleeveId?: string;
 }
 
+interface ConnectorDialogState {
+  position: { x: number; y: number };
+}
+
 interface AccessoryDialogState {
   materialId: string;
   kind: MaterialAccessoryKind;
@@ -651,6 +657,7 @@ function HarnessCanvasInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [canvasSelection, setCanvasSelection] = useState<string | null>(null);
+  const [connectorDialog, setConnectorDialog] = useState<ConnectorDialogState | null>(null);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [newMaterialDraft, setNewMaterialDraft] = useState<CanvasWireMaterial | null>(null);
   const [sleeveDialog, setSleeveDialog] = useState<SleeveDialogState | null>(null);
@@ -812,9 +819,7 @@ function HarnessCanvasInner() {
 
   // --- Add actions ---
   const handleAddConnector = useCallback(() => {
-    const state = useHarnessStore.getState();
-    const newConfig = addConnector(state.config, { position: currentFlowPosition() });
-    state.replaceDocument(newConfig);
+    setConnectorDialog({ position: currentFlowPosition() });
   }, [currentFlowPosition]);
 
   const handleAddCanvasWire = useCallback(() => {
@@ -1560,6 +1565,25 @@ function HarnessCanvasInner() {
       )}
 
       <Suspense fallback={null}>
+      {connectorDialog && (
+        <PartPickerDialog
+          isOpen
+          onClose={() => setConnectorDialog(null)}
+          onSelect={(connector) => {
+            const state = useHarnessStore.getState();
+            const nextConfig = addConnector(state.config, {
+              position: connectorDialog.position,
+              connectorId: connector.id,
+            });
+            state.replaceDocument(nextConfig);
+            const added = nextConfig.connectors[nextConfig.connectors.length - 1];
+            if (added) {
+              setSelection({ kind: 'connector', id: added.id });
+            }
+            setConnectorDialog(null);
+          }}
+        />
+      )}
       {editingMaterial && (
         <WireMaterialDialog
           key={editingMaterialId ?? 'closed'}
@@ -1602,9 +1626,11 @@ function HarnessCanvasInner() {
           editingSleeve?.attachedMaterialIds
           ?? (sleeveDialog?.materialId ? [sleeveDialog.materialId] : [])
         }
+        initialRemark={editingSleeve?.remark ?? ''}
+        initialCorrugatedFixing={editingSleeve?.corrugatedFixing}
         materialOptions={sleeveMaterialOptions}
         onCancel={() => setSleeveDialog(null)}
-        onConfirm={(type, lengthMm, corrugatedMaterial, materialIds) => {
+        onConfirm={(type, lengthMm, corrugatedMaterial, materialIds, remark, corrugatedFixing) => {
           if (!sleeveDialog) return;
           const state = useHarnessStore.getState();
           const width = lengthMmToCanvasWidth(lengthMm);
@@ -1624,6 +1650,8 @@ function HarnessCanvasInner() {
               position,
               attachedMaterialIds: materialIds,
               corrugatedMaterial: type === 'corrugated' ? corrugatedMaterial : undefined,
+              corrugatedFixing: type === 'corrugated' ? corrugatedFixing : undefined,
+              remark,
             });
             setCanvasSelection(sleeveDialog.sleeveId);
           } else {
@@ -1636,6 +1664,8 @@ function HarnessCanvasInner() {
               position,
               attachedMaterialIds: materialIds,
               corrugatedMaterial: type === 'corrugated' ? corrugatedMaterial : undefined,
+              corrugatedFixing: type === 'corrugated' ? corrugatedFixing : undefined,
+              remark,
             };
             state.addProtectiveSleeve(sleeve);
             setCanvasSelection(sleeve.id);
@@ -1682,13 +1712,14 @@ function HarnessCanvasInner() {
             editing={Boolean(accessoryDialog.accessoryId)}
             initialContent={editingLabel?.content ?? editingNumberTube?.content ?? ''}
             initialLengthMm={editingLabel?.lengthMm ?? editingNumberTube?.lengthMm}
+            initialDistanceMm={editingNumberTube?.distanceMm ?? 0}
             onCancel={() => setAccessoryDialog(null)}
             onDelete={() => {
               if (!accessoryDialog.accessoryId) return;
               handleDeleteAccessory(material.id, accessoryDialog.kind, accessoryDialog.accessoryId);
               setAccessoryDialog(null);
             }}
-            onConfirm={(content, lengthMm) => {
+            onConfirm={(content, lengthMm, distanceMm) => {
               const state = useHarnessStore.getState();
               const current = state.config.materials.find((item) => item.id === material.id);
               if (!current) return;
@@ -1721,6 +1752,7 @@ function HarnessCanvasInner() {
                               lengthMm,
                               circuitId: accessoryDialog.circuitId ?? item.circuitId,
                               endpoint: accessoryDialog.endpoint ?? item.endpoint,
+                              distanceMm: distanceMm ?? item.distanceMm ?? 0,
                             }
                           : item,
                       )
@@ -1732,6 +1764,7 @@ function HarnessCanvasInner() {
                           lengthMm,
                           circuitId: accessoryDialog.circuitId,
                           endpoint: accessoryDialog.endpoint,
+                          distanceMm: distanceMm ?? 0,
                         },
                       ],
                 });

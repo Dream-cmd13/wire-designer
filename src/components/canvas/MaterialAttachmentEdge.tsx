@@ -1,14 +1,21 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps, useReactFlow } from '@xyflow/react';
 import { updateMaterialCircuit } from '@/lib/commands';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
   MaterialEndpoint,
   MaterialEndpointRouteOffset,
+  WireNumberTube,
 } from '@/types/harness';
-import {
-  openMaterialAccessoryContextMenu,
-} from './materialAccessoryEvents';
+import { openMaterialAccessoryContextMenu } from './materialAccessoryEvents';
+
+interface QuadraticSample {
+  t: number;
+  x: number;
+  y: number;
+  length: number;
+  angle: number;
+}
 
 function getMidpoint(
   sourceX: number,
@@ -52,16 +59,105 @@ function getQuadraticPoint(
   };
 }
 
-function getTubeT(index: number, total: number) {
-  if (total <= 1) return 0.5;
-  const min = 0.36;
-  const max = 0.64;
-  return min + ((max - min) * index) / (total - 1);
+function getQuadraticDerivative(
+  sourceX: number,
+  sourceY: number,
+  controlX: number,
+  controlY: number,
+  targetX: number,
+  targetY: number,
+  t: number,
+) {
+  return {
+    x: 2 * (1 - t) * (controlX - sourceX) + 2 * t * (targetX - controlX),
+    y: 2 * (1 - t) * (controlY - sourceY) + 2 * t * (targetY - controlY),
+  };
+}
+
+function buildQuadraticSamples(
+  sourceX: number,
+  sourceY: number,
+  controlX: number,
+  controlY: number,
+  targetX: number,
+  targetY: number,
+  steps = 80,
+): QuadraticSample[] {
+  const samples: QuadraticSample[] = [];
+  let totalLength = 0;
+  let previousPoint = getQuadraticPoint(sourceX, sourceY, controlX, controlY, targetX, targetY, 0);
+
+  for (let index = 0; index <= steps; index += 1) {
+    const t = index / steps;
+    const point = getQuadraticPoint(sourceX, sourceY, controlX, controlY, targetX, targetY, t);
+    if (index > 0) {
+      totalLength += Math.hypot(point.x - previousPoint.x, point.y - previousPoint.y);
+    }
+    previousPoint = point;
+    const derivative = getQuadraticDerivative(sourceX, sourceY, controlX, controlY, targetX, targetY, t);
+    samples.push({
+      t,
+      x: point.x,
+      y: point.y,
+      length: totalLength,
+      angle: Math.atan2(derivative.y, derivative.x),
+    });
+  }
+
+  return samples;
+}
+
+function resolveSampleByLength(samples: QuadraticSample[], targetLength: number) {
+  const totalLength = samples[samples.length - 1]?.length ?? 0;
+  const clampedLength = Math.max(0, Math.min(totalLength, targetLength));
+
+  for (let index = 1; index < samples.length; index += 1) {
+    const current = samples[index];
+    if (current.length >= clampedLength) {
+      const previous = samples[index - 1];
+      const segmentLength = current.length - previous.length || 1;
+      const ratio = (clampedLength - previous.length) / segmentLength;
+      const angle = ratio < 0.5 ? previous.angle : current.angle;
+      return {
+        x: previous.x + (current.x - previous.x) * ratio,
+        y: previous.y + (current.y - previous.y) * ratio,
+        angle,
+        length: clampedLength,
+      };
+    }
+  }
+
+  const fallback = samples[samples.length - 1];
+  return fallback
+    ? { x: fallback.x, y: fallback.y, angle: fallback.angle, length: fallback.length }
+    : { x: 0, y: 0, angle: 0, length: 0 };
+}
+
+function resolveClosestSample(samples: QuadraticSample[], x: number, y: number) {
+  return samples.reduce((best, sample) => {
+    const distance = Math.hypot(sample.x - x, sample.y - y);
+    if (!best || distance < best.distance) {
+      return { sample, distance };
+    }
+    return best;
+  }, undefined as { sample: QuadraticSample; distance: number } | undefined)?.sample;
+}
+
+function normalizeReadableAngle(angleDeg: number) {
+  if (angleDeg > 90) return angleDeg - 180;
+  if (angleDeg < -90) return angleDeg + 180;
+  return angleDeg;
+}
+
+function estimateTubeWidth(content: string) {
+  return Math.max(28, 12 + content.length * 7);
 }
 
 export function MaterialAttachmentEdge(props: EdgeProps) {
   const { screenToFlowPosition } = useReactFlow();
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  const [hoveredTubeId, setHoveredTubeId] = useState<string | null>(null);
+  const [activeTubeId, setActiveTubeId] = useState<string | null>(null);
 
   const edgeData = useMemo(
     () =>
@@ -70,7 +166,7 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
         circuitId?: string;
         side?: MaterialEndpoint;
         routeOffset?: MaterialEndpointRouteOffset;
-        numberTubes?: Array<{ id: string; content: string; lengthMm: number }>;
+        numberTubes?: Array<Pick<WireNumberTube, 'id' | 'content' | 'lengthMm' | 'distanceMm'>>;
         solid?: boolean;
       } | undefined) ?? {}),
     [props.data],
@@ -108,6 +204,20 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
     [controlPoint.x, controlPoint.y, props.sourceX, props.sourceY, props.targetX, props.targetY],
   );
 
+  const samples = useMemo(
+    () => buildQuadraticSamples(
+      props.sourceX,
+      props.sourceY,
+      controlPoint.x,
+      controlPoint.y,
+      props.targetX,
+      props.targetY,
+    ),
+    [controlPoint.x, controlPoint.y, props.sourceX, props.sourceY, props.targetX, props.targetY],
+  );
+
+  const totalLength = samples[samples.length - 1]?.length ?? 0;
+
   const persistRouteOffset = useCallback((routeOffset: MaterialEndpointRouteOffset) => {
     if (!edgeData.materialId || !edgeData.circuitId || !edgeData.side) return;
     const { materialId, circuitId, side } = edgeData;
@@ -135,6 +245,35 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
       };
     });
   }, [edgeData]);
+
+  const persistTubeDistance = useCallback((tubeId: string, distanceMm: number) => {
+    if (!edgeData.materialId) return;
+
+    useHarnessStore.setState((state) => {
+      const material = state.config.materials.find((item) => item.id === edgeData.materialId);
+      if (!material) return {};
+
+      return {
+        config: {
+          ...state.config,
+          materials: state.config.materials.map((item) =>
+            item.id !== edgeData.materialId
+              ? item
+              : {
+                  ...item,
+                  numberTubes: (item.numberTubes ?? []).map((tube) =>
+                    tube.id === tubeId
+                      ? { ...tube, distanceMm: Math.max(0, Math.round(distanceMm * 10) / 10) }
+                      : tube,
+                  ),
+                },
+          ),
+          updatedAt: Date.now(),
+        },
+        saveState: { status: 'dirty' as const },
+      };
+    });
+  }, [edgeData.materialId]);
 
   const startRouteDrag = useCallback((clientX: number, clientY: number) => {
     const updateRouteFromPointer = (nextClientX: number, nextClientY: number) => {
@@ -165,29 +304,64 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
     };
   }, [midpoint.x, midpoint.y, persistRouteOffset, screenToFlowPosition]);
 
-  const numberTubePoints = useMemo(
+  const startTubeDrag = useCallback((tubeId: string, clientX: number, clientY: number) => {
+    const updateTubeFromPointer = (nextClientX: number, nextClientY: number) => {
+      const point = screenToFlowPosition({ x: nextClientX, y: nextClientY });
+      const closest = resolveClosestSample(samples, point.x, point.y);
+      if (!closest) return;
+      const distancePx = Math.max(0, totalLength - closest.length);
+      persistTubeDistance(tubeId, distancePx / 0.6);
+    };
+
+    setActiveTubeId(tubeId);
+    updateTubeFromPointer(clientX, clientY);
+
+    const handleMouseMove = (event: MouseEvent) => {
+      event.preventDefault();
+      updateTubeFromPointer(event.clientX, event.clientY);
+    };
+
+    const handleMouseUp = () => {
+      setActiveTubeId(null);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp, { once: true });
+  }, [persistTubeDistance, samples, screenToFlowPosition, totalLength]);
+
+  const numberTubePlacements = useMemo(
     () =>
-      numberTubes.map((tube, index) => ({
-        tube,
-        point: getQuadraticPoint(
-          props.sourceX,
-          props.sourceY,
-          controlPoint.x,
-          controlPoint.y,
-          props.targetX,
-          props.targetY,
-          getTubeT(index, numberTubes.length),
-        ),
-      })),
-    [
-      controlPoint.x,
-      controlPoint.y,
-      numberTubes,
-      props.sourceX,
-      props.sourceY,
-      props.targetX,
-      props.targetY,
-    ],
+      numberTubes.map((tube, index) => {
+        const distanceMm = tube.distanceMm ?? 0;
+        const distancePx = Math.max(0, distanceMm * 0.6);
+        const tubeWidth = estimateTubeWidth(tube.content);
+        const connectorGapPx = 2;
+        const centerLengthFromStart = Math.max(
+          0,
+          totalLength - distancePx - connectorGapPx - tubeWidth / 2,
+        );
+        const pathPoint = resolveSampleByLength(samples, centerLengthFromStart);
+        const nearConnectorPoint = resolveSampleByLength(
+          samples,
+          Math.max(0, totalLength - distancePx),
+        );
+        const normalOffset = (index - (numberTubes.length - 1) / 2) * 14;
+        const normalAngle = pathPoint.angle + Math.PI / 2;
+        const angleDeg = normalizeReadableAngle(pathPoint.angle * (180 / Math.PI));
+
+        return {
+          tube,
+          distanceMm,
+          tubeWidth,
+          x: pathPoint.x + Math.cos(normalAngle) * normalOffset,
+          y: pathPoint.y + Math.sin(normalAngle) * normalOffset,
+          angleDeg,
+          nearConnectorPoint,
+        };
+      }),
+    [numberTubes, samples, totalLength],
   );
 
   return (
@@ -231,36 +405,95 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
         </EdgeLabelRenderer>
       )}
 
-      {numberTubePoints.length > 0 && (
+      {numberTubePlacements.length > 0 && (
         <EdgeLabelRenderer>
           <>
-            {numberTubePoints.map(({ tube, point }) => (
-              <button
+            {numberTubePlacements.map(({ tube, distanceMm, x, y, angleDeg, tubeWidth, nearConnectorPoint }) => (
+              <div
                 key={tube.id}
-                type="button"
-                title={`号码管 · ${tube.lengthMm}mm`}
-                onMouseDown={(event) => event.stopPropagation()}
-                onContextMenu={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (!edgeData.materialId) return;
-                  openMaterialAccessoryContextMenu({
-                    x: event.clientX,
-                    y: event.clientY,
-                    materialId: edgeData.materialId,
-                    kind: 'number-tube',
-                    accessoryId: tube.id,
-                    circuitId: edgeData.circuitId,
-                    endpoint: edgeData.side,
-                  });
-                }}
-                className="pointer-events-auto absolute rounded border border-sky-200 bg-white/95 px-1.5 py-0.5 text-[8px] font-medium text-sky-700 shadow-sm hover:bg-sky-50"
+                className="pointer-events-auto absolute"
                 style={{
-                  transform: `translate(-50%, -50%) translate(${point.x}px, ${point.y}px)`,
+                  transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
                 }}
               >
-                #{tube.content}
-              </button>
+                <button
+                  type="button"
+                  title={`号码管 · ${tube.lengthMm}mm · 距连接器 ${distanceMm}mm`}
+                  onMouseEnter={() => setHoveredTubeId(tube.id)}
+                  onMouseLeave={() => setHoveredTubeId((current) => (current === tube.id ? null : current))}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    startTubeDrag(tube.id, event.clientX, event.clientY);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (!edgeData.materialId) return;
+                    openMaterialAccessoryContextMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      materialId: edgeData.materialId,
+                      kind: 'number-tube',
+                      accessoryId: tube.id,
+                      circuitId: edgeData.circuitId,
+                      endpoint: edgeData.side,
+                    });
+                  }}
+                  className="rounded border border-sky-200 bg-white/95 px-1.5 py-0.5 text-[8px] font-medium text-sky-700 shadow-sm hover:bg-sky-50"
+                  style={{ minWidth: tubeWidth, transform: `rotate(${angleDeg}deg)` }}
+                >
+                  #{tube.content}
+                </button>
+                {(activeTubeId === tube.id || hoveredTubeId === tube.id) && (
+                  <>
+                    <svg
+                      className="pointer-events-none absolute overflow-visible"
+                      style={{
+                        left: 0,
+                        top: 0,
+                        transform: `translate(${-x}px, ${-y}px)`,
+                      }}
+                      width="1"
+                      height="1"
+                    >
+                      {(() => {
+                        const dimensionY = Math.min(props.targetY, nearConnectorPoint.y) - 18;
+                        return (
+                          <>
+                            <line
+                              x1={nearConnectorPoint.x}
+                              y1={nearConnectorPoint.y - 2}
+                              x2={nearConnectorPoint.x}
+                              y2={dimensionY}
+                              stroke="#0f766e"
+                              strokeWidth="1"
+                            />
+                            <line
+                              x1={props.targetX}
+                              y1={dimensionY}
+                              x2={nearConnectorPoint.x}
+                              y2={dimensionY}
+                              stroke="#0f766e"
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={(props.targetX + nearConnectorPoint.x) / 2}
+                              y={dimensionY - 4}
+                              textAnchor="middle"
+                              fontSize="8"
+                              fontWeight="600"
+                              fill="#0f766e"
+                            >
+                              {distanceMm}mm
+                            </text>
+                          </>
+                        );
+                      })()}
+                    </svg>
+                  </>
+                )}
+              </div>
             ))}
           </>
         </EdgeLabelRenderer>

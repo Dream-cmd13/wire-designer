@@ -2,7 +2,11 @@ import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Check, Search } from 'lucide-react';
 import { CONNECTORS } from '@/lib/data';
 import { changeConnectorPart, getActiveConnectorSide } from '@/lib/commands';
-import { getCanvasModelDisplayName, getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
+import {
+  getCanvasModelDisplayName,
+  getProtectiveSleeveDisplayName,
+  getWireEndTreatmentSummary,
+} from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { Connector } from '@/types/harness';
 
@@ -49,11 +53,11 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
     const result = changeConnectorPart(config, connectorId, connector.id);
     useHarnessStore.getState().replaceDocument(result.config);
     setSelection({ kind: 'connector', id: connectorId });
-    setError(result.warnings.length > 0 ? result.warnings.join('; ') : null);
+    setError(result.warnings.length > 0 ? result.warnings.join('；') : null);
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <h3 className="text-sm font-semibold text-slate-700">连接器属性</h3>
 
       <FormField label="标签">
@@ -67,7 +71,7 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
           <button
             type="button"
             onClick={handleApply}
-            className="flex cursor-pointer items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
+            className="flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-700"
           >
             <Check className="h-3 w-3" />
           </button>
@@ -77,7 +81,7 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
       <FormField label="连接器型号">
         <div className="space-y-1.5">
           <select
-            value={instance.connector?.id ?? ''}
+            value={instance.connector.id}
             onChange={(event) => {
               const part = CONNECTORS.find((connector) => connector.id === event.target.value);
               if (part) handlePartChange(part);
@@ -94,20 +98,19 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
           <button
             type="button"
             onClick={() => setPickerOpen(true)}
-            className="flex w-full cursor-pointer items-center justify-center gap-1 rounded border border-blue-200 px-2 py-1.5 text-xs text-blue-600 transition-colors hover:bg-blue-50"
+            className="flex w-full items-center justify-center gap-1 rounded border border-blue-200 px-2 py-1.5 text-xs text-blue-600 transition-colors hover:bg-blue-50"
           >
             <Search className="h-3 w-3" />
-            浏览全部物料...
+            浏览全部物料
           </button>
         </div>
       </FormField>
 
-      {instance.connector && (
-        <p className="text-[10px] text-slate-400">
-          {instance.connector.manufacturer} · {instance.connector.pinCount}P
-          {instance.connector.pitch ? ` · ${instance.connector.pitch}mm` : ''} · {instance.connector.type}
-        </p>
-      )}
+      <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+        <p>{instance.connector.manufacturer}</p>
+        <p>{instance.connector.pinCount}P{instance.connector.pitch ? ` · ${instance.connector.pitch}mm` : ''}</p>
+        <p>{instance.connector.type}</p>
+      </div>
 
       {activeSide && (
         <p className="text-[10px] text-amber-600">
@@ -128,7 +131,7 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
 
       {error && (
         <div role="status" className="rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-          <p className="font-medium">更换型号时已移除越界 PIN 引用</p>
+          <p className="font-medium">换型后已自动移除越界 PIN 引用</p>
           <p className="mt-1">{error}</p>
         </div>
       )}
@@ -139,7 +142,7 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
             isOpen
             onClose={() => setPickerOpen(false)}
             onSelect={handlePartChange}
-            currentConnectorId={instance.connector?.id}
+            currentConnectorId={instance.connector.id}
           />
         )}
       </Suspense>
@@ -159,19 +162,22 @@ function MaterialEditor({ materialId }: { materialId: string }) {
   const circuitCount = material.circuits.length;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <h3 className="text-sm font-semibold text-slate-700">线材属性</h3>
 
       <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
         <p>{spec.kind === 'electronic' ? '电子线' : '护套线'}</p>
-        <p>线规: {spec.awg} AWG</p>
-        <p>长度: {spec.lengthMm} mm</p>
-        {spec.kind === 'electronic' && <p>UL: {spec.ulNumber}</p>}
+        <p>线号：{spec.awg} AWG</p>
+        <p>长度：{spec.lengthMm} mm</p>
+        <p>端部工艺：{getWireEndTreatmentSummary(spec.endTreatment)}</p>
+        {spec.kind === 'electronic' && <p>UL：{spec.ulNumber}</p>}
         {spec.kind === 'jacketed' && (
           <>
-            <p>芯数: {spec.coreCount}</p>
-            <p>材质: {spec.jacketMaterial}</p>
-            {spec.ulNumber && <p>UL: {spec.ulNumber}</p>}
+            <p>外被：{spec.jacketMaterial} / {spec.jacketColor === 'black' ? '黑色' : '绿色'}</p>
+            <p>芯数：{spec.coreCount} 芯</p>
+            <p>带屏蔽：{spec.shielded ? '是' : '否'}</p>
+            <p>芯线颜色：{spec.coreColors.join('、')}</p>
+            {spec.ulNumber && <p>UL：{spec.ulNumber}</p>}
           </>
         )}
       </div>
@@ -182,7 +188,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
       </div>
 
       <p className="text-[10px] text-slate-400">
-        在画布上点击线材端点和连接器 PIN 点即可建立接线。
+        在画布上点击线材端点和连接器 PIN 点即可建立连接。号码管可沿连线拖动，默认贴着连接器。
       </p>
     </div>
   );
@@ -197,18 +203,14 @@ function ModelEditor({ modelId }: { modelId: string }) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <h3 className="text-sm font-semibold text-slate-700">外模属性</h3>
 
       <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-        <p>类型: {getCanvasModelDisplayName(model)}</p>
-        <p>宽度: {Math.round(model.width)} px</p>
-        <p>高度: {Math.round(model.height)} px</p>
+        <p>类型：{getCanvasModelDisplayName(model)}</p>
+        <p>宽度：{Math.round(model.width)} px</p>
+        <p>高度：{Math.round(model.height)} px</p>
       </div>
-
-      <p className="text-[10px] text-slate-400">
-        外模显示在线材和连接器之间，并遮住包覆区域内的连接线。
-      </p>
     </div>
   );
 }
@@ -221,8 +223,10 @@ function SleeveEditor({ sleeveId }: { sleeveId: string }) {
     return <div className="text-sm text-slate-400">保护套不存在</div>;
   }
 
+  const fixing = sleeve.corrugatedFixing;
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <h3 className="text-sm font-semibold text-slate-700">保护套属性</h3>
 
       <FormField label="显示名称">
@@ -237,7 +241,7 @@ function SleeveEditor({ sleeveId }: { sleeveId: string }) {
       <FormField label="长度 (mm)">
         <input
           type="number"
-          min={10}
+          min={1}
           value={sleeve.lengthMm}
           onChange={(event) => {
             const lengthMm = Number(event.target.value);
@@ -248,6 +252,19 @@ function SleeveEditor({ sleeveId }: { sleeveId: string }) {
           className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </FormField>
+
+      {sleeve.type === 'corrugated' && fixing && (
+        <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+          <p>左端热缩：{fixing.startHeatShrink ? `是，距离 ${fixing.startDistanceMm}mm` : '否'}</p>
+          <p>右端热缩：{fixing.endHeatShrink ? `是，距离 ${fixing.endDistanceMm}mm` : '否'}</p>
+        </div>
+      )}
+
+      {sleeve.remark && (
+        <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+          备注：{sleeve.remark}
+        </div>
+      )}
     </div>
   );
 }

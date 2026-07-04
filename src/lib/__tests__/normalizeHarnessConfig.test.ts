@@ -107,7 +107,10 @@ describe('normalizeHarnessConfig', () => {
           lengthMm: 100,
           awg: 26,
           ulNumber: '1007',
-          endTreatment: { stripped: false },
+          endTreatment: {
+            start: { stripped: false, termination: 'none' },
+            end: { stripped: false, termination: 'none' },
+          },
         },
         circuits: [],
       }],
@@ -181,7 +184,10 @@ describe('normalizeHarnessConfig', () => {
           lengthMm: 100,
           awg: 26,
           ulNumber: '1007',
-          endTreatment: { stripped: false },
+          endTreatment: {
+            start: { stripped: false, termination: 'none' },
+            end: { stripped: false, termination: 'none' },
+          },
         },
         circuits: [{
           id: 'circuit-1',
