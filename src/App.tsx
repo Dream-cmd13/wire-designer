@@ -48,9 +48,6 @@ function DesignerView() {
   return (
     <MainLayout leftPanel={<ConfigPanel />} rightPanel={<RightPanel />}>
       <HarnessCanvas />
-      <div className="hidden xl:block">
-        <Preview3D />
-      </div>
     </MainLayout>
   );
 }
