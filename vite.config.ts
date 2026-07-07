@@ -7,9 +7,21 @@ import path from 'path'
 // Test-specific config (environment, globals) uses vitest defaults.
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: [
+      '@xyflow/react',
+      'lucide-react',
+      'pdfjs-dist',
+      'react',
+      'react-dom',
+      'react/jsx-runtime',
+      'zustand',
+    ],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    dedupe: ['react', 'react-dom'],
   },
 })

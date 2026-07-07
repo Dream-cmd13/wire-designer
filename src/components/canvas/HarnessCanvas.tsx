@@ -1,5 +1,4 @@
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -54,7 +53,10 @@ import { setJumperContextMenuHandler } from './jumperContextMenu';
 import { MaterialAttachmentEdge } from './MaterialAttachmentEdge';
 import { ProtectiveSleeveNode } from './ProtectiveSleeveNode';
 import { WireMaterialNode, type WireMaterialNodeData } from './WireMaterialNode';
-import type { MaterialAccessoryKind } from './MaterialAccessoryDialog';
+import { CanvasModelDialog } from './CanvasModelDialog';
+import { MaterialAccessoryDialog, type MaterialAccessoryKind } from './MaterialAccessoryDialog';
+import { ProtectiveSleeveDialog } from './ProtectiveSleeveDialog';
+import { WireMaterialDialog } from './WireMaterialDialog';
 import {
   setMaterialAccessoryContextMenuHandler,
   setMaterialAccessoryDialogHandler,
@@ -64,18 +66,8 @@ import {
   type MaterialConnectionPoint,
 } from './materialConnectionClick';
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
+import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
 import { UndoToast } from '@/components/shared/UndoToast';
-
-const WireMaterialDialog = lazy(() =>
-  import('./WireMaterialDialog').then((module) => ({ default: module.WireMaterialDialog })));
-const ProtectiveSleeveDialog = lazy(() =>
-  import('./ProtectiveSleeveDialog').then((module) => ({ default: module.ProtectiveSleeveDialog })));
-const CanvasModelDialog = lazy(() =>
-  import('./CanvasModelDialog').then((module) => ({ default: module.CanvasModelDialog })));
-const MaterialAccessoryDialog = lazy(() =>
-  import('./MaterialAccessoryDialog').then((module) => ({ default: module.MaterialAccessoryDialog })));
-const PartPickerDialog = lazy(() =>
-  import('@/components/shared/PartPickerDialog').then((module) => ({ default: module.PartPickerDialog })));
 
 const nodeTypes: NodeTypes = {
   connector: ConnectorNode,
@@ -531,7 +523,6 @@ function getModelLinkedGroups(config: HarnessConfig): ModelLinkedGroup[] {
 function getLinkedDragNodeIds(
   config: HarnessConfig,
   nodeId: string,
-  _nodeType?: string,
 ) {
   const groups = getModelLinkedGroups(config);
   if (groups.length === 0) return [nodeId];
@@ -1226,7 +1217,7 @@ function HarnessCanvasInner() {
   }, [requestDeleteConfirmation]);
 
   const onNodeDragStart: OnNodeDrag = useCallback((_, node) => {
-    const linkedNodeIds = getLinkedDragNodeIds(useHarnessStore.getState().config, node.id, node.type);
+    const linkedNodeIds = getLinkedDragNodeIds(useHarnessStore.getState().config, node.id);
     if (linkedNodeIds.length <= 1) {
       dragGroupRef.current = null;
       return;

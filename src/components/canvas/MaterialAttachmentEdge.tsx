@@ -3,6 +3,7 @@ import { BaseEdge, EdgeLabelRenderer, type EdgeProps, useReactFlow } from '@xyfl
 import { updateMaterialCircuit } from '@/lib/commands';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
+  CanvasModel,
   MaterialEndpoint,
   MaterialEndpointRouteOffset,
   WireNumberTube,
@@ -154,9 +155,9 @@ function isEdgeIntersectingAnyModel(
   sourceY: number,
   targetX: number,
   targetY: number,
-  models: any[]
+  models: CanvasModel[],
 ): boolean {
-  const getModelRect = (model: any) => ({
+  const getModelRect = (model: CanvasModel) => ({
     x: model.position.x,
     y: model.position.y,
     width: model.width,

@@ -1,15 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Edit3, FolderOpen, HardDrive, History, Plus, Trash2, Upload } from 'lucide-react';
 import { createDesignFile, downloadTextFile, safeFilename, type DesignFilePreview } from '@/lib/designFile';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
+import { ImportProjectDialog } from '@/components/project/ImportProjectDialog';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import type { Project } from '@/types/user';
-
-const ImportProjectDialog = lazy(() =>
-  import('./ImportProjectDialog').then((module) => ({ default: module.ImportProjectDialog })));
 
 interface ProjectListProps {
   onNewProject: () => void;
@@ -296,13 +294,11 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
         </div>
       )}
 
-      <Suspense fallback={null}>
-        <ImportProjectDialog
-          isOpen={importOpen}
-          onClose={() => setImportOpen(false)}
-          onImport={handleImport}
-        />
-      </Suspense>
+      <ImportProjectDialog
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImport}
+      />
       {deleteToast && (
         <DeleteConfirmToast
           message={`删除项目“${deleteToast.name}”？此操作不可撤销。`}

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Check, Search } from 'lucide-react';
 import { CONNECTORS } from '@/lib/data';
 import { changeConnectorPart, getActiveConnectorSide } from '@/lib/commands';
@@ -8,10 +8,8 @@ import {
   getWireEndTreatmentSummary,
 } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
 import type { Connector, HarnessConfig } from '@/types/harness';
-
-const PartPickerDialog = lazy(() =>
-  import('@/components/shared/PartPickerDialog').then((module) => ({ default: module.PartPickerDialog })));
 
 export function PropertyInspector() {
   const { selection } = useHarnessStore();
@@ -136,16 +134,14 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
         </div>
       )}
 
-      <Suspense fallback={null}>
-        {pickerOpen && (
-          <PartPickerDialog
-            isOpen
-            onClose={() => setPickerOpen(false)}
-            onSelect={handlePartChange}
-            currentConnectorId={instance.connector.id}
-          />
-        )}
-      </Suspense>
+      {pickerOpen && (
+        <PartPickerDialog
+          isOpen
+          onClose={() => setPickerOpen(false)}
+          onSelect={handlePartChange}
+          currentConnectorId={instance.connector.id}
+        />
+      )}
     </div>
   );
 }

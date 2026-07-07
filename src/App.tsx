@@ -1,32 +1,24 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ChevronDown, ChevronUp, Download, FolderOpen, Redo2, Undo2, User } from 'lucide-react';
+import { AuthModal } from '@/components/auth/AuthModal';
+import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { DrawingModeSwitch, type DrawingMode } from '@/components/drawings/DrawingModeSwitch';
+import { PdfDrawingPickerDialog } from '@/components/drawings/PdfDrawingPickerDialog';
+import { ProductionDrawingView } from '@/components/drawings/ProductionDrawingView';
+import { BomPanel } from '@/components/panels/BomPanel';
+import { ConfigPanel } from '@/components/panels/ConfigPanel';
+import { QuotePanel } from '@/components/panels/QuotePanel';
+import { Preview3D } from '@/components/preview3d/Preview3D';
 import { ProjectList } from '@/components/project/ProjectList';
+import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
+import { pdfDrawings } from '@/lib/pdfDrawings';
 import { projectRepository } from '@/repositories/projectRepository';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import { useHistoryStore } from '@/stores/historyStore';
-
-const ConfigPanel = lazy(() =>
-  import('@/components/panels/ConfigPanel').then((module) => ({ default: module.ConfigPanel })));
-const QuotePanel = lazy(() =>
-  import('@/components/panels/QuotePanel').then((module) => ({ default: module.QuotePanel })));
-const BomPanel = lazy(() =>
-  import('@/components/panels/BomPanel').then((module) => ({ default: module.BomPanel })));
-const HarnessCanvas = lazy(() =>
-  import('@/components/canvas/HarnessCanvas').then((module) => ({ default: module.HarnessCanvas })));
-const Preview3D = lazy(() =>
-  import('@/components/preview3d/Preview3D').then((module) => ({ default: module.Preview3D })));
-const AuthModal = lazy(() =>
-  import('@/components/auth/AuthModal').then((module) => ({ default: module.AuthModal })));
-const ProjectWizard = lazy(() =>
-  import('@/components/project/ProjectWizard').then((module) => ({ default: module.ProjectWizard })));
-
-function LoadingPanel() {
-  return <div className="flex h-full items-center justify-center text-sm text-slate-400">正在加载...</div>;
-}
 
 function RightPanel() {
   const [bomCollapsed, setBomCollapsed] = useState(false);
@@ -54,14 +46,12 @@ function RightPanel() {
 
 function DesignerView() {
   return (
-    <Suspense fallback={<LoadingPanel />}>
-      <MainLayout leftPanel={<ConfigPanel />} rightPanel={<RightPanel />}>
-        <HarnessCanvas />
-        <div className="hidden xl:block">
-          <Preview3D />
-        </div>
-      </MainLayout>
-    </Suspense>
+    <MainLayout leftPanel={<ConfigPanel />} rightPanel={<RightPanel />}>
+      <HarnessCanvas />
+      <div className="hidden xl:block">
+        <Preview3D />
+      </div>
+    </MainLayout>
   );
 }
 
@@ -76,6 +66,9 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recoveryRaw, setRecoveryRaw] = useState<string | null>(null);
   const [saveBlocked, setSaveBlocked] = useState(false);
+  const [drawingMode, setDrawingMode] = useState<DrawingMode>('design');
+  const [selectedPdfIds, setSelectedPdfIds] = useState<string[]>([]);
+  const [pdfPickerOpen, setPdfPickerOpen] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -213,6 +206,8 @@ export default function App() {
     if (!project) return;
 
     setCurrentProject(project);
+    setDrawingMode('design');
+    setPdfPickerOpen(false);
     const history = useHistoryStore.getState();
     history.clear();
     history.pause();
@@ -250,6 +245,8 @@ export default function App() {
     setRecoveryRaw(null);
     setSaveBlocked(false);
     useHistoryStore.getState().clear();
+    setDrawingMode('design');
+    setPdfPickerOpen(false);
     setView('designer');
   };
 
@@ -270,6 +267,8 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
+    setDrawingMode('design');
+    setPdfPickerOpen(false);
     useHistoryStore.getState().clear();
     setView('projectList');
   };
@@ -291,6 +290,14 @@ export default function App() {
         : saveState.status === 'saving'
           ? 'text-blue-400 bg-blue-900/30'
           : 'text-red-400 bg-red-900/30';
+
+  const handleDrawingModeChange = (mode: DrawingMode) => {
+    if (mode === 'production' && selectedPdfIds.length === 0) {
+      setPdfPickerOpen(true);
+      return;
+    }
+    setDrawingMode(mode);
+  };
 
   return (
     <div className="h-screen bg-slate-50">
@@ -359,6 +366,9 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          {view === 'designer' && (
+            <DrawingModeSwitch mode={drawingMode} onChange={handleDrawingModeChange} />
+          )}
           {currentUser ? (
             <button
               onClick={() => setAuthOpen(true)}
@@ -423,22 +433,39 @@ export default function App() {
               </div>
             )}
 
-            <DesignerView />
+            {drawingMode === 'design' ? (
+              <DesignerView />
+            ) : (
+              <ProductionDrawingView
+                drawings={pdfDrawings}
+                selectedIds={selectedPdfIds}
+                onChooseDrawings={() => setPdfPickerOpen(true)}
+              />
+            )}
           </>
         )}
       </div>
 
-      <Suspense fallback={null}>
-        {authOpen && <AuthModal isOpen onClose={() => setAuthOpen(false)} />}
-      </Suspense>
+      {authOpen && <AuthModal isOpen onClose={() => setAuthOpen(false)} />}
 
       {view === 'wizard' && (
-        <Suspense fallback={<LoadingPanel />}>
-          <ProjectWizard
-            onComplete={handleWizardComplete}
-            onCancel={() => setView('projectList')}
-          />
-        </Suspense>
+        <ProjectWizard
+          onComplete={handleWizardComplete}
+          onCancel={() => setView('projectList')}
+        />
+      )}
+
+      {pdfPickerOpen && (
+        <PdfDrawingPickerDialog
+          drawings={pdfDrawings}
+          initialSelection={selectedPdfIds}
+          onClose={() => setPdfPickerOpen(false)}
+          onConfirm={(drawingIds) => {
+            setSelectedPdfIds(drawingIds);
+            setDrawingMode('production');
+            setPdfPickerOpen(false);
+          }}
+        />
       )}
     </div>
   );
