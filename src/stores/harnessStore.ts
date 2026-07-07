@@ -134,6 +134,7 @@ interface HarnessState {
   clearTwoDImageAssociation: (id: string) => void;
   rotateTwoDImage: (id: string) => void;
   reorderTwoDImages: (fromIndex: number, toIndex: number) => void;
+  moveTwoDImage: (id: string, x: number, y: number) => void;
 }
 
 function dirtyState() {
@@ -367,5 +368,17 @@ export const useHarnessStore = create<HarnessState>()(
             saveState: dirtyState(),
           };
         }),
+
+      moveTwoDImage: (id, x, y) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            twoDImages: (state.config.twoDImages ?? []).map((img) =>
+              img.id === id ? { ...img, pos: { x, y } } : img,
+            ),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
     }),
 );

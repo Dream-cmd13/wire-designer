@@ -5,36 +5,28 @@ interface TwoDImageCardProps {
   image: TwoDImage;
   highlighted?: boolean;
   selected?: boolean;
+  isDragging?: boolean;
   onClick: () => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent) => void;
-  isDragOver?: boolean;
+  onMouseDown: (e: React.MouseEvent) => void;
 }
 
 export function TwoDImageCard({
   image,
   highlighted,
   selected,
+  isDragging,
   onClick,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  isDragOver,
+  onMouseDown,
 }: TwoDImageCardProps) {
   const rotation = image.rotation ?? 0;
-  // For 90/270 we swap the visual axes inside a square container
   const needsSwap = rotation === 90 || rotation === 270;
 
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      className={`group relative cursor-grab overflow-hidden rounded-lg border-2 bg-slate-100 transition-all active:cursor-grabbing ${
-        isDragOver
-          ? 'border-blue-400 ring-2 ring-blue-300 ring-offset-1 opacity-70'
+      onMouseDown={onMouseDown}
+      className={`group relative cursor-grab overflow-hidden rounded-lg border-2 bg-slate-100 transition-colors active:cursor-grabbing select-none ${
+        isDragging
+          ? 'border-blue-400 opacity-80 shadow-xl ring-2 ring-blue-300 ring-offset-1'
           : highlighted
           ? 'border-blue-500 ring-2 ring-blue-400 ring-offset-1'
           : selected
@@ -48,9 +40,10 @@ export function TwoDImageCard({
         <GripVertical className="h-3 w-3 text-white" />
       </div>
 
-      {/* image — fills the square; rotation handled inside */}
+      {/* image */}
       <button
         type="button"
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={onClick}
         className="flex h-full w-full items-center justify-center focus:outline-none"
         aria-label={image.name}
@@ -62,10 +55,10 @@ export function TwoDImageCard({
           style={{
             transform: `rotate(${rotation}deg)`,
             transformOrigin: 'center center',
-            maxWidth: needsSwap ? '100%' : '100%',
-            maxHeight: needsSwap ? '100%' : '100%',
             width: needsSwap ? 'auto' : '100%',
             height: needsSwap ? '100%' : 'auto',
+            maxWidth: '100%',
+            maxHeight: '100%',
             objectFit: 'contain',
             transition: 'transform 0.25s ease',
           }}

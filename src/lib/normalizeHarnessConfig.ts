@@ -32,6 +32,7 @@ export function createFallbackConfig(): HarnessConfig {
     models: [],
     quantity: 1,
     leadTime: 'standard',
+    twoDImages: [],
   };
 }
 

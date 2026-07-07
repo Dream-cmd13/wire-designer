@@ -609,6 +609,15 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
       models: models as CanvasModel[],
       quantity: input.quantity as number,
       leadTime: input.leadTime as 'rush' | 'standard' | 'economy',
+      twoDImages: Array.isArray((input as Record<string, unknown>).twoDImages)
+        ? ((input as Record<string, unknown>).twoDImages as unknown[]).filter(
+            (x) =>
+              x !== null &&
+              typeof x === 'object' &&
+              typeof (x as Record<string, unknown>).id === 'string' &&
+              typeof (x as Record<string, unknown>).dataUrl === 'string',
+          ) as import('@/types/harness').TwoDImage[]
+        : [],
     },
   };
 }
