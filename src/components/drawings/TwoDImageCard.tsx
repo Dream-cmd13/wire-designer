@@ -19,48 +19,43 @@ export function TwoDImageCard({
   onMouseDown,
 }: TwoDImageCardProps) {
   const rotation = image.rotation ?? 0;
-  const needsSwap = rotation === 90 || rotation === 270;
 
   return (
     <div
       onMouseDown={onMouseDown}
-      className={`group relative cursor-grab overflow-hidden rounded-lg border-2 bg-slate-100 transition-colors active:cursor-grabbing select-none ${
-        isDragging
-          ? 'border-blue-400 opacity-80 shadow-xl ring-2 ring-blue-300 ring-offset-1'
-          : highlighted
-          ? 'border-blue-500 ring-2 ring-blue-400 ring-offset-1'
-          : selected
-          ? 'border-slate-400'
-          : 'border-transparent hover:border-slate-300'
-      }`}
-      style={{ aspectRatio: '1 / 1' }}
+      className="group relative cursor-grab select-none active:cursor-grabbing"
     >
       {/* drag handle badge */}
-      <div className="pointer-events-none absolute left-1 top-1 z-10 hidden rounded bg-black/30 p-0.5 group-hover:block">
+      <div className="pointer-events-none absolute left-1 top-1 z-10 hidden rounded bg-black/40 p-0.5 backdrop-blur-sm group-hover:block">
         <GripVertical className="h-3 w-3 text-white" />
       </div>
 
-      {/* image */}
+      {/* image - direct display, outline on select/highlight */}
       <button
         type="button"
-        onMouseDown={(e) => e.stopPropagation()}
         onClick={onClick}
-        className="flex h-full w-full items-center justify-center focus:outline-none"
+        className="block focus:outline-none"
         aria-label={image.name}
       >
         <img
           src={image.dataUrl}
           alt={image.name}
           draggable={false}
+          className={`block transition-all ${
+            isDragging
+              ? 'opacity-80 shadow-2xl ring-4 ring-blue-400'
+              : highlighted
+              ? 'shadow-lg ring-4 ring-blue-500'
+              : selected
+              ? 'shadow-md ring-2 ring-slate-400'
+              : 'hover:shadow-sm'
+          }`}
           style={{
             transform: `rotate(${rotation}deg)`,
             transformOrigin: 'center center',
-            width: needsSwap ? 'auto' : '100%',
-            height: needsSwap ? '100%' : 'auto',
             maxWidth: '100%',
-            maxHeight: '100%',
-            objectFit: 'contain',
-            transition: 'transform 0.25s ease',
+            height: 'auto',
+            display: 'block',
           }}
         />
       </button>

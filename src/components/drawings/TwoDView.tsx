@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link2Off, RotateCw, Trash2, Upload } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link2Off, Minus, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
 import { generateId } from '@/lib/commands';
-import { buildTwoDImageGroups } from '@/lib/twoDImageGroups';
+import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
@@ -10,10 +10,10 @@ import { TwoDImageCard } from './TwoDImageCard';
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
 const EMPTY_IMAGES: TwoDImage[] = [];
 
-const IMG_SIZE = 160; // card width/height in px
-const GROUP_GAP = 32; // horizontal gap between groups in auto-layout
-const INNER_GAP = 4;  // gap between stitched images in auto-layout
-const CANVAS_PAD = 24; // padding around content
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.15;
+const IMAGE_GAP = 8; // gap between images in flex row
 
 // ── auto-layout ────────────────────────────────────────────────────────────────
 function computeAutoLayout(
@@ -26,7 +26,7 @@ function computeAutoLayout(
   for (const group of groups) {
     for (let i = 0; i < group.images.length; i++) {
       positions[group.images[i].id] = { x: curX, y };
-      curX += IMG_SIZE + (i < group.images.length - 1 ? INNER_GAP : 0);
+      curX += IMG_W + (i < group.images.length - 1 ? INNER_GAP : 0);
     }
     curX += GROUP_GAP;
   }
@@ -129,45 +129,76 @@ export function TwoDView() {
   const clearTwoDImageAssociation = useHarnessStore((s) => s.clearTwoDImageAssociation);
   const removeTwoDImage = useHarnessStore((s) => s.removeTwoDImage);
   const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
-  const moveTwoDImage = useHarnessStore((s) => s.moveTwoDImage);
+  const reorderTwoDImages = useHarnessStore((s) => s.reorderTwoDImages);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightedRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
-  // ── drag state ───────────────────────────────────────────────────────────────
-  /** What is currently being dragged */
-  const [dragging, setDragging] = useState<{
-    id: string;
-    startMX: number;
-    startMY: number;
-    startPX: number;
-    startPY: number;
+  // ── zoom & pan ───────────────────────────────────────────────────────────────
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [panning, setPanning] = useState<{
+    startMX: number; startMY: number; startPX: number; startPY: number;
   } | null>(null);
-  /** Live position while dragging (not yet committed to store) */
-  const [dragLive, setDragLive] = useState<{ x: number; y: number } | null>(null);
+  const panningRef = useRef(panning);
+  panningRef.current = panning;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const hasInitializedPanRef = useRef(false);
 
-  // Keep refs in-sync so the effect closures always see latest values
-  const draggingRef = useRef(dragging);
-  draggingRef.current = dragging;
-  const dragLiveRef = useRef(dragLive);
-  dragLiveRef.current = dragLive;
+  // ── drag-to-reorder state ─────────────────────────────────────────────────
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropIdx, setDropIdx] = useState<number | null>(null);
+  const dragIdxRef = useRef(dragIdx);
+  dragIdxRef.current = dragIdx;
 
+  // ── flatten groups into sorted display order ──────────────────────────────
+  const groups = useMemo(
+    () => buildTwoDImageGroups(twoDImages, connectors, materials, sleeves, models),
+    [twoDImages, connectors, materials, sleeves, models],
+  );
+
+  // Sort all images by their element's x-position individually, ignoring group structure.
+  // This ensures correct left-to-right order: ConnectorA | ModelLeft | Material | ModelRight | ConnectorB
+  const flatImages = useMemo(() => {
+    const allImages = groups.flatMap((g) => g.images);
+    return allImages.sort((a, b) => {
+      const ax = getElementX(a.elementKind, a.elementId, connectors, materials, sleeves, models);
+      const bx = getElementX(b.elementKind, b.elementId, connectors, materials, sleeves, models);
+      return ax - bx;
+    });
+  }, [groups, connectors, materials, sleeves, models]);
+
+  // ── global mouse handlers ─────────────────────────────────────────────────────
   useEffect(() => {
     function onMove(e: MouseEvent) {
-      const d = draggingRef.current;
-      if (!d) return;
-      setDragLive({
-        x: Math.max(0, d.startPX + e.clientX - d.startMX),
-        y: Math.max(0, d.startPY + e.clientY - d.startMY),
-      });
+      // canvas pan
+      const p = panningRef.current;
+      if (p) {
+        setPan({
+          x: p.startPX + e.clientX - p.startMX,
+          y: p.startPY + e.clientY - p.startMY,
+        });
+      }
     }
     function onUp() {
-      const d = draggingRef.current;
-      const lp = dragLiveRef.current;
-      if (d && lp) moveTwoDImage(d.id, lp.x, lp.y);
-      setDragging(null);
-      setDragLive(null);
+      // complete drag-to-reorder
+      const from = dragIdxRef.current;
+      if (from !== null && dropIdx !== null && from !== dropIdx) {
+        // map flatImages indices to twoDImages indices
+        const fromImg = flatImages[from];
+        const toImg = flatImages[dropIdx];
+        const fromStoreIdx = twoDImages.findIndex((img) => img.id === fromImg.id);
+        const toStoreIdx = twoDImages.findIndex((img) => img.id === toImg.id);
+        if (fromStoreIdx !== -1 && toStoreIdx !== -1) {
+          reorderTwoDImages(fromStoreIdx, toStoreIdx);
+        }
+      }
+      setDragIdx(null);
+      setDropIdx(null);
+      setPanning(null);
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -175,66 +206,74 @@ export function TwoDView() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps — intentionally using refs
+  }, [dropIdx, flatImages, twoDImages, reorderTwoDImages]);
 
   // ── highlighted image (follows canvas selection) ─────────────────────────────
   const highlightedImageId =
     selection.kind !== 'none'
-      ? (twoDImages.find(
+      ? (flatImages.find(
           (img) =>
             img.elementKind === selection.kind &&
             img.elementId === (selection as { id: string }).id,
         )?.id ?? null)
       : null;
 
-  useEffect(() => {
-    if (highlightedImageId) {
-      highlightedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [highlightedImageId]);
+  // ── zoom helpers ──────────────────────────────────────────────────────────────
+  const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
-  // ── auto-layout positions ─────────────────────────────────────────────────────
-  const groups = useMemo(
-    () => buildTwoDImageGroups(twoDImages, connectors, materials, sleeves, models),
-    [twoDImages, connectors, materials, sleeves, models],
-  );
+  const zoomIn = useCallback(() => {
+    setZoom((z) => clampZoom(parseFloat((z + ZOOM_STEP).toFixed(2))));
+  }, []);
 
-  const autoLayout = useMemo(() => computeAutoLayout(groups), [groups]);
+  const zoomOut = useCallback(() => {
+    setZoom((z) => clampZoom(parseFloat((z - ZOOM_STEP).toFixed(2))));
+  }, []);
 
-  /** Return the effective pixel position for a given image */
-  function getPos(img: TwoDImage): { x: number; y: number } {
-    if (dragging?.id === img.id && dragLive) return dragLive;
-    return img.pos ?? autoLayout[img.id] ?? { x: CANVAS_PAD, y: CANVAS_PAD };
-  }
+  const resetZoom = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
 
-  // ── canvas size: expand to fit all images ─────────────────────────────────────
-  const { canvasW, canvasH } = useMemo(() => {
-    let maxX = 0;
-    let maxY = 0;
-    for (const img of twoDImages) {
-      const pos = img.pos ?? autoLayout[img.id] ?? { x: CANVAS_PAD, y: CANVAS_PAD };
-      maxX = Math.max(maxX, pos.x + IMG_SIZE);
-      maxY = Math.max(maxY, pos.y + IMG_SIZE + 120); // +120 for info box headroom
-    }
-    return {
-      canvasW: Math.max(800, maxX + CANVAS_PAD),
-      canvasH: Math.max(500, maxY + CANVAS_PAD),
-    };
-  }, [twoDImages, autoLayout]);
-
-  // ── start drag on mousedown ───────────────────────────────────────────────────
-  function handleCardMouseDown(e: React.MouseEvent, img: TwoDImage) {
-    // Only primary button; let button click fall through
-    if (e.button !== 0) return;
+  /** Wheel: zoom centered on cursor position inside viewport */
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const pos = getPos(img);
-    setDragging({
-      id: img.id,
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const rect = vp.getBoundingClientRect();
+    // cursor in viewport coords
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+
+    setZoom((prevZoom) => {
+      const delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+      const nextZoom = clampZoom(parseFloat((prevZoom + delta).toFixed(2)));
+      // adjust pan so the world point under cursor stays fixed
+      setPan((prevPan) => ({
+        x: cx - (cx - prevPan.x) * (nextZoom / prevZoom),
+        y: cy - (cy - prevPan.y) * (nextZoom / prevZoom),
+      }));
+      return nextZoom;
+    });
+  }, []);
+
+  /** Middle-mouse button starts canvas panning */
+  const handleViewportMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 1) return; // middle button only
+    e.preventDefault();
+    setPanning({
       startMX: e.clientX,
       startMY: e.clientY,
-      startPX: pos.x,
-      startPY: pos.y,
+      startPX: pan.x,
+      startPY: pan.y,
     });
+  }, [pan]);
+
+  // ── drag-to-reorder mousedown ─────────────────────────────────────────────────
+  function handleImageMouseDown(e: React.MouseEvent, idx: number) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    setDragIdx(idx);
+    setDropIdx(idx);
   }
 
   // ── upload ────────────────────────────────────────────────────────────────────
@@ -260,7 +299,38 @@ export function TwoDView() {
       {/* toolbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
         <span className="text-sm font-semibold text-slate-700">2D 图</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* zoom controls */}
+          {twoDImages.length > 0 && (
+            <div className="flex items-center gap-1.5 border-r border-slate-200 pr-3">
+              <button
+                type="button"
+                onClick={zoomOut}
+                disabled={zoom <= ZOOM_MIN}
+                className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                title="缩小"
+              >
+                <Minus className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={resetZoom}
+                className="min-w-[3.5rem] rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                title="重置缩放"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={zoomIn}
+                disabled={zoom >= ZOOM_MAX}
+                className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                title="放大"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           {twoDImages.length > 0 && (
             <span className="text-xs text-slate-400">{twoDImages.length} 张图片</span>
           )}
@@ -283,7 +353,13 @@ export function TwoDView() {
       </div>
 
       {/* canvas area */}
-      <div className="flex-1 overflow-auto">
+      <div
+        ref={viewportRef}
+        className="relative flex-1 overflow-hidden"
+        style={{ cursor: panning ? 'grabbing' : 'default' }}
+        onWheel={handleWheel}
+        onMouseDown={handleViewportMouseDown}
+      >
         {twoDImages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
             <div className="rounded-xl bg-slate-100 p-6">
@@ -307,39 +383,54 @@ export function TwoDView() {
             </p>
           </div>
         ) : (
-          /* free-canvas: images are absolutely positioned */
+          /* world layer: flex row, zoom+pan via transform */
           <div
-            className="relative"
-            style={{ width: canvasW, height: canvasH }}
+            style={{
+              position: 'absolute',
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: '0 0',
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: IMAGE_GAP,
+              padding: 32,
+            }}
           >
-            {twoDImages.map((img) => {
-              const pos = getPos(img);
+            {flatImages.map((img, idx) => {
               const isHighlighted = img.id === highlightedImageId;
               const isSelected = img.id === selectedId;
-              const isDragging = dragging?.id === img.id;
+              const isDragging = dragIdx === idx;
+              const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
 
               return (
                 <div
                   key={img.id}
                   ref={isHighlighted ? highlightedRef : undefined}
-                  style={{
-                    position: 'absolute',
-                    left: pos.x,
-                    top: pos.y,
-                    width: IMG_SIZE,
-                    // lift dragged card above others
-                    zIndex: isDragging ? 50 : isSelected ? 10 : 1,
-                    // no layout transition while dragging; smooth snap on release
-                    transition: isDragging ? 'none' : 'left 0.15s, top 0.15s',
-                  }}
+                  onMouseEnter={() => dragIdx !== null && setDropIdx(idx)}
+                  style={{ opacity: isDragging ? 0.4 : 1, flexShrink: 0 }}
                 >
+                  {/* drop indicator: blue bar on the left edge */}
+                  {isDropTarget && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: -5,
+                        top: 0,
+                        bottom: 0,
+                        width: 3,
+                        borderRadius: 2,
+                        background: '#3b82f6',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                  )}
                   <TwoDImageCard
                     image={img}
                     highlighted={isHighlighted}
                     selected={isSelected}
                     isDragging={isDragging}
                     onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
-                    onMouseDown={(e) => handleCardMouseDown(e, img)}
+                    onMouseDown={(e) => handleImageMouseDown(e, idx)}
                   />
                   {isSelected && !isDragging && (
                     <ImageInfoBox

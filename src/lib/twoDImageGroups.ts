@@ -32,7 +32,7 @@ function makeUF(ids: string[]) {
 
 // ── x-position lookup ───────────────────────────────────────────────────────
 
-function getElementX(
+export function getElementX(
   kind: TwoDImage['elementKind'],
   id: string | undefined,
   connectors: ConnectorInstance[],
@@ -44,7 +44,12 @@ function getElementX(
   if (kind === 'connector') return connectors.find((c) => c.id === id)?.position.x ?? Infinity;
   if (kind === 'material') return materials.find((m) => m.id === id)?.position.x ?? Infinity;
   if (kind === 'sleeve') return sleeves.find((s) => s.id === id)?.position.x ?? Infinity;
-  if (kind === 'model') return models.find((mo) => mo.id === id)?.position.x ?? Infinity;
+  if (kind === 'model') {
+    const mo = models.find((m) => m.id === id);
+    if (!mo) return Infinity;
+    // Use center x so the model sorts between the elements it wraps, not at its left edge
+    return mo.position.x + mo.width / 2;
+  }
   return Infinity;
 }
 
@@ -104,6 +109,32 @@ export function buildTwoDImageGroups(
     for (const matId of sleeve.attachedMaterialIds) {
       const mk = key('material', matId);
       if (elementIds.includes(mk)) uf.union(sk, mk);
+    }
+  }
+
+  // Union models with connectors/materials whose x-position falls within the model's
+  // horizontal span. This ensures a model (外模) is sorted among the elements it wraps
+  // rather than always appearing in a separate group that ends up after everything else.
+  for (const model of models) {
+    const mk = key('model', model.id);
+    if (!elementIds.includes(mk)) continue;
+    const left = model.position.x;
+    const right = model.position.x + model.width;
+
+    for (const mat of materials) {
+      const matk = key('material', mat.id);
+      if (!elementIds.includes(matk)) continue;
+      if (mat.position.x >= left && mat.position.x <= right) {
+        uf.union(mk, matk);
+      }
+    }
+
+    for (const conn of connectors) {
+      const ck = key('connector', conn.id);
+      if (!elementIds.includes(ck)) continue;
+      if (conn.position.x >= left && conn.position.x <= right) {
+        uf.union(mk, ck);
+      }
     }
   }
 
