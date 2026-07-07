@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
+  CheckCircle2,
   Crop,
   Download,
   Eraser,
   LassoSelect,
+  Link2,
   Loader2,
   MousePointer2,
   RectangleHorizontal,
@@ -15,7 +17,10 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
+import { generateId } from '@/lib/commands';
 import type { PdfDrawing } from '@/lib/pdfDrawings';
+import { useHarnessStore } from '@/stores/harnessStore';
+import type { TwoDImage } from '@/types/harness';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -117,6 +122,15 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
   const [selection, setSelection] = useState<CropSelection | null>(null);
   const [isPointerDown, setIsPointerDown] = useState(false);
   const [cropResult, setCropResult] = useState<CropResult | null>(null);
+  const [showAssocPicker, setShowAssocPicker] = useState(false);
+  const [assocDone, setAssocDone] = useState<string | null>(null); // stores label after assoc
+
+  const connectors = useHarnessStore((s) => s.config.connectors);
+  const materials = useHarnessStore((s) => s.config.materials);
+  const sleeves = useHarnessStore((s) => s.config.protectiveSleeves);
+  const models = useHarnessStore((s) => s.config.models);
+  const addTwoDImage = useHarnessStore((s) => s.addTwoDImage);
+  const updateTwoDImageAssociation = useHarnessStore((s) => s.updateTwoDImageAssociation);
 
   const pageCount = pdfDocument?.numPages ?? 0;
   const canCrop = Boolean(getSelectionSize(selection));
@@ -141,6 +155,33 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
     lastLassoPointRef.current = null;
     setIsPointerDown(false);
   }, []);
+
+  const handleAssociate = useCallback(
+    (elementKind: TwoDImage['elementKind'], elementId: string, label: string) => {
+      const result = cropResultRef.current;
+      if (!result) return;
+      // Convert blob URL → dataURL for persistence
+      fetch(result.url)
+        .then((r) => r.blob())
+        .then((blob) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const img: TwoDImage = {
+              id: generateId(),
+              name: result.filename.replace(/\.png$/, ''),
+              dataUrl: ev.target?.result as string,
+              source: 'upload',
+            };
+            addTwoDImage(img);
+            updateTwoDImageAssociation(img.id, elementKind, elementId);
+            setShowAssocPicker(false);
+            setAssocDone(label);
+          };
+          reader.readAsDataURL(blob);
+        });
+    },
+    [addTwoDImage, updateTwoDImageAssociation],
+  );
 
   useEffect(() => () => clearCropResult(), [clearCropResult]);
 
@@ -604,6 +645,7 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
           {cropResult ? (
             <>
+              {/* thumbnail */}
               <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
                 <img
                   src={cropResult.url}
@@ -611,9 +653,12 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
                   className="max-h-full max-w-full rounded bg-white shadow-sm"
                 />
               </div>
+
               <div className="text-xs text-slate-500">
                 {cropResult.width} × {cropResult.height}px
               </div>
+
+              {/* save button */}
               <button
                 type="button"
                 onClick={() => downloadUrl(cropResult.url, cropResult.filename)}
@@ -622,13 +667,97 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
                 <Download className="h-4 w-4" />
                 保存 PNG
               </button>
+
+              {/* associate button or success state */}
+              {assocDone ? (
+                <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  已关联到「{assocDone}」
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowAssocPicker((v) => !v)}
+                  className={`flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                    showAssocPicker
+                      ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <Link2 className="h-4 w-4" />
+                  关联到设计图元素
+                </button>
+              )}
+
+              {/* inline element picker */}
+              {showAssocPicker && !assocDone && (
+                <div className="flex max-h-52 flex-col overflow-y-auto rounded-lg border border-slate-200 bg-white text-xs shadow-sm">
+                  {[
+                    {
+                      label: '连接器',
+                      kind: 'connector' as const,
+                      items: connectors.map((c) => ({
+                        id: c.id,
+                        name: c.label || c.id,
+                      })),
+                    },
+                    {
+                      label: '线材',
+                      kind: 'material' as const,
+                      items: materials.map((m) => ({ id: m.id, name: m.name })),
+                    },
+                    {
+                      label: '保护套',
+                      kind: 'sleeve' as const,
+                      items: sleeves.map((s) => ({ id: s.id, name: s.id })),
+                    },
+                    {
+                      label: '外模',
+                      kind: 'model' as const,
+                      items: models.map((mo) => ({ id: mo.id, name: mo.id })),
+                    },
+                  ]
+                    .filter((group) => group.items.length > 0)
+                    .map((group) => (
+                      <div key={group.kind}>
+                        <div className="sticky top-0 bg-slate-50 px-2.5 py-1 font-semibold text-slate-500">
+                          {group.label}
+                        </div>
+                        {group.items.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() =>
+                              handleAssociate(
+                                group.kind,
+                                item.id,
+                                `${group.label}·${item.name}`,
+                              )
+                            }
+                            className="flex w-full items-center px-3 py-1.5 text-left text-slate-700 hover:bg-blue-50 hover:text-blue-700"
+                          >
+                            {item.name}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  {connectors.length === 0 &&
+                    materials.length === 0 &&
+                    sleeves.length === 0 &&
+                    models.length === 0 && (
+                      <p className="px-3 py-4 text-center text-slate-400">
+                        设计图中暂无元素
+                      </p>
+                    )}
+                </div>
+              )}
             </>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 text-center">
               <Crop className="h-10 w-10 text-slate-300" />
               <p className="mt-3 text-sm font-medium text-slate-600">还没有裁剪结果</p>
               <p className="mt-1 text-xs leading-5 text-slate-400">
-                在左侧页面框选或圈选后，点击“裁剪选区”。
+                在左侧页面框选或圈选后，点击”裁剪选区”。
               </p>
             </div>
           )}
