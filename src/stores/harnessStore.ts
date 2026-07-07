@@ -7,6 +7,7 @@ import type {
   ProtectiveSleeve,
   SaveState,
   Selection,
+  TwoDImage,
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
 import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
@@ -80,6 +81,7 @@ export function createDefaultConfig(): HarnessConfig {
     models: [],
     quantity: 1,
     leadTime: 'standard',
+    twoDImages: [],
   };
 }
 
@@ -120,6 +122,16 @@ interface HarnessState {
 
   setSelection: (selection: Selection) => void;
   resetConfig: () => void;
+
+  // 2D image actions
+  addTwoDImage: (image: TwoDImage) => void;
+  removeTwoDImage: (id: string) => void;
+  updateTwoDImageAssociation: (
+    id: string,
+    elementKind: TwoDImage['elementKind'],
+    elementId: string,
+  ) => void;
+  clearTwoDImageAssociation: (id: string) => void;
 }
 
 function dirtyState() {
@@ -282,5 +294,51 @@ export const useHarnessStore = create<HarnessState>()(
           selection: { kind: 'none' },
           saveState: dirtyState(),
         }),
+
+      addTwoDImage: (image) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            twoDImages: [...(state.config.twoDImages ?? []), image],
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      removeTwoDImage: (id) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            twoDImages: (state.config.twoDImages ?? []).filter((img) => img.id !== id),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      updateTwoDImageAssociation: (id, elementKind, elementId) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            twoDImages: (state.config.twoDImages ?? []).map((img) =>
+              img.id === id ? { ...img, elementKind, elementId } : img,
+            ),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      clearTwoDImageAssociation: (id) =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            twoDImages: (state.config.twoDImages ?? []).map((img) =>
+              img.id === id
+                ? { ...img, elementKind: undefined, elementId: undefined }
+                : img,
+            ),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
     }),
 );

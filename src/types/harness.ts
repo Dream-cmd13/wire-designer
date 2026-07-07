@@ -247,6 +247,17 @@ export interface CanvasModel {
  * HarnessConfig — the top-level configuration for a wire harness design.
  * Only three kinds of business objects exist: connectors, materials, sleeves.
  */
+/** A 2D image associated with a design element */
+export interface TwoDImage {
+  id: string;
+  name: string;
+  dataUrl: string;
+  source: 'upload' | 'asset';
+  assetPath?: string;
+  elementKind?: 'connector' | 'material' | 'sleeve' | 'model';
+  elementId?: string;
+}
+
 export interface HarnessConfig {
   schemaVersion: 3;
   id: string;
@@ -259,6 +270,7 @@ export interface HarnessConfig {
   models: CanvasModel[];
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
+  twoDImages: TwoDImage[];
 }
 
 // ============================================================

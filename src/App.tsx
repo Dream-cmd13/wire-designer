@@ -6,10 +6,10 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { DrawingModeSwitch, type DrawingMode } from '@/components/drawings/DrawingModeSwitch';
 import { PdfDrawingPickerDialog } from '@/components/drawings/PdfDrawingPickerDialog';
 import { ProductionDrawingView } from '@/components/drawings/ProductionDrawingView';
+import { TwoDView } from '@/components/drawings/TwoDView';
 import { BomPanel } from '@/components/panels/BomPanel';
 import { ConfigPanel } from '@/components/panels/ConfigPanel';
 import { QuotePanel } from '@/components/panels/QuotePanel';
-import { Preview3D } from '@/components/preview3d/Preview3D';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
@@ -430,15 +430,15 @@ export default function App() {
               </div>
             )}
 
-            {drawingMode === 'design' ? (
-              <DesignerView />
-            ) : (
+            {drawingMode === 'design' && <DesignerView />}
+            {drawingMode === 'production' && (
               <ProductionDrawingView
                 drawings={pdfDrawings}
                 selectedIds={selectedPdfIds}
                 onChooseDrawings={() => setPdfPickerOpen(true)}
               />
             )}
+            {drawingMode === 'drawing2d' && <TwoDView />}
           </>
         )}
       </div>

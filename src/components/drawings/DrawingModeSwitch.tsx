@@ -1,6 +1,6 @@
-import { FileText, PenTool } from 'lucide-react';
+import { FileText, Image, PenTool } from 'lucide-react';
 
-export type DrawingMode = 'design' | 'production';
+export type DrawingMode = 'design' | 'production' | 'drawing2d';
 
 interface DrawingModeSwitchProps {
   mode: DrawingMode;
@@ -38,6 +38,19 @@ export function DrawingModeSwitch({ mode, onChange }: DrawingModeSwitchProps) {
       >
         <FileText className="h-3.5 w-3.5" />
         成品图
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('drawing2d')}
+        className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition ${
+          mode === 'drawing2d'
+            ? 'bg-green-500 text-white shadow-sm'
+            : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+        }`}
+        aria-pressed={mode === 'drawing2d'}
+      >
+        <Image className="h-3.5 w-3.5" />
+        2D图
       </button>
     </div>
   );

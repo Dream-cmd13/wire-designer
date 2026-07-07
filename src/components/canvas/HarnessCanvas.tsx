@@ -68,6 +68,7 @@ import {
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
 import { UndoToast } from '@/components/shared/UndoToast';
+import { TwoDAssociateDialog, type AssociateTarget } from '@/components/drawings/TwoDAssociateDialog';
 
 const nodeTypes: NodeTypes = {
   connector: ConnectorNode,
@@ -668,6 +669,7 @@ function HarnessCanvasInner() {
     confirmLabel?: string;
     onConfirm: () => void;
   } | null>(null);
+  const [twoDAssocTarget, setTwoDAssocTarget] = useState<AssociateTarget | null>(null);
   const [deletionNotice, setDeletionNotice] = useState<{
     message: string;
     snapshot: HarnessConfig;
@@ -1646,6 +1648,28 @@ function HarnessCanvasInner() {
           onDeleteJumper={handleDeleteJumper}
           onFitView={() => fitView({ duration: 300 })}
           hasSelection={selection.kind !== 'none' || canvasSelection !== null}
+          onAssociateTwoD={(kind, id) => {
+            let label = id;
+            if (kind === 'connector') {
+              const c = config.connectors.find((x) => x.id === id);
+              label = c ? `连接器·${c.label || id}` : `连接器·${id}`;
+            } else if (kind === 'material') {
+              const m = config.materials.find((x) => x.id === id);
+              label = m ? `线材·${m.name}` : `线材·${id}`;
+            } else if (kind === 'sleeve') {
+              label = `保护套·${id}`;
+            } else if (kind === 'model') {
+              label = `外模·${id}`;
+            }
+            setTwoDAssocTarget({ kind, id, label });
+          }}
+        />
+      )}
+
+      {twoDAssocTarget && (
+        <TwoDAssociateDialog
+          target={twoDAssocTarget}
+          onClose={() => setTwoDAssocTarget(null)}
         />
       )}
 
