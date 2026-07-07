@@ -147,6 +147,8 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
       cropResultRef.current = null;
     }
     setCropResult(null);
+    setAssocDone(null);
+    setShowAssocPicker(false);
   }, []);
 
   const clearSelection = useCallback(() => {
