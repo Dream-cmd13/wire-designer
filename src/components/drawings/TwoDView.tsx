@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link2Off, Trash2, Upload } from 'lucide-react';
+import { Link2Off, RotateCw, Trash2, Upload } from 'lucide-react';
 import { generateId } from '@/lib/commands';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage } from '@/types/harness';
@@ -23,25 +23,24 @@ function useElementLabel(
     const m = materials.find((x) => x.id === elementId);
     return m ? `线材 · ${m.name}` : `线材 · ${elementId}`;
   }
-  if (elementKind === 'sleeve') {
-    return `保护套 · ${elementId}`;
-  }
-  if (elementKind === 'model') {
-    return `外模 · ${elementId}`;
-  }
+  if (elementKind === 'sleeve') return `保护套 · ${elementId}`;
+  if (elementKind === 'model') return `外模 · ${elementId}`;
   return elementId;
 }
 
 function ImageInfoBox({
   image,
+  onRotate,
   onRemoveAssociation,
   onDelete,
 }: {
   image: TwoDImage;
+  onRotate: (id: string) => void;
   onRemoveAssociation: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   const label = useElementLabel(image.elementKind, image.elementId);
+  const rotation = image.rotation ?? 0;
 
   return (
     <div className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
@@ -59,7 +58,17 @@ function ImageInfoBox({
         )}
       </div>
 
-      <div className="mt-2 flex gap-1.5">
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          title="顺时针旋转 90°"
+          onClick={() => onRotate(image.id)}
+          className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+        >
+          <RotateCw className="h-3 w-3" />
+          旋转 {rotation}°
+        </button>
+
         {image.elementKind && (
           <button
             type="button"
@@ -71,6 +80,7 @@ function ImageInfoBox({
             解除关联
           </button>
         )}
+
         <button
           type="button"
           title="删除图片"
@@ -91,8 +101,12 @@ export function TwoDView() {
   const addTwoDImage = useHarnessStore((s) => s.addTwoDImage);
   const clearTwoDImageAssociation = useHarnessStore((s) => s.clearTwoDImageAssociation);
   const removeTwoDImage = useHarnessStore((s) => s.removeTwoDImage);
+  const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
+  const reorderTwoDImages = useHarnessStore((s) => s.reorderTwoDImages);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragIndexRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightedRef = useRef<HTMLDivElement>(null);
 
@@ -127,6 +141,35 @@ export function TwoDView() {
     e.target.value = '';
   }
 
+  function handleDragStart(index: number) {
+    dragIndexRef.current = index;
+  }
+
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    setDragOverIndex(index);
+  }
+
+  function handleDrop(e: React.DragEvent, toIndex: number) {
+    e.preventDefault();
+    const fromIndex = dragIndexRef.current;
+    if (fromIndex !== null && fromIndex !== toIndex) {
+      reorderTwoDImages(fromIndex, toIndex);
+      // keep selection on the moved card
+      setSelectedId((prev) => {
+        if (prev === twoDImages[fromIndex]?.id) return twoDImages[fromIndex]?.id ?? null;
+        return prev;
+      });
+    }
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+  }
+
+  function handleDragEnd() {
+    dragIndexRef.current = null;
+    setDragOverIndex(null);
+  }
+
   return (
     <div className="flex h-full flex-col bg-slate-50">
       <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
@@ -159,21 +202,33 @@ export function TwoDView() {
             <p className="text-xs text-slate-400">点击「添加图片」上传，或在设计图中右键元素选择「关联 2D 图」</p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-3 xl:grid-cols-4">
-            {twoDImages.map((img) => {
+          <div
+            className="grid grid-cols-3 gap-3 xl:grid-cols-4"
+            onDragLeave={() => setDragOverIndex(null)}
+          >
+            {twoDImages.map((img, index) => {
               const isHighlighted = img.id === highlightedImageId;
               const isSelected = img.id === selectedId;
               return (
-                <div key={img.id} ref={isHighlighted ? highlightedRef : undefined}>
+                <div
+                  key={img.id}
+                  ref={isHighlighted ? highlightedRef : undefined}
+                  onDragEnd={handleDragEnd}
+                >
                   <TwoDImageCard
                     image={img}
                     highlighted={isHighlighted}
                     selected={isSelected}
+                    isDragOver={dragOverIndex === index}
                     onClick={() => setSelectedId((prev) => (prev === img.id ? null : img.id))}
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={(e) => handleDrop(e, index)}
                   />
                   {isSelected && (
                     <ImageInfoBox
                       image={img}
+                      onRotate={rotateTwoDImage}
                       onRemoveAssociation={clearTwoDImageAssociation}
                       onDelete={(id) => {
                         removeTwoDImage(id);

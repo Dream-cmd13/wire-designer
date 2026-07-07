@@ -256,6 +256,7 @@ export interface TwoDImage {
   assetPath?: string;
   elementKind?: 'connector' | 'material' | 'sleeve' | 'model';
   elementId?: string;
+  rotation?: 0 | 90 | 180 | 270;
 }
 
 export interface HarnessConfig {
