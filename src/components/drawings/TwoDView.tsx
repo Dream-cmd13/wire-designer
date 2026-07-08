@@ -197,21 +197,6 @@ export function TwoDView() {
         )?.id ?? null)
       : null;
 
-  // ── fit content to canvas when images first appear ──────────────────────────
-  useEffect(() => {
-    if (twoDImages.length === 0) {
-      hasCenteredRef.current = false;
-      return;
-    }
-    if (hasCenteredRef.current) return;
-    // Wait for images to render, then fit to canvas
-    const timer = setTimeout(() => {
-      fitToCanvas();
-      hasCenteredRef.current = true;
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [twoDImages.length, fitToCanvas]);
-
   // ── close context menu on click ───────────────────────────────────────────────
   useEffect(() => {
     if (!contextMenu) return;
@@ -254,6 +239,20 @@ export function TwoDView() {
       y: (vpH - worldH * newZoom) / 2,
     });
   }, []);
+
+  // ── fit content to canvas when images first appear ───────────────────────────
+  useEffect(() => {
+    if (twoDImages.length === 0) {
+      hasCenteredRef.current = false;
+      return;
+    }
+    if (hasCenteredRef.current) return;
+    const timer = setTimeout(() => {
+      fitToCanvas();
+      hasCenteredRef.current = true;
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [twoDImages.length, fitToCanvas]);
 
   /** Wheel: zoom centered on cursor position inside viewport */
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
