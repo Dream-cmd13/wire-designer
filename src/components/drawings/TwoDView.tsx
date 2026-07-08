@@ -295,7 +295,7 @@ export function TwoDView() {
 
   // ── render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full flex-col bg-slate-50">
+    <div className="flex h-full flex-col bg-white">
       {/* toolbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
         <span className="text-sm font-semibold text-slate-700">2D 图</span>
