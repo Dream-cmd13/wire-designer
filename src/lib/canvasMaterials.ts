@@ -171,6 +171,10 @@ export function getCanvasModelDisplayName(model: CanvasModel): string {
 }
 
 export function getCoreColors(coreCount: JacketCoreCount): string[] {
+  // 4芯护套线使用标准电话线颜色：棕白蓝黑
+  if (coreCount === 4) {
+    return ['棕色', '白色', '蓝色', '黑色'];
+  }
   return CORE_COLOR_SEQUENCE.slice(0, coreCount);
 }
 
@@ -205,7 +209,7 @@ export function calculateCableOd(awg: number, coreCount: JacketCoreCount, shield
   const conductorDiameter = 0.127 * Math.pow(92, (36 - safeAwg) / 39);
   const insulatedCoreDiameter = conductorDiameter * 1.35 + 0.45;
   const bundleDiameter = insulatedCoreDiameter * Math.sqrt(coreCount) * 1.12;
-  const estimatedOd = bundleDiameter + 0.8 + (shielded ? 0.35 : 0);
+  const estimatedOd = bundleDiameter + 1.55 + (shielded ? 0.35 : 0);
   return Math.round(estimatedOd * 100) / 100;
 }
 
