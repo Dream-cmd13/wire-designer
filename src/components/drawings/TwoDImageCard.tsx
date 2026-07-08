@@ -23,6 +23,7 @@ export function TwoDImageCard({
   maxHeight,
 }: TwoDImageCardProps) {
   const rotation = image.rotation ?? 0;
+  const mirror = image.flipX ? 'scaleX(-1)' : '';
 
   return (
     <div
@@ -55,7 +56,7 @@ export function TwoDImageCard({
               : 'hover:shadow-sm'
           }`}
           style={{
-            transform: `rotate(${rotation}deg)`,
+            transform: `${mirror} rotate(${rotation}deg)`.trim(),
             transformOrigin: 'center center',
             maxWidth: maxWidth ?? '100%',
             maxHeight: maxHeight ?? 'auto',

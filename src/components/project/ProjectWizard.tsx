@@ -6,6 +6,7 @@ import { useHarnessStore } from '@/stores/harnessStore';
 import { CONNECTORS } from '@/lib/data';
 import { generateId } from '@/lib/commands';
 import { createDefaultWireEndTreatment, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
 import type {
   CanvasWireMaterial,
   ConnectorInstance,
@@ -115,9 +116,13 @@ function createConfigFromTemplate(
   pinCount: number,
 ): HarnessConfig {
   const now = Date.now();
+  const withAutoImages = (config: HarnessConfig): HarnessConfig => ({
+    ...config,
+    twoDImages: syncTwoDImages(config),
+  });
 
   if (templateId === 'blank') {
-    return {
+    return withAutoImages({
       schemaVersion: 3,
       id: generateId(),
       name: projectName,
@@ -129,7 +134,7 @@ function createConfigFromTemplate(
       models: [],
       quantity: 1,
       leadTime: 'standard',
-    };
+    });
   }
 
   if (templateId === 'simple-2p') {
@@ -148,7 +153,7 @@ function createConfigFromTemplate(
       );
     }
     const material = makeMaterial('主线材', { x: 270, y: 220 }, circuits);
-    return {
+    return withAutoImages({
       schemaVersion: 3,
       id: generateId(),
       name: projectName,
@@ -160,7 +165,7 @@ function createConfigFromTemplate(
       models: [],
       quantity: 1,
       leadTime: 'standard',
-    };
+    });
   }
 
   if (templateId === 't-branch') {
@@ -186,7 +191,7 @@ function createConfigFromTemplate(
     // This is fine — both materials connect to the right side of connA.
     const materialAC = makeMaterial('A-C线材', { x: 270, y: 320 }, circuitsAC);
 
-    return {
+    return withAutoImages({
       schemaVersion: 3,
       id: generateId(),
       name: projectName,
@@ -198,7 +203,7 @@ function createConfigFromTemplate(
       models: [],
       quantity: 1,
       leadTime: 'standard',
-    };
+    });
   }
 
   // star-4
@@ -223,7 +228,7 @@ function createConfigFromTemplate(
     materials.push(material);
   }
 
-  return {
+  return withAutoImages({
     schemaVersion: 3,
     id: generateId(),
     name: projectName,
@@ -235,7 +240,7 @@ function createConfigFromTemplate(
     models: [],
     quantity: 1,
     leadTime: 'standard',
-  };
+  });
 }
 
 export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {

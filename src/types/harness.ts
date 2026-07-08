@@ -277,6 +277,8 @@ export interface TwoDImage {
   elementKind?: 'connector' | 'material' | 'sleeve' | 'model';
   elementId?: string;
   rotation?: 0 | 90 | 180 | 270;
+  /** Mirror horizontally when the product-side image sits on the right side of a wire. */
+  flipX?: boolean;
   /** Free-canvas position (pixels from top-left of canvas). Auto-layout used when absent. */
   pos?: { x: number; y: number };
 }

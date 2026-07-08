@@ -10,7 +10,6 @@ import type {
   TwoDImage,
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
-import { imageAssets } from '@/lib/imageAssets';
 import { lengthMmToCanvasWidth, alignHarnessConfig } from '@/lib/canvasMaterials';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
 import {
@@ -20,18 +19,6 @@ import {
   updateMaterial as updateMaterialCommand,
   updateProtectiveSleeve as updateProtectiveSleeveCommand,
 } from '@/lib/commands';
-
-function assetImageByName(name: string): TwoDImage | null {
-  const asset = imageAssets.find((a) => a.name === name);
-  if (!asset) return null;
-  return {
-    id: generateId(),
-    name: asset.name,
-    dataUrl: asset.url,
-    source: 'asset',
-    assetPath: asset.id,
-  };
-}
 
 export function createDefaultConfig(): HarnessConfig {
   const m12Connector = CONNECTORS.find((c) => c.id === 'm12a04-07-093')!;
@@ -88,22 +75,7 @@ export function createDefaultConfig(): HarnessConfig {
     overmoldSpecId: 'pvc-45p-pe',
   };
 
-  // Build twoDImages with auto-associations from root image assets
-  const twoDImages: TwoDImage[] = [];
-
-  const wireImg = assetImageByName('护套线');
-  if (wireImg) twoDImages.push({ ...wireImg, elementKind: 'material', elementId: materialId });
-
-  const connectorImg = assetImageByName('连接器注塑后');
-  if (connectorImg) twoDImages.push({ ...connectorImg, elementKind: 'connector', elementId: connectorId });
-
-  const connectorBeforeImg = assetImageByName('连接器注塑前');
-  if (connectorBeforeImg) twoDImages.push({ ...connectorBeforeImg, elementKind: 'connector', elementId: connectorId });
-
-  const overmoldImg = assetImageByName('外模');
-  if (overmoldImg) twoDImages.push({ ...overmoldImg, elementKind: 'model', elementId: modelId });
-
-  return {
+  const config: HarnessConfig = {
     schemaVersion: 3,
     id: generateId(),
     name: 'M12防水线束示例',
@@ -115,7 +87,12 @@ export function createDefaultConfig(): HarnessConfig {
     models: [overmoldModel],
     quantity: 1,
     leadTime: 'standard',
-    twoDImages,
+    twoDImages: [],
+  };
+
+  return {
+    ...config,
+    twoDImages: syncTwoDImages(config),
   };
 }
 
