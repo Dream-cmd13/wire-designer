@@ -196,7 +196,9 @@ export const useHarnessStore = create<HarnessState>()(
 
       replaceDocument: (fullConfig, options) =>
         set({
-          config: fullConfig,
+          config: options?.markSaved
+            ? fullConfig
+            : { ...fullConfig, twoDImages: syncTwoDImages(fullConfig) },
           selection: { kind: 'none' },
           saveState: options?.markSaved ? { status: 'saved', savedAt: Date.now() } : dirtyState(),
         }),
