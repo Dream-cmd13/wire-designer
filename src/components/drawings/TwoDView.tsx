@@ -306,7 +306,7 @@ export function TwoDView() {
   }, [totalWeight]);
 
   const getGroupWidth = useCallback((g: { images: TwoDImage[] }) => {
-    return g.images.reduce((sum, img, idx) => sum + getCardWidth(img) + (idx > 0 ? 4 : 0), 0);
+    return g.images.reduce((sum, img) => sum + getCardWidth(img), 0);
   }, [getCardWidth]);
 
   const defaultGroupPositions = useMemo(() => {
@@ -370,7 +370,7 @@ export function TwoDView() {
           if (imgInGroupIdx !== -1) {
             let offsetK = 0;
             for (let i = 0; i < imgInGroupIdx; i++) {
-              offsetK += getCardWidth(group.images[i]) + 4;
+              offsetK += getCardWidth(group.images[i]);
             }
             return {
               ...img,
@@ -667,7 +667,7 @@ export function TwoDView() {
                     className="group/assembly hover:border-slate-200 hover:bg-slate-50/30 transition-colors"
                   >
                     {/* Top Row: image cards */}
-                    <div className="flex flex-row items-center gap-4">
+                    <div className="flex flex-row items-center gap-0">
                       {group.images.map((img) => {
                         const isHighlighted = img.id === highlightedImageId;
                         const isSelected = img.id === selectedId;
