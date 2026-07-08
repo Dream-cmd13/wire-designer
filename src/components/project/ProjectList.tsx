@@ -73,9 +73,25 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
   };
 
   const saveEdit = async (projectId: string) => {
-    if (editName.trim()) {
-      await updateProject(projectId, { name: editName.trim() });
+    if (!editName.trim()) {
+      setEditingId(null);
+      return;
     }
+    const newName = editName.trim();
+
+    // Update project metadata
+    await updateProject(projectId, { name: newName });
+
+    // Sync to config.name
+    const result = await projectRepository.load(projectId);
+    if (result.status === 'ok' && result.config.name !== newName) {
+      await projectRepository.save(projectId, {
+        ...result.config,
+        name: newName,
+        updatedAt: Date.now(),
+      });
+    }
+
     setEditingId(null);
   };
 

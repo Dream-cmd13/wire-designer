@@ -99,7 +99,6 @@ export default function App() {
       markSaving();
       try {
         await saveCurrentConfig(latestConfig);
-        await updateProject(currentProject.id, { name: latestConfig.name });
         if (useHarnessStore.getState().config.updatedAt === latestConfig.updatedAt) {
           markSaved();
         }
