@@ -442,13 +442,22 @@ export function TwoDView() {
             }}
           >
             {(() => {
-              const maxCardWidth = Math.min(600, Math.floor(944 / Math.max(1, flatImages.length)));
+              const getWeight = (kind: TwoDImage['elementKind']) => {
+                if (kind === 'material') return 3;
+                if (kind === 'sleeve') return 2;
+                return 1;
+              };
+              const totalWeight = flatImages.reduce((sum, img) => sum + getWeight(img.elementKind), 0);
               const maxCardHeight = 360;
+
               return flatImages.map((img, idx) => {
                 const isHighlighted = img.id === highlightedImageId;
                 const isSelected = img.id === selectedId;
                 const isDragging = dragIdx === idx;
                 const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
+
+                const weight = getWeight(img.elementKind);
+                const maxCardWidth = Math.min(600, Math.floor(944 * (weight / Math.max(1, totalWeight))));
 
                 return (
                   <div
