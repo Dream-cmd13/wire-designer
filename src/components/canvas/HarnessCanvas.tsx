@@ -29,6 +29,7 @@ import '@xyflow/react/dist/style.css';
 import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper, removeMaterialCircuit } from '@/lib/commands';
 import {
   CANVAS_MODEL_SIZE,
+  CANVAS_MATERIAL_HEIGHT,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
   CONNECTOR_NODE_WIDTH,
   createDefaultCanvasMaterial,
@@ -238,7 +239,9 @@ function findModelPlacement(
   let best:
     | {
         distance: number;
-        center: { x: number; y: number };
+        connector: ConnectorInstance;
+        material: CanvasWireMaterial;
+        endpoint: 'start' | 'end';
       }
     | undefined;
 
@@ -257,16 +260,44 @@ function findModelPlacement(
         };
         const distance = Math.hypot(center.x - flowPosition.x, center.y - flowPosition.y);
         if (!best || distance < best.distance) {
-          best = { distance, center };
+          best = { distance, connector, material, endpoint };
         }
       }
     }
   }
 
-  const center = best?.center ?? flowPosition;
+  // If we found a connection, place the model between the connector and material
+  if (best) {
+    const connector = best.connector;
+    const material = best.material;
+
+    // Calculate the direction from connector to material
+    const connectorCenter = {
+      x: connector.position.x + CONNECTOR_NODE_WIDTH / 2,
+      y: connector.position.y + CONNECTOR_NODE_WIDTH / 2,
+    };
+    const materialCenter = {
+      x: material.position.x + material.width / 2,
+      y: material.position.y + CANVAS_MATERIAL_HEIGHT / 2,
+    };
+
+    // Place model 40% of the way from connector to material (closer to connector)
+    const ratio = 0.4;
+    const modelCenter = {
+      x: connectorCenter.x + (materialCenter.x - connectorCenter.x) * ratio,
+      y: connectorCenter.y + (materialCenter.y - connectorCenter.y) * ratio,
+    };
+
+    return {
+      x: modelCenter.x - CANVAS_MODEL_SIZE / 2,
+      y: modelCenter.y - CANVAS_MODEL_SIZE / 2,
+    };
+  }
+
+  // No connection found, use the flow position
   return {
-    x: center.x - CANVAS_MODEL_SIZE / 2,
-    y: center.y - CANVAS_MODEL_SIZE / 2,
+    x: flowPosition.x - CANVAS_MODEL_SIZE / 2,
+    y: flowPosition.y - CANVAS_MODEL_SIZE / 2,
   };
 }
 
