@@ -3,9 +3,10 @@ import { Minus, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
 import { generateId } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
-import type { TwoDImage } from '@/types/harness';
+import type { TwoDImage, CanvasWireMaterial, ConnectorInstance } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
 import { imageAssets } from '@/lib/imageAssets';
+import { WIRE_COLORS } from '@/lib/data';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -35,6 +36,140 @@ function useElementLabel(
   if (elementKind === 'sleeve') return `保护套 · ${elementId}`;
   if (elementKind === 'model') return `外模 · ${elementId}`;
   return elementId;
+}
+
+function resolveChineseColorName(value: string): string {
+  const byId = WIRE_COLORS.find((c) => c.id === value);
+  if (byId) return byId.name;
+  return value || '灰';
+}
+
+function WiringDiagram({
+  materials,
+  connectors,
+}: {
+  materials: CanvasWireMaterial[];
+  connectors: ConnectorInstance[];
+}) {
+  const mat = materials[0];
+  if (!mat) return null;
+
+  const circuits = mat.circuits || [];
+  if (circuits.length === 0) return null;
+
+  // Resolve P1/P2 labels from connectors sorted by X position
+  const sortedConns = [...connectors].sort((a, b) => a.position.x - b.position.x);
+  const leftConn = sortedConns[0];
+  const rightConn = sortedConns.length > 1 ? sortedConns[sortedConns.length - 1] : null;
+
+  const p1Label = leftConn?.label || 'P1';
+  const p2Label = rightConn?.label || 'P2';
+
+  const rows = circuits.map((c) => {
+    let leftText = '切断';
+    let rightText = '切断';
+
+    // Check start endpoint
+    if (c.start) {
+      if (leftConn && c.start.connectorId === leftConn.id) {
+        leftText = String(c.start.pin);
+      } else if (rightConn && c.start.connectorId === rightConn.id) {
+        rightText = String(c.start.pin);
+      }
+    }
+    // Check end endpoint
+    if (c.end) {
+      if (leftConn && c.end.connectorId === leftConn.id) {
+        leftText = String(c.end.pin);
+      } else if (rightConn && c.end.connectorId === rightConn.id) {
+        rightText = String(c.end.pin);
+      }
+    }
+
+    let name = resolveChineseColorName(c.color);
+    if (name.endsWith('色')) {
+      name = name.slice(0, -1);
+    }
+
+    return { leftText, rightText, color: name };
+  });
+
+  const allLeftCut = rows.every((r) => r.leftText === '切断');
+  const allRightCut = rows.every((r) => r.rightText === '切断');
+
+  const displayRows = rows.map((r) => ({
+    ...r,
+    leftText: allLeftCut ? r.leftText : (r.leftText === '切断' ? '' : r.leftText),
+    rightText: allRightCut ? r.rightText : (r.rightText === '切断' ? '' : r.rightText),
+  }));
+
+  return (
+    <div 
+      className="w-[320px] h-[190px] border border-black bg-white flex flex-col font-sans text-black select-none shadow-sm rounded"
+      onMouseDown={(e) => e.stopPropagation()} // prevent drag trigger on inside click
+    >
+      {/* Title Header */}
+      <div className="h-[32px] border-b border-black flex items-center justify-center font-bold text-xs tracking-[0.2em] bg-slate-50">
+        接线图
+      </div>
+      
+      {/* Body Area */}
+      <div className="flex-1 flex flex-col p-3 relative justify-between">
+        {/* P1 and P2 Headers */}
+        <div className="flex flex-row justify-between text-xs font-bold px-2 mb-1">
+          <span>{p1Label}</span>
+          <span>{p2Label}</span>
+        </div>
+
+        {/* Content Rows */}
+        <div className="flex-1 flex flex-row items-center">
+          {/* Left Status (if all cut) */}
+          {allLeftCut && (
+            <div className="w-[40px] flex flex-col items-center justify-center text-xs font-bold text-slate-900 border-r border-slate-200 h-full pr-2">
+              <span className="leading-tight">切</span>
+              <span className="leading-tight">断</span>
+            </div>
+          )}
+
+          {/* Center Lines + Pins */}
+          <div className="flex-1 flex flex-col justify-between h-full py-1">
+            {displayRows.map((row, idx) => (
+              <div key={idx} className="flex flex-row items-center h-[24px]">
+                {/* Left Pin number (if not all cut) */}
+                {!allLeftCut && (
+                  <span className="w-[30px] text-right pr-2 text-xs font-semibold text-slate-800">
+                    {row.leftText}
+                  </span>
+                )}
+                
+                {/* Line and Color Label */}
+                <div className="flex-1 border-b border-black relative h-[12px] mx-1">
+                  <span className="absolute left-1/2 -translate-x-1/2 -top-[14px] text-[11px] font-bold text-slate-900 bg-white px-1">
+                    {row.color}
+                  </span>
+                </div>
+
+                {/* Right Pin number (if not all cut) */}
+                {!allRightCut && (
+                  <span className="w-[30px] text-left pl-2 text-xs font-semibold text-slate-800">
+                    {row.rightText}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Right Status (if all cut) */}
+          {allRightCut && (
+            <div className="w-[40px] flex flex-col items-center justify-center text-xs font-bold text-slate-900 border-l border-slate-200 h-full pl-2">
+              <span className="leading-tight">切</span>
+              <span className="leading-tight">断</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── ImageInfoBox ───────────────────────────────────────────────────────────────
@@ -184,7 +319,7 @@ export function TwoDView() {
     for (let i = 0; i < groups.length; i++) {
       positions[i] = {
         x: currentX,
-        y: 220, 
+        y: 110, 
       };
       currentX += getGroupWidth(groups[i]) + groupSpacing;
     }
@@ -521,9 +656,9 @@ export function TwoDView() {
                       top: y,
                       opacity: isDraggingThis ? 0.6 : 1,
                       display: 'flex',
-                      flexDirection: 'row',
+                      flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 4,
+                      gap: 24,
                       border: '1px dashed transparent',
                       borderRadius: '8px',
                       padding: '4px',
@@ -531,47 +666,59 @@ export function TwoDView() {
                     }}
                     className="group/assembly hover:border-slate-200 hover:bg-slate-50/30 transition-colors"
                   >
-                    {group.images.map((img) => {
-                      const isHighlighted = img.id === highlightedImageId;
-                      const isSelected = img.id === selectedId;
+                    {/* Top Row: image cards */}
+                    <div className="flex flex-row items-center gap-4">
+                      {group.images.map((img) => {
+                        const isHighlighted = img.id === highlightedImageId;
+                        const isSelected = img.id === selectedId;
 
-                      const cardWidth = getCardWidth(img);
+                        const cardWidth = getCardWidth(img);
 
-                      return (
-                        <div
-                          key={img.id}
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            position: 'relative',
-                          }}
-                        >
-                          <TwoDImageCard
-                            image={img}
-                            highlighted={isHighlighted}
-                            selected={isSelected}
-                            onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
-                            onMouseDown={(e) => handleImageMouseDown(e, groupIdx)}
-                            maxWidth={cardWidth}
-                            maxHeight={maxCardHeight}
-                          />
-                          {isSelected && (
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 z-20 mt-2">
-                              <ImageInfoBox
-                                image={img}
-                                onRotate={rotateTwoDImage}
-                                onCollapse={() => setSelectedId(null)}
-                                onDelete={(id) => {
-                                  removeTwoDImage(id);
-                                  setSelectedId(null);
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        return (
+                          <div
+                            key={img.id}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              position: 'relative',
+                            }}
+                          >
+                            <TwoDImageCard
+                              image={img}
+                              highlighted={isHighlighted}
+                              selected={isSelected}
+                              onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
+                              onMouseDown={(e) => handleImageMouseDown(e, groupIdx)}
+                              maxWidth={cardWidth}
+                              maxHeight={maxCardHeight}
+                            />
+                            {isSelected && (
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 z-20 mt-2">
+                                <ImageInfoBox
+                                  image={img}
+                                  onRotate={rotateTwoDImage}
+                                  onCollapse={() => setSelectedId(null)}
+                                  onDelete={(id) => {
+                                    removeTwoDImage(id);
+                                    setSelectedId(null);
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Bottom Row: Wiring Diagram */}
+                    {(() => {
+                      const groupMaterials = materials.filter(m => group.images.some(img => img.elementKind === 'material' && img.elementId === m.id));
+                      const groupConnectors = connectors.filter(c => group.images.some(img => img.elementKind === 'connector' && img.elementId === c.id));
+                      return groupMaterials.length > 0 ? (
+                        <WiringDiagram materials={groupMaterials} connectors={groupConnectors} />
+                      ) : null;
+                    })()}
                   </div>
                 );
               });
