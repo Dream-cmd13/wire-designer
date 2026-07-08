@@ -197,24 +197,20 @@ export function TwoDView() {
         )?.id ?? null)
       : null;
 
-  // ── center content when images first appear ──────────────────────────────────
+  // ── fit content to canvas when images first appear ──────────────────────────
   useEffect(() => {
     if (twoDImages.length === 0) {
       hasCenteredRef.current = false;
       return;
     }
     if (hasCenteredRef.current) return;
-    requestAnimationFrame(() => {
-      const vp = viewportRef.current;
-      const world = worldRef.current;
-      if (!vp || !world) return;
-      setPan({
-        x: (vp.offsetWidth - world.offsetWidth) / 2,
-        y: (vp.offsetHeight - world.offsetHeight) / 2,
-      });
+    // Wait for images to render, then fit to canvas
+    const timer = setTimeout(() => {
+      fitToCanvas();
       hasCenteredRef.current = true;
-    });
-  }, [twoDImages.length]);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [twoDImages.length, fitToCanvas]);
 
   // ── close context menu on click ───────────────────────────────────────────────
   useEffect(() => {

@@ -225,6 +225,16 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
     };
   }, [drawing.url]);
 
+  // Reset zoom and page when switching PDFs
+  useEffect(() => {
+    setZoom(1);
+    setPageNumber(1);
+    if (stageRef.current) {
+      stageRef.current.scrollTop = 0;
+      stageRef.current.scrollLeft = 0;
+    }
+  }, [drawing.id]);
+
   useEffect(() => {
     if (!pdfDocument) return undefined;
 
