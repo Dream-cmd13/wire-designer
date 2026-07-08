@@ -11,7 +11,7 @@ import type {
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
 import { imageAssets } from '@/lib/imageAssets';
-import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import { lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import {
   generateId,
   removeConnector as removeConnectorCommand,

@@ -15,25 +15,6 @@ const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.15;
 const IMAGE_GAP = 8; // gap between images in flex row
 
-// ── auto-layout ────────────────────────────────────────────────────────────────
-function computeAutoLayout(
-  groups: ReturnType<typeof buildTwoDImageGroups>,
-): Record<string, { x: number; y: number }> {
-  const positions: Record<string, { x: number; y: number }> = {};
-  let curX = CANVAS_PAD;
-  const y = CANVAS_PAD;
-
-  for (const group of groups) {
-    for (let i = 0; i < group.images.length; i++) {
-      positions[group.images[i].id] = { x: curX, y };
-      curX += IMG_W + (i < group.images.length - 1 ? INNER_GAP : 0);
-    }
-    curX += GROUP_GAP;
-  }
-
-  return positions;
-}
-
 // ── helpers ────────────────────────────────────────────────────────────────────
 function useElementLabel(
   elementKind: TwoDImage['elementKind'],
@@ -146,7 +127,6 @@ export function TwoDView() {
   panningRef.current = panning;
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
-  const hasInitializedPanRef = useRef(false);
 
   // ── drag-to-reorder state ─────────────────────────────────────────────────
   const [dragIdx, setDragIdx] = useState<number | null>(null);
