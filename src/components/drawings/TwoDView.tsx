@@ -5,6 +5,7 @@ import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
+import { imageAssets } from '@/lib/imageAssets';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -96,6 +97,9 @@ function ImageInfoBox({
 
 // ── main view ──────────────────────────────────────────────────────────────────
 export function TwoDView() {
+  const frameAsset = imageAssets.find((a) => a.name === '图纸图框');
+  const frameUrl = frameAsset?.url;
+
   const twoDImages = useHarnessStore((s) => s.config.twoDImages ?? EMPTY_IMAGES);
   const connectors = useHarnessStore((s) => s.config.connectors);
   const materials = useHarnessStore((s) => s.config.materials);
@@ -422,8 +426,15 @@ export function TwoDView() {
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: 0,
-              padding: 32,
+              padding: '64px 128px',
+              minWidth: 1200,
+              minHeight: 800,
+              backgroundImage: frameUrl ? `url(${frameUrl})` : 'none',
+              backgroundSize: '100% 100%',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
               opacity: isFitted ? 1 : 0,
               transition: 'opacity 0.15s ease-in-out',
             }}
