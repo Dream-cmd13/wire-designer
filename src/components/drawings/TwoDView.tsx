@@ -53,7 +53,7 @@ function ImageInfoBox({
   const rotation = image.rotation ?? 0;
 
   return (
-    <div className="mt-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
+    <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
       <p className="truncate text-xs font-semibold text-slate-700" title={image.name}>
         {image.name}
       </p>
