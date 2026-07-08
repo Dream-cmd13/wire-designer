@@ -255,25 +255,15 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                 </div>
               </Field>
               <div className="col-span-2">
-                <span className="mb-1.5 block text-xs font-medium text-slate-600">芯线颜色</span>
-                <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
+                <span className="mb-1.5 block text-xs font-medium text-slate-600">芯线颜色（自动分配）</span>
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 md:grid-cols-3">
                   {spec.coreColors.map((color, index) => (
-                    <label key={`${index + 1}`} className="block">
-                      <span className="mb-1 block text-[11px] font-medium text-slate-500">芯线 {index + 1}</span>
-                      <select
-                        value={color}
-                        onChange={(event) => {
-                          const nextCoreColors = [...spec.coreColors];
-                          nextCoreColors[index] = event.target.value;
-                          setSpec({ ...spec, coreColors: nextCoreColors });
-                        }}
-                        className={fieldClass}
-                      >
-                        {CORE_COLOR_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                    </label>
+                    <div key={`${index + 1}`} className="block">
+                      <span className="mb-1 block text-[11px] font-medium text-blue-600">芯线 {index + 1}</span>
+                      <div className="flex h-[38px] items-center rounded-lg border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700">
+                        {color}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
