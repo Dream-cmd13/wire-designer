@@ -109,6 +109,7 @@ export function TwoDView() {
   const reorderTwoDImages = useHarnessStore((s) => s.reorderTwoDImages);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isFitted, setIsFitted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightedRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -244,13 +245,15 @@ export function TwoDView() {
   useEffect(() => {
     if (twoDImages.length === 0) {
       hasCenteredRef.current = false;
+      setIsFitted(false);
       return;
     }
     if (hasCenteredRef.current) return;
     const timer = setTimeout(() => {
       fitToCanvas();
       hasCenteredRef.current = true;
-    }, 100);
+      setIsFitted(true);
+    }, 50);
     return () => clearTimeout(timer);
   }, [twoDImages.length, fitToCanvas]);
 
@@ -422,6 +425,8 @@ export function TwoDView() {
               alignItems: 'center',
               gap: 0,
               padding: 32,
+              opacity: isFitted ? 1 : 0,
+              transition: 'opacity 0.15s ease-in-out',
             }}
           >
             {flatImages.map((img, idx) => {
