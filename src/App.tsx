@@ -66,6 +66,7 @@ export default function App() {
   const [drawingMode, setDrawingMode] = useState<DrawingMode>('design');
   const [selectedPdfIds, setSelectedPdfIds] = useState<string[]>([]);
   const [pdfPickerOpen, setPdfPickerOpen] = useState(false);
+  const [uploadedDrawings, setUploadedDrawings] = useState<import('@/lib/pdfDrawings').PdfDrawing[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -433,7 +434,7 @@ export default function App() {
             {drawingMode === 'design' && <DesignerView />}
             {drawingMode === 'production' && (
               <ProductionDrawingView
-                drawings={pdfDrawings}
+                drawings={[...pdfDrawings, ...uploadedDrawings]}
                 selectedIds={selectedPdfIds}
                 onChooseDrawings={() => setPdfPickerOpen(true)}
               />
@@ -454,9 +455,15 @@ export default function App() {
 
       {pdfPickerOpen && (
         <PdfDrawingPickerDialog
-          drawings={pdfDrawings}
+          drawings={[...pdfDrawings, ...uploadedDrawings]}
           initialSelection={selectedPdfIds}
           onClose={() => setPdfPickerOpen(false)}
+          onUpload={(newDrawings) => {
+            setUploadedDrawings((prev) => {
+              const existingIds = new Set(prev.map((d) => d.id));
+              return [...prev, ...newDrawings.filter((d) => !existingIds.has(d.id))];
+            });
+          }}
           onConfirm={(drawingIds) => {
             setSelectedPdfIds(drawingIds);
             setDrawingMode('production');

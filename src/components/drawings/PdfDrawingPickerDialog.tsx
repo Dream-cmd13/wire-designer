@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Check, FileText, Files, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, FileText, Files, Upload, X } from 'lucide-react';
 import type { PdfDrawing } from '@/lib/pdfDrawings';
 
 interface PdfDrawingPickerDialogProps {
   drawings: PdfDrawing[];
   initialSelection: string[];
   onClose: () => void;
+  onUpload: (drawings: PdfDrawing[]) => void;
   onConfirm: (drawingIds: string[]) => void;
 }
 
@@ -13,9 +14,11 @@ export function PdfDrawingPickerDialog({
   drawings,
   initialSelection,
   onClose,
+  onUpload,
   onConfirm,
 }: PdfDrawingPickerDialogProps) {
   const [selectedIds, setSelectedIds] = useState(() => new Set(initialSelection));
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -36,6 +39,23 @@ export function PdfDrawingPickerDialog({
       return next;
     });
   };
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    const newDrawings: PdfDrawing[] = files.map((file) => ({
+      id: `upload:${file.name}:${file.lastModified}`,
+      name: file.name.replace(/\.pdf$/i, ''),
+      url: URL.createObjectURL(file),
+    }));
+    onUpload(newDrawings);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      newDrawings.forEach((d) => next.add(d.id));
+      return next;
+    });
+    e.target.value = '';
+  }
 
   return (
     <div
@@ -64,14 +84,32 @@ export function PdfDrawingPickerDialog({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-            aria-label="关闭图纸选择"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 hover:text-slate-800"
+            >
+              <Upload className="h-4 w-4" />
+              上传 PDF
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              aria-label="关闭图纸选择"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </header>
 
         <div className="max-h-[52vh] overflow-y-auto p-5">
@@ -79,6 +117,7 @@ export function PdfDrawingPickerDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               {drawings.map((drawing) => {
                 const selected = selectedIds.has(drawing.id);
+                const isUploaded = drawing.id.startsWith('upload:');
                 return (
                   <button
                     type="button"
@@ -104,7 +143,9 @@ export function PdfDrawingPickerDialog({
                       <span className="block truncate text-sm font-semibold text-slate-800">
                         {drawing.name}
                       </span>
-                      <span className="mt-1 block text-xs text-slate-400">PDF · 2D 图纸</span>
+                      <span className="mt-1 block text-xs text-slate-400">
+                        {isUploaded ? 'PDF · 已上传' : 'PDF · 2D 图纸'}
+                      </span>
                     </span>
                     <span
                       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition ${
@@ -122,8 +163,10 @@ export function PdfDrawingPickerDialog({
           ) : (
             <div className="flex flex-col items-center rounded-xl border border-dashed border-slate-300 py-12 text-center">
               <FileText className="h-10 w-10 text-slate-300" />
-              <p className="mt-3 text-sm font-medium text-slate-600">根目录下暂未发现 PDF 文件</p>
-              <p className="mt-1 text-xs text-slate-400">将图纸 PDF 放入项目根目录后重新启动页面即可。</p>
+              <p className="mt-3 text-sm font-medium text-slate-600">暂无 PDF 文件</p>
+              <p className="mt-1 text-xs text-slate-400">
+                点击「上传 PDF」添加图纸，或将 PDF 放入项目根目录后重启页面。
+              </p>
             </div>
           )}
         </div>
