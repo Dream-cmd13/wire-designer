@@ -501,12 +501,6 @@ export function TwoDView() {
         )}
       </div>
 
-      {/* hint when selected design element has no 2D image */}
-      {selection.kind !== 'none' && highlightedImageId === null && (
-        <div className="shrink-0 border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-          当前选中的元素尚未关联任何 2D 图片。在设计图中右键该元素可进行关联。
-        </div>
-      )}
 
       {/* right-click context menu */}
       {contextMenu && (
