@@ -250,17 +250,17 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                 </select>
               </Field>
               <Field label="自动计算 OD (mm)">
-                <div className="flex h-[38px] items-center rounded-lg border border-blue-200 bg-blue-50 px-3 text-sm font-semibold text-blue-700">
+                <div className="flex h-[38px] items-center rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm text-slate-500">
                   {spec.odMm.toFixed(2)}
                 </div>
               </Field>
               <div className="col-span-2">
                 <span className="mb-1.5 block text-xs font-medium text-slate-600">芯线颜色（自动分配）</span>
-                <div className="grid grid-cols-2 gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 md:grid-cols-3">
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
                   {spec.coreColors.map((color, index) => (
                     <div key={`${index + 1}`} className="block">
-                      <span className="mb-1 block text-[11px] font-medium text-blue-600">芯线 {index + 1}</span>
-                      <div className="flex h-[38px] items-center rounded-lg border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700">
+                      <span className="mb-1 block text-[11px] font-medium text-slate-500">芯线 {index + 1}</span>
+                      <div className="flex h-[38px] items-center rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm text-slate-500">
                         {color}
                       </div>
                     </div>
