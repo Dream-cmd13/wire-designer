@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link2Off, Minus, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
+import { Minus, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
 import { generateId } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
@@ -41,13 +41,13 @@ function useElementLabel(
 function ImageInfoBox({
   image,
   onRotate,
-  onRemoveAssociation,
   onDelete,
+  onCollapse,
 }: {
   image: TwoDImage;
   onRotate: (id: string) => void;
-  onRemoveAssociation: (id: string) => void;
   onDelete: (id: string) => void;
+  onCollapse: () => void;
 }) {
   const label = useElementLabel(image.elementKind, image.elementId);
   const rotation = image.rotation ?? 0;
@@ -75,16 +75,13 @@ function ImageInfoBox({
           <RotateCw className="h-3 w-3" />
           旋转 {rotation}°
         </button>
-        {image.elementKind && (
-          <button
-            type="button"
-            onClick={() => onRemoveAssociation(image.id)}
-            className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
-          >
-            <Link2Off className="h-3 w-3" />
-            解除关联
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+        >
+          收起
+        </button>
         <button
           type="button"
           onClick={() => onDelete(image.id)}
@@ -107,7 +104,6 @@ export function TwoDView() {
   const models = useHarnessStore((s) => s.config.models);
   const selection = useHarnessStore((s) => s.selection);
   const addTwoDImage = useHarnessStore((s) => s.addTwoDImage);
-  const clearTwoDImageAssociation = useHarnessStore((s) => s.clearTwoDImageAssociation);
   const removeTwoDImage = useHarnessStore((s) => s.removeTwoDImage);
   const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
   const reorderTwoDImages = useHarnessStore((s) => s.reorderTwoDImages);
@@ -394,7 +390,7 @@ export function TwoDView() {
               display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
-              gap: IMAGE_GAP,
+              gap: 0,
               padding: 32,
             }}
           >
@@ -438,7 +434,7 @@ export function TwoDView() {
                     <ImageInfoBox
                       image={img}
                       onRotate={rotateTwoDImage}
-                      onRemoveAssociation={clearTwoDImageAssociation}
+                      onCollapse={() => setSelectedId(null)}
                       onDelete={(id) => {
                         removeTwoDImage(id);
                         setSelectedId(null);
