@@ -8,6 +8,8 @@ interface TwoDImageCardProps {
   isDragging?: boolean;
   onClick: () => void;
   onMouseDown: (e: React.MouseEvent) => void;
+  maxWidth?: number | string;
+  maxHeight?: number | string;
 }
 
 export function TwoDImageCard({
@@ -17,6 +19,8 @@ export function TwoDImageCard({
   isDragging,
   onClick,
   onMouseDown,
+  maxWidth,
+  maxHeight,
 }: TwoDImageCardProps) {
   const rotation = image.rotation ?? 0;
 
@@ -53,8 +57,11 @@ export function TwoDImageCard({
           style={{
             transform: `rotate(${rotation}deg)`,
             transformOrigin: 'center center',
-            maxWidth: '100%',
+            maxWidth: maxWidth ?? '100%',
+            maxHeight: maxHeight ?? 'auto',
+            width: 'auto',
             height: 'auto',
+            objectFit: 'contain',
             display: 'block',
           }}
         />

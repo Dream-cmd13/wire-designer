@@ -431,6 +431,8 @@ export function TwoDView() {
               padding: '64px 128px',
               minWidth: 1200,
               minHeight: 800,
+              maxWidth: 1200,
+              maxHeight: 800,
               backgroundImage: frameUrl ? `url(${frameUrl})` : 'none',
               backgroundSize: '100% 100%',
               backgroundPosition: 'center',
@@ -439,56 +441,62 @@ export function TwoDView() {
               transition: 'opacity 0.15s ease-in-out',
             }}
           >
-            {flatImages.map((img, idx) => {
-              const isHighlighted = img.id === highlightedImageId;
-              const isSelected = img.id === selectedId;
-              const isDragging = dragIdx === idx;
-              const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
+            {(() => {
+              const maxCardWidth = Math.min(600, Math.floor(944 / Math.max(1, flatImages.length)));
+              const maxCardHeight = 360;
+              return flatImages.map((img, idx) => {
+                const isHighlighted = img.id === highlightedImageId;
+                const isSelected = img.id === selectedId;
+                const isDragging = dragIdx === idx;
+                const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
 
-              return (
-                <div
-                  key={img.id}
-                  ref={isHighlighted ? highlightedRef : undefined}
-                  onMouseEnter={() => dragIdx !== null && setDropIdx(idx)}
-                  style={{ opacity: isDragging ? 0.4 : 1, flexShrink: 0 }}
-                >
-                  {/* drop indicator: blue bar on the left edge */}
-                  {isDropTarget && (
-                    <div
-                      style={{
-                        position: 'absolute',
-                        left: -5,
-                        top: 0,
-                        bottom: 0,
-                        width: 3,
-                        borderRadius: 2,
-                        background: '#3b82f6',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                  )}
-                  <TwoDImageCard
-                    image={img}
-                    highlighted={isHighlighted}
-                    selected={isSelected}
-                    isDragging={isDragging}
-                    onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
-                    onMouseDown={(e) => handleImageMouseDown(e, idx)}
-                  />
-                  {isSelected && !isDragging && (
-                    <ImageInfoBox
+                return (
+                  <div
+                    key={img.id}
+                    ref={isHighlighted ? highlightedRef : undefined}
+                    onMouseEnter={() => dragIdx !== null && setDropIdx(idx)}
+                    style={{ opacity: isDragging ? 0.4 : 1, flexShrink: 0 }}
+                  >
+                    {/* drop indicator: blue bar on the left edge */}
+                    {isDropTarget && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: -5,
+                          top: 0,
+                          bottom: 0,
+                          width: 3,
+                          borderRadius: 2,
+                          background: '#3b82f6',
+                          pointerEvents: 'none',
+                        }}
+                      />
+                    )}
+                    <TwoDImageCard
                       image={img}
-                      onRotate={rotateTwoDImage}
-                      onCollapse={() => setSelectedId(null)}
-                      onDelete={(id) => {
-                        removeTwoDImage(id);
-                        setSelectedId(null);
-                      }}
+                      highlighted={isHighlighted}
+                      selected={isSelected}
+                      isDragging={isDragging}
+                      onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
+                      onMouseDown={(e) => handleImageMouseDown(e, idx)}
+                      maxWidth={maxCardWidth}
+                      maxHeight={maxCardHeight}
                     />
-                  )}
-                </div>
-              );
-            })}
+                    {isSelected && !isDragging && (
+                      <ImageInfoBox
+                        image={img}
+                        onRotate={rotateTwoDImage}
+                        onCollapse={() => setSelectedId(null)}
+                        onDelete={(id) => {
+                          removeTwoDImage(id);
+                          setSelectedId(null);
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              });
+            })()}
           </div>
         )}
       </div>
