@@ -3,7 +3,6 @@ import { Cable, Check, X } from 'lucide-react';
 import { WIRE_COLORS } from '@/lib/data';
 import {
   calculateCableOd,
-  CORE_COLOR_OPTIONS,
   createDefaultWireEndTreatment,
   createDefaultWireSpec,
   getCoreColors,
@@ -196,14 +195,10 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   value={spec.coreCount}
                   onChange={(event) => {
                     const coreCount = Number(event.target.value) as JacketCoreCount;
-                    const nextColors = spec.coreColors.slice(0, coreCount);
-                    while (nextColors.length < coreCount) {
-                      nextColors.push(getCoreColors(coreCount)[nextColors.length] ?? CORE_COLOR_OPTIONS[0]);
-                    }
                     setSpec({
                       ...spec,
                       coreCount,
-                      coreColors: nextColors,
+                      coreColors: getCoreColors(coreCount),
                       odMm: calculateCableOd(spec.awg, coreCount, spec.shielded),
                     });
                   }}
