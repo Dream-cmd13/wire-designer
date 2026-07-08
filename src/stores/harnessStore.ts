@@ -12,6 +12,7 @@ import type {
 import { CONNECTORS } from '@/lib/data';
 import { imageAssets } from '@/lib/imageAssets';
 import { lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
 import {
   generateId,
   removeConnector as removeConnectorCommand,
@@ -168,6 +169,7 @@ interface HarnessState {
   rotateTwoDImage: (id: string) => void;
   reorderTwoDImages: (fromIndex: number, toIndex: number) => void;
   moveTwoDImage: (id: string, x: number, y: number) => void;
+  syncTwoDImagesAuto: () => void; // New: auto-sync 2D images
 }
 
 function dirtyState() {
@@ -204,26 +206,32 @@ export const useHarnessStore = create<HarnessState>()(
       markSaveError: (message) => set({ saveState: { status: 'error', message } }),
 
       addConnector: (connector) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = {
             ...state.config,
             connectors: [...state.config.connectors, connector],
             updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
+          };
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
+            saveState: dirtyState(),
+          };
+        }),
 
       updateConnector: (id, updates) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = {
             ...state.config,
             connectors: state.config.connectors.map((c) =>
               c.id === id ? { ...c, ...updates } : c,
             ),
             updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
+          };
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
+            saveState: dirtyState(),
+          };
+        }),
 
       removeConnector: (id) =>
         set((state) => {
@@ -232,34 +240,44 @@ export const useHarnessStore = create<HarnessState>()(
               ? ({ kind: 'none' } as const)
               : state.selection;
 
+          const nextConfig = removeConnectorCommand(state.config, id);
           return {
-            config: removeConnectorCommand(state.config, id),
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             selection: nextSelection,
             saveState: dirtyState(),
           };
         }),
 
       addMaterial: (material) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = {
             ...state.config,
             materials: [...state.config.materials, material],
             updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
+          };
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
+            saveState: dirtyState(),
+          };
+        }),
 
       updateMaterial: (id, updates) =>
-        set((state) => ({
-            config: updateMaterialCommand(state.config, id, updates),
+        set((state) => {
+          const nextConfig = updateMaterialCommand(state.config, id, updates);
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
-        })),
+          };
+        }),
 
       removeMaterial: (id) =>
-        set((state) => ({
-          config: removeMaterialCommand(state.config, id),
-          saveState: dirtyState(),
-        })),
+        set((state) => {
+          const nextConfig = removeMaterialCommand(state.config, id);
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
+            saveState: dirtyState(),
+          };
+        }),
 
       addProtectiveSleeve: (sleeve) =>
         set((state) => ({
@@ -288,39 +306,48 @@ export const useHarnessStore = create<HarnessState>()(
         })),
 
       addModel: (model) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = {
             ...state.config,
             models: [...state.config.models, model],
             updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
+          };
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
+            saveState: dirtyState(),
+          };
+        }),
 
       updateModel: (id, updates) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = {
             ...state.config,
             models: state.config.models.map((item) =>
               item.id === id ? { ...item, ...updates } : item,
             ),
             updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
+          };
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
+            saveState: dirtyState(),
+          };
+        }),
 
       removeModel: (id) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = {
             ...state.config,
             models: state.config.models.filter((item) => item.id !== id),
             updatedAt: Date.now(),
-          },
-          selection: state.selection.kind === 'model' && state.selection.id === id
-            ? { kind: 'none' }
-            : state.selection,
-          saveState: dirtyState(),
-        })),
+          };
+          return {
+            config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
+            selection: state.selection.kind === 'model' && state.selection.id === id
+              ? { kind: 'none' }
+              : state.selection,
+            saveState: dirtyState(),
+          };
+        }),
 
       setSelection: (selection) => set({ selection }),
 
@@ -409,6 +436,16 @@ export const useHarnessStore = create<HarnessState>()(
             twoDImages: (state.config.twoDImages ?? []).map((img) =>
               img.id === id ? { ...img, pos: { x, y } } : img,
             ),
+            updatedAt: Date.now(),
+          },
+          saveState: dirtyState(),
+        })),
+
+      syncTwoDImagesAuto: () =>
+        set((state) => ({
+          config: {
+            ...state.config,
+            twoDImages: syncTwoDImages(state.config),
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
