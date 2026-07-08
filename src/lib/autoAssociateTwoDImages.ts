@@ -30,16 +30,20 @@ function assetImageByName(name: string): TwoDImage | null {
 
 /**
  * Check if a connector is connected to any overmold model.
+ * Uses connector-edge-based proximity rather than position-to-position distance.
  */
 function isConnectorConnectedToModel(
   connector: ConnectorInstance,
   models: CanvasModel[],
 ): boolean {
-  // Simple proximity check: if any model is within 150px of the connector
+  const connectorLeft = connector.position.x;
+  const connectorRight = connector.position.x + 236; // CONNECTOR_NODE_WIDTH
   return models.some((model) => {
-    const dx = Math.abs(model.position.x - connector.position.x);
+    const modelLeft = model.position.x;
+    const modelRight = model.position.x + 84; // CANVAS_MODEL_SIZE
+    const horizontallyClose = modelLeft < connectorRight + 120 && modelRight > connectorLeft - 120;
     const dy = Math.abs(model.position.y - connector.position.y);
-    return dx < 150 && dy < 150;
+    return horizontallyClose && dy < 200;
   });
 }
 

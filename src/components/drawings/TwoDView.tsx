@@ -120,6 +120,8 @@ export function TwoDView() {
   // ── zoom & pan ───────────────────────────────────────────────────────────────
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const worldRef = useRef<HTMLDivElement>(null);
+  const hasCenteredRef = useRef(false);
   const [panning, setPanning] = useState<{
     startMX: number; startMY: number; startPX: number; startPY: number;
   } | null>(null);
@@ -197,6 +199,25 @@ export function TwoDView() {
             img.elementId === (selection as { id: string }).id,
         )?.id ?? null)
       : null;
+
+  // ── center content when images first appear ──────────────────────────────────
+  useEffect(() => {
+    if (twoDImages.length === 0) {
+      hasCenteredRef.current = false;
+      return;
+    }
+    if (hasCenteredRef.current) return;
+    requestAnimationFrame(() => {
+      const vp = viewportRef.current;
+      const world = worldRef.current;
+      if (!vp || !world) return;
+      setPan({
+        x: (vp.offsetWidth - world.offsetWidth) / 2,
+        y: (vp.offsetHeight - world.offsetHeight) / 2,
+      });
+      hasCenteredRef.current = true;
+    });
+  }, [twoDImages.length]);
 
   // ── zoom helpers ──────────────────────────────────────────────────────────────
   const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
@@ -365,6 +386,7 @@ export function TwoDView() {
         ) : (
           /* world layer: flex row, zoom+pan via transform */
           <div
+            ref={worldRef}
             style={{
               position: 'absolute',
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,

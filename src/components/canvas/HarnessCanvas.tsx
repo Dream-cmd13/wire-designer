@@ -29,7 +29,6 @@ import '@xyflow/react/dist/style.css';
 import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper, removeMaterialCircuit } from '@/lib/commands';
 import {
   CANVAS_MODEL_SIZE,
-  CANVAS_MATERIAL_HEIGHT,
   CANVAS_MATERIAL_SLEEVE_CENTER_Y,
   CONNECTOR_NODE_WIDTH,
   createDefaultCanvasMaterial,
@@ -236,65 +235,45 @@ function findModelPlacement(
   config: HarnessConfig,
   flowPosition: { x: number; y: number },
 ): { x: number; y: number } {
-  let best:
-    | {
-        distance: number;
-        connector: ConnectorInstance;
-        material: CanvasWireMaterial;
-        endpoint: 'start' | 'end';
-      }
-    | undefined;
+  // Find the nearest connector to the click position
+  let bestConnector: ConnectorInstance | undefined;
+  let minDist = Infinity;
 
-  for (const material of config.materials) {
-    for (const circuit of material.circuits) {
-      for (const endpoint of ['start', 'end'] as const) {
-        const ref = circuit[endpoint];
-        if (!ref) continue;
-        const connector = config.connectors.find((item) => item.id === ref.connectorId);
-        if (!connector) continue;
-        const materialPoint = getMaterialEndpointPoint(material, endpoint);
-        const connectorPoint = getConnectorPinHandlePosition(connector, ref.connectorSide, ref.pin);
-        const center = {
-          x: (materialPoint.x + connectorPoint.x) / 2,
-          y: (materialPoint.y + connectorPoint.y) / 2,
-        };
-        const distance = Math.hypot(center.x - flowPosition.x, center.y - flowPosition.y);
-        if (!best || distance < best.distance) {
-          best = { distance, connector, material, endpoint };
-        }
-      }
+  for (const connector of config.connectors) {
+    const cx = connector.position.x + CONNECTOR_NODE_WIDTH / 2;
+    const cy = connector.position.y + 80;
+    const d = Math.hypot(cx - flowPosition.x, cy - flowPosition.y);
+    if (d < minDist) {
+      minDist = d;
+      bestConnector = connector;
     }
   }
 
-  // If we found a connection, place the model between the connector and material
-  if (best) {
-    const connector = best.connector;
-    const material = best.material;
+  if (bestConnector) {
+    // Which side has active connections (where the wire exits the connector)
+    const activeSide = getActiveConnectorSide(config, bestConnector.id) ?? 'right';
 
-    // Calculate the direction from connector to material
-    const connectorCenter = {
-      x: connector.position.x + CONNECTOR_NODE_WIDTH / 2,
-      y: connector.position.y + CONNECTOR_NODE_WIDTH / 2,
-    };
-    const materialCenter = {
-      x: material.position.x + material.width / 2,
-      y: material.position.y + CANVAS_MATERIAL_HEIGHT / 2,
-    };
+    // Vertically center on the connector pin area
+    const pinCount = bestConnector.connector.pinCount;
+    const connectorCenterY = bestConnector.position.y + 52 + (pinCount / 2) * 20;
+    const modelY = connectorCenterY - CANVAS_MODEL_SIZE / 2;
 
-    // Place model 40% of the way from connector to material (closer to connector)
-    const ratio = 0.4;
-    const modelCenter = {
-      x: connectorCenter.x + (materialCenter.x - connectorCenter.x) * ratio,
-      y: connectorCenter.y + (materialCenter.y - connectorCenter.y) * ratio,
-    };
-
-    return {
-      x: modelCenter.x - CANVAS_MODEL_SIZE / 2,
-      y: modelCenter.y - CANVAS_MODEL_SIZE / 2,
-    };
+    if (activeSide === 'right') {
+      // Place overmold just to the RIGHT of the connector's right edge
+      return {
+        x: bestConnector.position.x + CONNECTOR_NODE_WIDTH + 8,
+        y: modelY,
+      };
+    } else {
+      // Place overmold just to the LEFT of the connector's left edge
+      return {
+        x: bestConnector.position.x - CANVAS_MODEL_SIZE - 8,
+        y: modelY,
+      };
+    }
   }
 
-  // No connection found, use the flow position
+  // No connector: place at click position
   return {
     x: flowPosition.x - CANVAS_MODEL_SIZE / 2,
     y: flowPosition.y - CANVAS_MODEL_SIZE / 2,
