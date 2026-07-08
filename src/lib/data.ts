@@ -6,57 +6,57 @@ import type { Connector, OvermoldSpec, WireType, WireColor, WireGauge } from '@/
 
 export const CONNECTORS: Connector[] = [
   // --- JST XH Series (2.5mm pitch) ---
-  { id: 'jst-xh-2', name: 'JST XH 2P', manufacturer: 'JST', pinCount: 2, pitch: 2.5, type: 'female', pinLabels: ['1', '2'] },
-  { id: 'jst-xh-3', name: 'JST XH 3P', manufacturer: 'JST', pinCount: 3, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3'] },
-  { id: 'jst-xh-4', name: 'JST XH 4P', manufacturer: 'JST', pinCount: 4, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3', '4'] },
-  { id: 'jst-xh-5', name: 'JST XH 5P', manufacturer: 'JST', pinCount: 5, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3', '4', '5'] },
+  { id: 'jst-xh-2', name: 'JST XH 2P', manufacturer: 'JST', pinCount: 2, pitch: 2.5, type: 'female', pinLabels: ['1', '2'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'jst-xh-3', name: 'JST XH 3P', manufacturer: 'JST', pinCount: 3, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'jst-xh-4', name: 'JST XH 4P', manufacturer: 'JST', pinCount: 4, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'jst-xh-5', name: 'JST XH 5P', manufacturer: 'JST', pinCount: 5, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3', '4', '5'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
 
   // --- JST PH Series (2.0mm pitch) ---
-  { id: 'jst-ph-2', name: 'JST PH 2.0 2P', manufacturer: 'JST', pinCount: 2, pitch: 2.0, type: 'female', pinLabels: ['1', '2'] },
-  { id: 'jst-ph-3', name: 'JST PH 2.0 3P', manufacturer: 'JST', pinCount: 3, pitch: 2.0, type: 'female', pinLabels: ['1', '2', '3'] },
-  { id: 'jst-ph-4', name: 'JST PH 2.0 4P', manufacturer: 'JST', pinCount: 4, pitch: 2.0, type: 'female', pinLabels: ['1', '2', '3', '4'] },
+  { id: 'jst-ph-2', name: 'JST PH 2.0 2P', manufacturer: 'JST', pinCount: 2, pitch: 2.0, type: 'female', pinLabels: ['1', '2'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'jst-ph-3', name: 'JST PH 2.0 3P', manufacturer: 'JST', pinCount: 3, pitch: 2.0, type: 'female', pinLabels: ['1', '2', '3'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'jst-ph-4', name: 'JST PH 2.0 4P', manufacturer: 'JST', pinCount: 4, pitch: 2.0, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
 
   // --- JST EH Series (2.5mm pitch, higher current) ---
-  { id: 'jst-eh-2', name: 'JST EH 2P', manufacturer: 'JST', pinCount: 2, pitch: 2.5, type: 'female', pinLabels: ['1', '2'] },
-  { id: 'jst-eh-3', name: 'JST EH 3P', manufacturer: 'JST', pinCount: 3, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3'] },
+  { id: 'jst-eh-2', name: 'JST EH 2P', manufacturer: 'JST', pinCount: 2, pitch: 2.5, type: 'female', pinLabels: ['1', '2'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'jst-eh-3', name: 'JST EH 3P', manufacturer: 'JST', pinCount: 3, pitch: 2.5, type: 'female', pinLabels: ['1', '2', '3'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
 
   // --- JST GH Series (1.25mm pitch) ---
-  { id: 'jst-gh-4', name: 'JST GH 1.25 4P', manufacturer: 'JST', pinCount: 4, pitch: 1.25, type: 'female', pinLabels: ['1', '2', '3', '4'] },
+  { id: 'jst-gh-4', name: 'JST GH 1.25 4P', manufacturer: 'JST', pinCount: 4, pitch: 1.25, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
 
   // --- JST SH Series (1.0mm pitch) ---
-  { id: 'jst-sh-4', name: 'JST SH 1.0 4P', manufacturer: 'JST', pinCount: 4, pitch: 1.0, type: 'female', pinLabels: ['1', '2', '3', '4'] },
+  { id: 'jst-sh-4', name: 'JST SH 1.0 4P', manufacturer: 'JST', pinCount: 4, pitch: 1.0, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'LCP', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
 
   // --- JST ZH Series (1.5mm pitch) ---
-  { id: 'jst-zh-4', name: 'JST ZH 1.5 4P', manufacturer: 'JST', pinCount: 4, pitch: 1.5, type: 'female', pinLabels: ['1', '2', '3', '4'] },
+  { id: 'jst-zh-4', name: 'JST ZH 1.5 4P', manufacturer: 'JST', pinCount: 4, pitch: 1.5, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'PA66+GF', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
 
   // --- Molex Series ---
-  { id: 'molex-2510-2', name: 'Molex 2510 2P', manufacturer: 'Molex', pinCount: 2, pitch: 2.54, type: 'female', pinLabels: ['1', '2'] },
-  { id: 'molex-2510-4', name: 'Molex 2510 4P', manufacturer: 'Molex', pinCount: 4, pitch: 2.54, type: 'female', pinLabels: ['1', '2', '3', '4'] },
-  { id: 'molex-microfit-2', name: 'Molex Micro-Fit 3.0 2P', manufacturer: 'Molex', pinCount: 2, pitch: 3.0, type: 'female', pinLabels: ['1', '2'] },
-  { id: 'molex-microfit-4', name: 'Molex Micro-Fit 3.0 4P', manufacturer: 'Molex', pinCount: 4, pitch: 3.0, type: 'female', pinLabels: ['1', '2', '3', '4'] },
+  { id: 'molex-2510-2', name: 'Molex 2510 2P', manufacturer: 'Molex', pinCount: 2, pitch: 2.54, type: 'female', pinLabels: ['1', '2'], housingMaterial: 'Nylon', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'molex-2510-4', name: 'Molex 2510 4P', manufacturer: 'Molex', pinCount: 4, pitch: 2.54, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'Nylon', contactMaterial: '磷青铜镀锡', nutMaterial: '无' },
+  { id: 'molex-microfit-2', name: 'Molex Micro-Fit 3.0 2P', manufacturer: 'Molex', pinCount: 2, pitch: 3.0, type: 'female', pinLabels: ['1', '2'], housingMaterial: 'Nylon', contactMaterial: '铜合金镀锡', nutMaterial: '无' },
+  { id: 'molex-microfit-4', name: 'Molex Micro-Fit 3.0 4P', manufacturer: 'Molex', pinCount: 4, pitch: 3.0, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'Nylon', contactMaterial: '铜合金镀锡', nutMaterial: '无' },
 
   // --- XT Series (Amass, high current) ---
-  { id: 'xt30', name: 'XT30', manufacturer: 'Amass', pinCount: 2, type: 'female', pinLabels: ['+', '-'] },
-  { id: 'xt60', name: 'XT60', manufacturer: 'Amass', pinCount: 2, type: 'female', pinLabels: ['+', '-'] },
-  { id: 'xt90', name: 'XT90', manufacturer: 'Amass', pinCount: 2, type: 'female', pinLabels: ['+', '-'] },
+  { id: 'xt30', name: 'XT30', manufacturer: 'Amass', pinCount: 2, type: 'female', pinLabels: ['+', '-'], housingMaterial: 'Nylon', contactMaterial: '镀金铜', nutMaterial: '无' },
+  { id: 'xt60', name: 'XT60', manufacturer: 'Amass', pinCount: 2, type: 'female', pinLabels: ['+', '-'], housingMaterial: 'Nylon', contactMaterial: '镀金铜', nutMaterial: '无' },
+  { id: 'xt90', name: 'XT90', manufacturer: 'Amass', pinCount: 2, type: 'female', pinLabels: ['+', '-'], housingMaterial: 'Nylon', contactMaterial: '镀金铜', nutMaterial: '无' },
 
   // --- USB ---
-  { id: 'usb-a', name: 'USB Type-A', manufacturer: 'Generic', pinCount: 4, type: 'female', pinLabels: ['VBUS', 'D-', 'D+', 'GND'] },
-  { id: 'usb-c', name: 'USB Type-C', manufacturer: 'Generic', pinCount: 16, type: 'receptacle', pinLabels: ['VBUS', 'D-', 'D+', 'SBU1', 'CC1', 'GND', 'VBUS', 'SBU2', 'D-', 'D+', 'GND', 'TX1+', 'TX1-', 'RX2-', 'RX2+', 'GND'] },
+  { id: 'usb-a', name: 'USB Type-A', manufacturer: 'Generic', pinCount: 4, type: 'female', pinLabels: ['VBUS', 'D-', 'D+', 'GND'], housingMaterial: 'PBT', contactMaterial: '铜合金镀金', nutMaterial: '金属外壳' },
+  { id: 'usb-c', name: 'USB Type-C', manufacturer: 'Generic', pinCount: 16, type: 'receptacle', pinLabels: ['VBUS', 'D-', 'D+', 'SBU1', 'CC1', 'GND', 'VBUS', 'SBU2', 'D-', 'D+', 'GND', 'TX1+', 'TX1-', 'RX2-', 'RX2+', 'GND'], housingMaterial: 'LCP', contactMaterial: '铜合金镀金', nutMaterial: '不锈钢外壳' },
 
   // --- Dupont ---
-  { id: 'dupont-1x1', name: 'Dupont 2.54 1P', manufacturer: 'Dupont', pinCount: 1, pitch: 2.54, type: 'female', pinLabels: ['1'] },
-  { id: 'dupont-2p', name: 'Dupont 2.54 2P', manufacturer: 'Dupont', pinCount: 2, pitch: 2.54, type: 'female', pinLabels: ['1', '2'] },
-  { id: 'dupont-4p', name: 'Dupont 2.54 4P', manufacturer: 'Dupont', pinCount: 4, pitch: 2.54, type: 'female', pinLabels: ['1', '2', '3', '4'] },
+  { id: 'dupont-1x1', name: 'Dupont 2.54 1P', manufacturer: 'Dupont', pinCount: 1, pitch: 2.54, type: 'female', pinLabels: ['1'], housingMaterial: 'PA66', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
+  { id: 'dupont-2p', name: 'Dupont 2.54 2P', manufacturer: 'Dupont', pinCount: 2, pitch: 2.54, type: 'female', pinLabels: ['1', '2'], housingMaterial: 'PA66', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
+  { id: 'dupont-4p', name: 'Dupont 2.54 4P', manufacturer: 'Dupont', pinCount: 4, pitch: 2.54, type: 'female', pinLabels: ['1', '2', '3', '4'], housingMaterial: 'PA66', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
 
   // --- Anderson Power Pole ---
-  { id: 'anderson-2', name: 'Anderson 2P', manufacturer: 'Anderson', pinCount: 2, type: 'receptacle', pinLabels: ['+', '-'] },
+  { id: 'anderson-2', name: 'Anderson 2P', manufacturer: 'Anderson', pinCount: 2, type: 'receptacle', pinLabels: ['+', '-'], housingMaterial: '阻燃PC', contactMaterial: '镀银铜', nutMaterial: '无' },
 
   // --- M8 / M12 Circular ---
-  { id: 'm8-3', name: 'M8 3-Pin', manufacturer: 'Generic', pinCount: 3, type: 'male', pinLabels: ['1', '2', '3'] },
-  { id: 'm8-4', name: 'M8 4-Pin', manufacturer: 'Generic', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'] },
-  { id: 'm12-4', name: 'M12 4-Pin (A-Coded)', manufacturer: 'Generic', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'] },
-  { id: 'm12-5', name: 'M12 5-Pin (A-Coded)', manufacturer: 'Generic', pinCount: 5, type: 'male', pinLabels: ['1', '2', '3', '4', '5'] },
+  { id: 'm8-3', name: 'M8 3-Pin', manufacturer: 'Generic', pinCount: 3, type: 'male', pinLabels: ['1', '2', '3'], housingMaterial: '锌合金', contactMaterial: '黄铜镀金', nutMaterial: '黄铜镀镍' },
+  { id: 'm8-4', name: 'M8 4-Pin', manufacturer: 'Generic', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'], housingMaterial: '锌合金', contactMaterial: '黄铜镀金', nutMaterial: '黄铜镀镍' },
+  { id: 'm12-4', name: 'M12 4-Pin (A-Coded)', manufacturer: 'Generic', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'], housingMaterial: '锌合金', contactMaterial: '黄铜镀金', nutMaterial: '黄铜镀镍' },
+  { id: 'm12-5', name: 'M12 5-Pin (A-Coded)', manufacturer: 'Generic', pinCount: 5, type: 'male', pinLabels: ['1', '2', '3', '4', '5'], housingMaterial: '锌合金', contactMaterial: '黄铜镀金', nutMaterial: '黄铜镀镍' },
   {
     id: 'm12a04-07-093',
     name: 'M12成型式防水连接器 4芯 A编码 焊线式公头 非屏蔽款+11.8L双网纹螺丝',

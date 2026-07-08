@@ -313,7 +313,7 @@ function FilterGroup({ label, options, selected, onToggle }: {
   selected: Set<string>;
   onToggle: (value: string) => void;
 }) {
-  if (options.length <= 1) return null;
+  if (options.length === 0) return null;
   return (
     <div>
       <div className="text-[10px] font-medium text-slate-400 mb-1">{label}</div>
