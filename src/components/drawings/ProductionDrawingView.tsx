@@ -27,7 +27,7 @@ export function ProductionDrawingView({
       <div className="flex h-full items-center justify-center bg-slate-100 p-6">
         <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
           <FileSearch className="mx-auto h-12 w-12 text-slate-300" />
-          <h2 className="mt-4 text-base font-semibold text-slate-800">尚未选择成品图</h2>
+          <h2 className="mt-4 text-base font-semibold text-slate-800">尚未选择PDF</h2>
           <p className="mt-2 text-sm text-slate-500">从根目录的 PDF 图纸中选择需要预览和裁剪的文件。</p>
           <button
             type="button"

@@ -57,7 +57,7 @@ export function PdfDrawingPickerDialog({
             </div>
             <div>
               <h2 id="pdf-picker-title" className="text-base font-semibold text-slate-900">
-                选择成品 2D 图纸
+                选择 PDF 图纸
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 可选择一份或多份 PDF，多份图纸将在预览区以标签页展示。
@@ -146,7 +146,7 @@ export function PdfDrawingPickerDialog({
               onClick={() => onConfirm([...selectedIds])}
               className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
             >
-              查看成品图
+              查看PDF
             </button>
           </div>
         </footer>

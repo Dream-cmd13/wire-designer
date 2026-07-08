@@ -37,7 +37,7 @@ export function DrawingModeSwitch({ mode, onChange }: DrawingModeSwitchProps) {
         aria-pressed={mode === 'production'}
       >
         <FileText className="h-3.5 w-3.5" />
-        成品图
+        PDF
       </button>
       <button
         type="button"
@@ -50,7 +50,7 @@ export function DrawingModeSwitch({ mode, onChange }: DrawingModeSwitchProps) {
         aria-pressed={mode === 'drawing2d'}
       >
         <Image className="h-3.5 w-3.5" />
-        2D图
+        成品图
       </button>
     </div>
   );
