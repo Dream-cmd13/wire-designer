@@ -13,6 +13,7 @@ import type {
   ConnectorSide,
   MaterialEndpoint,
   HarnessConfig,
+  Selection,
 } from '@/types/harness';
 
 export const JACKET_CORE_COUNTS: JacketCoreCount[] = [1, 2, 3, 4, 5, 6, 8, 12, 17];
@@ -402,73 +403,283 @@ export function getMoldLinkage(
   return null;
 }
 
-export function alignHarnessConfig(config: HarnessConfig): HarnessConfig {
-  const nextModels = [...config.models];
+export function alignHarnessConfig(config: HarnessConfig, selection?: Selection): HarnessConfig {
+  const nextConnectors = config.connectors.map(c => ({ ...c, position: { ...c.position } }));
+  const nextModels = config.models.map(m => ({ ...m, position: { ...m.position } }));
   const nextMaterials = config.materials.map(m => ({ ...m, position: { ...m.position } }));
   const gap = 8;
-  
-  for (let i = 0; i < nextModels.length; i++) {
-    const model = nextModels[i];
+
+  // 1. Get linkages for all models
+  const linkages: Record<string, MoldLinkage> = {};
+  for (const model of nextModels) {
     const linkage = getMoldLinkage(model, config);
     if (linkage) {
-      const { connector, side, materials } = linkage;
-      const connectorHeight = getConnectorHeight(connector);
-      const connectorWidth = getConnectorNodeWidth(connector);
-      
-      const nextModel = {
-        ...model,
-        height: connectorHeight,
-        position: {
-          ...model.position,
-          y: connector.position.y,
-        },
-      };
-      
-      if (side === 'right') {
-        nextModel.position.x = connector.position.x + connectorWidth + gap;
-        const materialStartX = nextModel.position.x + nextModel.width + gap;
-        const connectorCenterY = connector.position.y + connectorHeight / 2;
-        
-        const materialIds = new Set(materials.map(m => m.id));
-        const groupMaterials = nextMaterials.filter(m => materialIds.has(m.id));
-        if (groupMaterials.length > 0) {
-          const minY = Math.min(...groupMaterials.map(m => m.position.y));
-          const maxY = Math.max(...groupMaterials.map(m => m.position.y + getMaterialNodeHeight(m.spec.kind)));
-          const materialsCenterY = (minY + maxY) / 2;
-          const deltaY = connectorCenterY - materialsCenterY;
-          
-          for (const m of nextMaterials) {
-            if (materialIds.has(m.id)) {
-              m.position.x = materialStartX;
-              m.position.y += deltaY;
-            }
-          }
-        }
-      } else {
-        nextModel.position.x = connector.position.x - nextModel.width - gap;
-        const connectorCenterY = connector.position.y + connectorHeight / 2;
-        
-        const materialIds = new Set(materials.map(m => m.id));
-        const groupMaterials = nextMaterials.filter(m => materialIds.has(m.id));
-        if (groupMaterials.length > 0) {
-          const minY = Math.min(...groupMaterials.map(m => m.position.y));
-          const maxY = Math.max(...groupMaterials.map(m => m.position.y + getMaterialNodeHeight(m.spec.kind)));
-          const materialsCenterY = (minY + maxY) / 2;
-          const deltaY = connectorCenterY - materialsCenterY;
-          
-          for (const m of nextMaterials) {
-            if (materialIds.has(m.id)) {
-              m.position.x = nextModel.position.x - gap - m.width;
-              m.position.y += deltaY;
-            }
-          }
-        }
-      }
-      
-      nextModels[i] = nextModel;
+      linkages[model.id] = linkage;
     }
   }
 
+  // 2. Build graph adjacency list
+  // Node IDs: 'connector:<id>', 'model:<id>', 'material:<id>'
+  interface AdjEdge {
+    to: string;
+    type: 'connector-model' | 'model-material' | 'material-model' | 'model-connector';
+    metadata: {
+      side?: ConnectorSide;
+      endpoint?: MaterialEndpoint;
+      materialIds?: string[];
+    };
+  }
+  const adj: Record<string, AdjEdge[]> = {};
+
+  const addEdge = (u: string, v: string, type: AdjEdge['type'], metadata: AdjEdge['metadata']) => {
+    if (!adj[u]) adj[u] = [];
+    adj[u].push({ to: v, type, metadata });
+  };
+
+  for (const model of nextModels) {
+    const linkage = linkages[model.id];
+    if (!linkage) continue;
+
+    const { connector, side, materials } = linkage;
+    const mNode = `model:${model.id}`;
+    const cNode = `connector:${connector.id}`;
+
+    addEdge(cNode, mNode, 'connector-model', { side });
+    addEdge(mNode, cNode, 'model-connector', { side });
+
+    for (const mat of materials) {
+      const wNode = `material:${mat.id}`;
+      // For model -> material:
+      addEdge(mNode, wNode, 'model-material', { side, materialIds: materials.map(m => m.id) });
+      
+      // For material -> model, find which endpoint of mat is connected to this connector:
+      let endpoint: MaterialEndpoint = 'start';
+      for (const circuit of mat.circuits) {
+        if (circuit.start?.connectorId === connector.id) {
+          endpoint = 'start';
+          break;
+        }
+        if (circuit.end?.connectorId === connector.id) {
+          endpoint = 'end';
+          break;
+        }
+      }
+      addEdge(wNode, mNode, 'material-model', { endpoint, materialIds: materials.map(m => m.id) });
+    }
+  }
+
+  // 3. Find connected components
+  const allNodes = new Set<string>();
+  for (const c of nextConnectors) allNodes.add(`connector:${c.id}`);
+  for (const m of nextModels) allNodes.add(`model:${m.id}`);
+  for (const w of nextMaterials) allNodes.add(`material:${w.id}`);
+
+  const visited = new Set<string>();
+  const components: string[][] = [];
+
+  for (const node of allNodes) {
+    if (visited.has(node)) continue;
+    const comp: string[] = [];
+    const queue: string[] = [node];
+    visited.add(node);
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      comp.push(curr);
+      const neighbors = adj[curr] || [];
+      for (const edge of neighbors) {
+        if (!visited.has(edge.to)) {
+          visited.add(edge.to);
+          queue.push(edge.to);
+        }
+      }
+    }
+    components.push(comp);
+  }
+
+  // 4. Align each component
+  const alignedPositions: Record<string, { x: number; y: number; height?: number }> = {};
+
+  for (const comp of components) {
+    if (comp.length <= 1) continue; // Single isolated element, no alignment needed
+
+    // Choose anchor
+    let anchor = '';
+    if (selection && selection.kind !== 'none') {
+      const selNode = `${selection.kind}:${selection.id}`;
+      if (comp.includes(selNode)) {
+        anchor = selNode;
+      }
+    }
+
+    if (!anchor) {
+      // Find connectors in component
+      const connectorsInComp = comp.filter(n => n.startsWith('connector:'));
+      if (connectorsInComp.length > 0) {
+        // Sort by current x position, pick leftmost
+        connectorsInComp.sort((a, b) => {
+          const aId = a.split(':')[1];
+          const bId = b.split(':')[1];
+          const ax = nextConnectors.find(c => c.id === aId)?.position.x ?? 0;
+          const bx = nextConnectors.find(c => c.id === bId)?.position.x ?? 0;
+          return ax - bx;
+        });
+        anchor = connectorsInComp[0];
+      } else {
+        // Pick leftmost material
+        const materialsInComp = comp.filter(n => n.startsWith('material:'));
+        materialsInComp.sort((a, b) => {
+          const aId = a.split(':')[1];
+          const bId = b.split(':')[1];
+          const ax = nextMaterials.find(m => m.id === aId)?.position.x ?? 0;
+          const bx = nextMaterials.find(m => m.id === bId)?.position.x ?? 0;
+          return ax - bx;
+        });
+        anchor = materialsInComp[0] || comp[0];
+      }
+    }
+
+    // Initialize anchor position
+    const [anchorKind, anchorId] = anchor.split(':');
+    let anchorPos = { x: 0, y: 0 };
+    if (anchorKind === 'connector') {
+      const conn = nextConnectors.find(c => c.id === anchorId)!;
+      anchorPos = { ...conn.position };
+    } else if (anchorKind === 'model') {
+      const model = nextModels.find(m => m.id === anchorId)!;
+      anchorPos = { ...model.position };
+    } else if (anchorKind === 'material') {
+      const mat = nextMaterials.find(m => m.id === anchorId)!;
+      anchorPos = { ...mat.position };
+    }
+    alignedPositions[anchor] = anchorPos;
+
+    // Traverse component to position all other nodes
+    const compVisited = new Set<string>([anchor]);
+    const queue: string[] = [anchor];
+
+    while (queue.length > 0) {
+      const curr = queue.shift()!;
+      const currPos = alignedPositions[curr];
+      const currId = curr.split(':')[1];
+
+      const neighbors = adj[curr] || [];
+      for (const edge of neighbors) {
+        if (compVisited.has(edge.to)) continue;
+        compVisited.add(edge.to);
+
+        const nextNode = edge.to;
+        const nextId = nextNode.split(':')[1];
+
+        if (edge.type === 'connector-model') {
+          const conn = nextConnectors.find(c => c.id === currId)!;
+          const model = nextModels.find(m => m.id === nextId)!;
+          const side = edge.metadata.side;
+          const connWidth = getConnectorNodeWidth(conn);
+          const connHeight = getConnectorHeight(conn);
+
+          const nextX = side === 'right'
+            ? currPos.x + connWidth + gap
+            : currPos.x - model.width - gap;
+          const nextY = currPos.y;
+
+          alignedPositions[nextNode] = { x: nextX, y: nextY, height: connHeight };
+        }
+        else if (edge.type === 'model-connector') {
+          const model = nextModels.find(m => m.id === currId)!;
+          const conn = nextConnectors.find(c => c.id === nextId)!;
+          const side = edge.metadata.side;
+          const connWidth = getConnectorNodeWidth(conn);
+
+          const nextX = side === 'right'
+            ? currPos.x - connWidth - gap
+            : currPos.x + model.width + gap;
+          const nextY = currPos.y;
+
+          alignedPositions[nextNode] = { x: nextX, y: nextY };
+        }
+        else if (edge.type === 'model-material') {
+          const model = nextModels.find(m => m.id === currId)!;
+          const side = edge.metadata.side;
+          const materialIds = edge.metadata.materialIds || [];
+          const groupMaterials = nextMaterials.filter(m => materialIds.includes(m.id));
+
+          const modelHeight = currPos.height ?? model.height;
+          const connectorCenterY = currPos.y + modelHeight / 2;
+
+          if (groupMaterials.length > 0) {
+            const minY = Math.min(...groupMaterials.map(m => m.position.y));
+            const maxY = Math.max(...groupMaterials.map(m => m.position.y + getMaterialNodeHeight(m.spec.kind)));
+            const groupCenterY = (minY + maxY) / 2;
+            const deltaY = connectorCenterY - groupCenterY;
+
+            for (const mat of groupMaterials) {
+              const matNode = `material:${mat.id}`;
+              if (compVisited.has(matNode) && matNode !== nextNode) continue;
+              
+              const nextX = side === 'right'
+                ? currPos.x + model.width + gap
+                : currPos.x - gap - mat.width;
+              const nextY = mat.position.y + deltaY;
+
+              alignedPositions[matNode] = { x: nextX, y: nextY };
+              compVisited.add(matNode);
+              queue.push(matNode);
+            }
+          }
+          continue;
+        }
+        else if (edge.type === 'material-model') {
+          const mat = nextMaterials.find(m => m.id === currId)!;
+          const model = nextModels.find(m => m.id === nextId)!;
+          const endpoint = edge.metadata.endpoint;
+          const materialIds = edge.metadata.materialIds || [];
+          const groupMaterials = nextMaterials.filter(m => materialIds.includes(m.id));
+
+          if (groupMaterials.length > 0) {
+            const minY = Math.min(...groupMaterials.map(m => m.position.y));
+            const maxY = Math.max(...groupMaterials.map(m => m.position.y + getMaterialNodeHeight(m.spec.kind)));
+            const groupCenterY = (minY + maxY) / 2;
+
+            const modelHeight = getConnectorHeight(linkages[model.id].connector);
+            const nextX = endpoint === 'start'
+              ? currPos.x - model.width - gap
+              : currPos.x + mat.width + gap;
+            const nextY = groupCenterY - modelHeight / 2;
+
+            alignedPositions[nextNode] = { x: nextX, y: nextY, height: modelHeight };
+          }
+        }
+
+        queue.push(nextNode);
+      }
+    }
+  }
+
+  // 5. Apply the aligned positions back to connectors, models, and materials
+  for (const c of nextConnectors) {
+    const pos = alignedPositions[`connector:${c.id}`];
+    if (pos) {
+      c.position = { x: pos.x, y: pos.y };
+    }
+  }
+  for (const m of nextModels) {
+    const pos = alignedPositions[`model:${m.id}`];
+    if (pos) {
+      m.position = { x: pos.x, y: pos.y };
+      if (pos.height !== undefined) {
+        m.height = pos.height;
+      }
+    }
+  }
+  for (const mat of nextMaterials) {
+    const pos = alignedPositions[`material:${mat.id}`];
+    if (pos) {
+      mat.position = { x: pos.x, y: pos.y };
+    }
+  }
+
+  // 6. Recalculate protective sleeves
   const nextProtectiveSleeves = config.protectiveSleeves.map((sleeve) => {
     const attachedMaterials = sleeve.attachedMaterialIds
       .map((materialId) => nextMaterials.find((material) => material.id === materialId))
@@ -490,6 +701,7 @@ export function alignHarnessConfig(config: HarnessConfig): HarnessConfig {
 
   return {
     ...config,
+    connectors: nextConnectors,
     models: nextModels,
     materials: nextMaterials,
     protectiveSleeves: nextProtectiveSleeves,
