@@ -21,6 +21,10 @@ export interface Connector {
   type: 'male' | 'female' | 'receptacle';
   pinLabels: string[];
   image?: string;
+  /** Optional M12/industrial connector material fields */
+  housingMaterial?: string;
+  contactMaterial?: string;
+  nutMaterial?: string;
 }
 
 /** Wire type catalog entry */
@@ -226,6 +230,20 @@ export interface ProtectiveSleeve {
 }
 
 // ============================================================
+// Overmold Catalog
+// ============================================================
+
+export interface OvermoldSpec {
+  id: string;
+  name: string;
+  outerMaterial: string;
+  outerHardness?: string;
+  /** '无内模' means no inner mold */
+  innerMaterial: string;
+  innerMaterialOptional?: boolean;
+}
+
+// ============================================================
 // Canvas Model / Outer Mold
 // ============================================================
 
@@ -237,6 +255,8 @@ export interface CanvasModel {
   position: { x: number; y: number };
   width: number;
   height: number;
+  /** Reference to OvermoldSpec catalog entry */
+  overmoldSpecId?: string;
 }
 
 // ============================================================

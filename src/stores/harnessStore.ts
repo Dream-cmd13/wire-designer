@@ -10,6 +10,7 @@ import type {
   TwoDImage,
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
+import { imageAssets } from '@/lib/imageAssets';
 import { createDefaultWireSpec, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import {
   generateId,
@@ -19,69 +20,101 @@ import {
   updateProtectiveSleeve as updateProtectiveSleeveCommand,
 } from '@/lib/commands';
 
+function assetImageByName(name: string): TwoDImage | null {
+  const asset = imageAssets.find((a) => a.name === name);
+  if (!asset) return null;
+  return {
+    id: generateId(),
+    name: asset.name,
+    dataUrl: asset.url,
+    source: 'asset',
+    assetPath: asset.id,
+  };
+}
+
 export function createDefaultConfig(): HarnessConfig {
-  const connectorA: typeof CONNECTORS[number] = CONNECTORS[0]; // JST XH 2P
-  const connectorB: typeof CONNECTORS[number] = CONNECTORS[2]; // JST XH 4P
+  const m12Connector = CONNECTORS.find((c) => c.id === 'm12a04-07-093')!;
 
-  const connectorAId = 'connector-a';
-  const connectorBId = 'connector-b';
+  const connectorId = 'mock-connector-m12';
+  const materialId = 'mock-material-jacketed';
+  const modelId = 'mock-model-overmold';
 
-  const materialId = generateId();
-  const spec = createDefaultWireSpec();
+  const jacketedSpec = {
+    kind: 'jacketed' as const,
+    jacketMaterial: 'PVC' as const,
+    jacketColor: 'black' as const,
+    awg: 22,
+    coreCount: 4 as const,
+    shielded: false,
+    odMm: 4.50,
+    coreColors: ['棕色', '白色', '蓝色', '黑色'],
+    endTreatment: {
+      start: { stripped: false, termination: 'none' as const },
+      end: { stripped: false, termination: 'none' as const },
+    },
+    lengthMm: 300,
+  };
 
   const material: CanvasWireMaterial = {
     id: materialId,
-    name: 'W1',
-    position: { x: 320, y: 220 },
-    width: lengthMmToCanvasWidth(spec.lengthMm),
-    spec,
+    name: 'W1 护套线',
+    position: { x: 280, y: 200 },
+    width: lengthMmToCanvasWidth(jacketedSpec.lengthMm),
+    spec: jacketedSpec,
     circuits: [
-      {
-        id: generateId(),
-        start: { connectorId: connectorAId, connectorSide: 'right', pin: 1 },
-        end: { connectorId: connectorBId, connectorSide: 'left', pin: 1 },
-        color: 'red',
-        signalName: 'VCC',
-      },
-      {
-        id: generateId(),
-        start: { connectorId: connectorAId, connectorSide: 'right', pin: 2 },
-        end: { connectorId: connectorBId, connectorSide: 'left', pin: 2 },
-        color: 'black',
-        signalName: 'GND',
-      },
+      { id: generateId(), color: '棕色', signalName: 'Pin1', coreIndex: 0 },
+      { id: generateId(), color: '白色', signalName: 'Pin2', coreIndex: 1 },
+      { id: generateId(), color: '蓝色', signalName: 'Pin3', coreIndex: 2 },
+      { id: generateId(), color: '黑色', signalName: 'Pin4', coreIndex: 3 },
     ],
     expandedByDefault: true,
   };
 
+  const connectorInstance: ConnectorInstance = {
+    id: connectorId,
+    position: { x: 80, y: 180 },
+    connector: { ...m12Connector },
+    label: 'M12端',
+    jumpers: [],
+  };
+
+  const overmoldModel: CanvasModel = {
+    id: modelId,
+    kind: 'outer-box',
+    position: { x: 160, y: 160 },
+    width: 80,
+    height: 80,
+    overmoldSpecId: 'pvc-45p-pe',
+  };
+
+  // Build twoDImages with auto-associations from root image assets
+  const twoDImages: TwoDImage[] = [];
+
+  const wireImg = assetImageByName('护套线');
+  if (wireImg) twoDImages.push({ ...wireImg, elementKind: 'material', elementId: materialId });
+
+  const connectorImg = assetImageByName('连接器注塑后');
+  if (connectorImg) twoDImages.push({ ...connectorImg, elementKind: 'connector', elementId: connectorId });
+
+  const connectorBeforeImg = assetImageByName('连接器注塑前');
+  if (connectorBeforeImg) twoDImages.push({ ...connectorBeforeImg, elementKind: 'connector', elementId: connectorId });
+
+  const overmoldImg = assetImageByName('外模');
+  if (overmoldImg) twoDImages.push({ ...overmoldImg, elementKind: 'model', elementId: modelId });
+
   return {
     schemaVersion: 3,
     id: generateId(),
-    name: '未命名线束',
+    name: 'M12防水线束示例',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    connectors: [
-      {
-        id: connectorAId,
-        position: { x: 80, y: 200 },
-        connector: { ...connectorA },
-        label: 'A端',
-        jumpers: [],
-      },
-      {
-        id: connectorBId,
-        position: { x: 600, y: 200 },
-        connector: { ...connectorB },
-        label: 'B端',
-        jumpers: [],
-      },
-    ],
+    connectors: [connectorInstance],
     materials: [material],
     protectiveSleeves: [],
-    models: [],
+    models: [overmoldModel],
     quantity: 1,
     leadTime: 'standard',
-    twoDImages: [],
+    twoDImages,
   };
 }
 

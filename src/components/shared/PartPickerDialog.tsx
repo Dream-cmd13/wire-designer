@@ -10,7 +10,7 @@ interface PartPickerDialogProps {
   currentConnectorId?: string;
 }
 
-type FilterKey = 'manufacturer' | 'pinCount' | 'pitch' | 'type';
+type FilterKey = 'manufacturer' | 'pinCount' | 'pitch' | 'type' | 'housingMaterial' | 'contactMaterial' | 'nutMaterial';
 
 export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId }: PartPickerDialogProps) {
   const [search, setSearch] = useState('');
@@ -19,6 +19,9 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
     pinCount: new Set(),
     pitch: new Set(),
     type: new Set(),
+    housingMaterial: new Set(),
+    contactMaterial: new Set(),
+    nutMaterial: new Set(),
   });
   const [selectedId, setSelectedId] = useState<string | null>(currentConnectorId || null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -78,6 +81,9 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   const pinCounts = [...new Set(CONNECTORS.map((c) => c.pinCount))].sort((a, b) => a - b);
   const pitches = [...new Set(CONNECTORS.filter((c) => c.pitch).map((c) => c.pitch!))].sort((a, b) => a - b);
   const types = [...new Set(CONNECTORS.map((c) => c.type))] as string[];
+  const housingMaterials = [...new Set(CONNECTORS.filter((c) => c.housingMaterial).map((c) => c.housingMaterial!))].sort();
+  const contactMaterials = [...new Set(CONNECTORS.filter((c) => c.contactMaterial).map((c) => c.contactMaterial!))].sort();
+  const nutMaterials = [...new Set(CONNECTORS.filter((c) => c.nutMaterial).map((c) => c.nutMaterial!))].sort();
 
   // Apply filters
   let results = CONNECTORS;
@@ -102,6 +108,15 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   if (filters.type.size > 0) {
     results = results.filter((c) => filters.type.has(c.type));
   }
+  if (filters.housingMaterial.size > 0) {
+    results = results.filter((c) => c.housingMaterial && filters.housingMaterial.has(c.housingMaterial));
+  }
+  if (filters.contactMaterial.size > 0) {
+    results = results.filter((c) => c.contactMaterial && filters.contactMaterial.has(c.contactMaterial));
+  }
+  if (filters.nutMaterial.size > 0) {
+    results = results.filter((c) => c.nutMaterial && filters.nutMaterial.has(c.nutMaterial));
+  }
 
   const toggleFilter = (key: FilterKey, value: string) => {
     setFilters((prev) => {
@@ -113,13 +128,17 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   };
 
   const clearFilters = () => {
-    setFilters({ manufacturer: new Set(), pinCount: new Set(), pitch: new Set(), type: new Set() });
+    setFilters({
+      manufacturer: new Set(), pinCount: new Set(), pitch: new Set(), type: new Set(),
+      housingMaterial: new Set(), contactMaterial: new Set(), nutMaterial: new Set(),
+    });
     setSearch('');
   };
 
   const hasActiveFilters = search.trim() !== '' ||
     filters.manufacturer.size > 0 || filters.pinCount.size > 0 ||
-    filters.pitch.size > 0 || filters.type.size > 0;
+    filters.pitch.size > 0 || filters.type.size > 0 ||
+    filters.housingMaterial.size > 0 || filters.contactMaterial.size > 0 || filters.nutMaterial.size > 0;
 
   const selectedConnector = CONNECTORS.find((c) => c.id === selectedId);
 
@@ -177,6 +196,9 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
             <FilterGroup label="Pin 数" options={pinCounts.map(String)} selected={filters.pinCount} onToggle={(v) => toggleFilter('pinCount', v)} />
             <FilterGroup label="间距 (mm)" options={pitches.map(String)} selected={filters.pitch} onToggle={(v) => toggleFilter('pitch', v)} />
             <FilterGroup label="类型" options={types} selected={filters.type} onToggle={(v) => toggleFilter('type', v)} />
+            <FilterGroup label="外壳材质" options={housingMaterials} selected={filters.housingMaterial} onToggle={(v) => toggleFilter('housingMaterial', v)} />
+            <FilterGroup label="接触件材质" options={contactMaterials} selected={filters.contactMaterial} onToggle={(v) => toggleFilter('contactMaterial', v)} />
+            <FilterGroup label="螺母材质" options={nutMaterials} selected={filters.nutMaterial} onToggle={(v) => toggleFilter('nutMaterial', v)} />
           </div>
 
           {/* Results */}
@@ -230,6 +252,9 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
                 <div><span className="text-slate-400">PIN 数：</span><span className="text-slate-700">{selectedConnector.pinCount}</span></div>
                 <div><span className="text-slate-400">间距：</span><span className="text-slate-700">{selectedConnector.pitch ? `${selectedConnector.pitch}mm` : '-'}</span></div>
                 <div><span className="text-slate-400">类型：</span><span className="text-slate-700">{selectedConnector.type}</span></div>
+                {selectedConnector.housingMaterial && <div><span className="text-slate-400">外壳材质：</span><span className="text-slate-700">{selectedConnector.housingMaterial}</span></div>}
+                {selectedConnector.contactMaterial && <div><span className="text-slate-400">接触件材质：</span><span className="text-slate-700">{selectedConnector.contactMaterial}</span></div>}
+                {selectedConnector.nutMaterial && <div><span className="text-slate-400">螺母材质：</span><span className="text-slate-700">{selectedConnector.nutMaterial}</span></div>}
               </div>
               {selectedConnector.pinLabels.length > 0 && (
                 <>

@@ -1,4 +1,4 @@
-import type { Connector, WireType, WireColor, WireGauge } from '@/types/harness';
+import type { Connector, OvermoldSpec, WireType, WireColor, WireGauge } from '@/types/harness';
 
 // ============================================================
 // Connector Catalog (20+ types with pinLabels)
@@ -57,6 +57,17 @@ export const CONNECTORS: Connector[] = [
   { id: 'm8-4', name: 'M8 4-Pin', manufacturer: 'Generic', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'] },
   { id: 'm12-4', name: 'M12 4-Pin (A-Coded)', manufacturer: 'Generic', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'] },
   { id: 'm12-5', name: 'M12 5-Pin (A-Coded)', manufacturer: 'Generic', pinCount: 5, type: 'male', pinLabels: ['1', '2', '3', '4', '5'] },
+  {
+    id: 'm12a04-07-093',
+    name: 'M12成型式防水连接器 4芯 A编码 焊线式公头 非屏蔽款+11.8L双网纹螺丝',
+    manufacturer: '万连',
+    pinCount: 4,
+    type: 'male',
+    pinLabels: ['1', '2', '3', '4'],
+    housingMaterial: 'PA66+GF',
+    contactMaterial: '黄铜镀金',
+    nutMaterial: '黄铜镀镍',
+  },
 
   // --- Automotive: Deutsch DT ---
   { id: 'deutsch-dt-2', name: 'Deutsch DT 2P', manufacturer: 'Deutsch', pinCount: 2, pitch: 6.35, type: 'receptacle', pinLabels: ['A', 'B'] },
@@ -104,6 +115,21 @@ export const WIRE_GAUGES: WireGauge[] = [
   { awg: 26, diameterMm: 0.405, maxCurrent: 2.2 },
   { awg: 28, diameterMm: 0.321, maxCurrent: 1.4 },
   { awg: 30, diameterMm: 0.255, maxCurrent: 0.9 },
+];
+
+// ============================================================
+// Overmold Catalog (外模目录)
+// ============================================================
+
+export const OVERMOLDS: OvermoldSpec[] = [
+  {
+    id: 'pvc-45p-pe',
+    name: '黑色PVC外模 + 透明PE内模',
+    outerMaterial: '黑色PVC胶料',
+    outerHardness: '45P',
+    innerMaterial: '低密度透明PE胶料',
+    innerMaterialOptional: true,
+  },
 ];
 
 // ============================================================

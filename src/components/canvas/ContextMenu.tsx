@@ -6,7 +6,6 @@ import {
   Edit3,
   Eye,
   Hash,
-  Image,
   Layers3,
   Maximize2,
   Plus,
@@ -72,7 +71,6 @@ interface ContextMenuProps {
   onDeleteJumper: (jumperId: string) => void;
   onFitView: () => void;
   hasSelection: boolean;
-  onAssociateTwoD: (kind: 'connector' | 'material' | 'sleeve' | 'model', id: string) => void;
 }
 
 function MenuItem({
@@ -132,7 +130,6 @@ export function ContextMenu({
   onDeleteJumper,
   onFitView,
   hasSelection,
-  onAssociateTwoD,
 }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPos, setAdjustedPos] = useState({ x: state.x, y: state.y });
@@ -196,7 +193,6 @@ export function ContextMenu({
         <>
           <MenuItem icon={<Edit3 className="h-4 w-4" />} label="编辑属性" onClick={menuAction(() => onEditConnector(state.connectorId!), onClose)} />
           <MenuItem icon={<Eye className="h-4 w-4" />} label="更换连接器型号" onClick={menuAction(() => onChangeConnector(state.connectorId!), onClose)} />
-          <MenuItem icon={<Image className="h-4 w-4" />} label="关联 2D 图" onClick={menuAction(() => onAssociateTwoD('connector', state.connectorId!), onClose)} />
           <div className="my-1 border-t border-slate-100" />
           <MenuItem icon={<Copy className="h-4 w-4" />} label="复制连接器" onClick={menuAction(() => onCopyConnector(state.connectorId!), onClose)} />
           <div className="my-1 border-t border-slate-100" />
@@ -210,7 +206,6 @@ export function ContextMenu({
           <MenuItem icon={<Layers3 className="h-4 w-4" />} label="添加保护套" onClick={menuAction(() => onAddProtectiveSleeve(state.materialId!), onClose)} />
           <MenuItem icon={<Tag className="h-4 w-4" />} label="添加标签" onClick={menuAction(() => onAddMaterialLabel(state.materialId!), onClose)} />
           <MenuItem icon={<Hash className="h-4 w-4" />} label="添加号码管" onClick={menuAction(() => onAddMaterialNumberTube(state.materialId!), onClose)} />
-          <MenuItem icon={<Image className="h-4 w-4" />} label="关联 2D 图" onClick={menuAction(() => onAssociateTwoD('material', state.materialId!), onClose)} />
           <div className="my-1 border-t border-slate-100" />
           <MenuItem icon={<Trash2 className="h-4 w-4" />} label="删除线材" onClick={menuAction(() => onDeleteMaterial(state.materialId!), onClose)} destructive />
         </>
@@ -219,7 +214,6 @@ export function ContextMenu({
       {state.kind === 'sleeve' && state.sleeveId && (
         <>
           <MenuItem icon={<Edit3 className="h-4 w-4" />} label="编辑保护套" onClick={menuAction(() => onEditSleeve(state.sleeveId!), onClose)} />
-          <MenuItem icon={<Image className="h-4 w-4" />} label="关联 2D 图" onClick={menuAction(() => onAssociateTwoD('sleeve', state.sleeveId!), onClose)} />
           <div className="my-1 border-t border-slate-100" />
           <MenuItem icon={<Trash2 className="h-4 w-4" />} label="删除保护套" onClick={menuAction(() => onDeleteSleeve(state.sleeveId!), onClose)} destructive />
         </>
@@ -227,8 +221,6 @@ export function ContextMenu({
 
       {state.kind === 'model' && state.modelId && (
         <>
-          <MenuItem icon={<Image className="h-4 w-4" />} label="关联 2D 图" onClick={menuAction(() => onAssociateTwoD('model', state.modelId!), onClose)} />
-          <div className="my-1 border-t border-slate-100" />
           <MenuItem icon={<Trash2 className="h-4 w-4" />} label="删除外模" onClick={menuAction(() => onDeleteModel(state.modelId!), onClose)} destructive />
         </>
       )}
