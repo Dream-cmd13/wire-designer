@@ -2,8 +2,9 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Tag, X } from 'lucide-react';
 import { Handle, Position } from '@xyflow/react';
 import {
-  CANVAS_MATERIAL_HEIGHT,
-  CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+  getMaterialNodeHeight,
+  getMaterialCenterY,
+  getMaterialStripHeight,
 } from '@/lib/canvasMaterials';
 import { WIRE_COLORS } from '@/lib/data';
 import { useHarnessStore } from '@/stores/harnessStore';
@@ -215,7 +216,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   return (
     <div
       className="relative wire-material-drag cursor-grab active:cursor-grabbing"
-      style={{ width: data.width, minHeight: CANVAS_MATERIAL_HEIGHT }}
+      style={{ width: data.width, minHeight: getMaterialNodeHeight(spec.kind) }}
     >
       <Handle
         id="start"
@@ -226,7 +227,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
           selectMaterialConnectionPoint({ kind: 'material', materialId: data.id, endpoint: 'start' });
         }}
         className="!h-4 !w-4 !border-2 !border-white !bg-amber-500 shadow"
-        style={{ top: CANVAS_MATERIAL_SLEEVE_CENTER_Y }}
+        style={{ top: getMaterialCenterY(spec.kind) }}
       />
       <Handle
         id="end"
@@ -237,7 +238,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
           selectMaterialConnectionPoint({ kind: 'material', materialId: data.id, endpoint: 'end' });
         }}
         className="!h-4 !w-4 !border-2 !border-white !bg-amber-500 shadow"
-        style={{ top: CANVAS_MATERIAL_SLEEVE_CENTER_Y }}
+        style={{ top: getMaterialCenterY(spec.kind) }}
       />
 
       {data.labels?.length ? (
@@ -282,7 +283,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
             selected ? 'ring-2 ring-blue-300 ring-offset-2' : ''
           }`}
         >
-          <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+          <div style={{ height: getMaterialStripHeight(spec.kind) }} className="overflow-hidden rounded-full bg-slate-100">
             <div
               className="h-full w-full"
               style={{

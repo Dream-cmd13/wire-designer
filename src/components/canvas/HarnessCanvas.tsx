@@ -29,11 +29,16 @@ import '@xyflow/react/dist/style.css';
 import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper, removeMaterialCircuit } from '@/lib/commands';
 import {
   CANVAS_MODEL_SIZE,
-  CANVAS_MATERIAL_SLEEVE_CENTER_Y,
-  CONNECTOR_NODE_WIDTH,
   createDefaultCanvasMaterial,
   lengthMmToCanvasWidth,
   placeSleeveAroundMaterials,
+  getConnectorNodeWidth,
+  getConnectorHeight,
+  getConnectorPinHandlePosition,
+  getMaterialEndpointPoint,
+  getMaterialCenterY,
+  segmentIntersectsRect,
+  getVisiblePinCount,
 } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
@@ -102,39 +107,6 @@ function parseSideFromHandleId(handleId?: string | null): ConnectorSide | undefi
   return undefined;
 }
 
-function getConnectorHeight(instance: ConnectorInstance): number {
-  const pinCount = instance.connector?.pinCount ?? 2;
-  // All pins are rendered (no fold), so height reflects full pin count.
-  return 52 + pinCount * 20 + 32;
-}
-
-function getVisiblePinCount(instance: ConnectorInstance): number {
-  // All pins are rendered — no 6-pin cap.
-  return instance.connector?.pinCount ?? 2;
-}
-
-function getMaterialEndpointPoint(
-  material: CanvasWireMaterial,
-  endpoint: MaterialEndpoint,
-): { x: number; y: number } {
-  return {
-    x: endpoint === 'start' ? material.position.x : material.position.x + material.width,
-    y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
-  };
-}
-
-function getConnectorPinHandlePosition(
-  instance: ConnectorInstance,
-  side: ConnectorSide,
-  pin: number,
-): { x: number; y: number } {
-  const clampedPin = Math.max(1, Math.min(pin, getVisiblePinCount(instance)));
-  return {
-    x: instance.position.x + (side === 'left' ? 0 : CONNECTOR_NODE_WIDTH),
-    y: instance.position.y + 52 + (clampedPin - 0.5) * 20,
-  };
-}
-
 function resolveNearestConnectorHandle(
   instance: ConnectorInstance,
   point: { x: number; y: number },
@@ -189,48 +161,6 @@ function getModelRect(model: CanvasModel) {
   };
 }
 
-function pointInRect(point: { x: number; y: number }, rect: { x: number; y: number; width: number; height: number }) {
-  return (
-    point.x >= rect.x
-    && point.x <= rect.x + rect.width
-    && point.y >= rect.y
-    && point.y <= rect.y + rect.height
-  );
-}
-
-function ccw(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
-  return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
-}
-
-function segmentsIntersect(
-  a1: { x: number; y: number },
-  a2: { x: number; y: number },
-  b1: { x: number; y: number },
-  b2: { x: number; y: number },
-) {
-  return ccw(a1, b1, b2) !== ccw(a2, b1, b2) && ccw(a1, a2, b1) !== ccw(a1, a2, b2);
-}
-
-function segmentIntersectsRect(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
-  rect: { x: number; y: number; width: number; height: number },
-) {
-  if (pointInRect(start, rect) || pointInRect(end, rect)) return true;
-
-  const topLeft = { x: rect.x, y: rect.y };
-  const topRight = { x: rect.x + rect.width, y: rect.y };
-  const bottomLeft = { x: rect.x, y: rect.y + rect.height };
-  const bottomRight = { x: rect.x + rect.width, y: rect.y + rect.height };
-
-  return (
-    segmentsIntersect(start, end, topLeft, topRight)
-    || segmentsIntersect(start, end, topRight, bottomRight)
-    || segmentsIntersect(start, end, bottomRight, bottomLeft)
-    || segmentsIntersect(start, end, bottomLeft, topLeft)
-  );
-}
-
 function findModelPlacement(
   config: HarnessConfig,
   flowPosition: { x: number; y: number },
@@ -240,8 +170,8 @@ function findModelPlacement(
   let minDist = Infinity;
 
   for (const connector of config.connectors) {
-    const cx = connector.position.x + CONNECTOR_NODE_WIDTH / 2;
-    const cy = connector.position.y + 80;
+    const cx = connector.position.x + getConnectorNodeWidth(connector) / 2;
+    const cy = connector.position.y + getConnectorHeight(connector) / 2;
     const d = Math.hypot(cx - flowPosition.x, cy - flowPosition.y);
     if (d < minDist) {
       minDist = d;
@@ -252,16 +182,13 @@ function findModelPlacement(
   if (bestConnector) {
     // Which side has active connections (where the wire exits the connector)
     const activeSide = getActiveConnectorSide(config, bestConnector.id) ?? 'right';
-
-    // Vertically center on the connector pin area
-    const pinCount = bestConnector.connector.pinCount;
-    const connectorCenterY = bestConnector.position.y + 52 + (pinCount / 2) * 20;
-    const modelY = connectorCenterY - CANVAS_MODEL_SIZE / 2;
+    const modelY = bestConnector.position.y;
+    const connectorWidth = getConnectorNodeWidth(bestConnector);
 
     if (activeSide === 'right') {
       // Place overmold just to the RIGHT of the connector's right edge
       return {
-        x: bestConnector.position.x + CONNECTOR_NODE_WIDTH + 8,
+        x: bestConnector.position.x + connectorWidth + 8,
         y: modelY,
       };
     } else {
@@ -1161,7 +1088,7 @@ function HarnessCanvasInner() {
           const distance = distanceToRect(point, {
             x: connector.position.x,
             y: connector.position.y,
-            width: CONNECTOR_NODE_WIDTH,
+            width: getConnectorNodeWidth(connector),
             height: getConnectorHeight(connector),
           });
           if (distance > 28) return undefined;
@@ -1366,7 +1293,7 @@ function HarnessCanvasInner() {
         y: node.position.y + sleeve.height / 2,
       };
       const targetMaterials = state.config.materials.filter((material) => {
-        const materialCenterY = material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y;
+        const materialCenterY = material.position.y + getMaterialCenterY(material.spec.kind);
         return (
           center.x >= material.position.x - 15
           && center.x <= material.position.x + material.width + 15
@@ -1779,12 +1706,26 @@ function HarnessCanvasInner() {
           onClose={() => setModelDialogPosition(null)}
           onSelect={(overmold) => {
             const state = useHarnessStore.getState();
+            const placementPos = findModelPlacement(state.config, modelDialogPosition);
+            
+            let connectorHeight = CANVAS_MODEL_SIZE;
+            let minDist = Infinity;
+            for (const connector of state.config.connectors) {
+              const cx = connector.position.x + getConnectorNodeWidth(connector) / 2;
+              const cy = connector.position.y + getConnectorHeight(connector) / 2;
+              const d = Math.hypot(cx - modelDialogPosition.x, cy - modelDialogPosition.y);
+              if (d < minDist) {
+                minDist = d;
+                connectorHeight = getConnectorHeight(connector);
+              }
+            }
+
             const model: CanvasModel = {
               id: generateId(),
               kind: 'outer-box',
-              position: findModelPlacement(state.config, modelDialogPosition),
+              position: placementPos,
               width: CANVAS_MODEL_SIZE,
-              height: CANVAS_MODEL_SIZE,
+              height: connectorHeight,
               overmoldSpecId: overmold.id,
             };
             state.addModel(model);

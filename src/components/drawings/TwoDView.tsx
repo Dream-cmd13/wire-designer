@@ -13,7 +13,6 @@ const EMPTY_IMAGES: TwoDImage[] = [];
 const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.15;
-const IMAGE_GAP = 8; // gap between images in flex row
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 function useElementLabel(

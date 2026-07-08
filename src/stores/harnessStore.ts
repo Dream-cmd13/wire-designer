@@ -11,7 +11,7 @@ import type {
 } from '@/types/harness';
 import { CONNECTORS } from '@/lib/data';
 import { imageAssets } from '@/lib/imageAssets';
-import { lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import { lengthMmToCanvasWidth, alignHarnessConfig } from '@/lib/canvasMaterials';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
 import {
   generateId,
@@ -183,25 +183,33 @@ export const useHarnessStore = create<HarnessState>()(
       saveState: { status: 'saved', savedAt: Date.now() },
 
       setConfig: (updates) =>
-        set((state) => ({
-          config: { ...state.config, ...updates, updatedAt: Date.now() },
-          saveState: dirtyState(),
-        })),
+        set((state) => {
+          const next = alignHarnessConfig({ ...state.config, ...updates, updatedAt: Date.now() });
+          return {
+            config: next,
+            saveState: dirtyState(),
+          };
+        }),
 
       patchDocument: (partial) =>
-        set((state) => ({
-          config: { ...state.config, ...partial, updatedAt: Date.now() },
-          saveState: dirtyState(),
-        })),
+        set((state) => {
+          const next = alignHarnessConfig({ ...state.config, ...partial, updatedAt: Date.now() });
+          return {
+            config: next,
+            saveState: dirtyState(),
+          };
+        }),
 
-      replaceDocument: (fullConfig, options) =>
+      replaceDocument: (fullConfig, options) => {
+        const aligned = alignHarnessConfig(fullConfig);
         set({
           config: options?.markSaved
-            ? fullConfig
-            : { ...fullConfig, twoDImages: syncTwoDImages(fullConfig) },
+            ? aligned
+            : { ...aligned, twoDImages: syncTwoDImages(aligned) },
           selection: { kind: 'none' },
           saveState: options?.markSaved ? { status: 'saved', savedAt: Date.now() } : dirtyState(),
-        }),
+        });
+      },
 
       markSaving: () => set({ saveState: { status: 'saving' } }),
       markSaved: () => set({ saveState: { status: 'saved', savedAt: Date.now() } }),
@@ -209,11 +217,11 @@ export const useHarnessStore = create<HarnessState>()(
 
       addConnector: (connector) =>
         set((state) => {
-          const nextConfig = {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             connectors: [...state.config.connectors, connector],
             updatedAt: Date.now(),
-          };
+          });
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -222,13 +230,13 @@ export const useHarnessStore = create<HarnessState>()(
 
       updateConnector: (id, updates) =>
         set((state) => {
-          const nextConfig = {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             connectors: state.config.connectors.map((c) =>
               c.id === id ? { ...c, ...updates } : c,
             ),
             updatedAt: Date.now(),
-          };
+          });
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -242,7 +250,7 @@ export const useHarnessStore = create<HarnessState>()(
               ? ({ kind: 'none' } as const)
               : state.selection;
 
-          const nextConfig = removeConnectorCommand(state.config, id);
+          const nextConfig = alignHarnessConfig(removeConnectorCommand(state.config, id));
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             selection: nextSelection,
@@ -252,11 +260,11 @@ export const useHarnessStore = create<HarnessState>()(
 
       addMaterial: (material) =>
         set((state) => {
-          const nextConfig = {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             materials: [...state.config.materials, material],
             updatedAt: Date.now(),
-          };
+          });
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -265,7 +273,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       updateMaterial: (id, updates) =>
         set((state) => {
-          const nextConfig = updateMaterialCommand(state.config, id, updates);
+          const nextConfig = alignHarnessConfig(updateMaterialCommand(state.config, id, updates));
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -274,7 +282,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       removeMaterial: (id) =>
         set((state) => {
-          const nextConfig = removeMaterialCommand(state.config, id);
+          const nextConfig = alignHarnessConfig(removeMaterialCommand(state.config, id));
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -282,38 +290,47 @@ export const useHarnessStore = create<HarnessState>()(
         }),
 
       addProtectiveSleeve: (sleeve) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             protectiveSleeves: [...state.config.protectiveSleeves, sleeve],
             updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
+          });
+          return {
+            config: nextConfig,
+            saveState: dirtyState(),
+          };
+        }),
 
       updateProtectiveSleeve: (id, updates) =>
-        set((state) => ({
-          config: updateProtectiveSleeveCommand(state.config, id, updates),
-          saveState: dirtyState(),
-        })),
+        set((state) => {
+          const nextConfig = alignHarnessConfig(updateProtectiveSleeveCommand(state.config, id, updates));
+          return {
+            config: nextConfig,
+            saveState: dirtyState(),
+          };
+        }),
 
       removeProtectiveSleeve: (id) =>
-        set((state) => ({
-          config: {
+        set((state) => {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             protectiveSleeves: state.config.protectiveSleeves.filter((item) => item.id !== id),
             updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
+          });
+          return {
+            config: nextConfig,
+            saveState: dirtyState(),
+          };
+        }),
 
       addModel: (model) =>
         set((state) => {
-          const nextConfig = {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             models: [...state.config.models, model],
             updatedAt: Date.now(),
-          };
+          });
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -322,13 +339,13 @@ export const useHarnessStore = create<HarnessState>()(
 
       updateModel: (id, updates) =>
         set((state) => {
-          const nextConfig = {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             models: state.config.models.map((item) =>
               item.id === id ? { ...item, ...updates } : item,
             ),
             updatedAt: Date.now(),
-          };
+          });
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -337,11 +354,11 @@ export const useHarnessStore = create<HarnessState>()(
 
       removeModel: (id) =>
         set((state) => {
-          const nextConfig = {
+          const nextConfig = alignHarnessConfig({
             ...state.config,
             models: state.config.models.filter((item) => item.id !== id),
             updatedAt: Date.now(),
-          };
+          });
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             selection: state.selection.kind === 'model' && state.selection.id === id

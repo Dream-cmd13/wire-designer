@@ -9,6 +9,10 @@ import type {
   ProtectiveSleeveType,
   WireEndProcessing,
   WireEndTreatment,
+  ConnectorInstance,
+  ConnectorSide,
+  MaterialEndpoint,
+  HarnessConfig,
 } from '@/types/harness';
 
 export const JACKET_CORE_COUNTS: JacketCoreCount[] = [1, 2, 3, 4, 5, 6, 8, 12, 17];
@@ -110,13 +114,29 @@ export function lengthMmToCanvasWidth(lengthMm: number): number {
  * Position an attached sleeve around the visual center line of a material.
  * This is the single source of truth for create, resize, move, and edit flows.
  */
+export function getMaterialCenterY(kind: 'electronic' | 'jacketed'): number {
+  return kind === 'electronic' ? 11 : 21;
+}
+
+export function getMaterialNodeHeight(kind: 'electronic' | 'jacketed'): number {
+  return kind === 'electronic' ? 22 : 42;
+}
+
+export function getMaterialStripHeight(kind: 'electronic' | 'jacketed'): number {
+  return kind === 'electronic' ? 10 : 30;
+}
+
+/**
+ * Position an attached sleeve around the visual center line of a material.
+ * This is the single source of truth for create, resize, move, and edit flows.
+ */
 export function centerSleeveOnMaterial(
-  material: Pick<CanvasWireMaterial, 'position' | 'width'>,
+  material: Pick<CanvasWireMaterial, 'position' | 'width' | 'spec'>,
   sleeveWidth: number,
 ): { x: number; y: number } {
   return {
     x: material.position.x + (material.width - sleeveWidth) / 2,
-    y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y - PROTECTIVE_SLEEVE_HEIGHT / 2,
+    y: material.position.y + getMaterialCenterY(material.spec.kind) - PROTECTIVE_SLEEVE_HEIGHT / 2,
   };
 }
 
@@ -126,21 +146,22 @@ export function centerSleeveOnMaterial(
  * can cover two wires, four wires, or any other explicit combination.
  */
 export function placeSleeveAroundMaterials(
-  materials: Array<Pick<CanvasWireMaterial, 'position' | 'width'>>,
+  materials: Array<Pick<CanvasWireMaterial, 'position' | 'width' | 'spec'>>,
   sleeveWidth: number,
 ): { position: { x: number; y: number }; height: number } | undefined {
   if (materials.length === 0) return undefined;
 
   const centers = materials.map((material) => ({
     x: material.position.x + material.width / 2,
-    y: material.position.y + CANVAS_MATERIAL_SLEEVE_CENTER_Y,
+    y: material.position.y + getMaterialCenterY(material.spec.kind),
   }));
   const centerX = centers.reduce((sum, point) => sum + point.x, 0) / centers.length;
   const minY = Math.min(...centers.map((point) => point.y));
   const maxY = Math.max(...centers.map((point) => point.y));
+  const maxStripHeight = Math.max(...materials.map(m => getMaterialStripHeight(m.spec.kind)));
   const height = Math.max(
     PROTECTIVE_SLEEVE_HEIGHT,
-    maxY - minY + CANVAS_MATERIAL_STRIP_HEIGHT + PROTECTIVE_SLEEVE_VERTICAL_PADDING * 2,
+    maxY - minY + maxStripHeight + PROTECTIVE_SLEEVE_VERTICAL_PADDING * 2,
   );
 
   return {
@@ -237,5 +258,240 @@ export function createDefaultCanvasMaterial(
     spec,
     circuits: [],
     expandedByDefault: true,
+  };
+}
+
+export function getConnectorNodeWidth(instance: ConnectorInstance | undefined | null): number {
+  if (!instance) return 236;
+  const labelLength = instance.label?.length || 0;
+  const nameLength = instance.connector?.name?.length || 0;
+  const labelWidth = labelLength * 8 + 40;
+  const nameWidth = nameLength * 6.5 + 40;
+  const maxContentWidth = Math.max(labelWidth, nameWidth);
+  return Math.max(236, maxContentWidth);
+}
+
+export function getConnectorHeight(instance: ConnectorInstance): number {
+  const pinCount = instance.connector?.pinCount ?? 2;
+  return 52 + pinCount * 20 + 32;
+}
+
+export function getVisiblePinCount(instance: ConnectorInstance): number {
+  return instance.connector?.pinCount ?? 2;
+}
+
+export function getMaterialEndpointPoint(
+  material: CanvasWireMaterial,
+  endpoint: MaterialEndpoint,
+): { x: number; y: number } {
+  return {
+    x: endpoint === 'start' ? material.position.x : material.position.x + material.width,
+    y: material.position.y + getMaterialCenterY(material.spec.kind),
+  };
+}
+
+export function getConnectorPinHandlePosition(
+  instance: ConnectorInstance,
+  side: ConnectorSide,
+  pin: number,
+): { x: number; y: number } {
+  const clampedPin = Math.max(1, Math.min(pin, getVisiblePinCount(instance)));
+  return {
+    x: instance.position.x + (side === 'left' ? 0 : getConnectorNodeWidth(instance)),
+    y: instance.position.y + 52 + (clampedPin - 0.5) * 20,
+  };
+}
+
+export function pointInRect(point: { x: number; y: number }, rect: { x: number; y: number; width: number; height: number }) {
+  return (
+    point.x >= rect.x
+    && point.x <= rect.x + rect.width
+    && point.y >= rect.y
+    && point.y <= rect.y + rect.height
+  );
+}
+
+function ccw(a: { x: number; y: number }, b: { x: number; y: number }, c: { x: number; y: number }) {
+  return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x);
+}
+
+export function segmentsIntersect(
+  a1: { x: number; y: number },
+  a2: { x: number; y: number },
+  b1: { x: number; y: number },
+  b2: { x: number; y: number },
+) {
+  return ccw(a1, b1, b2) !== ccw(a2, b1, b2) && ccw(a1, a2, b1) !== ccw(a1, a2, b2);
+}
+
+export function segmentIntersectsRect(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  rect: { x: number; y: number; width: number; height: number },
+) {
+  if (pointInRect(start, rect) || pointInRect(end, rect)) return true;
+
+  const topLeft = { x: rect.x, y: rect.y };
+  const topRight = { x: rect.x + rect.width, y: rect.y };
+  const bottomLeft = { x: rect.x, y: rect.y + rect.height };
+  const bottomRight = { x: rect.x + rect.width, y: rect.y + rect.height };
+
+  return (
+    segmentsIntersect(start, end, topLeft, topRight)
+    || segmentsIntersect(start, end, topRight, bottomRight)
+    || segmentsIntersect(start, end, bottomRight, bottomLeft)
+    || segmentsIntersect(start, end, bottomLeft, topLeft)
+  );
+}
+
+export interface MoldLinkage {
+  connector: ConnectorInstance;
+  side: ConnectorSide;
+  materials: CanvasWireMaterial[];
+}
+
+export function getMoldLinkage(
+  model: CanvasModel,
+  config: HarnessConfig,
+): MoldLinkage | null {
+  const rect = {
+    x: model.position.x,
+    y: model.position.y,
+    width: model.width,
+    height: model.height,
+  };
+  
+  let linkedConnector: ConnectorInstance | null = null;
+  let linkedSide: ConnectorSide | null = null;
+  const linkedMaterials: CanvasWireMaterial[] = [];
+
+  for (const material of config.materials) {
+    let materialLinked = false;
+    for (const circuit of material.circuits) {
+      for (const endpoint of ['start', 'end'] as const) {
+        const ref = circuit[endpoint];
+        if (!ref) continue;
+        const connector = config.connectors.find((item) => item.id === ref.connectorId);
+        if (!connector) continue;
+        
+        const p1 = getMaterialEndpointPoint(material, endpoint);
+        const p2 = getConnectorPinHandlePosition(connector, ref.connectorSide, ref.pin);
+        
+        if (segmentIntersectsRect(p1, p2, rect)) {
+          materialLinked = true;
+          if (!linkedConnector) {
+            linkedConnector = connector;
+            linkedSide = ref.connectorSide;
+          }
+        }
+      }
+    }
+    if (materialLinked) {
+      linkedMaterials.push(material);
+    }
+  }
+
+  if (linkedConnector && linkedSide) {
+    return {
+      connector: linkedConnector,
+      side: linkedSide,
+      materials: linkedMaterials,
+    };
+  }
+
+  return null;
+}
+
+export function alignHarnessConfig(config: HarnessConfig): HarnessConfig {
+  const nextModels = [...config.models];
+  const nextMaterials = config.materials.map(m => ({ ...m, position: { ...m.position } }));
+  const gap = 8;
+  
+  for (let i = 0; i < nextModels.length; i++) {
+    const model = nextModels[i];
+    const linkage = getMoldLinkage(model, config);
+    if (linkage) {
+      const { connector, side, materials } = linkage;
+      const connectorHeight = getConnectorHeight(connector);
+      const connectorWidth = getConnectorNodeWidth(connector);
+      
+      const nextModel = {
+        ...model,
+        height: connectorHeight,
+        position: {
+          ...model.position,
+          y: connector.position.y,
+        },
+      };
+      
+      if (side === 'right') {
+        nextModel.position.x = connector.position.x + connectorWidth + gap;
+        const materialStartX = nextModel.position.x + nextModel.width + gap;
+        const connectorCenterY = connector.position.y + connectorHeight / 2;
+        
+        const materialIds = new Set(materials.map(m => m.id));
+        const groupMaterials = nextMaterials.filter(m => materialIds.has(m.id));
+        if (groupMaterials.length > 0) {
+          const minY = Math.min(...groupMaterials.map(m => m.position.y));
+          const maxY = Math.max(...groupMaterials.map(m => m.position.y + getMaterialNodeHeight(m.spec.kind)));
+          const materialsCenterY = (minY + maxY) / 2;
+          const deltaY = connectorCenterY - materialsCenterY;
+          
+          for (const m of nextMaterials) {
+            if (materialIds.has(m.id)) {
+              m.position.x = materialStartX;
+              m.position.y += deltaY;
+            }
+          }
+        }
+      } else {
+        nextModel.position.x = connector.position.x - nextModel.width - gap;
+        const connectorCenterY = connector.position.y + connectorHeight / 2;
+        
+        const materialIds = new Set(materials.map(m => m.id));
+        const groupMaterials = nextMaterials.filter(m => materialIds.has(m.id));
+        if (groupMaterials.length > 0) {
+          const minY = Math.min(...groupMaterials.map(m => m.position.y));
+          const maxY = Math.max(...groupMaterials.map(m => m.position.y + getMaterialNodeHeight(m.spec.kind)));
+          const materialsCenterY = (minY + maxY) / 2;
+          const deltaY = connectorCenterY - materialsCenterY;
+          
+          for (const m of nextMaterials) {
+            if (materialIds.has(m.id)) {
+              m.position.x = nextModel.position.x - gap - m.width;
+              m.position.y += deltaY;
+            }
+          }
+        }
+      }
+      
+      nextModels[i] = nextModel;
+    }
+  }
+
+  const nextProtectiveSleeves = config.protectiveSleeves.map((sleeve) => {
+    const attachedMaterials = sleeve.attachedMaterialIds
+      .map((materialId) => nextMaterials.find((material) => material.id === materialId))
+      .filter((material): material is CanvasWireMaterial => Boolean(material));
+    const placement = placeSleeveAroundMaterials(attachedMaterials, sleeve.width);
+    if (!placement) {
+      return {
+        ...sleeve,
+        attachedMaterialIds: [],
+        height: sleeve.height || 36,
+      };
+    }
+    return {
+      ...sleeve,
+      position: placement.position,
+      height: placement.height,
+    };
+  });
+
+  return {
+    ...config,
+    models: nextModels,
+    materials: nextMaterials,
+    protectiveSleeves: nextProtectiveSleeves,
   };
 }

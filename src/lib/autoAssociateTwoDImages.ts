@@ -11,6 +11,7 @@ import type {
 } from '@/types/harness';
 import { imageAssets } from '@/lib/imageAssets';
 import { generateId } from '@/lib/commands';
+import { getConnectorNodeWidth } from '@/lib/canvasMaterials';
 
 function assetImageByName(name: string): TwoDImage | null {
   const asset = imageAssets.find((a) => a.name === name);
@@ -37,7 +38,7 @@ function isConnectorConnectedToModel(
   models: CanvasModel[],
 ): boolean {
   const connectorLeft = connector.position.x;
-  const connectorRight = connector.position.x + 236; // CONNECTOR_NODE_WIDTH
+  const connectorRight = connector.position.x + getConnectorNodeWidth(connector);
   return models.some((model) => {
     const modelLeft = model.position.x;
     const modelRight = model.position.x + 84; // CANVAS_MODEL_SIZE

@@ -6,6 +6,7 @@ import {
   getCanvasModelDisplayName,
   getProtectiveSleeveDisplayName,
   getWireEndTreatmentSummary,
+  getMaterialCenterY,
 } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
@@ -152,7 +153,7 @@ function getLinkedModels(config: HarnessConfig, materialId: string) {
 
   const leftX = material.position.x;
   const rightX = material.position.x + material.width;
-  const wireY = material.position.y + 10;
+  const wireY = material.position.y + getMaterialCenterY(material.spec.kind);
 
   return config.models.filter((model) => {
     const modelCenterX = model.position.x + model.width / 2;
@@ -176,7 +177,7 @@ function getLinkedMaterialAndConnector(config: HarnessConfig, modelId: string) {
   const modelCenterY = model.position.y + model.height / 2;
 
   for (const material of config.materials) {
-    const wireY = material.position.y + 10;
+    const wireY = material.position.y + getMaterialCenterY(material.spec.kind);
     const isYClose = Math.abs(modelCenterY - wireY) < (model.height / 2 + 20);
     if (!isYClose) continue;
 

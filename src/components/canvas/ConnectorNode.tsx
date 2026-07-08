@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { ConnectorInstance } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
-import { CONNECTOR_NODE_WIDTH } from '@/lib/canvasMaterials';
+import { getConnectorNodeWidth } from '@/lib/canvasMaterials';
 import { WIRE_COLORS } from '@/lib/data';
 import { showJumperContextMenu } from './jumperContextMenu';
 import { selectMaterialConnectionPoint } from './materialConnectionClick';
@@ -50,14 +50,14 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
       className={`bg-white border-2 rounded-lg shadow-sm transition-all ${
         selected ? 'border-blue-500 shadow-md' : 'border-slate-300'
       }`}
-      style={{ width: CONNECTOR_NODE_WIDTH, minHeight: nodeHeight }}
+      style={{ width: getConnectorNodeWidth(data), minHeight: nodeHeight }}
     >
       {/* Header */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-100">
         <Plug className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-bold text-slate-800 truncate">{data.label}</div>
-          <div className="text-[10px] text-gray-400 truncate">{data.connector?.name}</div>
+          <div className="text-xs font-bold text-slate-800 whitespace-nowrap">{data.label}</div>
+          <div className="text-[10px] text-gray-400 whitespace-nowrap">{data.connector?.name}</div>
         </div>
       </div>
 
