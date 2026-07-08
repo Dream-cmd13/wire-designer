@@ -8,7 +8,9 @@ import type {
   ConnectorInstance,
   ProtectiveSleeve,
   TwoDImage,
+  HarnessConfig,
 } from '@/types/harness';
+import { getMoldLinkage } from './canvasMaterials';
 
 // ── Union-Find ──────────────────────────────────────────────────────────────
 
@@ -112,28 +114,23 @@ export function buildTwoDImageGroups(
     }
   }
 
-  // Union models with connectors/materials whose x-position falls within the model's
-  // horizontal span. This ensures a model (外模) is sorted among the elements it wraps
-  // rather than always appearing in a separate group that ends up after everything else.
+  // Union models with connectors and materials they wrap using getMoldLinkage
+  const config = { connectors, materials, protectiveSleeves: sleeves, models } as unknown as HarnessConfig;
   for (const model of models) {
     const mk = key('model', model.id);
     if (!elementIds.includes(mk)) continue;
-    const left = model.position.x;
-    const right = model.position.x + model.width;
 
-    for (const mat of materials) {
-      const matk = key('material', mat.id);
-      if (!elementIds.includes(matk)) continue;
-      if (mat.position.x >= left && mat.position.x <= right) {
-        uf.union(mk, matk);
-      }
-    }
-
-    for (const conn of connectors) {
-      const ck = key('connector', conn.id);
-      if (!elementIds.includes(ck)) continue;
-      if (conn.position.x >= left && conn.position.x <= right) {
+    const linkage = getMoldLinkage(model, config);
+    if (linkage) {
+      const ck = key('connector', linkage.connector.id);
+      if (elementIds.includes(ck)) {
         uf.union(mk, ck);
+      }
+      for (const mat of linkage.materials) {
+        const matk = key('material', mat.id);
+        if (elementIds.includes(matk)) {
+          uf.union(mk, matk);
+        }
       }
     }
   }

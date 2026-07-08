@@ -109,14 +109,20 @@ export function TwoDView() {
   const addTwoDImage = useHarnessStore((s) => s.addTwoDImage);
   const removeTwoDImage = useHarnessStore((s) => s.removeTwoDImage);
   const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
-  const reorderTwoDImages = useHarnessStore((s) => s.reorderTwoDImages);
+  const patchDocument = useHarnessStore((s) => s.patchDocument);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isFitted, setIsFitted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const highlightedRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+  // ── drag group position state ─────────────────────────────────────────────
+  const [activeDragGroupIdx, setActiveDragGroupIdx] = useState<number | null>(null);
+  const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const activeDragGroupIdxRef = useRef(activeDragGroupIdx);
+  activeDragGroupIdxRef.current = activeDragGroupIdx;
 
   // ── zoom & pan ───────────────────────────────────────────────────────────────
   const [zoom, setZoom] = useState(1);
@@ -131,12 +137,6 @@ export function TwoDView() {
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
 
-  // ── drag-to-reorder state ─────────────────────────────────────────────────
-  const [dragIdx, setDragIdx] = useState<number | null>(null);
-  const [dropIdx, setDropIdx] = useState<number | null>(null);
-  const dragIdxRef = useRef(dragIdx);
-  dragIdxRef.current = dragIdx;
-
   // ── flatten groups into sorted display order ──────────────────────────────
   const groups = useMemo(
     () => buildTwoDImageGroups(twoDImages, connectors, materials, sleeves, models),
@@ -144,7 +144,6 @@ export function TwoDView() {
   );
 
   // Sort all images by their element's x-position individually, ignoring group structure.
-  // This ensures correct left-to-right order: ConnectorA | ModelLeft | Material | ModelRight | ConnectorB
   const flatImages = useMemo(() => {
     const allImages = groups.flatMap((g) => g.images);
     return allImages.sort((a, b) => {
@@ -153,6 +152,53 @@ export function TwoDView() {
       return ax - bx;
     });
   }, [groups, connectors, materials, sleeves, models]);
+
+  // ── Card and Group size helpers ──────────────────────────────────────────────
+  const maxCardHeight = 360;
+  const getWeight = (kind: TwoDImage['elementKind']) => {
+    if (kind === 'material') return 3;
+    if (kind === 'sleeve') return 2;
+    return 1;
+  };
+
+  const totalWeight = useMemo(() => {
+    return flatImages.reduce((sum, img) => sum + getWeight(img.elementKind), 0);
+  }, [flatImages]);
+
+  const getCardWidth = useCallback((img: TwoDImage) => {
+    const weight = getWeight(img.elementKind);
+    return Math.min(600, Math.floor(944 * (weight / Math.max(1, totalWeight))));
+  }, [totalWeight]);
+
+  const getGroupWidth = useCallback((g: { images: TwoDImage[] }) => {
+    return g.images.reduce((sum, img, idx) => sum + getCardWidth(img) + (idx > 0 ? 4 : 0), 0);
+  }, [getCardWidth]);
+
+  const defaultGroupPositions = useMemo(() => {
+    const positions: Record<number, { x: number; y: number }> = {};
+    const groupSpacing = 32;
+    const totalGroupsWidth = groups.reduce((sum, g, idx) => sum + getGroupWidth(g) + (idx > 0 ? groupSpacing : 0), 0);
+    const startX = Math.max(64, (1200 - totalGroupsWidth) / 2);
+    
+    let currentX = startX;
+    for (let i = 0; i < groups.length; i++) {
+      positions[i] = {
+        x: currentX,
+        y: 220, 
+      };
+      currentX += getGroupWidth(groups[i]) + groupSpacing;
+    }
+    return positions;
+  }, [groups, getGroupWidth]);
+
+  const getGroupPosition = useCallback((groupIdx: number) => {
+    const group = groups[groupIdx];
+    const firstImg = group.images[0];
+    if (firstImg && firstImg.pos) {
+      return { x: firstImg.pos.x, y: firstImg.pos.y };
+    }
+    return defaultGroupPositions[groupIdx];
+  }, [groups, defaultGroupPositions]);
 
   // ── global mouse handlers ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -164,23 +210,46 @@ export function TwoDView() {
           x: p.startPX + e.clientX - p.startMX,
           y: p.startPY + e.clientY - p.startMY,
         });
+        return;
+      }
+
+      // drag group
+      const gIdx = activeDragGroupIdxRef.current;
+      if (gIdx !== null && dragStartPos) {
+        const dx = (e.clientX - dragStartPos.x) / zoomRef.current;
+        const dy = (e.clientY - dragStartPos.y) / zoomRef.current;
+        setDragOffset({ x: dx, y: dy });
       }
     }
     function onUp() {
-      // complete drag-to-reorder
-      const from = dragIdxRef.current;
-      if (from !== null && dropIdx !== null && from !== dropIdx) {
-        // map flatImages indices to twoDImages indices
-        const fromImg = flatImages[from];
-        const toImg = flatImages[dropIdx];
-        const fromStoreIdx = twoDImages.findIndex((img) => img.id === fromImg.id);
-        const toStoreIdx = twoDImages.findIndex((img) => img.id === toImg.id);
-        if (fromStoreIdx !== -1 && toStoreIdx !== -1) {
-          reorderTwoDImages(fromStoreIdx, toStoreIdx);
-        }
+      const gIdx = activeDragGroupIdxRef.current;
+      if (gIdx !== null && dragStartPos && (dragOffset.x !== 0 || dragOffset.y !== 0)) {
+        const group = groups[gIdx];
+        const basePos = getGroupPosition(gIdx);
+        const newX = basePos.x + dragOffset.x;
+        const newY = basePos.y + dragOffset.y;
+
+        // Update all images in this group with their new absolute pos, maintaining relative horizontal offset
+        const nextImages = twoDImages.map((img) => {
+          const imgInGroupIdx = group.images.findIndex((gImg) => gImg.id === img.id);
+          if (imgInGroupIdx !== -1) {
+            let offsetK = 0;
+            for (let i = 0; i < imgInGroupIdx; i++) {
+              offsetK += getCardWidth(group.images[i]) + 4;
+            }
+            return {
+              ...img,
+              pos: { x: newX + offsetK, y: newY },
+            };
+          }
+          return img;
+        });
+
+        patchDocument({ twoDImages: nextImages });
       }
-      setDragIdx(null);
-      setDropIdx(null);
+      setActiveDragGroupIdx(null);
+      setDragStartPos(null);
+      setDragOffset({ x: 0, y: 0 });
       setPanning(null);
     }
     window.addEventListener('mousemove', onMove);
@@ -189,7 +258,7 @@ export function TwoDView() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [dropIdx, flatImages, twoDImages, reorderTwoDImages]);
+  }, [dragStartPos, dragOffset, groups, twoDImages, getGroupPosition, getCardWidth, patchDocument]);
 
   // ── highlighted image (follows canvas selection) ─────────────────────────────
   const highlightedImageId =
@@ -299,13 +368,14 @@ export function TwoDView() {
     setContextMenu({ x: e.clientX, y: e.clientY });
   }, []);
 
-  // ── drag-to-reorder mousedown ─────────────────────────────────────────────────
-  function handleImageMouseDown(e: React.MouseEvent, idx: number) {
+  // ── drag group mousedown ──────────────────────────────────────────────────────
+  function handleImageMouseDown(e: React.MouseEvent, groupIdx: number) {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation(); // prevent viewport pan when dragging images
-    setDragIdx(idx);
-    setDropIdx(idx);
+    setActiveDragGroupIdx(groupIdx);
+    setDragStartPos({ x: e.clientX, y: e.clientY });
+    setDragOffset({ x: 0, y: 0 });
   }
 
   // ── upload ────────────────────────────────────────────────────────────────────
@@ -423,12 +493,6 @@ export function TwoDView() {
               position: 'absolute',
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
               transformOrigin: '0 0',
-              display: 'flex',
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 0,
-              padding: '64px 128px',
               minWidth: 1200,
               minHeight: 800,
               maxWidth: 1200,
@@ -442,66 +506,72 @@ export function TwoDView() {
             }}
           >
             {(() => {
-              const getWeight = (kind: TwoDImage['elementKind']) => {
-                if (kind === 'material') return 3;
-                if (kind === 'sleeve') return 2;
-                return 1;
-              };
-              const totalWeight = flatImages.reduce((sum, img) => sum + getWeight(img.elementKind), 0);
-              const maxCardHeight = 360;
-
-              return flatImages.map((img, idx) => {
-                const isHighlighted = img.id === highlightedImageId;
-                const isSelected = img.id === selectedId;
-                const isDragging = dragIdx === idx;
-                const isDropTarget = dropIdx === idx && dragIdx !== null && dragIdx !== idx;
-
-                const weight = getWeight(img.elementKind);
-                const maxCardWidth = Math.min(600, Math.floor(944 * (weight / Math.max(1, totalWeight))));
+              return groups.map((group, groupIdx) => {
+                const isDraggingThis = activeDragGroupIdx === groupIdx;
+                const basePos = getGroupPosition(groupIdx);
+                const x = basePos.x + (isDraggingThis ? dragOffset.x : 0);
+                const y = basePos.y + (isDraggingThis ? dragOffset.y : 0);
 
                 return (
                   <div
-                    key={img.id}
-                    ref={isHighlighted ? highlightedRef : undefined}
-                    onMouseEnter={() => dragIdx !== null && setDropIdx(idx)}
-                    style={{ opacity: isDragging ? 0.4 : 1, flexShrink: 0 }}
+                    key={groupIdx}
+                    style={{
+                      position: 'absolute',
+                      left: x,
+                      top: y,
+                      opacity: isDraggingThis ? 0.6 : 1,
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                      border: '1px dashed transparent',
+                      borderRadius: '8px',
+                      padding: '4px',
+                      cursor: isDraggingThis ? 'grabbing' : 'grab',
+                    }}
+                    className="group/assembly hover:border-slate-200 hover:bg-slate-50/30 transition-colors"
                   >
-                    {/* drop indicator: blue bar on the left edge */}
-                    {isDropTarget && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: -5,
-                          top: 0,
-                          bottom: 0,
-                          width: 3,
-                          borderRadius: 2,
-                          background: '#3b82f6',
-                          pointerEvents: 'none',
-                        }}
-                      />
-                    )}
-                    <TwoDImageCard
-                      image={img}
-                      highlighted={isHighlighted}
-                      selected={isSelected}
-                      isDragging={isDragging}
-                      onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
-                      onMouseDown={(e) => handleImageMouseDown(e, idx)}
-                      maxWidth={maxCardWidth}
-                      maxHeight={maxCardHeight}
-                    />
-                    {isSelected && !isDragging && (
-                      <ImageInfoBox
-                        image={img}
-                        onRotate={rotateTwoDImage}
-                        onCollapse={() => setSelectedId(null)}
-                        onDelete={(id) => {
-                          removeTwoDImage(id);
-                          setSelectedId(null);
-                        }}
-                      />
-                    )}
+                    {group.images.map((img) => {
+                      const isHighlighted = img.id === highlightedImageId;
+                      const isSelected = img.id === selectedId;
+
+                      const cardWidth = getCardWidth(img);
+
+                      return (
+                        <div
+                          key={img.id}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            position: 'relative',
+                          }}
+                        >
+                          <TwoDImageCard
+                            image={img}
+                            highlighted={isHighlighted}
+                            selected={isSelected}
+                            onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
+                            onMouseDown={(e) => handleImageMouseDown(e, groupIdx)}
+                            maxWidth={cardWidth}
+                            maxHeight={maxCardHeight}
+                          />
+                          {isSelected && (
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 z-20 mt-2">
+                              <ImageInfoBox
+                                image={img}
+                                onRotate={rotateTwoDImage}
+                                onCollapse={() => setSelectedId(null)}
+                                onDelete={(id) => {
+                                  removeTwoDImage(id);
+                                  setSelectedId(null);
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               });
