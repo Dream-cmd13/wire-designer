@@ -112,6 +112,7 @@ export function TwoDView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const highlightedRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   // ── zoom & pan ───────────────────────────────────────────────────────────────
   const [zoom, setZoom] = useState(1);
@@ -215,6 +216,14 @@ export function TwoDView() {
     });
   }, [twoDImages.length]);
 
+  // ── close context menu on click ───────────────────────────────────────────────
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = () => setContextMenu(null);
+    window.addEventListener('click', handleClick);
+    return () => window.removeEventListener('click', handleClick);
+  }, [contextMenu]);
+
   // ── zoom helpers ──────────────────────────────────────────────────────────────
   const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
@@ -229,6 +238,25 @@ export function TwoDView() {
   const resetZoom = useCallback(() => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
+  }, []);
+
+  const fitToCanvas = useCallback(() => {
+    const vp = viewportRef.current;
+    const world = worldRef.current;
+    if (!vp || !world) return;
+    const vpW = vp.offsetWidth;
+    const vpH = vp.offsetHeight;
+    const worldW = world.offsetWidth;
+    const worldH = world.offsetHeight;
+    if (worldW === 0 || worldH === 0) return;
+    const scaleX = (vpW - 64) / worldW;
+    const scaleY = (vpH - 64) / worldH;
+    const newZoom = clampZoom(Math.min(scaleX, scaleY, 1));
+    setZoom(newZoom);
+    setPan({
+      x: (vpW - worldW * newZoom) / 2,
+      y: (vpH - worldH * newZoom) / 2,
+    });
   }, []);
 
   /** Wheel: zoom centered on cursor position inside viewport */
@@ -253,9 +281,9 @@ export function TwoDView() {
     });
   }, []);
 
-  /** Middle-mouse button starts canvas panning */
+  /** Left or middle mouse button starts canvas panning on the viewport background */
   const handleViewportMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 1) return; // middle button only
+    if (e.button !== 0 && e.button !== 1) return;
     e.preventDefault();
     setPanning({
       startMX: e.clientX,
@@ -265,10 +293,16 @@ export function TwoDView() {
     });
   }, [pan]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
   // ── drag-to-reorder mousedown ─────────────────────────────────────────────────
   function handleImageMouseDown(e: React.MouseEvent, idx: number) {
     if (e.button !== 0) return;
     e.preventDefault();
+    e.stopPropagation(); // prevent viewport pan when dragging images
     setDragIdx(idx);
     setDropIdx(idx);
   }
@@ -353,9 +387,10 @@ export function TwoDView() {
       <div
         ref={viewportRef}
         className="relative flex-1 overflow-hidden"
-        style={{ cursor: panning ? 'grabbing' : 'default' }}
+        style={{ cursor: panning ? 'grabbing' : 'grab' }}
         onWheel={handleWheel}
         onMouseDown={handleViewportMouseDown}
+        onContextMenu={handleContextMenu}
       >
         {twoDImages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
@@ -452,6 +487,30 @@ export function TwoDView() {
       {selection.kind !== 'none' && highlightedImageId === null && (
         <div className="shrink-0 border-t border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-700">
           当前选中的元素尚未关联任何 2D 图片。在设计图中右键该元素可进行关联。
+        </div>
+      )}
+
+      {/* right-click context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 min-w-[140px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => { fitToCanvas(); setContextMenu(null); }}
+            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            适配画布
+          </button>
+          <button
+            type="button"
+            onClick={() => { resetZoom(); setContextMenu(null); }}
+            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            重置缩放
+          </button>
         </div>
       )}
     </div>
