@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronDown, ChevronUp, Download, FolderOpen, Redo2, Undo2, User } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Download, FolderOpen } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
+import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { DrawingModeSwitch, type DrawingMode } from '@/components/drawings/DrawingModeSwitch';
 import { PdfDrawingPickerDialog } from '@/components/drawings/PdfDrawingPickerDialog';
 import { ProductionDrawingView } from '@/components/drawings/ProductionDrawingView';
 import { TwoDView } from '@/components/drawings/TwoDView';
@@ -12,13 +12,19 @@ import { ConfigPanel } from '@/components/panels/ConfigPanel';
 import { QuotePanel } from '@/components/panels/QuotePanel';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
+import { useAppRoute } from '@/hooks/useAppRoute';
+import { appRoutes } from '@/lib/appRoute';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
-import { pdfDrawings } from '@/lib/pdfDrawings';
+import { pdfDrawings, type PdfDrawing } from '@/lib/pdfDrawings';
 import { projectRepository } from '@/repositories/projectRepository';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
+import { useHistoryStore } from '@/stores/historyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
-import { useHistoryStore } from '@/stores/historyStore';
+import { ConnectorLibraryPage } from '@/pages/ConnectorLibraryPage';
+import { DrawingWorkbenchPage } from '@/pages/DrawingWorkbenchPage';
+import { HarnessLibraryPage } from '@/pages/HarnessLibraryPage';
+import type { Project } from '@/types/user';
 
 function RightPanel() {
   const [bomCollapsed, setBomCollapsed] = useState(false);
@@ -28,6 +34,7 @@ function RightPanel() {
       <QuotePanel />
       <div className="border-t border-slate-200">
         <button
+          type="button"
           onClick={() => setBomCollapsed((value) => !value)}
           className="flex w-full cursor-pointer items-center justify-between px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-50"
         >
@@ -57,16 +64,81 @@ function isEditableTarget(target: EventTarget | null) {
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
+function ProjectRequiredState({ onNavigateHome }: { onNavigateHome: () => void }) {
+  return (
+    <div className="flex h-full items-center justify-center bg-slate-100 p-4">
+      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <FolderOpen className="mx-auto h-10 w-10 text-slate-300" />
+        <h2 className="mt-4 text-base font-semibold text-slate-900">尚未打开项目</h2>
+        <p className="mt-2 text-sm text-slate-500">
+          请先从首页或线束库打开项目，再进入线束设计器。
+        </p>
+        <button
+          type="button"
+          onClick={onNavigateHome}
+          className="mt-5 cursor-pointer rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+        >
+          返回首页
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface LoadErrorBannerProps {
+  message: string;
+  recoveryRaw: string | null;
+  projectName?: string;
+  onClose: () => void;
+}
+
+function LoadErrorBanner({ message, recoveryRaw, projectName, onClose }: LoadErrorBannerProps) {
+  return (
+    <div className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-3">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-red-700">{message}</p>
+          <p className="mt-1 text-xs text-red-500">
+            当前会话仅用于查看和修复，自动保存已暂停，避免覆盖原始损坏数据。
+          </p>
+        </div>
+        {recoveryRaw && (
+          <button
+            type="button"
+            onClick={() => downloadTextFile(
+              recoveryRaw,
+              `${safeFilename(projectName ?? 'damaged-project')}.recovery.json`,
+            )}
+            className="flex shrink-0 cursor-pointer items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100"
+          >
+            <Download className="h-3.5 w-3.5" />
+            下载原始副本
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 cursor-pointer text-red-400 hover:text-red-600"
+          aria-label="关闭错误提示"
+        >
+          关闭
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [view, setView] = useState<'projectList' | 'designer' | 'wizard'>('projectList');
+  const { route, navigate } = useAppRoute();
   const [authOpen, setAuthOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recoveryRaw, setRecoveryRaw] = useState<string | null>(null);
   const [saveBlocked, setSaveBlocked] = useState(false);
-  const [drawingMode, setDrawingMode] = useState<DrawingMode>('design');
   const [selectedPdfIds, setSelectedPdfIds] = useState<string[]>([]);
   const [pdfPickerOpen, setPdfPickerOpen] = useState(false);
-  const [uploadedDrawings, setUploadedDrawings] = useState<import('@/lib/pdfDrawings').PdfDrawing[]>([]);
+  const [uploadedDrawings, setUploadedDrawings] = useState<PdfDrawing[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
 
@@ -84,6 +156,16 @@ export default function App() {
     replaceDocument(nextConfig, { markSaved: false });
     history.resume();
   }, [replaceDocument]);
+
+  const handleUndo = useCallback(() => {
+    const previous = useHistoryStore.getState().undo(useHarnessStore.getState().config);
+    applyHistoryDocument(previous);
+  }, [applyHistoryDocument]);
+
+  const handleRedo = useCallback(() => {
+    const next = useHistoryStore.getState().redo(useHarnessStore.getState().config);
+    applyHistoryDocument(next);
+  }, [applyHistoryDocument]);
 
   const doSave = useCallback(async () => {
     if (!currentProject || saveBlocked) {
@@ -147,32 +229,30 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (view !== 'designer') return;
+      if (route.section !== 'designer') return;
 
       const isCtrlOrCmd = event.ctrlKey || event.metaKey;
       if (!isCtrlOrCmd || isEditableTarget(event.target)) return;
 
       if (event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
-        const previous = useHistoryStore.getState().undo(useHarnessStore.getState().config);
-        applyHistoryDocument(previous);
+        handleUndo();
         return;
       }
 
       if ((event.key === 'z' && event.shiftKey) || event.key === 'y') {
         event.preventDefault();
-        const next = useHistoryStore.getState().redo(useHarnessStore.getState().config);
-        applyHistoryDocument(next);
+        handleRedo();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [applyHistoryDocument, view]);
+  }, [handleRedo, handleUndo, route.section]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (view !== 'designer' || !currentProject || saveBlocked) {
+      if (!currentProject || saveBlocked) {
         return;
       }
 
@@ -185,7 +265,7 @@ export default function App() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentProject, saveBlocked, view]);
+  }, [currentProject, saveBlocked]);
 
   const handleNewProject = () => {
     if (!currentUser) {
@@ -196,14 +276,11 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
-    setView('wizard');
+    setWizardOpen(true);
   };
 
-  const handleOpenProject = async (project: typeof currentProject) => {
-    if (!project) return;
-
+  const handleOpenProject = async (project: Project) => {
     setCurrentProject(project);
-    setDrawingMode('design');
     setPdfPickerOpen(false);
     const history = useHistoryStore.getState();
     history.clear();
@@ -234,20 +311,20 @@ export default function App() {
     }
 
     history.resume();
-    setView('designer');
+    navigate(appRoutes['designer-design'].path);
   };
 
   const handleWizardComplete = () => {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
+    setWizardOpen(false);
     useHistoryStore.getState().clear();
-    setDrawingMode('design');
     setPdfPickerOpen(false);
-    setView('designer');
+    navigate(appRoutes['designer-design'].path);
   };
 
-  const handleBackToProjects = () => {
+  const handleCloseProject = () => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
@@ -264,10 +341,9 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
-    setDrawingMode('design');
     setPdfPickerOpen(false);
     useHistoryStore.getState().clear();
-    setView('projectList');
+    navigate(appRoutes.home.path);
   };
 
   const saveStatusLabel =
@@ -281,174 +357,113 @@ export default function App() {
 
   const saveStatusClass =
     saveState.status === 'saved'
-      ? 'text-green-400 bg-green-900/30'
+      ? 'text-green-700 bg-green-50'
       : saveState.status === 'dirty'
-        ? 'text-yellow-400 bg-yellow-900/30'
+        ? 'text-amber-700 bg-amber-50'
         : saveState.status === 'saving'
-          ? 'text-blue-400 bg-blue-900/30'
-          : 'text-red-400 bg-red-900/30';
+          ? 'text-blue-700 bg-blue-50'
+          : 'text-red-700 bg-red-50';
 
-  const handleDrawingModeChange = (mode: DrawingMode) => {
-    if (mode === 'production' && selectedPdfIds.length === 0) {
-      setPdfPickerOpen(true);
-      return;
+  const renderDesignerContent = () => {
+    if (!currentProject) {
+      return <ProjectRequiredState onNavigateHome={() => navigate(appRoutes.home.path)} />;
     }
-    setDrawingMode(mode);
+
+    const content = (() => {
+      if (route.id === 'designer-pdf') {
+        return (
+          <ProductionDrawingView
+            drawings={[...pdfDrawings, ...uploadedDrawings]}
+            selectedIds={selectedPdfIds}
+            onChooseDrawings={() => setPdfPickerOpen(true)}
+          />
+        );
+      }
+
+      if (route.id === 'designer-product-image') {
+        return <TwoDView />;
+      }
+
+      return <DesignerView />;
+    })();
+
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {loadError && (
+          <LoadErrorBanner
+            message={loadError}
+            recoveryRaw={recoveryRaw}
+            projectName={currentProject.name}
+            onClose={() => setLoadError(null)}
+          />
+        )}
+        <div className="min-h-0 flex-1">{content}</div>
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    if (route.section === 'designer') {
+      return renderDesignerContent();
+    }
+
+    if (route.id === 'drawing-workbench') {
+      return (
+        <DrawingWorkbenchPage
+          currentProject={currentProject}
+          onNavigate={navigate}
+          onChooseDrawings={() => setPdfPickerOpen(true)}
+        />
+      );
+    }
+
+    if (route.id === 'library-connectors') {
+      return <ConnectorLibraryPage />;
+    }
+
+    if (route.id === 'library-harnesses') {
+      return (
+        <HarnessLibraryPage
+          onOpenProject={(project) => void handleOpenProject(project)}
+          onNavigateHome={() => navigate(appRoutes.home.path)}
+        />
+      );
+    }
+
+    return (
+      <ProjectList
+        onNewProject={handleNewProject}
+        onOpenProject={(project) => void handleOpenProject(project)}
+      />
+    );
   };
 
   return (
-    <div className="h-screen bg-slate-50">
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-700 bg-slate-900 px-4 text-white">
-        <div className="flex items-center gap-3">
-          {view === 'designer' && (
-            <button
-              onClick={handleBackToProjects}
-              className="flex cursor-pointer items-center gap-1 text-slate-300 transition-colors hover:text-white"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              <span className="text-sm">返回</span>
-            </button>
-          )}
-
-          <div className="flex items-center gap-2">
-            <FolderOpen className="h-5 w-5 text-blue-400" />
-            <h1 className="text-base font-bold">线束设计器</h1>
-            <span className="text-xs text-slate-400">v2.0</span>
-          </div>
-
-          {currentProject && view === 'designer' && (
-            <>
-              <span className="ml-2 flex items-center gap-0.5">
-                <button
-                  onClick={() => {
-                    const previous = useHistoryStore.getState().undo(useHarnessStore.getState().config);
-                    applyHistoryDocument(previous);
-                  }}
-                  disabled={!canUndo}
-                  className="cursor-pointer rounded p-1 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
-                  title="撤销 (Ctrl+Z)"
-                  aria-label="撤销"
-                >
-                  <Undo2 className="h-4 w-4 text-slate-300" />
-                </button>
-                <button
-                  onClick={() => {
-                    const next = useHistoryStore.getState().redo(useHarnessStore.getState().config);
-                    applyHistoryDocument(next);
-                  }}
-                  disabled={!canRedo}
-                  className="cursor-pointer rounded p-1 hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30"
-                  title="重做 (Ctrl+Y)"
-                  aria-label="重做"
-                >
-                  <Redo2 className="h-4 w-4 text-slate-300" />
-                </button>
-              </span>
-
-              <span className="ml-2 rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-400">
-                {currentProject.name}
-              </span>
-
-              <span className={`ml-1 rounded px-2 py-0.5 text-xs ${saveStatusClass}`}>
-                {saveStatusLabel}
-              </span>
-
-              {saveBlocked && (
-                <span className="rounded bg-red-900/30 px-2 py-0.5 text-xs text-red-300">
-                  已暂停自动保存
-                </span>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          {view === 'designer' && (
-            <DrawingModeSwitch mode={drawingMode} onChange={handleDrawingModeChange} />
-          )}
-          {currentUser ? (
-            <button
-              onClick={() => setAuthOpen(true)}
-              className="flex cursor-pointer items-center gap-1.5 rounded bg-slate-700 px-3 py-1.5 text-sm transition-colors hover:bg-slate-600"
-            >
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
-                {currentUser.name[0]}
-              </div>
-              <span>{currentUser.name}</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => setAuthOpen(true)}
-              className="flex cursor-pointer items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-sm transition-colors hover:bg-blue-700"
-            >
-              <User className="h-4 w-4" />
-              登录
-            </button>
-          )}
-        </div>
-      </header>
-
-      <div className="h-[calc(100vh-56px)]">
-        {view === 'projectList' && (
-          <ProjectList
-            onNewProject={handleNewProject}
-            onOpenProject={(project) => void handleOpenProject(project)}
-          />
-        )}
-
-        {view === 'designer' && (
-          <>
-            {loadError && (
-              <div className="mx-4 mt-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-3">
-                <span className="shrink-0 text-lg text-red-500">⚠️</span>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-red-700">{loadError}</p>
-                  <p className="mt-1 text-xs text-red-500">
-                    当前会话仅用于查看和修复，自动保存已暂停，避免覆盖原始损坏数据。
-                  </p>
-                </div>
-                <button
-                  onClick={() => setLoadError(null)}
-                  className="shrink-0 cursor-pointer text-red-400 hover:text-red-600"
-                  aria-label="关闭错误提示"
-                >
-                  ✕
-                </button>
-                {recoveryRaw && (
-                  <button
-                    type="button"
-                    onClick={() => downloadTextFile(
-                      recoveryRaw,
-                      `${safeFilename(currentProject?.name ?? 'damaged-project')}.recovery.json`,
-                    )}
-                    className="flex shrink-0 cursor-pointer items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    下载原始副本
-                  </button>
-                )}
-              </div>
-            )}
-
-            {drawingMode === 'design' && <DesignerView />}
-            {drawingMode === 'production' && (
-              <ProductionDrawingView
-                drawings={[...pdfDrawings, ...uploadedDrawings]}
-                selectedIds={selectedPdfIds}
-                onChooseDrawings={() => setPdfPickerOpen(true)}
-              />
-            )}
-            {drawingMode === 'drawing2d' && <TwoDView />}
-          </>
-        )}
-      </div>
+    <>
+      <AdminShell
+        route={route}
+        currentUser={currentUser}
+        currentProjectName={currentProject?.name}
+        saveStatusLabel={saveStatusLabel}
+        saveStatusClass={saveStatusClass}
+        saveBlocked={saveBlocked}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onNavigate={navigate}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onOpenAuth={() => setAuthOpen(true)}
+        onCloseProject={handleCloseProject}
+      >
+        {renderContent()}
+      </AdminShell>
 
       {authOpen && <AuthModal isOpen onClose={() => setAuthOpen(false)} />}
 
-      {view === 'wizard' && (
+      {wizardOpen && (
         <ProjectWizard
           onComplete={handleWizardComplete}
-          onCancel={() => setView('projectList')}
+          onCancel={() => setWizardOpen(false)}
         />
       )}
 
@@ -459,17 +474,17 @@ export default function App() {
           onClose={() => setPdfPickerOpen(false)}
           onUpload={(newDrawings) => {
             setUploadedDrawings((prev) => {
-              const existingIds = new Set(prev.map((d) => d.id));
-              return [...prev, ...newDrawings.filter((d) => !existingIds.has(d.id))];
+              const existingIds = new Set(prev.map((drawing) => drawing.id));
+              return [...prev, ...newDrawings.filter((drawing) => !existingIds.has(drawing.id))];
             });
           }}
           onConfirm={(drawingIds) => {
             setSelectedPdfIds(drawingIds);
-            setDrawingMode('production');
             setPdfPickerOpen(false);
+            navigate(appRoutes['designer-pdf'].path);
           }}
         />
       )}
-    </div>
+    </>
   );
 }
