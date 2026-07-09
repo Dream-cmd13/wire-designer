@@ -3,8 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { ConnectorInstance } from '@/types/harness';
 import { useHarnessStore } from '@/stores/harnessStore';
-import { getConnectorNodeWidth } from '@/lib/canvasMaterials';
-import { WIRE_COLORS } from '@/lib/data';
+import { getConnectorNodeWidth, resolveColor } from '@/lib/canvasMaterials';
 import { showJumperContextMenu } from './jumperContextMenu';
 import { selectMaterialConnectionPoint } from './materialConnectionClick';
 import {
@@ -32,7 +31,7 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
   const showRight = activeSide === undefined || activeSide === 'right';
 
   const getColorHex = (colorId: string) =>
-    WIRE_COLORS.find((c) => c.id === colorId)?.hex || '#6B7280';
+    resolveColor(colorId).hex;
 
   // Render ALL pins so every PIN is connectable/shortable. The previous
   // 6-PIN fold made Pin7+ unreachable after the legacy full-PIN panel

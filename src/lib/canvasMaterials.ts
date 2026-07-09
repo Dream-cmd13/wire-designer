@@ -43,6 +43,42 @@ export const CORE_COLOR_OPTIONS = [
 
 const CORE_COLOR_SEQUENCE = [...CORE_COLOR_OPTIONS];
 
+import { WIRE_COLORS } from './data';
+
+// Map Chinese core color names (used in jacketed coreColors) → WIRE_COLORS entry.
+const CHINESE_NAME_TO_WIRE_COLOR = new Map(
+  WIRE_COLORS.map((c) => [c.name, c]),
+);
+// Additional Chinese names not in WIRE_COLORS that appear in CORE_COLOR_OPTIONS.
+const EXTRA_CORE_COLOR_HEX: Record<string, string> = {
+  '浅蓝色': '#7DD3FC',
+  '黄绿色': '#A3E635',
+  '米白色': '#F5F0E8',
+  '深蓝色': '#1E3A8A',
+  '浅绿色': '#86EFAC',
+  '透明': '#E2E8F066',
+};
+
+/**
+ * Resolve a color value that may be either:
+ *   - an English WIRE_COLORS id (e.g. 'red', 'gray')
+ *   - a Chinese display name from CORE_COLOR_OPTIONS (e.g. '红色', '灰色')
+ * Returns { hex, name } for display.
+ */
+export function resolveColor(value: string): { hex: string; name: string } {
+  // Try English ID first (electronic wires)
+  const byId = WIRE_COLORS.find((c) => c.id === value);
+  if (byId) return { hex: byId.hex, name: byId.name };
+  // Try Chinese name (jacketed core colors)
+  const byName = CHINESE_NAME_TO_WIRE_COLOR.get(value);
+  if (byName) return { hex: byName.hex, name: byName.name };
+  // Extra names not in WIRE_COLORS
+  const extraHex = EXTRA_CORE_COLOR_HEX[value];
+  if (extraHex) return { hex: extraHex, name: value };
+  // Fallback
+  return { hex: '#6B7280', name: value || '灰色' };
+}
+
 export const PROTECTIVE_SLEEVE_LABELS: Record<ProtectiveSleeveType, string> = {
   'acetate-cloth': '醋酸布',
   fleece: '绒布',
