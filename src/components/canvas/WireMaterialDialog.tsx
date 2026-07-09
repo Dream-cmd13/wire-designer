@@ -182,7 +182,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="快速输入，例如：red 22 300 或 1007 24awg 500"
+                      placeholder="快速输入，例如：红色 22 或 1007 22"
                       className={`${fieldClass} pl-9`}
                       value={electronicQuery}
                       onChange={(e) => setElectronicQuery(e.target.value)}
@@ -235,7 +235,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                     <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="快速输入，例如：pvc 22 8 300 或 pur 24awg 4芯 屏蔽 500mm"
+                      placeholder="快速输入，例如：pvc 22 8 或 pur 22 4芯 屏蔽"
                       className={`${fieldClass} pl-9`}
                       value={jacketedQuery}
                       onChange={(e) => setJacketedQuery(e.target.value)}

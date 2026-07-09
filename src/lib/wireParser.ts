@@ -27,28 +27,22 @@ export function parseQuickInput(query: string, kind: 'electronic' | 'jacketed'):
 
   // 1. Explicit regex parsing
 
-  // AWG: e.g. "22awg", "22 awg", "22g", "22 g", "awg22", "awg 22"
+  // AWG: temporarily only recognize 22. E.g. "22awg", "22 awg", "22g", "22 g", "awg22", "awg 22"
   const awgMatch = text.match(/\b(awg\s*|g\s*)?(\d+)\s*(awg|g)\b/i) || text.match(/\b(awg)\s*(\d+)\b/i);
   if (awgMatch) {
     const val = parseInt(awgMatch[2] || awgMatch[1], 10);
     if (!isNaN(val)) {
-      result.awg = val;
+      if (val === 22) {
+        result.awg = 22;
+      }
       text = text.replace(awgMatch[0], ' ');
     }
   }
 
-  // Length: e.g. "300mm", "300 mm", "300毫米", "300m" (interpreting m/mm as millimeter in this design tool)
+  // Length: e.g. "300mm", "300 mm", "300毫米", "300m" -> Discard length from parsing
   const lenMatch = text.match(/\b(\d+(?:\.\d+)?)\s*(mm|毫米|m|米)\b/i);
   if (lenMatch) {
-    const unit = lenMatch[2].toLowerCase();
-    let val = parseFloat(lenMatch[1]);
-    if (!isNaN(val)) {
-      if (unit === 'm' || unit === '米') {
-        val = val * 1000; // convert meter to millimeter
-      }
-      result.lengthMm = val;
-      text = text.replace(lenMatch[0], ' ');
-    }
+    text = text.replace(lenMatch[0], ' ');
   }
 
   // Core count: e.g. "8芯", "8芯线", "8core", "8cores", "8c", "8p"
@@ -143,15 +137,11 @@ export function parseQuickInput(query: string, kind: 'electronic' | 'jacketed'):
     const numbers = numMatches.map(Number).filter((n) => !isNaN(n));
 
     for (const num of numbers) {
-      // Heuristic 1: If lengthMm is not defined and number is >= 40, assume it's length
-      if (num >= 40 && result.lengthMm === undefined) {
-        result.lengthMm = num;
+      // Heuristic: If awg is not defined and number is 22, recognize it
+      if (num === 22 && result.awg === undefined) {
+        result.awg = 22;
       }
-      // Heuristic 2: If awg is not defined and number is in common AWG range [10, 36]
-      else if (num >= 10 && num <= 36 && result.awg === undefined) {
-        result.awg = num;
-      }
-      // Heuristic 3: If coreCount is not defined (jacketed only) and number is a valid core count
+      // Heuristic: If coreCount is not defined (jacketed only) and number is a valid core count
       else if (
         kind === 'jacketed' &&
         result.coreCount === undefined &&
@@ -159,13 +149,9 @@ export function parseQuickInput(query: string, kind: 'electronic' | 'jacketed'):
       ) {
         result.coreCount = num as JacketCoreCount;
       }
-      // Fallback 1: If we have an unused small number, it could be coreCount or AWG
+      // Fallback: If we have an unused small number, it could be coreCount
       else if (kind === 'jacketed' && result.coreCount === undefined && num > 0 && num <= 17) {
         result.coreCount = num as JacketCoreCount;
-      }
-      // Fallback 2: If we still don't have length, and num > 0
-      else if (result.lengthMm === undefined && num > 0) {
-        result.lengthMm = num;
       }
     }
   }
