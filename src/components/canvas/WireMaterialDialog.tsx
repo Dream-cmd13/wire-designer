@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cable, Check, X } from 'lucide-react';
+import { Cable, Check, X, Search } from 'lucide-react';
 import { WIRE_COLORS } from '@/lib/data';
 import {
   calculateCableOd,
@@ -18,6 +18,7 @@ import type {
   WireEndProcessing,
   WireEndTreatment,
 } from '@/types/harness';
+import { parseQuickInput } from '@/lib/wireParser';
 
 interface WireMaterialDialogProps {
   material: CanvasWireMaterial | null;
@@ -71,6 +72,50 @@ function validateSpec(spec: CanvasWireSpec): string | null {
 export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMaterialDialogProps) {
   const [spec, setSpec] = useState<CanvasWireSpec>(material?.spec ?? createDefaultWireSpec());
   const [error, setError] = useState<string | null>(null);
+  const [electronicQuery, setElectronicQuery] = useState('');
+  const [jacketedQuery, setJacketedQuery] = useState('');
+
+  const handleQuickParse = (kind: 'electronic' | 'jacketed', query: string) => {
+    if (!query.trim()) return;
+    const parsed = parseQuickInput(query, kind);
+
+    if (kind === 'electronic') {
+      setSpec((current) => {
+        if (current.kind !== 'electronic') return current;
+        return {
+          ...current,
+          ...(parsed.color ? { color: parsed.color } : {}),
+          ...(parsed.awg !== undefined ? { awg: parsed.awg } : {}),
+          ...(parsed.lengthMm !== undefined ? { lengthMm: parsed.lengthMm } : {}),
+          ...(parsed.ulNumber ? { ulNumber: parsed.ulNumber as '1007' } : {}),
+        };
+      });
+    } else {
+      setSpec((current) => {
+        if (current.kind !== 'jacketed') return current;
+        const nextJacketMaterial = parsed.jacketMaterial ?? current.jacketMaterial;
+        const nextJacketColor = parsed.jacketColor ?? current.jacketColor;
+        const nextAwg = parsed.awg ?? current.awg;
+        const nextCoreCount = parsed.coreCount ?? current.coreCount;
+        const nextShielded = parsed.shielded ?? current.shielded;
+        const nextLengthMm = parsed.lengthMm ?? current.lengthMm;
+        const nextUlNumber = parsed.ulNumber ? (parsed.ulNumber as JacketUlNumber) : current.ulNumber;
+
+        return {
+          ...current,
+          jacketMaterial: nextJacketMaterial,
+          jacketColor: nextJacketColor,
+          awg: nextAwg,
+          coreCount: nextCoreCount,
+          shielded: nextShielded,
+          lengthMm: nextLengthMm,
+          ulNumber: nextUlNumber,
+          coreColors: parsed.coreCount !== undefined ? getCoreColors(nextCoreCount) : current.coreColors,
+          odMm: calculateCableOd(nextAwg, nextCoreCount, nextShielded),
+        };
+      });
+    }
+  };
 
   useEffect(() => {
     if (!material) return;
@@ -130,6 +175,34 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
 
           {spec.kind === 'electronic' ? (
             <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 rounded-xl bg-slate-50 border border-slate-200/80 p-3.5">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-700">智能识别输入</span>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="快速输入，例如：red 22 300 或 1007 24awg 500"
+                      className={`${fieldClass} pl-9`}
+                      value={electronicQuery}
+                      onChange={(e) => setElectronicQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleQuickParse('electronic', electronicQuery);
+                        }
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickParse('electronic', electronicQuery)}
+                    className="shrink-0 rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-100 transition duration-150"
+                  >
+                    识别
+                  </button>
+                </div>
+              </div>
               <Field label="颜色">
                 <select
                   value={spec.color}
@@ -155,6 +228,34 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 rounded-xl bg-slate-50 border border-slate-200/80 p-3.5">
+                <span className="mb-1.5 block text-xs font-semibold text-slate-700">智能识别输入</span>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="快速输入，例如：pvc 22 8 300 或 pur 24awg 4芯 屏蔽 500mm"
+                      className={`${fieldClass} pl-9`}
+                      value={jacketedQuery}
+                      onChange={(e) => setJacketedQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleQuickParse('jacketed', jacketedQuery);
+                        }
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickParse('jacketed', jacketedQuery)}
+                    className="shrink-0 rounded-lg bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-100 transition duration-150"
+                  >
+                    识别
+                  </button>
+                </div>
+              </div>
               <Field label="外被材质">
                 <select
                   value={spec.jacketMaterial}
