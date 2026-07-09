@@ -152,12 +152,7 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
                       </div>
                     );
                   })
-                ) : (
-                  <div className="flex items-center gap-0.5">
-                    <div className="w-2 h-2 rounded-full border border-gray-300 flex-shrink-0" />
-                    <div className="w-4 h-[2px] border-t border-dashed border-gray-300 flex-shrink-0" />
-                  </div>
-                )}
+                ) : null}
 
                 {allBindings.length > 1 && (
                   <span className="text-[8px] text-blue-500 font-semibold ml-0.5">
