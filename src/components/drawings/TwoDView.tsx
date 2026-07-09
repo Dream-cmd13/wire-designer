@@ -3,10 +3,11 @@ import { Minus, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
 import { generateId } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
-import type { TwoDImage, CanvasWireMaterial, ConnectorInstance } from '@/types/harness';
+import type { TwoDImage, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
 import { imageAssets } from '@/lib/imageAssets';
-import { WIRE_COLORS } from '@/lib/data';
+import { WIRE_COLORS, OVERMOLDS } from '@/lib/data';
+import { generateBOM } from '@/lib/bom';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -105,18 +106,21 @@ function WiringDiagram({
 
   return (
     <div 
-      className="w-[320px] h-[190px] border border-black bg-white flex flex-col font-sans text-black select-none shadow-sm rounded"
+      className="w-[400px] h-[220px] border border-black bg-white flex flex-col font-serif text-black select-none shadow-sm rounded"
+      style={{
+        fontFamily: 'SimSun, STSong, "Songti SC", serif',
+      }}
       onMouseDown={(e) => e.stopPropagation()} // prevent drag trigger on inside click
     >
       {/* Title Header */}
-      <div className="h-[32px] border-b border-black flex items-center justify-center font-bold text-xs tracking-[0.2em] bg-slate-50">
+      <div className="h-[36px] border-b border-black flex items-center justify-center font-bold text-sm tracking-[0.25em] bg-slate-50/50">
         接线图
       </div>
       
       {/* Body Area */}
       <div className="flex-1 flex flex-col p-3 relative justify-between">
-        {/* P1 and P2 Headers */}
-        <div className="flex flex-row justify-between text-xs font-bold px-2 mb-1">
+        {/* P1 and P2 Headers - Large font */}
+        <div className="flex flex-row justify-between text-base font-bold px-2 mb-1">
           <span>{p1Label}</span>
           <span>{p2Label}</span>
         </div>
@@ -125,7 +129,7 @@ function WiringDiagram({
         <div className="flex-1 flex flex-row items-center">
           {/* Left Status (if all cut) */}
           {allLeftCut && (
-            <div className="w-[40px] flex flex-col items-center justify-center text-xs font-bold text-slate-900 border-r border-slate-200 h-full pr-2">
+            <div className="w-[45px] flex flex-col items-center justify-center text-xs font-bold text-black border-r border-black h-full pr-2">
               <span className="leading-tight">切</span>
               <span className="leading-tight">断</span>
             </div>
@@ -134,24 +138,25 @@ function WiringDiagram({
           {/* Center Lines + Pins */}
           <div className="flex-1 flex flex-col justify-between h-full py-1">
             {displayRows.map((row, idx) => (
-              <div key={idx} className="flex flex-row items-center h-[24px]">
+              <div key={idx} className="flex flex-row items-center h-[32px]">
                 {/* Left Pin number (if not all cut) */}
                 {!allLeftCut && (
-                  <span className="w-[30px] text-right pr-2 text-xs font-semibold text-slate-800">
+                  <span className="w-[30px] text-right pr-2 text-xs font-bold text-black">
                     {row.leftText}
                   </span>
                 )}
                 
-                {/* Line and Color Label */}
-                <div className="flex-1 border-b border-black relative h-[12px] mx-1">
-                  <span className="absolute left-1/2 -translate-x-1/2 -top-[14px] text-[11px] font-bold text-slate-900 bg-white px-1">
+                {/* Center: Color text + line stacked vertically (text above line, not overlapping) */}
+                <div className="flex-1 flex flex-col justify-end h-full px-1 relative pb-1">
+                  <span className="text-center text-[11px] font-bold text-black mb-0.5">
                     {row.color}
                   </span>
+                  <div className="w-full border-b border-black" />
                 </div>
 
                 {/* Right Pin number (if not all cut) */}
                 {!allRightCut && (
-                  <span className="w-[30px] text-left pl-2 text-xs font-semibold text-slate-800">
+                  <span className="w-[30px] text-left pl-2 text-xs font-bold text-black">
                     {row.rightText}
                   </span>
                 )}
@@ -161,11 +166,210 @@ function WiringDiagram({
 
           {/* Right Status (if all cut) */}
           {allRightCut && (
-            <div className="w-[40px] flex flex-col items-center justify-center text-xs font-bold text-slate-900 border-l border-slate-200 h-full pl-2">
+            <div className="w-[45px] flex flex-col items-center justify-center text-xs font-bold text-black border-l border-black h-full pl-2">
               <span className="leading-tight">切</span>
               <span className="leading-tight">断</span>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlashHeaderCell({
+  topText,
+  bottomText,
+  width,
+}: {
+  topText: string;
+  bottomText: string;
+  width: string;
+}) {
+  return (
+    <div 
+      className="relative h-[36px] flex items-center justify-center border-r border-black select-none"
+      style={{ width }}
+    >
+      <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+        <line x1="0" y1="100%" x2="100%" y2="0" stroke="black" strokeWidth="1" />
+      </svg>
+      <span className="absolute top-[2px] left-[4px] text-[9px] font-bold leading-none scale-90 origin-top-left">
+        {topText}
+      </span>
+      <span className="absolute bottom-[2px] right-[4px] text-[8px] font-bold leading-none scale-90 origin-bottom-right">
+        {bottomText}
+      </span>
+    </div>
+  );
+}
+
+function BOMTable({ config }: { config: HarnessConfig }) {
+  const bomItems = generateBOM(config);
+  
+  interface BOMTableRow {
+    itemNo: number;
+    name: string;
+    spec: string;
+    unit: string;
+    qty: number;
+  }
+  
+  const rows: BOMTableRow[] = [];
+  
+  // 1. Add wires
+  const wireItems = bomItems.filter(i => i.type === 'wire');
+  wireItems.forEach((wi) => {
+    let wireSpec = wi.description;
+    const matObj = config.materials.find((m: CanvasWireMaterial) => {
+      const spec = m.spec;
+      if (spec.kind === 'electronic') {
+        return wi.description.includes(`${spec.awg}AWG`) && wi.description.includes(spec.color);
+      } else {
+        return wi.description.includes(`${spec.coreCount}芯`) && wi.description.includes(`${spec.awg}AWG`);
+      }
+    });
+
+    if (matObj) {
+      if (matObj.spec.kind === 'jacketed') {
+        const s = matObj.spec;
+        const sq = s.awg === 22 ? '0.3mm²' : s.awg === 24 ? '0.2mm²' : `${s.awg}AWG`;
+        const colorsClean = s.coreColors.map((c: string) => c.endsWith('色') ? c.slice(0, -1) : c).join('、');
+        const shielding = s.shielded ? '屏蔽' : '非屏蔽';
+        const jColor = s.jacketColor === 'black' ? '黑色' : s.jacketColor;
+        wireSpec = `${s.coreCount}C*${sq} (39/0.10TC)*1.2+无纺布  OD: ${s.odMm.toFixed(2)}±0.15\n${colorsClean} ${shielding}${jColor}雾面${s.jacketMaterial}外被`;
+      } else if (matObj.spec.kind === 'electronic') {
+        const s = matObj.spec;
+        const sq = s.awg === 22 ? '0.3mm²' : s.awg === 24 ? '0.2mm²' : `${s.awg}AWG`;
+        const colorsClean = s.color.endsWith('色') ? s.color.slice(0, -1) : s.color;
+        wireSpec = `UL${s.ulNumber || '1007'} ${s.awg}AWG (${sq}) 电子线 L=${s.lengthMm}mm\n单芯 ${colorsClean}色`;
+      }
+    }
+
+    rows.push({
+      itemNo: 1,
+      name: '线材',
+      spec: wireSpec,
+      unit: 'PCS',
+      qty: wi.quantity,
+    });
+  });
+
+  // 2. Add connectors
+  const connItems = bomItems.filter(i => i.type === 'connector');
+  connItems.forEach((ci) => {
+    const specCode = ci.partNumber === 'm12a04-07-093' ? 'M12A04-07-093' : (ci.partNumber || ci.description);
+    rows.push({
+      itemNo: 2,
+      name: '连接器',
+      spec: specCode,
+      unit: 'PCS',
+      qty: ci.quantity,
+    });
+  });
+
+  // 3. Add overmolds
+  if (config.models && config.models.length > 0) {
+    const modelCounts: Record<string, number> = {};
+    config.models.forEach((m: any) => {
+      modelCounts[m.overmoldSpecId] = (modelCounts[m.overmoldSpecId] || 0) + 1;
+    });
+    Object.entries(modelCounts).forEach(([specId, count]) => {
+      const spec = OVERMOLDS.find(s => s.id === specId);
+      const specText = spec ? `${spec.outerHardness} ${spec.outerMaterial}` : '45P 黑色 PVC胶料';
+      rows.push({
+        itemNo: 3,
+        name: '外模料',
+        spec: specText,
+        unit: 'PCS',
+        qty: count,
+      });
+    });
+  }
+
+  // 4. Add heat shrink tubes or other accessories
+  const sleeveItems = bomItems.filter(i => i.type === 'accessory');
+  sleeveItems.forEach((si) => {
+    let name = '保护套管';
+    if (si.description.includes('波纹管')) {
+      name = '波纹管';
+    } else if (si.description.includes('网管') || si.description.includes('braided')) {
+      name = '编织网管';
+    } else if (si.description.includes('热缩管') || si.description.includes('heat-shrink')) {
+      name = '热缩管';
+    } else if (si.description.includes('胶带')) {
+      name = '胶带';
+    }
+
+    rows.push({
+      itemNo: 4,
+      name,
+      spec: si.description,
+      unit: 'PCS',
+      qty: si.quantity,
+    });
+  });
+
+  // Assign final sequential item numbers
+  rows.forEach((r, idx) => {
+    r.itemNo = idx + 1;
+  });
+
+  const circledNums = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
+
+  // Table rows rendered in reverse order (bottom-to-top)
+  const sortedRows = [...rows].sort((a, b) => b.itemNo - a.itemNo);
+
+  return (
+    <div 
+      className="absolute bg-white border border-black text-black select-none shadow-sm font-serif"
+      style={{
+        bottom: '133.33px', // Exactly 1/6 of 800px frame height (800 / 6 = 133.33px)
+        right: '32px',
+        width: '570px',
+        fontFamily: 'SimSun, STSong, "Songti SC", serif',
+      }}
+      onMouseDown={(e) => e.stopPropagation()} // prevent viewport drag
+    >
+      {/* Items (stacked upwards) */}
+      <div className="flex flex-col">
+        {sortedRows.map((row) => (
+          <div key={row.itemNo} className="flex flex-row border-b border-black h-[36px] items-center text-xs font-semibold">
+            {/* ITEM No */}
+            <div className="w-[50px] border-r border-black h-full flex items-center justify-center text-sm font-bold">
+              {circledNums[row.itemNo - 1] || row.itemNo}
+            </div>
+            {/* NAME */}
+            <div className="w-[70px] border-r border-black h-full flex items-center justify-center">
+              {row.name}
+            </div>
+            {/* SPECIFICATION */}
+            <div className="flex-1 border-r border-black h-full flex items-center px-3 whitespace-pre-line leading-tight text-[11px]">
+              {row.spec}
+            </div>
+            {/* UNIT */}
+            <div className="w-[50px] border-r border-black h-full flex items-center justify-center">
+              {row.unit}
+            </div>
+            {/* QTY */}
+            <div className="w-[50px] h-full flex items-center justify-center text-sm font-bold">
+              {row.qty}
+            </div>
+          </div>
+        ))}
+        
+        {/* Table Header (at the bottom) */}
+        <div className="flex flex-row h-[36px] bg-slate-50/50 text-[10px] font-bold">
+          <SlashHeaderCell topText="序号" bottomText="ITEM" width="50px" />
+          <SlashHeaderCell topText="名称" bottomText="NAME" width="70px" />
+          
+          {/* SPECIFICATION Header */}
+          <div className="flex-1 border-r border-black h-full flex items-center justify-center tracking-wider text-xs">
+            规格/NAME&DESCRIPTION
+          </div>
+          
+          <SlashHeaderCell topText="单位" bottomText="UNIT" width="50px" />
+          <SlashHeaderCell topText="用量" bottomText="DSE" width="50px" />
         </div>
       </div>
     </div>
@@ -235,6 +439,7 @@ export function TwoDView() {
   const frameAsset = imageAssets.find((a) => a.name === '图纸图框');
   const frameUrl = frameAsset?.url;
 
+  const config = useHarnessStore((s) => s.config);
   const twoDImages = useHarnessStore((s) => s.config.twoDImages ?? EMPTY_IMAGES);
   const connectors = useHarnessStore((s) => s.config.connectors);
   const materials = useHarnessStore((s) => s.config.materials);
@@ -723,6 +928,8 @@ export function TwoDView() {
                 );
               });
             })()}
+            {/* BOM Table */}
+            <BOMTable config={config} />
           </div>
         )}
       </div>
