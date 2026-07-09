@@ -10,6 +10,8 @@ interface MainLayoutProps {
 export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps) {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
+  const [rightWidth, setRightWidth] = useState(288); // 288px is equivalent to w-72 (72 * 4)
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 1280px)');
@@ -19,6 +21,36 @@ export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps)
     desktop.addEventListener('change', handleViewportChange);
     return () => desktop.removeEventListener('change', handleViewportChange);
   }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth < 180) {
+        setRightOpen(false);
+        setIsDragging(false);
+      } else {
+        setRightWidth(Math.min(600, Math.max(240, newWidth)));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
 
   return (
     <div className="flex h-full flex-col bg-slate-50">
@@ -59,15 +91,22 @@ export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps)
         <main className="relative min-w-0 flex-1">{children}</main>
 
         <div
-          className={`flex shrink-0 overflow-hidden transition-[width] duration-200 ${
-            rightOpen ? 'w-72' : 'w-6'
+          className={`flex shrink-0 overflow-hidden ${
+            isDragging ? 'transition-none' : 'transition-[width] duration-200'
           }`}
+          style={{ width: rightOpen ? rightWidth : 24 }}
         >
           {rightOpen ? (
-            <aside className="relative w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-white">
+            <aside className="relative w-full shrink-0 overflow-y-auto border-l border-slate-200 bg-white">
+              {/* Drag handle */}
+              <div
+                onMouseDown={handleMouseDown}
+                className="absolute top-0 left-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 hover:w-1.5 active:bg-blue-600 active:w-1.5 transition-all z-50 select-none"
+                title="拖动调整宽度"
+              />
               <button
                 onClick={() => setRightOpen(false)}
-                className="absolute top-2 left-2 z-10 cursor-pointer rounded p-1 hover:bg-slate-100"
+                className="absolute top-2 left-4 z-10 cursor-pointer rounded p-1 hover:bg-slate-100"
                 title="收起右侧面板"
                 aria-label="收起右侧面板"
               >
