@@ -226,7 +226,9 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
           event.stopPropagation();
           selectMaterialConnectionPoint({ kind: 'material', materialId: data.id, endpoint: 'start' });
         }}
-        className="!h-4 !w-4 !border-2 !border-white !bg-amber-500 shadow"
+        className={`!border-2 !border-white !bg-amber-500 shadow ${
+          isElectronic ? '!h-4 !w-4' : '!h-6 !w-6'
+        }`}
         style={{ top: getMaterialCenterY(spec.kind) }}
       />
       <Handle
@@ -237,7 +239,9 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
           event.stopPropagation();
           selectMaterialConnectionPoint({ kind: 'material', materialId: data.id, endpoint: 'end' });
         }}
-        className="!h-4 !w-4 !border-2 !border-white !bg-amber-500 shadow"
+        className={`!border-2 !border-white !bg-amber-500 shadow ${
+          isElectronic ? '!h-4 !w-4' : '!h-6 !w-6'
+        }`}
         style={{ top: getMaterialCenterY(spec.kind) }}
       />
 
