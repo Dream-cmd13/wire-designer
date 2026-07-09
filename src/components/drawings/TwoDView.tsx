@@ -391,12 +391,10 @@ function BOMTable({ config }: { config: HarnessConfig }) {
 function ImageInfoBox({
   image,
   onRotate,
-  onDelete,
   onCollapse,
 }: {
   image: TwoDImage;
   onRotate: (id: string) => void;
-  onDelete: (id: string) => void;
   onCollapse: () => void;
 }) {
   const label = useElementLabel(image.elementKind, image.elementId);
@@ -431,14 +429,6 @@ function ImageInfoBox({
           className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-slate-50"
         >
           收起
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(image.id)}
-          className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
-        >
-          <Trash2 className="h-3 w-3" />
-          删除
         </button>
       </div>
     </div>
@@ -915,10 +905,6 @@ export function TwoDView() {
                                   image={img}
                                   onRotate={rotateTwoDImage}
                                   onCollapse={() => setSelectedId(null)}
-                                  onDelete={(id) => {
-                                    removeTwoDImage(id);
-                                    setSelectedId(null);
-                                  }}
                                 />
                               </div>
                             )}

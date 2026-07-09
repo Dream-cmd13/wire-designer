@@ -193,9 +193,9 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   );
   const panelWidth = Math.max(
     300,
-    materialColumnWidth + connectorColumns.length * 82 + 42 + signalDefinitionColumnWidth + 22,
+    materialColumnWidth + connectorColumns.length * 80 + signalDefinitionColumnWidth + 60,
   );
-  const gridColumns = `${materialColumnWidth}px ${connectorColumns.map(() => '76px').join(' ')} 36px ${signalDefinitionColumnWidth}px 18px`;
+  const gridColumns = `${materialColumnWidth}px ${connectorColumns.map(() => '76px').join(' ')} 36px ${signalDefinitionColumnWidth}px`;
   const detailTitle = electronicMaterialCount > 0
     ? `${electronicMaterialCount} 条电子线`
     : `${Math.max(jacketedMaterialCount, detailMaterials.length || 1)} 条护套线`;
@@ -312,7 +312,6 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
             ))}
             <span className="text-center">颜色</span>
             <span className="text-center">接线定义</span>
-            <span />
           </div>
 
           <div className="space-y-0.5">
@@ -386,17 +385,6 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                     placeholder="SIG"
                     className="nodrag nopan min-w-0 rounded border border-transparent bg-transparent px-1 py-0 font-medium text-slate-700 outline-none focus:border-slate-200 focus:bg-slate-50 disabled:text-slate-300"
                   />
-
-                  {circuit && (circuit.start || circuit.end) ? (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCircuit(row.material.id, circuit.id)}
-                      className="nodrag nopan flex h-3.5 w-3.5 items-center justify-center rounded text-slate-300 hover:bg-red-50 hover:text-red-400"
-                      title="删除此接线"
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  ) : <span />}
                 </div>
               );
             })}
