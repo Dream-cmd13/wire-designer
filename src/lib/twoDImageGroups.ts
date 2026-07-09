@@ -10,7 +10,7 @@ import type {
   TwoDImage,
   HarnessConfig,
 } from '@/types/harness';
-import { getMoldLinkage } from './canvasMaterials';
+import { getConnectorHeight, getConnectorNodeWidth, getMoldLinkage } from './canvasMaterials';
 
 // ── Union-Find ──────────────────────────────────────────────────────────────
 
@@ -30,6 +30,31 @@ function makeUF(ids: string[]) {
   }
 
   return { find, union };
+}
+
+const CONNECTOR_MODEL_ATTACH_TOLERANCE = 120;
+const CONNECTOR_MODEL_VERTICAL_TOLERANCE = 24;
+
+function isConnectorNearModel(connector: ConnectorInstance, model: CanvasModel): boolean {
+  const connectorLeft = connector.position.x;
+  const connectorRight = connector.position.x + getConnectorNodeWidth(connector);
+  const connectorTop = connector.position.y;
+  const connectorBottom = connector.position.y + getConnectorHeight(connector);
+  const modelLeft = model.position.x;
+  const modelRight = model.position.x + model.width;
+  const modelTop = model.position.y;
+  const modelBottom = model.position.y + model.height;
+
+  const horizontalGap = Math.max(
+    0,
+    modelLeft - connectorRight,
+    connectorLeft - modelRight,
+  );
+  const verticallyAligned =
+    modelTop <= connectorBottom + CONNECTOR_MODEL_VERTICAL_TOLERANCE &&
+    modelBottom >= connectorTop - CONNECTOR_MODEL_VERTICAL_TOLERANCE;
+
+  return horizontalGap <= CONNECTOR_MODEL_ATTACH_TOLERANCE && verticallyAligned;
 }
 
 // ── x-position lookup ───────────────────────────────────────────────────────
@@ -130,6 +155,13 @@ export function buildTwoDImageGroups(
         const matk = key('material', mat.id);
         if (elementIds.includes(matk)) {
           uf.union(mk, matk);
+        }
+      }
+    } else {
+      for (const connector of connectors) {
+        const ck = key('connector', connector.id);
+        if (elementIds.includes(ck) && isConnectorNearModel(connector, model)) {
+          uf.union(mk, ck);
         }
       }
     }
