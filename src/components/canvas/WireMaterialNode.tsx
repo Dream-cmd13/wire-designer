@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Tag, X } from 'lucide-react';
+import { Tag } from 'lucide-react';
 import { Handle, Position } from '@xyflow/react';
 import {
   getMaterialNodeHeight,
@@ -7,12 +7,10 @@ import {
   getMaterialStripHeight,
   resolveColor,
 } from '@/lib/canvasMaterials';
-import { WIRE_COLORS } from '@/lib/data';
 import { useHarnessStore } from '@/stores/harnessStore';
 import {
   detachMaterialEndpoint,
   reassignMaterialEndpoint,
-  removeMaterialCircuit,
   updateMaterialCircuit,
   getJumperNetwork,
   getActiveConnectorSide,
@@ -171,15 +169,6 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
     state.replaceDocument(updateMaterialCircuit(state.config, materialId, circuitId, patch));
   };
 
-  const handleRemoveCircuit = (materialId: string, circuitId: string) => {
-    if (data.onRequestRemoveCircuit) {
-      data.onRequestRemoveCircuit(materialId, circuitId);
-      return;
-    }
-    const state = useHarnessStore.getState();
-    state.replaceDocument(removeMaterialCircuit(state.config, materialId, circuitId));
-  };
-
   const materialColumnWidth = estimateColumnWidth(
     ['线材', ...detailMaterials.map((material) => materialDescription(material))],
     110,
@@ -332,6 +321,14 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                   {connectorColumns.map((connector) => {
                     const matches = connectorRefs(circuit, connector.id);
                     const match = matches[0];
+                    if (!circuit) {
+                      return (
+                        <span
+                          key={`${connector.id}:empty-${row.id}`}
+                          className="min-h-[24px]"
+                        />
+                      );
+                    }
                     if (match?.ref && circuit) {
                       return (
                         <PinInput
