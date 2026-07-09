@@ -163,8 +163,9 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-5xl px-6 py-8">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">项目管理</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -333,6 +334,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
           onClose={() => setStatusToast(null)}
         />
       )}
+      </div>
     </div>
   );
 }
