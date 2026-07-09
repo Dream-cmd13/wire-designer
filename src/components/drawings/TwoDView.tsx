@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Minus, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
+import { Minus, Plus, RotateCw, Upload } from 'lucide-react';
 import { generateId, getJumperNetwork } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
-import type { TwoDImage, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
+import type { TwoDImage, CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
 import { imageAssets } from '@/lib/imageAssets';
 import { WIRE_COLORS, OVERMOLDS } from '@/lib/data';
 import { generateBOM } from '@/lib/bom';
 import { resolveColor } from '@/lib/canvasMaterials';
+import {
+  calculateProductionDrawingLayout,
+  countProductionBomRows,
+  type ProductionDrawingLayout,
+} from '@/lib/productionDrawingLayout';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -55,9 +60,11 @@ function getJumperNetworkString(connector: ConnectorInstance, side: 'left' | 'ri
 function WiringDiagram({
   materials,
   connectors,
+  layout,
 }: {
   materials: CanvasWireMaterial[];
   connectors: ConnectorInstance[];
+  layout: ProductionDrawingLayout['wiringDiagram'];
 }) {
   const mat = materials[0];
   if (!mat) return null;
@@ -111,25 +118,34 @@ function WiringDiagram({
     rightText: allRightCut ? r.rightText : (r.rightText === '切断' ? '' : r.rightText),
   }));
 
+  const bodyHeight = layout.height - layout.headerHeight;
+  const rowHeight = Math.max(22, Math.floor((bodyHeight - 38) / Math.max(1, displayRows.length)));
+
   return (
     <div 
-      className="w-[400px] h-[220px] border border-black bg-white flex flex-col font-serif text-black select-none shadow-sm rounded"
+      className="border border-black bg-white flex flex-col font-serif text-black select-none shadow-sm rounded overflow-hidden"
       style={{
         fontFamily: 'SimSun, STSong, "Songti SC", serif',
+        width: layout.width,
+        height: layout.height,
+        boxSizing: 'border-box',
       }}
       onMouseDown={(e) => e.stopPropagation()} // prevent drag trigger on inside click
     >
       {/* Title Header */}
-      <div className="h-[36px] border-b border-black flex items-center justify-center font-bold text-sm tracking-[0.25em] bg-slate-50/50">
+      <div
+        className="shrink-0 border-b border-black flex items-center justify-center font-bold text-xs tracking-[0.25em] bg-slate-50/50"
+        style={{ height: layout.headerHeight }}
+      >
         接线图
       </div>
       
       {/* Body Area */}
-      <div className="flex-1 flex flex-col p-3 relative justify-between">
+      <div className="flex-1 flex flex-col p-2 relative justify-between overflow-hidden">
         {/* P1 and P2 Headers - Large font */}
-        <div className="flex flex-row justify-between text-base font-bold px-2 mb-1">
-          <span>{p1Label}</span>
-          <span>{p2Label}</span>
+        <div className="flex flex-row justify-between gap-3 text-[10px] leading-tight font-bold px-2 mb-1">
+          <span className="min-w-0 flex-1 truncate text-left" title={p1Label}>{p1Label}</span>
+          <span className="min-w-0 flex-1 truncate text-right" title={p2Label}>{p2Label}</span>
         </div>
 
         {/* Content Rows */}
@@ -145,7 +161,7 @@ function WiringDiagram({
           {/* Center Lines + Pins */}
           <div className="flex-1 flex flex-col justify-between h-full py-1">
             {displayRows.map((row, idx) => (
-              <div key={idx} className="flex flex-row items-center h-[32px]">
+              <div key={idx} className="flex flex-row items-center" style={{ height: rowHeight }}>
                 {/* Left Pin number (if not all cut) */}
                 {!allLeftCut && (
                   <span className="w-[30px] text-right pr-2 text-xs font-bold text-black">
@@ -211,7 +227,7 @@ function SlashHeaderCell({
   );
 }
 
-function BOMTable({ config }: { config: HarnessConfig }) {
+function BOMTable({ config, layout }: { config: HarnessConfig; layout: ProductionDrawingLayout }) {
   const bomItems = generateBOM(config);
   
   interface BOMTableRow {
@@ -282,8 +298,9 @@ function BOMTable({ config }: { config: HarnessConfig }) {
   // 3. Add overmolds
   if (config.models && config.models.length > 0) {
     const modelCounts: Record<string, number> = {};
-    config.models.forEach((m: any) => {
-      modelCounts[m.overmoldSpecId] = (modelCounts[m.overmoldSpecId] || 0) + 1;
+    config.models.forEach((m: CanvasModel) => {
+      const specId = m.overmoldSpecId ?? 'default';
+      modelCounts[specId] = (modelCounts[specId] || 0) + 1;
     });
     Object.entries(modelCounts).forEach(([specId, count]) => {
       const spec = OVERMOLDS.find(s => s.id === specId);
@@ -335,17 +352,22 @@ function BOMTable({ config }: { config: HarnessConfig }) {
     <div 
       className="absolute bg-white border border-black text-black select-none shadow-sm font-serif"
       style={{
-        bottom: '133.33px', // Exactly 1/6 of 800px frame height (800 / 6 = 133.33px)
-        right: '32px',
-        width: '570px',
+        bottom: layout.bom.bottom,
+        right: layout.bom.right,
+        width: layout.bom.width,
         fontFamily: 'SimSun, STSong, "Songti SC", serif',
+        boxSizing: 'border-box',
       }}
       onMouseDown={(e) => e.stopPropagation()} // prevent viewport drag
     >
       {/* Items (stacked upwards) */}
       <div className="flex flex-col">
         {sortedRows.map((row) => (
-          <div key={row.itemNo} className="flex flex-row border-b border-black h-[36px] items-center text-xs font-semibold">
+          <div
+            key={row.itemNo}
+            className="flex flex-row border-b border-black items-center text-[11px] font-semibold"
+            style={{ height: layout.bom.rowHeight }}
+          >
             {/* ITEM No */}
             <div className="w-[50px] border-r border-black h-full flex items-center justify-center text-sm font-bold">
               {circledNums[row.itemNo - 1] || row.itemNo}
@@ -370,7 +392,10 @@ function BOMTable({ config }: { config: HarnessConfig }) {
         ))}
         
         {/* Table Header (at the bottom) */}
-        <div className="flex flex-row h-[36px] bg-slate-50/50 text-[10px] font-bold">
+        <div
+          className="flex flex-row bg-slate-50/50 text-[10px] font-bold"
+          style={{ height: layout.bom.headerHeight }}
+        >
           <SlashHeaderCell topText="序号" bottomText="ITEM" width="50px" />
           <SlashHeaderCell topText="名称" bottomText="NAME" width="70px" />
           
@@ -448,7 +473,6 @@ export function TwoDView() {
   const models = useHarnessStore((s) => s.config.models);
   const selection = useHarnessStore((s) => s.selection);
   const addTwoDImage = useHarnessStore((s) => s.addTwoDImage);
-  const removeTwoDImage = useHarnessStore((s) => s.removeTwoDImage);
   const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
   const patchDocument = useHarnessStore((s) => s.patchDocument);
 
@@ -463,7 +487,6 @@ export function TwoDView() {
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const activeDragGroupIdxRef = useRef(activeDragGroupIdx);
-  activeDragGroupIdxRef.current = activeDragGroupIdx;
 
   // ── zoom & pan ───────────────────────────────────────────────────────────────
   const [zoom, setZoom] = useState(1);
@@ -474,14 +497,33 @@ export function TwoDView() {
     startMX: number; startMY: number; startPX: number; startPY: number;
   } | null>(null);
   const panningRef = useRef(panning);
-  panningRef.current = panning;
   const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
+
+  useEffect(() => {
+    activeDragGroupIdxRef.current = activeDragGroupIdx;
+  }, [activeDragGroupIdx]);
+
+  useEffect(() => {
+    panningRef.current = panning;
+  }, [panning]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   // ── flatten groups into sorted display order ──────────────────────────────
   const groups = useMemo(
     () => buildTwoDImageGroups(twoDImages, connectors, materials, sleeves, models),
     [twoDImages, connectors, materials, sleeves, models],
+  );
+  const hasWiringDiagram = useMemo(
+    () => groups.some((group) => group.images.some((img) => img.elementKind === 'material')),
+    [groups],
+  );
+  const bomRowCount = useMemo(() => countProductionBomRows(config), [config]);
+  const productionLayout = useMemo(
+    () => calculateProductionDrawingLayout({ bomRowCount, hasWiringDiagram }),
+    [bomRowCount, hasWiringDiagram],
   );
 
   // Sort all images by their element's x-position individually, ignoring group structure.
@@ -495,7 +537,7 @@ export function TwoDView() {
   }, [groups, connectors, materials, sleeves, models]);
 
   // ── Card and Group size helpers ──────────────────────────────────────────────
-  const maxCardHeight = 360;
+  const maxCardHeight = productionLayout.maxImageHeight;
   const getWeight = (kind: TwoDImage['elementKind']) => {
     if (kind === 'material') return 3;
     if (kind === 'sleeve') return 2;
@@ -525,21 +567,38 @@ export function TwoDView() {
     for (let i = 0; i < groups.length; i++) {
       positions[i] = {
         x: currentX,
-        y: 110, 
+        y: productionLayout.assemblyTop,
       };
       currentX += getGroupWidth(groups[i]) + groupSpacing;
     }
     return positions;
-  }, [groups, getGroupWidth]);
+  }, [groups, getGroupWidth, productionLayout.assemblyTop]);
+
+  const getGroupReservedHeight = useCallback((group: { images: TwoDImage[] }) => {
+    const groupHasWiring = group.images.some((img) => img.elementKind === 'material');
+    return (
+      maxCardHeight +
+      (groupHasWiring ? productionLayout.assemblyGap + productionLayout.wiringDiagram.height : 0) +
+      8
+    );
+  }, [maxCardHeight, productionLayout.assemblyGap, productionLayout.wiringDiagram.height]);
+
+  const clampGroupPosition = useCallback((position: { x: number; y: number }, group: { images: TwoDImage[] }) => {
+    const maxY = Math.max(24, productionLayout.bomRect.top - productionLayout.safeGap - getGroupReservedHeight(group));
+    return {
+      x: position.x,
+      y: Math.min(position.y, maxY),
+    };
+  }, [getGroupReservedHeight, productionLayout.bomRect.top, productionLayout.safeGap]);
 
   const getGroupPosition = useCallback((groupIdx: number) => {
     const group = groups[groupIdx];
     const firstImg = group.images[0];
     if (firstImg && firstImg.pos) {
-      return { x: firstImg.pos.x, y: firstImg.pos.y };
+      return clampGroupPosition({ x: firstImg.pos.x, y: firstImg.pos.y }, group);
     }
-    return defaultGroupPositions[groupIdx];
-  }, [groups, defaultGroupPositions]);
+    return clampGroupPosition(defaultGroupPositions[groupIdx], group);
+  }, [clampGroupPosition, groups, defaultGroupPositions]);
 
   // ── global mouse handlers ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -569,6 +628,7 @@ export function TwoDView() {
         const basePos = getGroupPosition(gIdx);
         const newX = basePos.x + dragOffset.x;
         const newY = basePos.y + dragOffset.y;
+        const nextPos = clampGroupPosition({ x: newX, y: newY }, group);
 
         // Update all images in this group with their new absolute pos, maintaining relative horizontal offset
         const nextImages = twoDImages.map((img) => {
@@ -580,7 +640,7 @@ export function TwoDView() {
             }
             return {
               ...img,
-              pos: { x: newX + offsetK, y: newY },
+              pos: { x: nextPos.x + offsetK, y: nextPos.y },
             };
           }
           return img;
@@ -599,7 +659,7 @@ export function TwoDView() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [dragStartPos, dragOffset, groups, twoDImages, getGroupPosition, getCardWidth, patchDocument]);
+  }, [dragStartPos, dragOffset, groups, twoDImages, getGroupPosition, getCardWidth, patchDocument, clampGroupPosition]);
 
   // ── highlighted image (follows canvas selection) ─────────────────────────────
   const highlightedImageId =
@@ -658,8 +718,8 @@ export function TwoDView() {
   useEffect(() => {
     if (twoDImages.length === 0) {
       hasCenteredRef.current = false;
-      setIsFitted(false);
-      return;
+      const timer = setTimeout(() => setIsFitted(false), 0);
+      return () => clearTimeout(timer);
     }
     if (hasCenteredRef.current) return;
     const timer = setTimeout(() => {
@@ -864,7 +924,7 @@ export function TwoDView() {
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: 24,
+                      gap: productionLayout.assemblyGap,
                       border: '1px dashed transparent',
                       borderRadius: '8px',
                       padding: '4px',
@@ -918,7 +978,11 @@ export function TwoDView() {
                       const groupMaterials = materials.filter(m => group.images.some(img => img.elementKind === 'material' && img.elementId === m.id));
                       const groupConnectors = connectors.filter(c => group.images.some(img => img.elementKind === 'connector' && img.elementId === c.id));
                       return groupMaterials.length > 0 ? (
-                        <WiringDiagram materials={groupMaterials} connectors={groupConnectors} />
+                        <WiringDiagram
+                          materials={groupMaterials}
+                          connectors={groupConnectors}
+                          layout={productionLayout.wiringDiagram}
+                        />
                       ) : null;
                     })()}
                   </div>
@@ -926,7 +990,7 @@ export function TwoDView() {
               });
             })()}
             {/* BOM Table */}
-            <BOMTable config={config} />
+            <BOMTable config={config} layout={productionLayout} />
           </div>
         )}
       </div>
