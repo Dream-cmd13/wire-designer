@@ -166,174 +166,170 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">项目管理</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {currentUser ? `欢迎，${currentUser.name}` : '请先创建本地身份'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <Upload className="h-4 w-4" /> 导入设计
-          </button>
-          <button
-            type="button"
-            onClick={onNewProject}
-            className="flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
-          >
-            <Plus className="h-4 w-4" /> 新建项目
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-6 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
-        <div className="flex items-center gap-2">
-          <HardDrive className="h-4 w-4" />
-          <span className="text-sm font-medium">项目总数</span>
-        </div>
-        <span className="text-2xl font-bold">{userProjects.length}</span>
-      </div>
-
-      <div className="mb-8 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-        当前为本地工作区：项目仅保存在此浏览器。请定期使用“导出设计”备份重要项目。
-      </div>
-
-      {notice && (
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
-          <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} className="text-slate-400 hover:text-slate-700">✕</button>
-        </div>
-      )}
-
-      {userProjects.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 bg-white py-20 text-center">
-          <FolderOpen className="mx-auto mb-4 h-12 w-12 text-slate-300" />
-          <h3 className="mb-2 text-lg font-medium text-slate-600">暂无项目</h3>
-          <p className="mb-4 text-sm text-slate-400">新建空白项目，或导入已有设计文件</p>
-          <button
-            type="button"
-            onClick={onNewProject}
-            className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-          >
-            创建项目
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {userProjects.map((project) => (
-            <div
-              key={project.id}
-              className="group rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md"
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">项目管理</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {currentUser ? `欢迎，${currentUser.name}` : '请先创建本地身份'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
             >
-              <div className="mb-3 flex items-start justify-between">
-                <div className="min-w-0 flex-1">
-                  {editingId === project.id ? (
-                    <input
-                      type="text"
-                      value={editName}
-                      onChange={(event) => setEditName(event.target.value)}
-                      onBlur={() => void saveEdit(project.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') void saveEdit(project.id);
-                        if (event.key === 'Escape') setEditingId(null);
-                      }}
-                      autoFocus
-                      className="w-full rounded border border-blue-300 px-2 py-1 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  ) : (
-                    <h3
-                      className="cursor-pointer truncate text-base font-semibold text-slate-800 hover:text-blue-600"
-                      onClick={() => onOpenProject(project)}
-                    >
-                      {project.name}
-                    </h3>
-                  )}
+              <Upload className="h-4 w-4" /> 导入设计
+            </button>
+            <button
+              type="button"
+              onClick={onNewProject}
+              className="flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" /> 新建项目
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
+          <div className="flex items-center gap-2">
+            <HardDrive className="h-4 w-4" />
+            <span className="text-sm font-medium">项目总数</span>
+          </div>
+          <span className="text-2xl font-bold">{userProjects.length}</span>
+        </div>
+
+        {notice && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} className="text-slate-400 hover:text-slate-700">✕</button>
+          </div>
+        )}
+
+        {userProjects.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-white py-20 text-center">
+            <FolderOpen className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+            <h3 className="mb-2 text-lg font-medium text-slate-600">暂无项目</h3>
+            <p className="mb-4 text-sm text-slate-400">新建空白项目，或导入已有设计文件</p>
+            <button
+              type="button"
+              onClick={onNewProject}
+              className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+            >
+              创建项目
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {userProjects.map((project) => (
+              <div
+                key={project.id}
+                className="group rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md"
+              >
+                <div className="mb-3 flex items-start justify-between">
+                  <div className="min-w-0 flex-1">
+                    {editingId === project.id ? (
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(event) => setEditName(event.target.value)}
+                        onBlur={() => void saveEdit(project.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') void saveEdit(project.id);
+                          if (event.key === 'Escape') setEditingId(null);
+                        }}
+                        autoFocus
+                        className="w-full rounded border border-blue-300 px-2 py-1 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    ) : (
+                      <h3
+                        className="cursor-pointer truncate text-base font-semibold text-slate-800 hover:text-blue-600"
+                        onClick={() => onOpenProject(project)}
+                      >
+                        {project.name}
+                      </h3>
+                    )}
+                  </div>
+                </div>
+
+                <p className="mb-4 line-clamp-2 h-10 text-sm text-slate-500">
+                  {project.description || '无描述'}
+                </p>
+
+                <div className="mb-4 flex items-center justify-between text-xs text-slate-400">
+                  <span>更新于 {formatDate(project.updatedAt)}</span>
+                  <span>创建于 {formatDate(project.createdAt)}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject(project)}
+                    className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
+                  >
+                    <FolderOpen className="h-4 w-4" /> 打开
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleExport(project)}
+                    className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-green-50 hover:text-green-600"
+                    title="导出设计"
+                    aria-label={`导出项目 ${project.name}`}
+                  >
+                    <Download className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRestoreLatest(project)}
+                    className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600"
+                    title="从最新恢复点另存项目"
+                    aria-label={`恢复项目 ${project.name}`}
+                  >
+                    <History className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startEdit(project)}
+                    className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                    title="重命名"
+                    aria-label={`重命名项目 ${project.name}`}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => confirmDelete(project)}
+                    disabled={deletingProjectId === project.id}
+                    className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                    title="删除"
+                    aria-label={`删除项目 ${project.name}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
+            ))}
+          </div>
+        )}
 
-              <p className="mb-4 line-clamp-2 h-10 text-sm text-slate-500">
-                {project.description || '无描述'}
-              </p>
-
-              <div className="mb-4 flex items-center justify-between text-xs text-slate-400">
-                <span>更新于 {formatDate(project.updatedAt)}</span>
-                <span>创建于 {formatDate(project.createdAt)}</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onOpenProject(project)}
-                  className="flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100"
-                >
-                  <FolderOpen className="h-4 w-4" /> 打开
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleExport(project)}
-                  className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-green-50 hover:text-green-600"
-                  title="导出设计"
-                  aria-label={`导出项目 ${project.name}`}
-                >
-                  <Download className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleRestoreLatest(project)}
-                  className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600"
-                  title="从最新恢复点另存项目"
-                  aria-label={`恢复项目 ${project.name}`}
-                >
-                  <History className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => startEdit(project)}
-                  className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-                  title="重命名"
-                  aria-label={`重命名项目 ${project.name}`}
-                >
-                  <Edit3 className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => confirmDelete(project)}
-                  disabled={deletingProjectId === project.id}
-                  className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                  title="删除"
-                  aria-label={`删除项目 ${project.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <ImportProjectDialog
-        isOpen={importOpen}
-        onClose={() => setImportOpen(false)}
-        onImport={handleImport}
-      />
-      {deleteToast && (
-        <DeleteConfirmToast
-          message={`删除项目“${deleteToast.name}”？此操作不可撤销。`}
-          onConfirm={() => void handleDelete(deleteToast)}
-          onCancel={() => setDeleteToast(null)}
+        <ImportProjectDialog
+          isOpen={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImport={handleImport}
         />
-      )}
-      {statusToast && (
-        <ActionToast
-          tone={statusToast.tone}
-          message={statusToast.message}
-          onClose={() => setStatusToast(null)}
-        />
-      )}
+        {deleteToast && (
+          <DeleteConfirmToast
+            message={`删除项目“${deleteToast.name}”？此操作不可撤销。`}
+            onConfirm={() => void handleDelete(deleteToast)}
+            onCancel={() => setDeleteToast(null)}
+          />
+        )}
+        {statusToast && (
+          <ActionToast
+            tone={statusToast.tone}
+            message={statusToast.message}
+            onClose={() => setStatusToast(null)}
+          />
+        )}
       </div>
     </div>
   );
