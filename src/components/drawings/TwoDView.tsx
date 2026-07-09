@@ -8,7 +8,11 @@ import { TwoDImageCard } from './TwoDImageCard';
 import { imageAssets } from '@/lib/imageAssets';
 import { WIRE_COLORS, OVERMOLDS } from '@/lib/data';
 import { generateBOM } from '@/lib/bom';
-import { resolveColor } from '@/lib/canvasMaterials';
+import {
+  resolveColor,
+  getCanvasModelDisplayName,
+  getProtectiveSleeveDisplayName,
+} from '@/lib/canvasMaterials';
 import {
   calculateProductionDrawingLayout,
   countProductionBomRows,
@@ -30,6 +34,8 @@ function useElementLabel(
 ): string {
   const connectors = useHarnessStore((s) => s.config.connectors);
   const materials = useHarnessStore((s) => s.config.materials);
+  const models = useHarnessStore((s) => s.config.models);
+  const sleeves = useHarnessStore((s) => s.config.protectiveSleeves);
 
   if (!elementKind || !elementId) return '';
   if (elementKind === 'connector') {
@@ -40,8 +46,14 @@ function useElementLabel(
     const m = materials.find((x) => x.id === elementId);
     return m ? `线材 · ${m.name}` : `线材 · ${elementId}`;
   }
-  if (elementKind === 'sleeve') return `保护套 · ${elementId}`;
-  if (elementKind === 'model') return `外模 · ${elementId}`;
+  if (elementKind === 'sleeve') {
+    const s = sleeves.find((x) => x.id === elementId);
+    return s ? getProtectiveSleeveDisplayName(s) : `保护套 · ${elementId}`;
+  }
+  if (elementKind === 'model') {
+    const m = models.find((x) => x.id === elementId);
+    return m ? getCanvasModelDisplayName(m) : `外模 · ${elementId}`;
+  }
   return elementId;
 }
 
