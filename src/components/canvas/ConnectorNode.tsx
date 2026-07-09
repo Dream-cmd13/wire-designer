@@ -138,14 +138,15 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
                 {isConnected ? (
                   allBindings.map((binding, idx) => {
                     const colorHex = getColorHex(binding.color);
+                    const isLight = ['#ffffff', '#f5f5f5', '#f5f0e8', '#fff'].includes(colorHex.toLowerCase().trim());
                     return (
                       <div key={`${binding.circuitId}-${idx}`} className="flex items-center gap-0.5">
                         <div
-                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${isLight ? 'border border-slate-300' : ''}`}
                           style={{ backgroundColor: colorHex }}
                         />
                         <div
-                          className="w-4 h-[2px] rounded-full flex-shrink-0"
+                          className={`w-4 h-[2px] rounded-full flex-shrink-0 ${isLight ? 'border-y border-slate-300' : ''}`}
                           style={{ backgroundColor: colorHex }}
                         />
                       </div>
