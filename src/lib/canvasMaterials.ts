@@ -299,6 +299,7 @@ export function createDefaultCanvasMaterial(
 }
 
 export function getConnectorNodeWidth(_instance: ConnectorInstance | undefined | null): number {
+  void _instance;
   return 266;
 }
 

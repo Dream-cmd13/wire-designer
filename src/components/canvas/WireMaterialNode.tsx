@@ -424,14 +424,10 @@ function PinInput({
     return getFormattedPinValue(connector, side, pin);
   }, [connector, side, pin]);
 
-  const [value, setValue] = useState(currentNetworkValue);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setValue(currentNetworkValue);
-  }, [currentNetworkValue]);
-
-  const commit = () => {
+  const commit = (input: HTMLInputElement) => {
+    const value = input.value;
     const trimmed = value.trim();
     if (trimmed === '') {
       if (pin !== undefined) {
@@ -478,7 +474,7 @@ function PinInput({
 
     if (newPinsFormatted === currentNetworkValue) {
       setError(null);
-      setValue(currentNetworkValue);
+      input.value = currentNetworkValue;
       return;
     }
 
@@ -495,7 +491,7 @@ function PinInput({
 
     if (next === state.config) {
       setError('该连接与当前连接规则冲突');
-      setValue(currentNetworkValue);
+      input.value = currentNetworkValue;
       return;
     }
 
@@ -505,16 +501,16 @@ function PinInput({
 
   return (
     <input
+      key={currentNetworkValue}
       type="text"
-      value={value}
+      defaultValue={currentNetworkValue}
       placeholder="—"
       aria-label={`${connector.label} PIN`}
       title={error ?? `${connector.label} · ${connector.connector.name}`}
-      onChange={(event) => {
-        setValue(event.target.value);
+      onChange={() => {
         setError(null);
       }}
-      onBlur={commit}
+      onBlur={(event) => commit(event.currentTarget)}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
           event.currentTarget.blur();

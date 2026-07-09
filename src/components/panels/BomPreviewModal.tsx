@@ -15,7 +15,7 @@ interface BomPreviewModalProps {
 }
 
 export function BomPreviewModal({ isOpen, onClose, itemName, files }: BomPreviewModalProps) {
-  const [selectedFileIndex, setSelectedFileIndex] = useState(0);
+  const [selectedFileUrl, setSelectedFileUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -27,14 +27,9 @@ export function BomPreviewModal({ isOpen, onClose, itemName, files }: BomPreview
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Reset selected file when files or modal changes
-  useEffect(() => {
-    setSelectedFileIndex(0);
-  }, [files]);
-
   if (!isOpen) return null;
 
-  const currentFile = files[selectedFileIndex] || null;
+  const currentFile = files.find((file) => file.url === selectedFileUrl) ?? files[0] ?? null;
 
   return (
     <div
@@ -84,11 +79,11 @@ export function BomPreviewModal({ isOpen, onClose, itemName, files }: BomPreview
               </div>
               <div className="space-y-1">
                 {files.map((file, idx) => {
-                  const isSelected = idx === selectedFileIndex;
+                  const isSelected = file.url === currentFile?.url;
                   return (
                     <button
                       key={file.url + idx}
-                      onClick={() => setSelectedFileIndex(idx)}
+                      onClick={() => setSelectedFileUrl(file.url)}
                       className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-xs font-medium transition cursor-pointer ${
                         isSelected
                           ? 'bg-blue-50 text-blue-600 border-l-2 border-blue-500'

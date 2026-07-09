@@ -103,7 +103,7 @@ function safeImageName(name: string) {
     .slice(0, 80) || 'pdf-crop';
 }
 
-export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
+function PdfCropViewerContent({ drawing }: PdfCropViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const renderTokenRef = useRef(0);
@@ -224,16 +224,6 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
       loadingTask.destroy();
     };
   }, [drawing.url]);
-
-  // Reset zoom and page when switching PDFs
-  useEffect(() => {
-    setZoom(1);
-    setPageNumber(1);
-    if (stageRef.current) {
-      stageRef.current.scrollTop = 0;
-      stageRef.current.scrollLeft = 0;
-    }
-  }, [drawing.id]);
 
   useEffect(() => {
     if (!pdfDocument) return undefined;
@@ -777,4 +767,8 @@ export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
       </aside>
     </div>
   );
+}
+
+export function PdfCropViewer({ drawing }: PdfCropViewerProps) {
+  return <PdfCropViewerContent key={drawing.id} drawing={drawing} />;
 }

@@ -205,6 +205,36 @@ describe('normalizeHarnessConfig', () => {
     const parsed = parseHarnessConfig(input);
     expect(parsed.success).toBe(false);
   });
+
+  it('preserves model overmold spec selection during schema parsing', () => {
+    const input: HarnessConfig = {
+      schemaVersion: 3,
+      id: 'model-spec',
+      name: 'model-spec',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [],
+      materials: [],
+      protectiveSleeves: [],
+      models: [{
+        id: 'model-1',
+        kind: 'outer-box',
+        position: { x: 10, y: 20 },
+        width: 80,
+        height: 60,
+        overmoldSpecId: 'pvc-45p-pe',
+      }],
+      quantity: 1,
+      leadTime: 'standard',
+    };
+
+    const parsed = parseHarnessConfig(input);
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.models[0].overmoldSpecId).toBe('pvc-45p-pe');
+    }
+  });
 });
 
 describe('createFallbackConfig', () => {

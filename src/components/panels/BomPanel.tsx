@@ -5,11 +5,12 @@ import { ClipboardList, Plug, Cable, Shield, Download, FileSpreadsheet, Eye, Eye
 import { pdfDrawings } from '@/lib/pdfDrawings';
 import { imageAssets } from '@/lib/imageAssets';
 import { BomPreviewModal, type AssociatedFile } from './BomPreviewModal';
+import type { BOMItem, HarnessConfig } from '@/types/harness';
 
 /**
  * Helper to check associated files for a BOM item.
  */
-function getAssociatedFiles(item: any, config: any): AssociatedFile[] {
+function getAssociatedFiles(item: BOMItem, config: HarnessConfig): AssociatedFile[] {
   const files: AssociatedFile[] = [];
 
   const sanitize = (name: string) => name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
@@ -47,8 +48,8 @@ function getAssociatedFiles(item: any, config: any): AssociatedFile[] {
     // 3. Match instance-specific images from config.twoDImages
     if (partNum && config.twoDImages) {
       const matchingInstanceIds = config.connectors
-        .filter((c: any) => c.connector?.id === partNum)
-        .map((c: any) => c.id);
+        .filter((connector) => connector.connector?.id === partNum)
+        .map((connector) => connector.id);
       
       for (const img of config.twoDImages) {
         if (img.elementKind === 'connector' && img.elementId && matchingInstanceIds.includes(img.elementId)) {
@@ -65,17 +66,13 @@ function getAssociatedFiles(item: any, config: any): AssociatedFile[] {
     // 1. Match from config.twoDImages if wire images exist
     if (config.materials && config.twoDImages) {
       const matchingMaterialIds = config.materials
-        .filter((m: any) => {
-          const spec = m.spec;
-          let desc = '';
-          if (spec.kind === 'electronic') {
-            desc = `${spec.awg}AWG 电子线`;
-          } else {
-            desc = '护套线';
-          }
-          return item.description.includes(desc);
+        .filter((material) => {
+          const description = material.spec.kind === 'electronic'
+            ? `${material.spec.awg}AWG 电子线`
+            : '护套线';
+          return item.description.includes(description);
         })
-        .map((m: any) => m.id);
+        .map((material) => material.id);
 
       for (const img of config.twoDImages) {
         if (img.elementKind === 'material' && img.elementId && matchingMaterialIds.includes(img.elementId)) {
@@ -156,7 +153,7 @@ export function BomPanel() {
   const [previewItemName, setPreviewItemName] = useState('');
   const [previewFiles, setPreviewFiles] = useState<AssociatedFile[]>([]);
 
-  const handleOpenPreview = (item: any, files: AssociatedFile[]) => {
+  const handleOpenPreview = (item: BOMItem, files: AssociatedFile[]) => {
     setPreviewItemName(item.description);
     setPreviewFiles(files);
     setPreviewOpen(true);

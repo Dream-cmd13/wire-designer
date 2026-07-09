@@ -537,6 +537,7 @@ function readModel(value: unknown, path: string, issues: string[]): CanvasModel 
     || value.kind !== 'outer-box'
     || !isPositiveNumber(value.width)
     || !isPositiveNumber(value.height)
+    || (value.overmoldSpecId !== undefined && !isString(value.overmoldSpecId))
   ) {
     issues.push(`${path} is not a valid canvas model`);
     return null;
@@ -551,6 +552,7 @@ function readModel(value: unknown, path: string, issues: string[]): CanvasModel 
     position,
     width: value.width,
     height: value.height,
+    ...(value.overmoldSpecId === undefined ? {} : { overmoldSpecId: value.overmoldSpecId }),
   };
 }
 

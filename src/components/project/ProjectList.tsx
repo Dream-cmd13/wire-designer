@@ -14,6 +14,10 @@ interface ProjectListProps {
   onOpenProject: (project: Project) => void;
 }
 
+function getTimestamp() {
+  return Date.now();
+}
+
 export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
   const { currentUser } = useUserStore();
   const { projects, createProject, deleteProject, updateProject } = useProjectStore();
@@ -88,7 +92,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
       await projectRepository.save(projectId, {
         ...result.config,
         name: newName,
-        updatedAt: Date.now(),
+        updatedAt: getTimestamp(),
       });
     }
 
