@@ -43,7 +43,7 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
     return pinBindings.get(`left-pin-${p}`)?.length || pinBindings.get(`right-pin-${p}`)?.length;
   }).length;
 
-  const nodeHeight = 52 + displayPins * 20 + 24 + 8;
+  const nodeHeight = 92 + displayPins * 20 + 24 + 8;
 
   return (
     <div
@@ -56,8 +56,28 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-slate-100">
         <Plug className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-bold text-slate-800 whitespace-nowrap">{data.label}</div>
-          <div className="text-[10px] text-gray-400 whitespace-nowrap">{data.connector?.name}</div>
+          <div
+            className="text-xs font-bold text-slate-800 overflow-hidden h-[42px] leading-[14px] line-clamp-3 break-all"
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: 'vertical',
+            }}
+            title={data.label}
+          >
+            {data.label}
+          </div>
+          <div
+            className="text-[10px] text-gray-400 overflow-hidden h-7 leading-[12px] line-clamp-2 break-all"
+            style={{
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+            }}
+            title={data.connector?.name}
+          >
+            {data.connector?.name}
+          </div>
         </div>
       </div>
 

@@ -262,19 +262,13 @@ export function createDefaultCanvasMaterial(
   };
 }
 
-export function getConnectorNodeWidth(instance: ConnectorInstance | undefined | null): number {
-  if (!instance) return 236;
-  const labelLength = instance.label?.length || 0;
-  const nameLength = instance.connector?.name?.length || 0;
-  const labelWidth = labelLength * 8 + 40;
-  const nameWidth = nameLength * 6.5 + 40;
-  const maxContentWidth = Math.max(labelWidth, nameWidth);
-  return Math.max(236, maxContentWidth);
+export function getConnectorNodeWidth(_instance: ConnectorInstance | undefined | null): number {
+  return 266;
 }
 
 export function getConnectorHeight(instance: ConnectorInstance): number {
   const pinCount = instance.connector?.pinCount ?? 2;
-  return 52 + pinCount * 20 + 32;
+  return 92 + pinCount * 20 + 32;
 }
 
 export function getVisiblePinCount(instance: ConnectorInstance): number {
