@@ -488,6 +488,15 @@ function PinInput({
       }
     }
 
+    const uniquePinsSorted = [...uniquePins].sort((a, b) => a - b);
+    const newPinsFormatted = uniquePinsSorted.map(p => `Pin${p}`).join(', ');
+
+    if (newPinsFormatted === currentNetworkValue) {
+      setError(null);
+      setValue(currentNetworkValue);
+      return;
+    }
+
     const state = useHarnessStore.getState();
     const next = reassignMaterialEndpoint(state.config, {
       materialId,
