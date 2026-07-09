@@ -131,7 +131,7 @@ function ConnectorNodeImpl({ data, selected }: ConnectorNodeProps) {
                   isConnected ? 'text-slate-700 font-medium' : 'text-slate-400'
                 }`}
               >
-                {label}
+                {label !== String(pinNum) ? label : ''}
               </span>
 
               {/* Right side: connection status */}
