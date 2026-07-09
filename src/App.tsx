@@ -113,7 +113,7 @@ export default function App() {
     } finally {
       saveInFlightRef.current = null;
     }
-  }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig, updateProject]);
+  }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig]);
 
   useEffect(() => {
     if (saveState.status !== 'dirty' || !currentProject || saveBlocked) {
@@ -172,7 +172,7 @@ export default function App() {
 
   useEffect(() => {
     const handleBeforeUnload = () => {
-      if (!currentProject || saveBlocked) {
+      if (view !== 'designer' || !currentProject || saveBlocked) {
         return;
       }
 
@@ -185,7 +185,7 @@ export default function App() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentProject, saveBlocked]);
+  }, [currentProject, saveBlocked, view]);
 
   const handleNewProject = () => {
     if (!currentUser) {

@@ -37,6 +37,27 @@ interface ProjectState {
   getUserProjects: (userId: string) => Project[];
 }
 
+type PersistedProjectState = Pick<ProjectState, 'projects' | 'currentProject'>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+export function mergePersistedProjectState(
+  persisted: unknown,
+  current: PersistedProjectState,
+): PersistedProjectState {
+  if (!isRecord(persisted) || !Array.isArray(persisted.projects)) {
+    return { ...current, currentProject: null };
+  }
+
+  return {
+    ...current,
+    projects: persisted.projects as Project[],
+    currentProject: null,
+  };
+}
+
 export const useProjectStore = create<ProjectState>()(
   persist(
     (set, get) => ({
@@ -105,6 +126,13 @@ export const useProjectStore = create<ProjectState>()(
           .filter((p) => p.userId === userId)
           .sort((a, b) => b.updatedAt - a.updatedAt),
     }),
-    { name: 'harness-projects' }
+    {
+      name: 'harness-projects',
+      partialize: (state) => ({ projects: state.projects }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...mergePersistedProjectState(persisted, current),
+      }),
+    }
   )
 );
