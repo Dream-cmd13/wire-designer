@@ -15,6 +15,7 @@ import {
   removeMaterialCircuit,
   updateMaterialCircuit,
   getJumperNetwork,
+  getActiveConnectorSide,
 } from '@/lib/commands';
 import type {
   CanvasWireMaterial,
@@ -22,6 +23,7 @@ import type {
   MaterialCircuit,
   MaterialEndpoint,
   ConnectorSide,
+  HarnessConfig,
 } from '@/types/harness';
 import {
   openMaterialAccessoryContextMenu,
@@ -62,6 +64,23 @@ function connectorRefs(circuit: MaterialCircuit | undefined, connectorId: string
   return (['start', 'end'] as MaterialEndpoint[])
     .map((endpoint) => ({ endpoint, ref: circuit[endpoint] }))
     .filter(({ ref }) => ref?.connectorId === connectorId);
+}
+
+function getTargetEndpointAndSide(
+  circuit: MaterialCircuit,
+  material: CanvasWireMaterial,
+  connector: ConnectorInstance,
+  config: HarnessConfig
+): { endpoint: MaterialEndpoint; side: ConnectorSide } {
+  let endpoint: MaterialEndpoint = 'start';
+  if (circuit.start) {
+    endpoint = 'end';
+  }
+  let side = getActiveConnectorSide(config, connector.id);
+  if (!side) {
+    side = connector.position.x < material.position.x ? 'right' : 'left';
+  }
+  return { endpoint, side };
 }
 
 function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
@@ -314,43 +333,43 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                   {connectorColumns.map((connector) => {
                     const matches = connectorRefs(circuit, connector.id);
                     const match = matches[0];
-                    return match?.ref && circuit ? (
-                      <PinInput
-                        key={`${connector.id}:${match.endpoint}:${match.ref.pin}`}
-                        connector={connector}
-                        materialId={row.material.id}
-                        circuitId={circuit.id}
-                        endpoint={match.endpoint}
-                        pin={match.ref.pin}
-                        side={match.ref.connectorSide}
-                      />
-                    ) : (
-                      <span key={connector.id} className="text-center text-slate-300">—</span>
-                    );
+                    if (match?.ref && circuit) {
+                      return (
+                        <PinInput
+                          key={`${connector.id}:${match.endpoint}:${match.ref.pin}`}
+                          connector={connector}
+                          materialId={row.material.id}
+                          circuitId={circuit.id}
+                          endpoint={match.endpoint}
+                          pin={match.ref.pin}
+                          side={match.ref.connectorSide}
+                        />
+                      );
+                    } else {
+                      const target = getTargetEndpointAndSide(circuit, row.material, connector, config);
+                      return (
+                        <PinInput
+                          key={`${connector.id}:empty-${circuit.id}`}
+                          connector={connector}
+                          materialId={row.material.id}
+                          circuitId={circuit.id}
+                          endpoint={target.endpoint}
+                          pin={undefined}
+                          side={target.side}
+                        />
+                      );
+                    }
                   })}
 
                   <div className="flex justify-center">
                     {circuit ? (() => {
                       const colorEntry = resolveColor(circuit.color);
                       return (
-                        <label className="nodrag nopan relative flex h-3 w-3 cursor-pointer items-center justify-center rounded-full border border-slate-200">
-                          <span
-                            className="h-full w-full rounded-full"
-                            title={colorEntry.name}
-                            style={{ backgroundColor: colorEntry.hex }}
-                          />
-                          <select
-                            value={WIRE_COLORS.find((c) => c.id === circuit.color || c.name === circuit.color)?.id ?? circuit.color}
-                            onChange={(event) => {
-                              handleUpdateCircuit(row.material.id, circuit.id, { color: event.target.value });
-                            }}
-                            className="absolute inset-0 cursor-pointer opacity-0"
-                          >
-                            {WIRE_COLORS.map((color) => (
-                              <option key={color.id} value={color.id}>{color.name}</option>
-                            ))}
-                          </select>
-                        </label>
+                        <div
+                          className="h-3 w-3 rounded-full border border-slate-200"
+                          title={colorEntry.name}
+                          style={{ backgroundColor: colorEntry.hex }}
+                        />
                       );
                     })() : null}
                   </div>
@@ -394,7 +413,8 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   );
 }
 
-function getFormattedPinValue(connector: ConnectorInstance, side: ConnectorSide, pin: number): string {
+function getFormattedPinValue(connector: ConnectorInstance, side: ConnectorSide, pin: number | undefined): string {
+  if (pin === undefined) return '';
   const network = getJumperNetwork(connector.jumpers, side, pin);
   const sorted = Array.from(network).sort((a, b) => a - b);
   return sorted.map(p => `Pin${p}`).join(', ');
@@ -412,7 +432,7 @@ function PinInput({
   materialId: string;
   circuitId: string;
   endpoint: MaterialEndpoint;
-  pin: number;
+  pin: number | undefined;
   side: ConnectorSide;
 }) {
   const currentNetworkValue = useMemo(() => {
@@ -429,8 +449,10 @@ function PinInput({
   const commit = () => {
     const trimmed = value.trim();
     if (trimmed === '') {
-      const state = useHarnessStore.getState();
-      state.replaceDocument(detachMaterialEndpoint(state.config, materialId, circuitId, endpoint));
+      if (pin !== undefined) {
+        const state = useHarnessStore.getState();
+        state.replaceDocument(detachMaterialEndpoint(state.config, materialId, circuitId, endpoint));
+      }
       setError(null);
       return;
     }
@@ -491,6 +513,7 @@ function PinInput({
     <input
       type="text"
       value={value}
+      placeholder="—"
       aria-label={`${connector.label} PIN`}
       title={error ?? `${connector.label} · ${connector.connector.name}`}
       onChange={(event) => {

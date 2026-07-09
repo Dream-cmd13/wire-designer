@@ -8,6 +8,7 @@ import { TwoDImageCard } from './TwoDImageCard';
 import { imageAssets } from '@/lib/imageAssets';
 import { WIRE_COLORS, OVERMOLDS } from '@/lib/data';
 import { generateBOM } from '@/lib/bom';
+import { resolveColor } from '@/lib/canvasMaterials';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -240,14 +241,18 @@ function BOMTable({ config }: { config: HarnessConfig }) {
       if (matObj.spec.kind === 'jacketed') {
         const s = matObj.spec;
         const sq = s.awg === 22 ? '0.3mm²' : s.awg === 24 ? '0.2mm²' : `${s.awg}AWG`;
-        const colorsClean = s.coreColors.map((c: string) => c.endsWith('色') ? c.slice(0, -1) : c).join('、');
+        const colorsClean = s.coreColors.map((c: string) => {
+          const r = resolveColor(c).name;
+          return r.endsWith('色') ? r.slice(0, -1) : r;
+        }).join('、');
         const shielding = s.shielded ? '屏蔽' : '非屏蔽';
         const jColor = s.jacketColor === 'black' ? '黑色' : s.jacketColor;
         wireSpec = `${s.coreCount}C*${sq} (39/0.10TC)*1.2+无纺布  OD: ${s.odMm.toFixed(2)}±0.15\n${colorsClean} ${shielding}${jColor}雾面${s.jacketMaterial}外被`;
       } else if (matObj.spec.kind === 'electronic') {
         const s = matObj.spec;
         const sq = s.awg === 22 ? '0.3mm²' : s.awg === 24 ? '0.2mm²' : `${s.awg}AWG`;
-        const colorsClean = s.color.endsWith('色') ? s.color.slice(0, -1) : s.color;
+        const resolved = resolveColor(s.color).name;
+        const colorsClean = resolved.endsWith('色') ? resolved.slice(0, -1) : resolved;
         wireSpec = `UL${s.ulNumber || '1007'} ${s.awg}AWG (${sq}) 电子线 L=${s.lengthMm}mm\n单芯 ${colorsClean}色`;
       }
     }

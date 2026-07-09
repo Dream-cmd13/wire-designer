@@ -9,6 +9,7 @@ import {
   JACKET_CORE_COUNTS,
   JACKET_UL_NUMBERS,
   lengthMmToCanvasWidth,
+  resolveColor,
 } from '@/lib/canvasMaterials';
 import type {
   CanvasWireMaterial,
@@ -357,7 +358,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                     <div key={`${index + 1}`} className="block">
                       <span className="mb-1 block text-[11px] font-medium text-slate-500">芯线 {index + 1}</span>
                       <div className="flex h-[38px] items-center rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm text-slate-500">
-                        {color}
+                        {resolveColor(color).name}
                       </div>
                     </div>
                   ))}

@@ -7,6 +7,7 @@ import {
   getProtectiveSleeveDisplayName,
   getWireEndTreatmentSummary,
   getMaterialCenterY,
+  resolveColor,
 } from '@/lib/canvasMaterials';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
@@ -221,7 +222,7 @@ function MaterialEditor({ materialId }: { materialId: string }) {
             <p>外被：{spec.jacketMaterial} / {spec.jacketColor === 'black' ? '黑色' : '绿色'}</p>
             <p>芯数：{spec.coreCount} 芯</p>
             <p>带屏蔽：{spec.shielded ? '是' : '否'}</p>
-            <p>芯线颜色：{spec.coreColors.join('、')}</p>
+            <p>芯线颜色：{spec.coreColors.map((color) => resolveColor(color).name).join('、')}</p>
             {spec.ulNumber && <p>UL：{spec.ulNumber}</p>}
           </>
         )}
