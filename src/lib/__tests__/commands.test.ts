@@ -524,3 +524,129 @@ describe('updateMaterialCircuit', () => {
     expect(result.materials[0].circuits.every((circuit) => circuit.color === 'blue')).toBe(true);
   });
 });
+
+describe('multi-pin and duplicate pin support', () => {
+  it('allows duplicate pin connections on different circuits of a jacketed material', () => {
+    let config = makeTestConfig();
+    config = {
+      ...config,
+      materials: [{
+        id: 'mat-jacketed',
+        name: 'WJ1',
+        position: { x: 300, y: 220 },
+        width: 180,
+        spec: {
+          kind: 'jacketed',
+          jacketMaterial: 'PVC',
+          jacketColor: 'black',
+          awg: 24,
+          coreCount: 3,
+          shielded: false,
+          odMm: 4.2,
+          coreColors: ['红色', '黑色', '白色'],
+          endTreatment: {
+            start: { stripped: false, termination: 'none' },
+            end: { stripped: false, termination: 'none' },
+          },
+          lengthMm: 300,
+        },
+        circuits: [
+          { id: 'c-1', color: '红色', signalName: '', coreIndex: 0 },
+          { id: 'c-2', color: '黑色', signalName: '', coreIndex: 1 },
+          { id: 'c-3', color: '白色', signalName: '', coreIndex: 2 },
+        ],
+      }],
+    };
+
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-jacketed',
+      endpoint: 'start',
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 1,
+      circuitId: 'c-1',
+    });
+
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-jacketed',
+      endpoint: 'start',
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 1,
+      circuitId: 'c-2',
+    });
+
+    expect(config.materials[0].circuits[0].start).toEqual({
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 1,
+    });
+    expect(config.materials[0].circuits[1].start).toEqual({
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 1,
+    });
+  });
+
+  it('atomically creates jumpers when reassigning to multiple pins', () => {
+    let config = makeTestConfig();
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      endpoint: 'start',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 1,
+    });
+
+    const circuitId = config.materials[0].circuits[0].id;
+
+    // Reassign endpoint to Pin 1 and Pin 2 (shorted together)
+    config = reassignMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      circuitId,
+      endpoint: 'start',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 1,
+      pins: [1, 2],
+    });
+
+    const connector = config.connectors.find((c) => c.id === 'conn-b')!;
+    expect(connector.jumpers).toHaveLength(1);
+    expect(connector.jumpers[0].pins).toEqual([1, 2]);
+    expect(connector.jumpers[0].side).toBe('left');
+  });
+
+  it('removes jumper network when detaching an endpoint', () => {
+    let config = makeTestConfig();
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      endpoint: 'start',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 1,
+    });
+
+    const circuitId = config.materials[0].circuits[0].id;
+
+    // Setup a jumper network by reassigning to Pin 1, 2, 3
+    config = reassignMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      circuitId,
+      endpoint: 'start',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 1,
+      pins: [1, 2, 3],
+    });
+
+    let connector = config.connectors.find((c) => c.id === 'conn-b')!;
+    expect(connector.jumpers).toHaveLength(2); // 1-2, 1-3
+
+    // Detach endpoint
+    config = detachMaterialEndpoint(config, 'mat-1', circuitId, 'start');
+
+    connector = config.connectors.find((c) => c.id === 'conn-b')!;
+    expect(connector.jumpers).toHaveLength(0); // Jumpers should be cleaned up
+  });
+});

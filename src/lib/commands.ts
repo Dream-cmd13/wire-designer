@@ -358,6 +358,34 @@ function defaultCircuitColor(spec: CanvasWireMaterial['spec']): string {
  * - Otherwise create a new circuit with only this endpoint set.
  * - Never creates a new material.
  */
+/**
+ * Compute the connected component (jumper network) of a pin on a connector side.
+ */
+export function getJumperNetwork(
+  jumpers: ConnectorJumper[],
+  side: ConnectorSide,
+  startPin: number,
+): Set<number> {
+  const network = new Set<number>([startPin]);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const jumper of jumpers) {
+      if (jumper.side !== side || jumper.pins.length < 2) continue;
+      const p1 = jumper.pins[0];
+      const p2 = jumper.pins[1];
+      if (network.has(p1) && !network.has(p2)) {
+        network.add(p2);
+        added = true;
+      } else if (network.has(p2) && !network.has(p1)) {
+        network.add(p1);
+        added = true;
+      }
+    }
+  }
+  return network;
+}
+
 export function attachMaterialEndpoint(
   config: HarnessConfig,
   input: AttachEndpointInput,
@@ -386,17 +414,30 @@ export function attachMaterialEndpoint(
     );
   }
 
-  // Reject exact duplicate.
-  const dupExists = material.circuits.some((c) => {
-    const ref = c[endpoint];
-    return (
+  // Reject duplicate if the target circuit already has this exact pin ref.
+  if (circuitId) {
+    const targetCircuit = material.circuits.find((c) => c.id === circuitId);
+    const ref = targetCircuit?.[endpoint];
+    if (
       ref?.connectorId === connectorId &&
       ref?.connectorSide === connectorSide &&
       ref?.pin === pin
-    );
-  });
-  if (dupExists) {
-    return config; // no-op for exact duplicate
+    ) {
+      return config;
+    }
+  } else {
+    // Prevent infinite duplicates on canvas click/drag
+    const allMatching = material.circuits.every((c) => {
+      const ref = c[endpoint];
+      return (
+        ref?.connectorId === connectorId &&
+        ref?.connectorSide === connectorSide &&
+        ref?.pin === pin
+      );
+    });
+    if (allMatching && material.circuits.length > 0) {
+      return config;
+    }
   }
 
   const pinRef = { connectorId, connectorSide, pin };
@@ -464,14 +505,34 @@ export function detachMaterialEndpoint(
   const material = config.materials.find((m) => m.id === materialId);
   if (!material) return config;
 
-  const rawCircuits = material.circuits.map((circuit) => {
-    if (circuit.id !== circuitId) return circuit;
-    return { ...circuit, [side]: undefined };
+  const circuit = material.circuits.find((c) => c.id === circuitId);
+  if (!circuit) return config;
+
+  const ref = circuit[side];
+  let nextConnectors = config.connectors;
+
+  if (ref) {
+    const { connectorId, connectorSide, pin } = ref;
+    nextConnectors = config.connectors.map((c) => {
+      if (c.id !== connectorId) return c;
+      const oldNetwork = getJumperNetwork(c.jumpers, connectorSide, pin);
+      const nextJumpers = c.jumpers.filter((jumper) => {
+        if (jumper.side !== connectorSide) return true;
+        return !jumper.pins.some((p) => oldNetwork.has(p));
+      });
+      return { ...c, jumpers: nextJumpers };
+    });
+  }
+
+  const rawCircuits = material.circuits.map((c) => {
+    if (c.id !== circuitId) return c;
+    return { ...c, [side]: undefined };
   });
   const nextCircuits = alignCircuits(material.spec, rawCircuits);
 
   return {
     ...config,
+    connectors: nextConnectors,
     materials: config.materials.map((m) =>
       m.id === materialId ? { ...m, circuits: nextCircuits } : m,
     ),
@@ -490,6 +551,7 @@ export interface ReassignEndpointInput {
   connectorId: string;
   connectorSide: ConnectorSide;
   pin: number;
+  pins?: number[];
 }
 
 /**
@@ -508,7 +570,9 @@ export function reassignMaterialEndpoint(
   config: HarnessConfig,
   input: ReassignEndpointInput,
 ): HarnessConfig {
-  const { materialId, circuitId, endpoint, connectorId, connectorSide, pin } = input;
+  const { materialId, circuitId, endpoint, connectorId, connectorSide } = input;
+  const targetPins = input.pins && input.pins.length > 0 ? input.pins : [input.pin];
+  const primaryPin = targetPins[0];
 
   const material = config.materials.find((m) => m.id === materialId);
   if (!material) {
@@ -527,8 +591,9 @@ export function reassignMaterialEndpoint(
 
   // --- Validation (all failures return the ORIGINAL config unchanged) ---
 
-  // PIN range
-  if (pin < 1 || pin > connector.connector.pinCount) {
+  // PIN range check for all target pins
+  const maxPin = connector.connector.pinCount;
+  if (targetPins.some((p) => p < 1 || p > maxPin)) {
     return config;
   }
 
@@ -563,30 +628,72 @@ export function reassignMaterialEndpoint(
     otherRef &&
     otherRef.connectorId === connectorId &&
     otherRef.connectorSide === connectorSide &&
-    otherRef.pin === pin
+    otherRef.pin === primaryPin
   ) {
     return config;
   }
 
-  // Exact duplicate: if another circuit on this material already has
-  // this exact endpoint bound, treat as no-op (same as attachMaterialEndpoint).
-  const dupExists = material.circuits.some((c) => {
-    if (c.id === circuitId) return false;
-    const ref = c[endpoint];
-    return (
-      ref?.connectorId === connectorId &&
-      ref?.connectorSide === connectorSide &&
-      ref?.pin === pin
-    );
-  });
-  if (dupExists) {
-    return config;
+  // Duplicate checks relaxed: we allow other circuits of the same material
+  // to reference the same pin. We only check if the SAME circuit already has this exact target.
+  const currentRef = circuit[endpoint];
+  if (
+    currentRef &&
+    currentRef.connectorId === connectorId &&
+    currentRef.connectorSide === connectorSide &&
+    currentRef.pin === primaryPin
+  ) {
+    // If the primary pin is unchanged, and we didn't specify multiple pins (or they match the old network), return original.
+    const oldNetwork = getJumperNetwork(connector.jumpers, connectorSide, currentRef.pin);
+    const oldNetworkSorted = Array.from(oldNetwork).sort((a, b) => a - b);
+    const targetPinsSorted = [...targetPins].sort((a, b) => a - b);
+    if (JSON.stringify(oldNetworkSorted) === JSON.stringify(targetPinsSorted)) {
+      return config;
+    }
   }
 
-  // --- All validations passed: atomically replace the endpoint. ---
-  const pinRef = { connectorId, connectorSide, pin };
+  // --- Proceed with updates ---
+  const oldRef = circuit[endpoint];
+  const oldPin = oldRef?.connectorId === connectorId && oldRef?.connectorSide === connectorSide ? oldRef.pin : undefined;
+
+  // Compute old jumper network for the old pin on this side
+  const oldNetwork = oldPin !== undefined ? getJumperNetwork(connector.jumpers, connectorSide, oldPin) : new Set<number>();
+
+  // Filter out old jumpers from this network
+  const nextJumpers = connector.jumpers.filter((jumper) => {
+    if (jumper.side !== connectorSide) return true;
+    return !jumper.pins.some((p) => oldNetwork.has(p));
+  });
+
+  // Add new binary jumpers for the new pin list
+  const newJumpersList = [...nextJumpers];
+  for (let i = 1; i < targetPins.length; i++) {
+    const p1 = targetPins[0];
+    const p2 = targetPins[i];
+    const lo = Math.min(p1, p2);
+    const hi = Math.max(p1, p2);
+    const dupExists = newJumpersList.some(
+      (j) =>
+        j.side === connectorSide &&
+        j.pins.length === 2 &&
+        j.pins.includes(lo) &&
+        j.pins.includes(hi),
+    );
+    if (!dupExists) {
+      newJumpersList.push({
+        id: generateId(),
+        side: connectorSide,
+        pins: [lo, hi],
+      });
+    }
+  }
+
+  // Atomically replace the endpoint and update connector jumpers.
+  const pinRef = { connectorId, connectorSide, pin: primaryPin };
   return {
     ...config,
+    connectors: config.connectors.map((c) =>
+      c.id === connectorId ? { ...c, jumpers: newJumpersList } : c
+    ),
     materials: config.materials.map((m) =>
       m.id !== materialId
         ? m
@@ -598,7 +705,6 @@ export function reassignMaterialEndpoint(
                 : {
                     ...c,
                     [endpoint]: pinRef,
-                    // color, signalName, coreIndex, id all preserved.
                   },
             ),
           },

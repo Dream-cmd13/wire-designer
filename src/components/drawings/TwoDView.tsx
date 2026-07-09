@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Minus, Plus, RotateCw, Trash2, Upload } from 'lucide-react';
-import { generateId } from '@/lib/commands';
+import { generateId, getJumperNetwork } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
@@ -45,6 +45,12 @@ function resolveChineseColorName(value: string): string {
   return value || '灰';
 }
 
+function getJumperNetworkString(connector: ConnectorInstance, side: 'left' | 'right', pin: number): string {
+  const network = getJumperNetwork(connector.jumpers, side, pin);
+  const sorted = Array.from(network).sort((a, b) => a - b);
+  return sorted.join(', ');
+}
+
 function WiringDiagram({
   materials,
   connectors,
@@ -73,17 +79,17 @@ function WiringDiagram({
     // Check start endpoint
     if (c.start) {
       if (leftConn && c.start.connectorId === leftConn.id) {
-        leftText = String(c.start.pin);
+        leftText = getJumperNetworkString(leftConn, c.start.connectorSide, c.start.pin);
       } else if (rightConn && c.start.connectorId === rightConn.id) {
-        rightText = String(c.start.pin);
+        rightText = getJumperNetworkString(rightConn, c.start.connectorSide, c.start.pin);
       }
     }
     // Check end endpoint
     if (c.end) {
       if (leftConn && c.end.connectorId === leftConn.id) {
-        leftText = String(c.end.pin);
+        leftText = getJumperNetworkString(leftConn, c.end.connectorSide, c.end.pin);
       } else if (rightConn && c.end.connectorId === rightConn.id) {
-        rightText = String(c.end.pin);
+        rightText = getJumperNetworkString(rightConn, c.end.connectorSide, c.end.pin);
       }
     }
 

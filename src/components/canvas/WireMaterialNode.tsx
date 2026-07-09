@@ -14,12 +14,14 @@ import {
   reassignMaterialEndpoint,
   removeMaterialCircuit,
   updateMaterialCircuit,
+  getJumperNetwork,
 } from '@/lib/commands';
 import type {
   CanvasWireMaterial,
   ConnectorInstance,
   MaterialCircuit,
   MaterialEndpoint,
+  ConnectorSide,
 } from '@/types/harness';
 import {
   openMaterialAccessoryContextMenu,
@@ -320,6 +322,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
                         circuitId={circuit.id}
                         endpoint={match.endpoint}
                         pin={match.ref.pin}
+                        side={match.ref.connectorSide}
                       />
                     ) : (
                       <span key={connector.id} className="text-center text-slate-300">—</span>
@@ -391,21 +394,37 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
   );
 }
 
+function getFormattedPinValue(connector: ConnectorInstance, side: ConnectorSide, pin: number): string {
+  const network = getJumperNetwork(connector.jumpers, side, pin);
+  const sorted = Array.from(network).sort((a, b) => a - b);
+  return sorted.map(p => `Pin${p}`).join(', ');
+}
+
 function PinInput({
   connector,
   materialId,
   circuitId,
   endpoint,
   pin,
+  side,
 }: {
   connector: ConnectorInstance;
   materialId: string;
   circuitId: string;
   endpoint: MaterialEndpoint;
   pin: number;
+  side: ConnectorSide;
 }) {
-  const [value, setValue] = useState(`Pin${pin}`);
+  const currentNetworkValue = useMemo(() => {
+    return getFormattedPinValue(connector, side, pin);
+  }, [connector, side, pin]);
+
+  const [value, setValue] = useState(currentNetworkValue);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setValue(currentNetworkValue);
+  }, [currentNetworkValue]);
 
   const commit = () => {
     const trimmed = value.trim();
@@ -416,16 +435,35 @@ function PinInput({
       return;
     }
 
-    const match = /^pin(\d+)$/i.exec(trimmed);
-    if (!match) {
-      setError('只能填写 Pin+数字，或留空');
+    const tokens = trimmed.split(/[,\s;，；]+/);
+    const pins: number[] = [];
+    for (const token of tokens) {
+      const t = token.trim();
+      if (!t) continue;
+      const match = /^(?:pin)?(\d+)$/i.exec(t);
+      if (!match) {
+        setError('格式错误，例如 "Pin1, Pin2"');
+        return;
+      }
+      pins.push(Number(match[1]));
+    }
+
+    if (pins.length === 0) {
+      setError('请输入 Pin 编号');
       return;
     }
 
-    const nextPin = Number(match[1]);
-    if (nextPin < 1 || nextPin > connector.connector.pinCount) {
-      setError(`范围：Pin1-Pin${connector.connector.pinCount}`);
+    const maxPin = connector.connector.pinCount;
+    if (pins.some(p => p < 1 || p > maxPin)) {
+      setError(`范围：Pin1-Pin${maxPin}`);
       return;
+    }
+
+    const uniquePins: number[] = [];
+    for (const p of pins) {
+      if (!uniquePins.includes(p)) {
+        uniquePins.push(p);
+      }
     }
 
     const state = useHarnessStore.getState();
@@ -434,22 +472,18 @@ function PinInput({
       circuitId,
       endpoint,
       connectorId: connector.id,
-      connectorSide: connectorRefs(
-        state.config.materials
-          .find((material) => material.id === materialId)
-          ?.circuits.find((circuit) => circuit.id === circuitId),
-        connector.id,
-      )[0]?.ref?.connectorSide ?? 'left',
-      pin: nextPin,
+      connectorSide: side,
+      pin: uniquePins[0],
+      pins: uniquePins,
     });
 
-    if (next === state.config && nextPin !== pin) {
-      setError('该 PIN 与当前连接规则冲突');
+    if (next === state.config) {
+      setError('该连接与当前连接规则冲突');
+      setValue(currentNetworkValue);
       return;
     }
 
     state.replaceDocument(next);
-    setValue(`Pin${nextPin}`);
     setError(null);
   };
 
