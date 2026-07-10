@@ -1,0 +1,192 @@
+export type DrawingPage = {
+  size: 'A4';
+  orientation: 'landscape';
+  width: 1200;
+  height: 800;
+};
+
+export type DrawingObjectStyle = {
+  fill: string;
+  stroke: string;
+  strokeWidth: number;
+  fontSize: number;
+  color: string;
+};
+
+export type DrawingObjectBase = {
+  id: string;
+  kind: DrawingObjectKind;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  zIndex: number;
+  locked: boolean;
+  visible: boolean;
+  style: DrawingObjectStyle;
+};
+
+export type DrawingObjectKind =
+  | 'connector'
+  | 'wire-bundle'
+  | 'accessory'
+  | 'text'
+  | 'label'
+  | 'dimension'
+  | 'line'
+  | 'polyline'
+  | 'curve'
+  | 'freehand'
+  | 'table'
+  | 'bom-table'
+  | 'wiring-table'
+  | 'tech-requirements'
+  | 'title-block';
+
+export type DrawingPoint = { x: number; y: number };
+
+export type DrawingTableRow = Record<string, string>;
+
+export type DrawingConnectorObject = DrawingObjectBase & {
+  kind: 'connector';
+  label: string;
+  pinCount: number;
+  gender: 'male' | 'female' | 'receptacle';
+  side: 'left' | 'right' | 'none';
+};
+
+export type DrawingWireBundleObject = DrawingObjectBase & {
+  kind: 'wire-bundle';
+  label: string;
+  wireCount: number;
+  wireKind: 'electronic' | 'twisted' | 'ribbon' | 'parallel' | 'shielded';
+};
+
+export type DrawingAccessoryObject = DrawingObjectBase & {
+  kind: 'accessory';
+  label: string;
+  accessoryType: 'sleeve' | 'packaging' | 'specification' | 'model';
+};
+
+export type DrawingTextObject = DrawingObjectBase & {
+  kind: 'text' | 'label';
+  text: string;
+};
+
+export type DrawingDimensionObject = DrawingObjectBase & {
+  kind: 'dimension';
+  label: string;
+  start: DrawingPoint;
+  end: DrawingPoint;
+};
+
+export type DrawingLineObject = DrawingObjectBase & {
+  kind: 'line' | 'polyline' | 'curve' | 'freehand';
+  points: DrawingPoint[];
+  orthogonal: boolean;
+};
+
+export type DrawingTableObject = DrawingObjectBase & {
+  kind: 'table';
+  title: string;
+  columns: string[];
+  rows: DrawingTableRow[];
+};
+
+export type DrawingBomTableObject = DrawingObjectBase & {
+  kind: 'bom-table';
+  title: string;
+  columns: string[];
+  rows: DrawingTableRow[];
+};
+
+export type DrawingWiringTableObject = DrawingObjectBase & {
+  kind: 'wiring-table';
+  title: string;
+  columns: string[];
+  rows: DrawingTableRow[];
+};
+
+export type DrawingTechRequirementsObject = DrawingObjectBase & {
+  kind: 'tech-requirements';
+  requirements: string[];
+};
+
+export type DrawingTitleBlockObject = DrawingObjectBase & {
+  kind: 'title-block';
+  title: string;
+  drawingNo: string;
+  revision: string;
+};
+
+export type DrawingObject =
+  | DrawingConnectorObject
+  | DrawingWireBundleObject
+  | DrawingAccessoryObject
+  | DrawingTextObject
+  | DrawingDimensionObject
+  | DrawingLineObject
+  | DrawingTableObject
+  | DrawingBomTableObject
+  | DrawingWiringTableObject
+  | DrawingTechRequirementsObject
+  | DrawingTitleBlockObject;
+
+export type DrawingDocument = {
+  schemaVersion: 1;
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  page: DrawingPage;
+  objects: DrawingObject[];
+  titleBlock: {
+    title: string;
+    drawingNo: string;
+    revision: string;
+  };
+  revisionTable: Array<{ revision: string; description: string; date: string }>;
+  techRequirements: string[];
+  wizardSource?: DrawingWizardDraft;
+};
+
+export type DrawingTopology = {
+  drawingType: 'internal' | 'external' | 'gallery';
+  topology: 'single-end' | 'double-end' | 'one-to-many';
+  wireKind: 'electronic' | 'twisted' | 'ribbon' | 'parallel' | 'shielded';
+};
+
+export type DrawingConnectorResource = {
+  id: string;
+  name: string;
+  gender: 'male' | 'female' | 'receptacle';
+  pinCount: number;
+  category: string;
+  series: string;
+  rowCount: number;
+  pitchMm?: number;
+  scope: 'public' | 'private';
+};
+
+export type DrawingWireDraft = {
+  pin: number;
+  color: string;
+  lengthMm: number;
+  wireNo: string;
+  connectionNo: string;
+  targetPin?: number;
+};
+
+export type DrawingWizardDraft = {
+  topology: DrawingTopology;
+  leftConnector?: DrawingConnectorResource;
+  rightConnector?: DrawingConnectorResource;
+  singleConnector?: DrawingConnectorResource;
+  drawingNo: string;
+  totalLengthMm: number;
+  toleranceMm: number;
+  hasMold: boolean;
+  heatShrink?: string;
+  wires: DrawingWireDraft[];
+};

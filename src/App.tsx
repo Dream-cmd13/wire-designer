@@ -408,13 +408,7 @@ export default function App() {
     }
 
     if (route.id === 'drawing-workbench') {
-      return (
-        <DrawingWorkbenchPage
-          currentProject={currentProject}
-          onNavigate={navigate}
-          onChooseDrawings={() => setPdfPickerOpen(true)}
-        />
-      );
+      return <DrawingWorkbenchPage />;
     }
 
     if (route.id === 'library-connectors') {
