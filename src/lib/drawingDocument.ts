@@ -43,11 +43,70 @@ function createTitleBlock(name: string): DrawingTitleBlockObject {
     rotation: 0,
     zIndex: 1,
     locked: false,
-    visible: true,
+    visible: false,
     style: cloneStyle(),
     title: name,
     drawingNo: 'WH-NEW',
     revision: 'A',
+  };
+}
+
+function createRevisionTable(): DrawingObject {
+  return {
+    ...objectBase('table', { x: 840, y: 48 }, 320, 76),
+    kind: 'table',
+    title: '变更记录',
+    columns: ['版本', '变更内容', '日期', '变更者'],
+    rows: [{ 版本: 'A', 变更内容: '新版发行', 日期: '2026.07.10', 变更者: '' }],
+  };
+}
+
+function createTitleInformationTable(drawingNo: string): DrawingObject {
+  return {
+    ...objectBase('table', { x: 820, y: 615 }, 340, 150),
+    kind: 'table',
+    title: 'XXx公司',
+    columns: ['字段', '内容', '字段（续）', '内容（续）'],
+    rows: [
+      { 字段: '品名', 内容: '', 字段_2: '版本', 内容_2: 'A' },
+      { 字段: '绘制', 内容: '2026.07.10', 字段_2: '料号', 内容_2: '' },
+      { 字段: '图副', 内容: 'A4', 字段_2: '审查', 内容_2: '' },
+      { 字段: '客户料号', 内容: '', 字段_2: '核准', 内容_2: '' },
+      { 字段: '单位', 内容: 'mm', 字段_2: '比例', 内容_2: 'none' },
+      { 字段: '工程图号', 内容: drawingNo, 字段_2: '页次', 内容_2: '1 of 1' },
+    ].map((row) => ({
+      字段: row.字段,
+      内容: row.内容,
+      '字段（续）': row.字段_2,
+      '内容（续）': row.内容_2,
+    })),
+  };
+}
+
+function createWiringTable(): DrawingObject {
+  return {
+    ...objectBase('wiring-table', { x: 600, y: 430 }, 520, 94),
+    kind: 'wiring-table',
+    title: '接线表',
+    columns: ['P1', '颜色', 'P2', '长度'],
+    rows: [{ P1: '黑', 颜色: '1', P2: '黑', 长度: '2' }],
+  };
+}
+
+function createBomTable(): DrawingObject {
+  return {
+    ...objectBase('bom-table', { x: 48, y: 650 }, 710, 115),
+    kind: 'bom-table',
+    title: 'BOM表',
+    columns: ['序号', '物料编码', '物料名称/规格', '单位', '用量', '备注'],
+    rows: [{
+      序号: '①',
+      物料编码: '',
+      '物料名称/规格': 'AC电源插座C20公座-1俯面',
+      单位: 'PCS',
+      用量: '1',
+      备注: '',
+    }],
   };
 }
 
@@ -61,7 +120,7 @@ export function createBlankDrawingDocument(name = '未命名线束图'): Drawing
     createdAt: now,
     updatedAt: now,
     page: { ...DRAWING_PAGE },
-    objects: [titleBlock],
+    objects: [titleBlock, createRevisionTable(), createWiringTable(), createBomTable(), createTitleInformationTable(titleBlock.drawingNo)],
     titleBlock: {
       title: titleBlock.title,
       drawingNo: titleBlock.drawingNo,

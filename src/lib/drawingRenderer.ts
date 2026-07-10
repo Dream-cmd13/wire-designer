@@ -33,6 +33,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.beginPath();
   context.rect(0, 0, object.width, object.height);
   context.clip();
+  context.fillStyle = object.style.color;
   context.font = `600 ${object.style.fontSize}px Arial`;
   context.fillText(object.title, 6, 15, object.width - 12);
   context.beginPath();

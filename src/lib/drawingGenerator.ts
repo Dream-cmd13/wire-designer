@@ -52,35 +52,6 @@ function connectorObject(
   };
 }
 
-function tableObject(
-  kind: 'bom-table' | 'wiring-table',
-  title: string,
-  columns: string[],
-  rows: Array<Record<string, string>>,
-  x: number,
-  y: number,
-  height: number,
-): Extract<DrawingObject, { kind: 'bom-table' }> | Extract<DrawingObject, { kind: 'wiring-table' }> {
-  const base = {
-    id: createDrawingId(kind),
-    x,
-    y,
-    width: 520,
-    height,
-    rotation: 0,
-    zIndex: 5,
-    locked: false,
-    visible: true,
-    style: style({ fontSize: 9 }),
-    title,
-    columns,
-    rows,
-  };
-  return kind === 'bom-table'
-    ? { ...base, kind: 'bom-table' }
-    : { ...base, kind: 'wiring-table' };
-}
-
 export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocument {
   const validation = validateStandaloneDrawingWizard(draft);
   if (validation.errors.length > 0) throw new Error(validation.errors.join(' '));
@@ -91,6 +62,15 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
   const left = isSingle ? draft.singleConnector : draft.leftConnector;
   const right = isSingle ? undefined : draft.rightConnector;
   const wireCount = draft.wires.length;
+  const frameObjects = base.objects.map((object) => {
+    if (object.kind !== 'table' || object.title !== 'XXx公司') return object;
+    return {
+      ...object,
+      rows: object.rows.map((row) => row.字段 === '工程图号'
+        ? { ...row, 内容: draft.drawingNo || 'WH-NEW' }
+        : row),
+    };
+  });
   const objects: DrawingObject[] = [
     ...(left ? [connectorObject(left, isSingle ? 'none' : 'left')] : []),
     ...(right ? [connectorObject(right, 'right')] : []),
@@ -144,31 +124,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
         '成品须进行导通及短路测试。',
       ],
     },
-    tableObject(
-      'wiring-table',
-      '接线表',
-      ['PIN', '颜色', '线号', '接线', '目标 PIN', '长度'],
-      draft.wires.map((wire) => ({
-        PIN: String(wire.pin), 颜色: wire.color, 线号: wire.wireNo, 接线: wire.connectionNo,
-        '目标 PIN': String(wire.targetPin ?? wire.pin), 长度: `${wire.lengthMm}mm`,
-      })),
-      600,
-      400,
-      95,
-    ),
-    tableObject(
-      'bom-table',
-      '物料表',
-      ['序号', '物料描述', '数量'],
-      [
-        ...(left ? [{ 序号: '1', 物料描述: left.name, 数量: '1' }] : []),
-        ...(right ? [{ 序号: '2', 物料描述: right.name, 数量: '1' }] : []),
-        { 序号: String(isSingle ? 2 : 3), 物料描述: `${draft.topology.wireKind} 线束`, 数量: String(wireCount) },
-      ],
-      600,
-      505,
-      185,
-    ),
+    ...frameObjects,
   ];
 
   if (draft.heatShrink) {
@@ -189,20 +145,13 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
     });
   }
 
-  const titleBlock = base.objects[0];
-  if (titleBlock.kind === 'title-block') {
-    objects.push({
-      ...titleBlock,
-      title: name,
-      drawingNo: draft.drawingNo || 'WH-NEW',
-    });
-  }
+  const titleBlock = frameObjects.find((object) => object.kind === 'title-block');
 
   return {
     ...base,
     name,
     objects,
-    titleBlock: { title: name, drawingNo: draft.drawingNo || 'WH-NEW', revision: 'A' },
+    titleBlock: { title: titleBlock?.kind === 'title-block' ? name : base.titleBlock.title, drawingNo: draft.drawingNo || 'WH-NEW', revision: 'A' },
     techRequirements: ['连接器端子压接后不得有松脱、变形。', '成品须进行导通及短路测试。'],
     wizardSource: draft,
   };

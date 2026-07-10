@@ -23,6 +23,8 @@ type EditTarget =
       width: number;
       height: number;
       multiline?: boolean;
+      fontSize: number;
+      textInsetX: number;
     }
   | {
       type: 'table-cell';
@@ -34,6 +36,8 @@ type EditTarget =
       y: number;
       width: number;
       height: number;
+      fontSize: number;
+      textInsetX: number;
     };
 
 const TABLE_ROW_HEIGHT = 18;
@@ -175,6 +179,8 @@ export function StandaloneDrawingCanvas({
           y: object.y,
           width: object.width,
           height: TABLE_TITLE_HEIGHT,
+          fontSize: object.style.fontSize,
+          textInsetX: 6,
         };
       }
       const columnWidth = object.width / Math.max(1, object.columns.length);
@@ -194,6 +200,8 @@ export function StandaloneDrawingCanvas({
         y: object.y + TABLE_TITLE_HEIGHT + Math.max(0, rowBand) * TABLE_ROW_HEIGHT,
         width: columnWidth,
         height: TABLE_ROW_HEIGHT,
+        fontSize: Math.max(8, object.style.fontSize - 1),
+        textInsetX: 5,
       };
     }
 
@@ -208,12 +216,14 @@ export function StandaloneDrawingCanvas({
           y: object.y,
           width: 80,
           height: object.height,
+          fontSize: object.style.fontSize,
+          textInsetX: 10,
         };
       }
       if (localY < 28) {
-        return { type: 'field', objectId: object.id, field: 'title', value: object.title, x: object.x, y: object.y, width: object.width - 80, height: 28 };
+        return { type: 'field', objectId: object.id, field: 'title', value: object.title, x: object.x, y: object.y, width: object.width - 80, height: 28, fontSize: object.style.fontSize, textInsetX: 10 };
       }
-      return { type: 'field', objectId: object.id, field: 'drawingNo', value: object.drawingNo, x: object.x, y: object.y + 28, width: object.width - 80, height: 28 };
+      return { type: 'field', objectId: object.id, field: 'drawingNo', value: object.drawingNo, x: object.x, y: object.y + 28, width: object.width - 80, height: 28, fontSize: object.style.fontSize, textInsetX: 10 };
     }
 
     if (object.kind === 'tech-requirements') {
@@ -227,11 +237,13 @@ export function StandaloneDrawingCanvas({
         width: object.width - 16,
         height: object.height - 30,
         multiline: true,
+        fontSize: object.style.fontSize,
+        textInsetX: 10,
       };
     }
 
     if (object.kind === 'text' || object.kind === 'label') {
-      return { type: 'field', objectId: object.id, field: 'text', value: object.text, x: object.x, y: object.y, width: object.width, height: Math.max(28, object.height) };
+      return { type: 'field', objectId: object.id, field: 'text', value: object.text, x: object.x, y: object.y, width: object.width, height: Math.max(28, object.height), fontSize: object.style.fontSize, textInsetX: 0 };
     }
 
     if (object.kind === 'dimension') {
@@ -244,11 +256,13 @@ export function StandaloneDrawingCanvas({
         y: object.y + object.height / 2 - 16,
         width: 140,
         height: 28,
+        fontSize: object.style.fontSize,
+        textInsetX: 0,
       };
     }
 
     if (object.kind === 'connector' || object.kind === 'wire-bundle' || object.kind === 'accessory') {
-      return { type: 'field', objectId: object.id, field: 'label', value: object.label, x: object.x, y: object.y, width: object.width, height: 30 };
+      return { type: 'field', objectId: object.id, field: 'label', value: object.label, x: object.x, y: object.y, width: object.width, height: 30, fontSize: object.style.fontSize, textInsetX: 8 };
     }
 
     return null;
@@ -262,22 +276,26 @@ export function StandaloneDrawingCanvas({
     onSelectObject(object?.id ?? null);
     if (!object || object.locked) return;
     const nextEditor = createEditor(object, point);
-    if (nextEditor) setEditor(nextEditor);
+    if (nextEditor) {
+      onStartEdit();
+      setEditor(nextEditor);
+    }
+  };
+
+  const updateEditorValue = (value: string) => {
+    if (!editor) return;
+    const nextEditor = { ...editor, value };
+    setEditor(nextEditor);
+    const object = drawing.objects.find((candidate) => candidate.id === editor.objectId);
+    if (!object) return;
+    if (nextEditor.type === 'table-cell' && (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table')) {
+      onUpdateObject(object.id, tableCellPatch(object, nextEditor));
+    } else if (nextEditor.type === 'field') {
+      onUpdateObject(object.id, textPatch(object, nextEditor));
+    }
   };
 
   const commitEditor = () => {
-    if (!editor) return;
-    const object = drawing.objects.find((candidate) => candidate.id === editor.objectId);
-    if (!object) {
-      setEditor(null);
-      return;
-    }
-    onStartEdit();
-    if (editor.type === 'table-cell' && (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table')) {
-      onUpdateObject(object.id, tableCellPatch(object, editor));
-    } else if (editor.type === 'field') {
-      onUpdateObject(object.id, textPatch(object, editor));
-    }
     setEditor(null);
   };
 
@@ -286,36 +304,42 @@ export function StandaloneDrawingCanvas({
       <textarea
         autoFocus
         value={editor.value}
-        onChange={(event) => setEditor({ ...editor, value: event.target.value })}
+        onFocus={(event) => event.currentTarget.setSelectionRange(event.currentTarget.value.length, event.currentTarget.value.length)}
+        onChange={(event) => updateEditorValue(event.target.value)}
         onBlur={commitEditor}
         onKeyDown={(event) => {
           if (event.key === 'Escape') setEditor(null);
           if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commitEditor();
         }}
-        className="absolute z-20 resize-none rounded border border-blue-500 bg-white p-1 text-xs text-slate-900 shadow-lg outline-none ring-2 ring-blue-100"
+        className="absolute z-20 resize-none border-0 bg-transparent p-0 text-transparent caret-slate-900 outline-none shadow-none"
         style={{
-          left: editor.x * zoom,
+          left: (editor.x + editor.textInsetX) * zoom,
           top: editor.y * zoom,
-          width: editor.width * zoom,
+          width: Math.max(1, (editor.width - editor.textInsetX) * zoom),
           height: editor.height * zoom,
+          fontSize: editor.fontSize * zoom,
+          lineHeight: `${editor.fontSize * zoom}px`,
         }}
       />
     ) : (
       <input
         autoFocus
         value={editor.value}
-        onChange={(event) => setEditor({ ...editor, value: event.target.value })}
+        onFocus={(event) => event.currentTarget.setSelectionRange(event.currentTarget.value.length, event.currentTarget.value.length)}
+        onChange={(event) => updateEditorValue(event.target.value)}
         onBlur={commitEditor}
         onKeyDown={(event) => {
           if (event.key === 'Escape') setEditor(null);
           if (event.key === 'Enter') commitEditor();
         }}
-        className="absolute z-20 rounded border border-blue-500 bg-white px-1 text-xs text-slate-900 shadow-lg outline-none ring-2 ring-blue-100"
+        className="absolute z-20 appearance-none border-0 bg-transparent p-0 text-transparent caret-slate-900 outline-none shadow-none"
         style={{
-          left: editor.x * zoom,
+          left: (editor.x + editor.textInsetX) * zoom,
           top: editor.y * zoom,
-          width: Math.max(48, editor.width * zoom),
-          height: Math.max(24, editor.height * zoom),
+          width: Math.max(1, (editor.width - editor.textInsetX) * zoom),
+          height: Math.max(16, editor.height * zoom),
+          fontSize: editor.fontSize * zoom,
+          lineHeight: `${Math.max(16, editor.height * zoom)}px`,
         }}
       />
     )
