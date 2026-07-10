@@ -7,6 +7,7 @@ import type {
   CanvasWireMaterial,
   ConnectorInstance,
   HarnessConfig,
+  JacketedWireSpec,
   TwoDImage,
 } from '@/types/harness';
 import { imageAssets } from '@/lib/imageAssets';
@@ -142,17 +143,15 @@ function getConnectorImages(
 /**
  * Get the appropriate 2D image for a wire material based on its specifications.
  */
+export function isProductImageEligibleJacketedWire(spec: JacketedWireSpec): boolean {
+  return spec.coreCount === 4 && spec.jacketMaterial === 'PVC';
+}
+
 function getMaterialImage(material: CanvasWireMaterial): TwoDImage | null {
   if (material.spec.kind === 'jacketed') {
     const spec = material.spec;
     // Match: 4芯、PVC、黑色、22AWG、无屏蔽
-    if (
-      spec.coreCount === 4 &&
-      spec.jacketMaterial === 'PVC' &&
-      spec.jacketColor === 'black' &&
-      spec.awg === 22 &&
-      !spec.shielded
-    ) {
+    if (isProductImageEligibleJacketedWire(spec)) {
       return assetImageByName('护套线');
     }
   }

@@ -123,6 +123,7 @@ function DrawingTableLayer({
 }) {
   const tableRef = useRef<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState<TableEditTarget | null>(null);
+  const [drag, setDrag] = useState<{ kind: 'table' | 'text'; key?: string; startX: number; startY: number; x: number; y: number } | null>(null);
   const rowHeight = TABLE_ROW_HEIGHT * zoom;
   const titleHeight = TABLE_TITLE_HEIGHT * zoom;
   const maxBodyRows = Math.max(0, Math.floor((object.height - TABLE_TITLE_HEIGHT) / TABLE_ROW_HEIGHT) - 1);
@@ -150,6 +151,29 @@ function DrawingTableLayer({
     setEditing(target);
   };
 
+  const beginDrag = (event: React.PointerEvent<HTMLElement>, kind: 'table' | 'text', key?: string) => {
+    if (editing || object.locked) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const origin = kind === 'table' ? { x: object.x, y: object.y } : object.textOffsets?.[key ?? ''] ?? { x: 0, y: 0 };
+    onSelect();
+    onStartEdit();
+    setDrag({ kind, key, startX: event.clientX, startY: event.clientY, ...origin });
+  };
+
+  const handleTablePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+    if (!drag) return;
+    const x = Math.round(drag.x + (event.clientX - drag.startX) / zoom);
+    const y = Math.round(drag.y + (event.clientY - drag.startY) / zoom);
+    if (drag.kind === 'table') onUpdateObject(object.id, { x, y });
+    else onUpdateObject(object.id, { textOffsets: { ...object.textOffsets, [drag.key ?? '']: { x, y } } } as Partial<DrawingObject>);
+  };
+
+  const endTableDrag = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setDrag(null);
+  };
+
   const commitEdit = (event: React.FocusEvent<HTMLElement>, target: TableEditTarget) => {
     const value = event.currentTarget.textContent ?? '';
     if (target.type === 'title') onUpdateObject(object.id, { title: value } as Partial<DrawingObject>);
@@ -168,6 +192,9 @@ function DrawingTableLayer({
         role="textbox"
         tabIndex={0}
         onClick={(event) => { event.stopPropagation(); onSelect(); }}
+        onPointerDown={(event) => beginDrag(event, 'text', target.key)}
+        onPointerMove={handleTablePointerMove}
+        onPointerUp={endTableDrag}
         onDoubleClick={(event) => beginEdit(event, target)}
         onBlur={(event) => { if (isEditing) commitEdit(event, target); }}
         onKeyDown={(event) => {
@@ -178,6 +205,7 @@ function DrawingTableLayer({
           if (event.key === 'Escape') event.currentTarget.blur();
         }}
         className={`block h-full min-w-0 overflow-hidden whitespace-nowrap px-[0.35em] leading-[inherit] outline-none ${isEditing ? 'bg-blue-50' : ''} ${className}`}
+        style={{ transform: `translate(${(object.textOffsets?.[target.key]?.x ?? 0) * zoom}px, ${(object.textOffsets?.[target.key]?.y ?? 0) * zoom}px)` }}
       >
         {value}
       </span>
@@ -198,6 +226,9 @@ function DrawingTableLayer({
         lineHeight: `${rowHeight}px`,
       }}
       onClick={(event) => { event.stopPropagation(); onSelect(); }}
+      onPointerDown={(event) => beginDrag(event, 'table')}
+      onPointerMove={handleTablePointerMove}
+      onPointerUp={endTableDrag}
     >
       <div className="box-border border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
         {renderEditableText(object.title, { key: 'title', type: 'title' })}

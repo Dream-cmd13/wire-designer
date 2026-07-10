@@ -34,15 +34,19 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.rect(0, 0, object.width, object.height);
   context.clip();
   context.fillStyle = object.style.color;
+  const drawCellText = (key: string, text: string, x: number, y: number, maxWidth?: number) => {
+    const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
+    context.fillText(text, x + offset.x, y + offset.y, maxWidth);
+  };
   context.font = `600 ${object.style.fontSize}px Arial`;
-  context.fillText(object.title, 6, 15, object.width - 12);
+  drawCellText('title', object.title, 6, 15, object.width - 12);
   context.beginPath();
   context.moveTo(0, titleHeight);
   context.lineTo(object.width, titleHeight);
   context.stroke();
   context.font = `600 ${object.style.fontSize}px Arial`;
   object.columns.forEach((column, index) => {
-    context.fillText(column, index * columnWidth + 5, tableTop + rowHeight - 6);
+    drawCellText(`column-${index}`, column, index * columnWidth + 5, tableTop + rowHeight - 6);
     context.beginPath();
     context.moveTo(index * columnWidth, titleHeight);
     context.lineTo(index * columnWidth, object.height);
@@ -60,7 +64,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
     context.lineTo(object.width, y);
     context.stroke();
     object.columns.forEach((column, columnIndex) => {
-      context.fillText(row[column] ?? '', columnIndex * columnWidth + 5, y - 6, columnWidth - 8);
+      drawCellText(`row-${rowIndex}-column-${columnIndex}`, row[column] ?? '', columnIndex * columnWidth + 5, y - 6, columnWidth - 8);
     });
   });
   if (hasMoreRows) {

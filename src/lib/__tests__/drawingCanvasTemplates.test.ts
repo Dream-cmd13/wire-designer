@@ -52,6 +52,15 @@ describe('standalone drawing table templates', () => {
     expect(source).toContain('hiddenObjectIds: tableObjectIds');
   });
 
+  it('keeps table cells in the grid while allowing the grid and its text to move independently', () => {
+    const canvasSource = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
+    const rendererSource = readFileSync('src/lib/drawingRenderer.ts', 'utf8');
+
+    expect(canvasSource).toContain('onPointerMove={handleTablePointerMove}');
+    expect(canvasSource).toContain('textOffsets');
+    expect(rendererSource).toContain('object.textOffsets?.[key]');
+  });
+
   it('renders table text using the configured ink color instead of the white table fill', () => {
     const document: DrawingDocument = {
       schemaVersion: 1,

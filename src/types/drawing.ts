@@ -47,6 +47,7 @@ export type DrawingObjectKind =
 export type DrawingPoint = { x: number; y: number };
 
 export type DrawingTableRow = Record<string, string>;
+export type DrawingTableTextOffsets = Record<string, DrawingPoint>;
 
 export type DrawingConnectorObject = DrawingObjectBase & {
   kind: 'connector';
@@ -92,6 +93,7 @@ export type DrawingTableObject = DrawingObjectBase & {
   title: string;
   columns: string[];
   rows: DrawingTableRow[];
+  textOffsets?: DrawingTableTextOffsets;
 };
 
 export type DrawingBomTableObject = DrawingObjectBase & {
@@ -99,6 +101,7 @@ export type DrawingBomTableObject = DrawingObjectBase & {
   title: string;
   columns: string[];
   rows: DrawingTableRow[];
+  textOffsets?: DrawingTableTextOffsets;
 };
 
 export type DrawingWiringTableObject = DrawingObjectBase & {
@@ -106,6 +109,7 @@ export type DrawingWiringTableObject = DrawingObjectBase & {
   title: string;
   columns: string[];
   rows: DrawingTableRow[];
+  textOffsets?: DrawingTableTextOffsets;
 };
 
 export type DrawingTechRequirementsObject = DrawingObjectBase & {
