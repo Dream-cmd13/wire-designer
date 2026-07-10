@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import type { DrawingDocument, DrawingObject, DrawingTableRow } from '@/types/drawing';
 
@@ -12,6 +12,10 @@ interface StandaloneDrawingCanvasProps {
 }
 
 type DragState = { objectId: string; offsetX: number; offsetY: number } | null;
+type DrawingTableObject = Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>;
+type TableEditTarget =
+  | { key: 'title'; type: 'title' }
+  | { key: string; type: 'table-cell'; rowIndex: number; columnIndex: number };
 type EditTarget =
   | {
       type: 'field';
@@ -74,8 +78,8 @@ function textPatch(object: DrawingObject, field: EditTarget & { type: 'field' })
 }
 
 function tableCellPatch(
-  object: Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>,
-  editor: EditTarget & { type: 'table-cell' },
+  object: DrawingTableObject,
+  editor: { rowIndex: number; columnIndex: number; value: string },
 ): Partial<DrawingObject> {
   const columns = [...object.columns];
   if (editor.rowIndex === -1) {
@@ -102,6 +106,118 @@ function tableCellPatch(
   return { rows } as Partial<DrawingObject>;
 }
 
+function DrawingTableLayer({
+  object,
+  zoom,
+  selected,
+  onSelect,
+  onStartEdit,
+  onUpdateObject,
+}: {
+  object: DrawingTableObject;
+  zoom: number;
+  selected: boolean;
+  onSelect: () => void;
+  onStartEdit: () => void;
+  onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
+}) {
+  const tableRef = useRef<HTMLDivElement | null>(null);
+  const [editing, setEditing] = useState<TableEditTarget | null>(null);
+  const rowHeight = TABLE_ROW_HEIGHT * zoom;
+  const titleHeight = TABLE_TITLE_HEIGHT * zoom;
+  const maxBodyRows = Math.max(0, Math.floor((object.height - TABLE_TITLE_HEIGHT) / TABLE_ROW_HEIGHT) - 1);
+  const visibleRows = object.rows.slice(0, maxBodyRows);
+
+  useEffect(() => {
+    if (!editing) return;
+    const element = tableRef.current?.querySelector<HTMLElement>('[data-table-editing="true"]');
+    if (!element) return;
+    element.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }, [editing]);
+
+  const beginEdit = (event: React.MouseEvent<HTMLElement>, target: TableEditTarget) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (object.locked) return;
+    onSelect();
+    onStartEdit();
+    setEditing(target);
+  };
+
+  const commitEdit = (event: React.FocusEvent<HTMLElement>, target: TableEditTarget) => {
+    const value = event.currentTarget.textContent ?? '';
+    if (target.type === 'title') onUpdateObject(object.id, { title: value } as Partial<DrawingObject>);
+    else onUpdateObject(object.id, tableCellPatch(object, { ...target, value }));
+    setEditing(null);
+  };
+
+  const renderEditableText = (value: string, target: TableEditTarget, className = '') => {
+    const isEditing = editing?.key === target.key;
+    return (
+      <span
+        key={target.key}
+        data-table-editing={isEditing || undefined}
+        contentEditable={isEditing}
+        suppressContentEditableWarning
+        role="textbox"
+        tabIndex={0}
+        onClick={(event) => { event.stopPropagation(); onSelect(); }}
+        onDoubleClick={(event) => beginEdit(event, target)}
+        onBlur={(event) => { if (isEditing) commitEdit(event, target); }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+          if (event.key === 'Escape') event.currentTarget.blur();
+        }}
+        className={`block h-full min-w-0 overflow-hidden whitespace-nowrap px-[0.35em] leading-[inherit] outline-none ${isEditing ? 'bg-blue-50' : ''} ${className}`}
+      >
+        {value}
+      </span>
+    );
+  };
+
+  return (
+    <div
+      ref={tableRef}
+      className={`absolute z-10 box-border overflow-hidden border border-slate-900 bg-white text-slate-900 ${selected ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+      style={{
+        left: object.x * zoom,
+        top: object.y * zoom,
+        width: object.width * zoom,
+        height: object.height * zoom,
+        fontFamily: 'Arial, sans-serif',
+        fontSize: object.style.fontSize * zoom,
+        lineHeight: `${rowHeight}px`,
+      }}
+      onClick={(event) => { event.stopPropagation(); onSelect(); }}
+    >
+      <div className="box-border border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
+        {renderEditableText(object.title, { key: 'title', type: 'title' })}
+      </div>
+      <div className="grid font-semibold" style={{ gridTemplateColumns: `repeat(${object.columns.length}, minmax(0, 1fr))` }}>
+        {object.columns.map((column, columnIndex) => (
+          <div key={columnIndex} className="box-border border-b border-r border-slate-900 last:border-r-0" style={{ height: rowHeight }}>
+            {renderEditableText(column, { key: `column-${columnIndex}`, type: 'table-cell', rowIndex: -1, columnIndex })}
+          </div>
+        ))}
+        {visibleRows.flatMap((row, rowIndex) => object.columns.map((column, columnIndex) => (
+          <div key={`${rowIndex}-${columnIndex}`} className="box-border border-b border-r border-slate-300 last:border-r-0" style={{ height: rowHeight, fontSize: Math.max(8, object.style.fontSize - 1) * zoom, fontWeight: 400 }}>
+            {renderEditableText(row[column] ?? '', { key: `row-${rowIndex}-column-${columnIndex}`, type: 'table-cell', rowIndex, columnIndex })}
+          </div>
+        )))}
+      </div>
+    </div>
+  );
+}
+
 export function StandaloneDrawingCanvas({
   drawing,
   selectedObjectId,
@@ -113,6 +229,9 @@ export function StandaloneDrawingCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [drag, setDrag] = useState<DragState>(null);
   const [editor, setEditor] = useState<EditTarget | null>(null);
+  const tableObjects = useMemo(() => drawing.objects.filter((object): object is DrawingTableObject =>
+    object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table'), [drawing.objects]);
+  const tableObjectIds = useMemo(() => new Set(tableObjects.map((object) => object.id)), [tableObjects]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -123,8 +242,8 @@ export function StandaloneDrawingCanvas({
     const context = canvas.getContext('2d');
     if (!context) return;
     context.setTransform(scale, 0, 0, scale, 0, 0);
-    renderDrawingCanvas(context, drawing, selectedObjectId);
-  }, [drawing, selectedObjectId]);
+    renderDrawingCanvas(context, drawing, selectedObjectId, { hiddenObjectIds: tableObjectIds });
+  }, [drawing, selectedObjectId, tableObjectIds]);
 
   const getPoint = (event: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -168,42 +287,7 @@ export function StandaloneDrawingCanvas({
     const localX = point.x - object.x;
     const localY = point.y - object.y;
 
-    if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') {
-      if (localY < TABLE_TITLE_HEIGHT) {
-        return {
-          type: 'field',
-          objectId: object.id,
-          field: 'title',
-          value: object.title,
-          x: object.x,
-          y: object.y,
-          width: object.width,
-          height: TABLE_TITLE_HEIGHT,
-          fontSize: object.style.fontSize,
-          textInsetX: 6,
-        };
-      }
-      const columnWidth = object.width / Math.max(1, object.columns.length);
-      const columnIndex = Math.max(0, Math.min(object.columns.length - 1, Math.floor(localX / columnWidth)));
-      const rowBand = Math.floor((localY - TABLE_TITLE_HEIGHT) / TABLE_ROW_HEIGHT);
-      const rowIndex = rowBand - 1;
-      if (rowBand < 0) return null;
-      return {
-        type: 'table-cell',
-        objectId: object.id,
-        rowIndex,
-        columnIndex,
-        value: rowIndex === -1
-          ? object.columns[columnIndex]
-          : object.rows[rowIndex]?.[object.columns[columnIndex]] ?? '',
-        x: object.x + columnIndex * columnWidth,
-        y: object.y + TABLE_TITLE_HEIGHT + Math.max(0, rowBand) * TABLE_ROW_HEIGHT,
-        width: columnWidth,
-        height: TABLE_ROW_HEIGHT,
-        fontSize: Math.max(8, object.style.fontSize - 1),
-        textInsetX: 5,
-      };
-    }
+    if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') return null;
 
     if (object.kind === 'title-block') {
       if (localX > object.width - 80) {
@@ -288,11 +372,7 @@ export function StandaloneDrawingCanvas({
     setEditor(nextEditor);
     const object = drawing.objects.find((candidate) => candidate.id === editor.objectId);
     if (!object) return;
-    if (nextEditor.type === 'table-cell' && (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table')) {
-      onUpdateObject(object.id, tableCellPatch(object, nextEditor));
-    } else if (nextEditor.type === 'field') {
-      onUpdateObject(object.id, textPatch(object, nextEditor));
-    }
+    if (nextEditor.type === 'field') onUpdateObject(object.id, textPatch(object, nextEditor));
   };
 
   const commitEditor = () => {
@@ -358,6 +438,17 @@ export function StandaloneDrawingCanvas({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         />
+        {tableObjects.map((object) => (
+          <DrawingTableLayer
+            key={object.id}
+            object={object}
+            zoom={zoom}
+            selected={selectedObjectId === object.id}
+            onSelect={() => onSelectObject(object.id)}
+            onStartEdit={onStartEdit}
+            onUpdateObject={onUpdateObject}
+          />
+        ))}
         {editorControl}
       </div>
     </div>

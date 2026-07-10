@@ -174,6 +174,7 @@ export function renderDrawingCanvas(
   context: CanvasRenderingContext2D,
   document: DrawingDocument,
   selectedObjectId?: string | null,
+  options: { hiddenObjectIds?: ReadonlySet<string> } = {},
 ) {
   context.clearRect(0, 0, document.page.width, document.page.height);
   context.fillStyle = '#ffffff';
@@ -182,7 +183,7 @@ export function renderDrawingCanvas(
   context.lineWidth = 1;
   context.strokeRect(20, 20, document.page.width - 40, document.page.height - 40);
   document.objects
-    .filter((object) => object.visible)
+    .filter((object) => object.visible && !options.hiddenObjectIds?.has(object.id))
     .sort((left, right) => left.zIndex - right.zIndex)
     .forEach((object) => {
       drawObject(context, object);

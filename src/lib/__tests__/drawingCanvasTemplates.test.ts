@@ -34,15 +34,22 @@ function createRecordingContext() {
 }
 
 describe('standalone drawing table templates', () => {
-  it('edits through the canvas text layer instead of drawing a second visible input value', () => {
+  it('keeps non-table canvas text edits from drawing a second visible input value', () => {
     const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
 
     expect(source).toContain('const updateEditorValue = (value: string) =>');
     expect(source).toContain('onChange={(event) => updateEditorValue(event.target.value)}');
     expect(source).toContain('text-transparent');
-    expect(source).toContain('textInsetX: 5');
     expect(source).toContain('left: (editor.x + editor.textInsetX) * zoom');
     expect(source).toContain('onFocus={(event) => event.currentTarget.setSelectionRange(event.currentTarget.value.length, event.currentTarget.value.length)}');
+  });
+
+  it('uses a DOM table layer for in-place table editing', () => {
+    const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
+
+    expect(source).toContain('function DrawingTableLayer');
+    expect(source).toContain('contentEditable={isEditing}');
+    expect(source).toContain('hiddenObjectIds: tableObjectIds');
   });
 
   it('renders table text using the configured ink color instead of the white table fill', () => {
@@ -69,6 +76,30 @@ describe('standalone drawing table templates', () => {
 
     expect(textCalls.find((call) => call.text === '接线表')?.fillStyle).toBe(defaultDrawingObjectStyle.color);
     expect(textCalls.find((call) => call.text === '黑')?.fillStyle).toBe(defaultDrawingObjectStyle.color);
+  });
+
+  it('can omit DOM-managed table objects from the interactive canvas render', () => {
+    const document: DrawingDocument = {
+      schemaVersion: 1,
+      id: 'drawing-2',
+      name: 'DOM table',
+      createdAt: 0,
+      updatedAt: 0,
+      page: { size: 'A4', orientation: 'landscape', width: 1200, height: 800 },
+      titleBlock: { title: 'title', drawingNo: 'drawing-2', revision: 'A' },
+      revisionTable: [],
+      techRequirements: [],
+      objects: [{
+        id: 'dom-table-1', kind: 'table', x: 100, y: 100, width: 300, height: 120,
+        rotation: 0, zIndex: 1, locked: false, visible: true, style: defaultDrawingObjectStyle,
+        title: '变更记录', columns: ['版本'], rows: [{ 版本: 'A' }],
+      }],
+    };
+    const { context, textCalls } = createRecordingContext();
+
+    renderDrawingCanvas(context, document, null, { hiddenObjectIds: new Set(['dom-table-1']) });
+
+    expect(textCalls).toHaveLength(0);
   });
 
   it('creates the requested revision, title, wiring, and BOM table defaults', () => {
