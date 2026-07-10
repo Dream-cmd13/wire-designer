@@ -1,6 +1,22 @@
-import { Boxes, Download, FileImage, FileText, LayoutTemplate, Table2 } from 'lucide-react';
+import { useState } from 'react';
+import { LayoutTemplate } from 'lucide-react';
+import { DrawingCanvas } from '@/components/drawings/workbench/DrawingCanvas';
+import { DrawingObjectInspector } from '@/components/drawings/workbench/DrawingObjectInspector';
+import { DrawingResourcePanel } from '@/components/drawings/workbench/DrawingResourcePanel';
+import { DrawingValidationPanel } from '@/components/drawings/workbench/DrawingValidationPanel';
+import { DrawingWizardDialog } from '@/components/drawings/workbench/DrawingWizardDialog';
+import { DrawingWorkbenchToolbar } from '@/components/drawings/workbench/DrawingWorkbenchToolbar';
 import { appRoutes } from '@/lib/appRoute';
+import { createHarnessConfigFromDrawingWizard } from '@/lib/drawingWizard';
+import {
+  downloadProductionDrawingPdf,
+  downloadProductionDrawingPng,
+  downloadProductionDrawingSvg,
+} from '@/lib/productionDrawingExport';
+import { updateProductionDrawingObject } from '@/lib/productionDrawingGenerator';
+import { projectRepository } from '@/repositories/projectRepository';
 import { useHarnessStore } from '@/stores/harnessStore';
+import type { DrawingWizardDraft, ProductionDrawingObject } from '@/types/harness';
 import type { Project } from '@/types/user';
 
 interface DrawingWorkbenchPageProps {
@@ -15,6 +31,15 @@ export function DrawingWorkbenchPage({
   onChooseDrawings,
 }: DrawingWorkbenchPageProps) {
   const config = useHarnessStore((state) => state.config);
+  const saveState = useHarnessStore((state) => state.saveState);
+  const patchDocument = useHarnessStore((state) => state.patchDocument);
+  const replaceDocument = useHarnessStore((state) => state.replaceDocument);
+  const markSaving = useHarnessStore((state) => state.markSaving);
+  const markSaved = useHarnessStore((state) => state.markSaved);
+  const markSaveError = useHarnessStore((state) => state.markSaveError);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const [canvasZoom, setCanvasZoom] = useState(1);
 
   if (!currentProject) {
     return (
@@ -23,7 +48,7 @@ export function DrawingWorkbenchPage({
           <LayoutTemplate className="mx-auto h-10 w-10 text-slate-300" />
           <h2 className="mt-4 text-base font-semibold text-slate-900">尚未打开项目</h2>
           <p className="mt-2 text-sm text-slate-500">
-            请先在首页或线束库打开一个项目，再进入制作图纸工作台。
+            请先在首页或线束库打开一个项目，再进入制造图工作台。
           </p>
           <button
             type="button"
@@ -37,128 +62,99 @@ export function DrawingWorkbenchPage({
     );
   }
 
-  const stats = [
-    { label: '连接器', value: config.connectors.length },
-    { label: '线材', value: config.materials.length },
-    { label: '保护套', value: config.protectiveSleeves.length },
-    { label: '成品图', value: config.twoDImages?.length ?? 0 },
-  ];
+  const handleGenerate = (draft: DrawingWizardDraft) => {
+    const nextConfig = createHarnessConfigFromDrawingWizard(config, draft);
+    replaceDocument(nextConfig);
+    setSelectedObjectId(nextConfig.productionDrawing?.objects[0]?.id ?? null);
+    setWizardOpen(false);
+  };
+
+  const handleUpdateObject = (objectId: string, patch: Partial<ProductionDrawingObject>) => {
+    const nextConfig = updateProductionDrawingObject(config, objectId, patch);
+    patchDocument({
+      productionDrawing: nextConfig.productionDrawing,
+      updatedAt: nextConfig.updatedAt,
+    });
+  };
+
+  const handleSaveDraft = async () => {
+    markSaving();
+    try {
+      await projectRepository.save(currentProject.id, config);
+      markSaved();
+    } catch (error) {
+      markSaveError(error instanceof Error ? error.message : '制造图草稿保存失败');
+    }
+  };
 
   return (
-    <div className="h-full overflow-y-auto bg-slate-100">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 lg:p-5">
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">制作图纸工作台</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                当前项目：{currentProject.name}
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => onNavigate(appRoutes['designer-product-image'].path)}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                <FileImage className="h-3.5 w-3.5" />
-                查看成品图
-              </button>
-              <button
-                type="button"
-                onClick={onChooseDrawings}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-slate-800"
-              >
-                <FileText className="h-3.5 w-3.5" />
-                选择 PDF
-              </button>
-            </div>
+    <div className="flex h-full min-h-0 flex-col bg-slate-100">
+      <section className="shrink-0 border-b border-slate-200 bg-white px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">制造图工作台</h2>
+            <p className="mt-0.5 text-xs text-slate-500">
+              当前项目：{currentProject.name}
+            </p>
           </div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {stats.map((item) => (
-              <div key={item.label} className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                <p className="text-xs text-slate-500">{item.label}</p>
-                <p className="mt-1 text-xl font-semibold text-slate-900">{item.value}</p>
-              </div>
-            ))}
+          <div className="grid grid-cols-4 gap-2 text-xs">
+            <Stat label="连接器" value={config.connectors.length} />
+            <Stat label="线材" value={config.materials.length} />
+            <Stat label="护套" value={config.protectiveSleeves.length} />
+            <Stat label="图纸对象" value={config.productionDrawing?.objects.length ?? 0} />
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
-          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">图纸画布</h3>
-                <p className="mt-0.5 text-xs text-slate-500">后续承载图框、接线图和成品图编排。</p>
-              </div>
-              <LayoutTemplate className="h-4 w-4 text-slate-400" />
-            </div>
-            <div className="min-h-[420px] bg-[linear-gradient(#e2e8f0_1px,transparent_1px),linear-gradient(90deg,#e2e8f0_1px,transparent_1px)] bg-[size:24px_24px] p-4">
-              <div className="flex h-full min-h-[388px] items-center justify-center rounded-md border border-dashed border-slate-300 bg-white/80">
-                <div className="max-w-sm text-center">
-                  <LayoutTemplate className="mx-auto h-10 w-10 text-slate-300" />
-                  <p className="mt-3 text-sm font-medium text-slate-700">制图编辑器预留区</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    第一版先建立独立工作台入口，完整图框编辑、BOM 表格排版、接线图导出将在后续迭代实现。
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+      <DrawingWorkbenchToolbar
+        dirty={saveState.status === 'dirty'}
+        onOpenWizard={() => setWizardOpen(true)}
+        onChooseDrawings={onChooseDrawings}
+        onOpenProductImage={() => onNavigate(appRoutes['designer-product-image'].path)}
+        saving={saveState.status === 'saving'}
+        onSaveDraft={() => void handleSaveDraft()}
+        zoom={canvasZoom}
+        onZoomIn={() => setCanvasZoom((value) => Math.min(2, Number((value + 0.1).toFixed(2))))}
+        onZoomOut={() => setCanvasZoom((value) => Math.max(0.5, Number((value - 0.1).toFixed(2))))}
+        onResetZoom={() => setCanvasZoom(1)}
+        canExport={Boolean(config.productionDrawing)}
+        onExportSvg={() => downloadProductionDrawingSvg(config)}
+        onExportPng={() => void downloadProductionDrawingPng(config)}
+        onExportPdf={() => downloadProductionDrawingPdf(config)}
+      />
 
-          <div className="grid gap-4">
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <Boxes className="h-4 w-4 text-blue-600" />
-                <h3 className="text-sm font-semibold text-slate-900">图纸组成</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <button
-                  type="button"
-                  onClick={() => onNavigate(appRoutes['designer-pdf'].path)}
-                  className="flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-left text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  <span>PDF 图纸预览</span>
-                  <FileText className="h-4 w-4 text-slate-400" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onNavigate(appRoutes['designer-product-image'].path)}
-                  className="flex w-full cursor-pointer items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-left text-slate-700 transition-colors hover:bg-slate-50"
-                >
-                  <span>成品图编排</span>
-                  <FileImage className="h-4 w-4 text-slate-400" />
-                </button>
-                <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-slate-500">
-                  <span>BOM 表格</span>
-                  <Table2 className="h-4 w-4 text-slate-400" />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="mb-3 flex items-center gap-2">
-                <Download className="h-4 w-4 text-green-600" />
-                <h3 className="text-sm font-semibold text-slate-900">输出动作</h3>
-              </div>
-              <div className="space-y-2">
-                {['导出图框 PDF', '导出制造图纸', '生成物料附件'].map((label) => (
-                  <button
-                    type="button"
-                    key={label}
-                    disabled
-                    className="flex w-full cursor-not-allowed items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-left text-sm text-slate-400"
-                  >
-                    <span>{label}</span>
-                    <span className="text-xs">待实现</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
+      <div className="flex min-h-0 flex-1">
+        <DrawingResourcePanel config={config} />
+        <DrawingCanvas
+          config={config}
+          selectedObjectId={selectedObjectId ?? undefined}
+          onSelectObject={setSelectedObjectId}
+          zoom={canvasZoom}
+        />
+        <DrawingObjectInspector
+          config={config}
+          selectedObjectId={selectedObjectId}
+          onSelectObject={setSelectedObjectId}
+          onUpdateObject={handleUpdateObject}
+        />
       </div>
+
+      <DrawingValidationPanel config={config} />
+
+      <DrawingWizardDialog
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onGenerate={handleGenerate}
+      />
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="min-w-20 rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="text-slate-500">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold leading-none text-slate-900">{value}</p>
     </div>
   );
 }

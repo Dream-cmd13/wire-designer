@@ -78,7 +78,8 @@ export interface ElectronicWireSpec {
 
 export type JacketMaterial = 'PVC' | 'PUR';
 export type JacketColor = 'black' | 'green';
-export type JacketCoreCount = 1 | 2 | 3 | 4 | 5 | 6 | 8 | 12 | 17;
+/** Jacketed cable core count. Runtime validation constrains this to 1-100. */
+export type JacketCoreCount = number;
 
 /** Allowed UL numbers for jacketed wires (single-select, may be absent). */
 export type JacketUlNumber = 'UL2464' | 'UL20276';
@@ -134,6 +135,10 @@ export interface MaterialCircuit {
   end?: ConnectorPinRef;
   color: string;
   signalName: string;
+  /** Optional local core length used by production drawing annotations. */
+  lengthMm?: number;
+  /** Human-facing connection number used in wiring tables. */
+  connectionNo?: string;
   /** For jacketed wires: which core this circuit binds to. */
   coreIndex?: number;
   route?: Partial<Record<MaterialEndpoint, MaterialEndpointRouteOffset>>;
@@ -283,6 +288,157 @@ export interface TwoDImage {
   pos?: { x: number; y: number };
 }
 
+export interface DrawingWizardTopology {
+  harnessType: 'internal' | 'external';
+  topology: 'single-end' | 'double-end' | 'both-tinned' | 'one-to-many';
+  wireKind: 'electronic' | 'twisted' | 'ribbon' | 'parallel' | 'jacketed';
+}
+
+export interface DrawingConnectorResource {
+  id: string;
+  name: string;
+  view: 'front' | 'top' | 'back';
+  gender: 'male' | 'female';
+  side: 'left' | 'right' | 'none';
+  category: string;
+  series: string;
+  pinCount: number;
+  rowCount?: number;
+  pitchMm?: number;
+  heightMm?: number;
+  imageAssetId?: string;
+}
+
+export interface DrawingHarnessAttributes {
+  moldId?: string;
+  drawingWireNo?: string;
+  totalLengthMm?: number;
+  lengthToleranceMm?: number;
+  heatShrinkId?: string;
+  tailTreatment?: {
+    stripTinLengthMm?: number;
+    toleranceMm?: number;
+    halfStrip?: boolean;
+  };
+}
+
+export interface DrawingWireRowDraft {
+  index: number;
+  color: string;
+  lengthMm?: number;
+  signalName?: string;
+  connectionNo: string;
+}
+
+export interface DrawingWizardDraft {
+  topology: DrawingWizardTopology;
+  leftResource?: DrawingConnectorResource;
+  rightResource?: DrawingConnectorResource;
+  singleResource?: DrawingConnectorResource;
+  attributes: DrawingHarnessAttributes;
+  wires: DrawingWireRowDraft[];
+}
+
+interface ProductionDrawingObjectBase {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DrawingConnectorObject extends ProductionDrawingObjectBase {
+  kind: 'connector';
+  connectorId: string;
+  label: string;
+  pinCount: number;
+  side: 'left' | 'right' | 'none';
+}
+
+export interface DrawingWireBundleObject extends ProductionDrawingObjectBase {
+  kind: 'wire-bundle';
+  materialIds: string[];
+  wireCount: number;
+  jacketed: boolean;
+}
+
+export interface DrawingDimensionObject extends ProductionDrawingObjectBase {
+  kind: 'dimension';
+  label: string;
+}
+
+export interface DrawingTextObject extends ProductionDrawingObjectBase {
+  kind: 'text';
+  text: string;
+  fontSize: number;
+}
+
+export interface DrawingBomTableObject extends ProductionDrawingObjectBase {
+  kind: 'bom-table';
+  rows: Array<{
+    item: number;
+    description: string;
+    quantity: number;
+  }>;
+}
+
+export interface DrawingWiringTableObject extends ProductionDrawingObjectBase {
+  kind: 'wiring-table';
+  rows: Array<{
+    item: number;
+    color: string;
+    signalName: string;
+    connectionNo: string;
+    startPin?: number;
+    endPin?: number;
+    lengthMm?: number;
+  }>;
+}
+
+export interface DrawingTitleBlockObject extends ProductionDrawingObjectBase {
+  kind: 'title-block';
+  title: string;
+  drawingNo: string;
+  revision: string;
+}
+
+export interface DrawingTechRequirementObject extends ProductionDrawingObjectBase {
+  kind: 'tech-requirements';
+  requirements: string[];
+}
+
+export type ProductionDrawingObject =
+  | DrawingConnectorObject
+  | DrawingWireBundleObject
+  | DrawingDimensionObject
+  | DrawingTextObject
+  | DrawingBomTableObject
+  | DrawingWiringTableObject
+  | DrawingTitleBlockObject
+  | DrawingTechRequirementObject;
+
+export interface ProductionDrawing {
+  schemaVersion: 1;
+  page: {
+    size: 'A4';
+    orientation: 'landscape';
+    width: 1200;
+    height: 800;
+  };
+  objects: ProductionDrawingObject[];
+  revisionTable: Array<{
+    revision: string;
+    description: string;
+    date: string;
+  }>;
+  titleBlock: {
+    title: string;
+    drawingNo: string;
+    revision: string;
+  };
+  techRequirements: string[];
+}
+
 export interface HarnessConfig {
   schemaVersion: 3;
   id: string;
@@ -296,6 +452,7 @@ export interface HarnessConfig {
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
   twoDImages?: TwoDImage[];
+  productionDrawing?: ProductionDrawing;
 }
 
 // ============================================================

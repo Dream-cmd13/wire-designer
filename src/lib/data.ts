@@ -44,6 +44,16 @@ export const CONNECTORS: Connector[] = [
   { id: 'usb-a', name: 'USB Type-A', manufacturer: 'Generic', pinCount: 4, type: 'female', pinLabels: ['VBUS', 'D-', 'D+', 'GND'], housingMaterial: 'PBT', contactMaterial: '铜合金镀金', nutMaterial: '金属外壳' },
   { id: 'usb-c', name: 'USB Type-C', manufacturer: 'Generic', pinCount: 16, type: 'receptacle', pinLabels: ['VBUS', 'D-', 'D+', 'SBU1', 'CC1', 'GND', 'VBUS', 'SBU2', 'D-', 'D+', 'GND', 'TX1+', 'TX1-', 'RX2-', 'RX2+', 'GND'], housingMaterial: 'LCP', contactMaterial: '铜合金镀金', nutMaterial: '不锈钢外壳' },
 
+  {
+    id: 'a1008h-2x20p',
+    name: 'A1008H-2X20P',
+    manufacturer: 'Generic',
+    pinCount: 40,
+    pitch: 1.0,
+    type: 'male',
+    pinLabels: Array.from({ length: 40 }, (_, index) => String(index + 1)),
+  },
+
   // --- Dupont ---
   { id: 'dupont-1x1', name: 'Dupont 2.54 1P', manufacturer: 'Dupont', pinCount: 1, pitch: 2.54, type: 'female', pinLabels: ['1'], housingMaterial: 'PA66', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
   { id: 'dupont-2p', name: 'Dupont 2.54 2P', manufacturer: 'Dupont', pinCount: 2, pitch: 2.54, type: 'female', pinLabels: ['1', '2'], housingMaterial: 'PA66', contactMaterial: '磷青铜镀金', nutMaterial: '无' },
@@ -102,7 +112,10 @@ export const WIRE_COLORS: WireColor[] = [
   { id: 'purple', name: '紫色', hex: '#9333EA' },
   { id: 'brown', name: '棕色', hex: '#92400E' },
   { id: 'gray', name: '灰色', hex: '#6B7280' },
+  { id: 'gold', name: '金色', hex: '#D4AF37' },
   { id: 'pink', name: '粉色', hex: '#EC4899' },
+  { id: 'yellow-green', name: '黄注绿', hex: '#A3E635' },
+  { id: 'blank', name: '空白', hex: '#F8FAFC' },
 ];
 
 // ============================================================

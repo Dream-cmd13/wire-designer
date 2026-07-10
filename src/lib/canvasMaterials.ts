@@ -16,7 +16,9 @@ import type {
   Selection,
 } from '@/types/harness';
 
-export const JACKET_CORE_COUNTS: JacketCoreCount[] = [1, 2, 3, 4, 5, 6, 8, 12, 17];
+export const JACKET_CORE_COUNTS: JacketCoreCount[] = [
+  1, 2, 3, 4, 5, 6, 8, 12, 17, 20, 24, 30, 32, 40, 50,
+];
 
 /** Allowed UL numbers for jacketed wires (single-select, may be absent). */
 export const JACKET_UL_NUMBERS: JacketUlNumber[] = ['UL2464', 'UL20276'];
@@ -32,12 +34,15 @@ export const CORE_COLOR_OPTIONS = [
   '橙色',
   '灰色',
   '紫色',
+  '金色',
   '粉色',
+  '黄注绿',
   '浅蓝色',
   '黄绿色',
   '米白色',
   '深蓝色',
   '浅绿色',
+  '空白',
   '透明',
 ] as const;
 
@@ -51,11 +56,14 @@ const CHINESE_NAME_TO_WIRE_COLOR = new Map(
 );
 // Additional Chinese names not in WIRE_COLORS that appear in CORE_COLOR_OPTIONS.
 const EXTRA_CORE_COLOR_HEX: Record<string, string> = {
+  '金色': '#D4AF37',
+  '黄注绿': '#A3E635',
   '浅蓝色': '#7DD3FC',
   '黄绿色': '#A3E635',
   '米白色': '#F5F0E8',
   '深蓝色': '#1E3A8A',
   '浅绿色': '#86EFAC',
+  '空白': '#F8FAFC',
   '透明': '#E2E8F066',
 };
 
@@ -233,7 +241,10 @@ export function getCoreColors(coreCount: JacketCoreCount): string[] {
   if (coreCount === 4) {
     return ['棕色', '白色', '蓝色', '黑色'];
   }
-  return CORE_COLOR_SEQUENCE.slice(0, coreCount);
+  return Array.from(
+    { length: Math.max(1, Math.min(100, Math.floor(coreCount))) },
+    (_, index) => CORE_COLOR_SEQUENCE[index % CORE_COLOR_SEQUENCE.length],
+  );
 }
 
 export function createDefaultWireEndProcessing(): WireEndProcessing {

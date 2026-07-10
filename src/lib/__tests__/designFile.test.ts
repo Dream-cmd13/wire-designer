@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createDesignFile, parseDesignFile } from '@/lib/designFile';
+import {
+  createDefaultDrawingWireRows,
+  createDrawingConnectorResources,
+  createHarnessConfigFromDrawingWizard,
+} from '@/lib/drawingWizard';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import type { Project } from '@/types/user';
 
@@ -41,6 +46,50 @@ describe('design file import/export', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.issues?.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('preserves generated production drawings through design file round-trip', () => {
+    const resource = createDrawingConnectorResources('none')[0];
+    const config = createHarnessConfigFromDrawingWizard(createFallbackConfig(), {
+      topology: {
+        harnessType: 'internal',
+        topology: 'single-end',
+        wireKind: 'electronic',
+      },
+      singleResource: resource,
+      attributes: {
+        drawingWireNo: 'WH-PERSIST',
+        totalLengthMm: 500,
+        lengthToleranceMm: 5,
+      },
+      wires: createDefaultDrawingWireRows(2, 500),
+    });
+    const project: Project = {
+      id: 'project-persist',
+      userId: 'user-1',
+      name: 'Production Drawing Project',
+      description: 'production drawing persistence',
+      harnessConfigId: config.id,
+      createdAt: 1,
+      updatedAt: 2,
+      status: 'draft',
+    };
+
+    const result = parseDesignFile(createDesignFile(project, config));
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.preview.config.productionDrawing?.titleBlock.drawingNo).toBe('WH-PERSIST');
+      expect(result.preview.config.productionDrawing?.objects.some((object) => object.kind === 'dimension')).toBe(true);
+      const wiringTable = result.preview.config.productionDrawing?.objects.find((object) => object.kind === 'wiring-table');
+      expect(wiringTable).toBeDefined();
+      if (wiringTable?.kind === 'wiring-table') {
+        expect(wiringTable.rows).toHaveLength(2);
+        expect(wiringTable.rows[0].signalName).toBe('WIRE-01');
+      }
+      expect(result.preview.config.materials[0].circuits[0].lengthMm).toBe(500);
+      expect(result.preview.config.materials[0].circuits[0].connectionNo).toBe('1');
     }
   });
 });

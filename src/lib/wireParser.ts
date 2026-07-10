@@ -11,7 +11,9 @@ export interface ParsedWireSpec {
   shielded?: boolean;
 }
 
-const JACKET_CORE_COUNTS: JacketCoreCount[] = [1, 2, 3, 4, 5, 6, 8, 12, 17];
+const JACKET_CORE_COUNTS: JacketCoreCount[] = [
+  1, 2, 3, 4, 5, 6, 8, 12, 17, 20, 24, 30, 32, 40, 50,
+];
 
 /**
  * Parses a simplified quick input string to extract wire/cable parameters.
@@ -102,7 +104,10 @@ export function parseQuickInput(query: string, kind: 'electronic' | 'jacketed'):
       '紫色': 'purple', '紫': 'purple', 'purple': 'purple',
       '棕色': 'brown', '棕': 'brown', 'brown': 'brown',
       '灰色': 'gray', '灰': 'gray', 'gray': 'gray',
+      '金色': 'gold', '金': 'gold', 'gold': 'gold',
       '粉色': 'pink', '粉': 'pink', 'pink': 'pink',
+      '黄注绿': 'yellow-green', '黄绿': 'yellow-green', 'yellowgreen': 'yellow-green', 'yellow-green': 'yellow-green',
+      '空白': 'blank', 'blank': 'blank',
     };
     for (const key of Object.keys(colorMap)) {
       // Use regex to match boundary word or raw character
@@ -150,7 +155,7 @@ export function parseQuickInput(query: string, kind: 'electronic' | 'jacketed'):
         result.coreCount = num as JacketCoreCount;
       }
       // Fallback: If we have an unused small number, it could be coreCount
-      else if (kind === 'jacketed' && result.coreCount === undefined && num > 0 && num <= 17) {
+      else if (kind === 'jacketed' && result.coreCount === undefined && num > 0 && num <= 100) {
         result.coreCount = num as JacketCoreCount;
       }
     }
