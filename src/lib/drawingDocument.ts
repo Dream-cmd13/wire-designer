@@ -150,7 +150,7 @@ export function createDrawingResourceObject(kind: DrawingResourceKind, point: Dr
     return { ...objectBase(kind, point, 180, 28), kind, text: kind === 'label' ? '①' : '自定义文字' };
   }
   if (kind === 'dimension') {
-    return { ...objectBase(kind, point, 240, 45), kind: 'dimension', label: '长度待确认', start: point, end: { x: point.x + 240, y: point.y } };
+    return { ...objectBase(kind, point, 240, 45), kind: 'dimension', label: '±5mm', start: point, end: { x: point.x + 240, y: point.y } };
   }
   if (kind === 'line' || kind === 'polyline' || kind === 'curve' || kind === 'freehand') {
     return {
@@ -164,9 +164,11 @@ export function createDrawingResourceObject(kind: DrawingResourceKind, point: Dr
     const title = kind === 'bom-table' ? '物料表' : kind === 'wiring-table' ? '接线表' : '自定义表格';
     const base = objectBase(kind, point, 360, 120);
     const columns = kind === 'wiring-table' ? ['PIN', '颜色', '线号', '长度'] : ['序号', '名称', '数量'];
-    if (kind === 'table') return { ...base, kind: 'table', title, columns, rows: [] };
-    if (kind === 'bom-table') return { ...base, kind: 'bom-table', title, columns, rows: [] };
-    return { ...base, kind: 'wiring-table', title, columns, rows: [] };
+    const rows = Array.from({ length: 3 }, () =>
+      Object.fromEntries(columns.map((column) => [column, ''])));
+    if (kind === 'table') return { ...base, kind: 'table', title, columns, rows };
+    if (kind === 'bom-table') return { ...base, kind: 'bom-table', title, columns, rows };
+    return { ...base, kind: 'wiring-table', title, columns, rows };
   }
   return { ...objectBase(kind, point, 360, 120), kind: 'tech-requirements', requirements: ['请填写技术要求。'] };
 }

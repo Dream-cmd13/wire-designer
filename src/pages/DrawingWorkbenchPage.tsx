@@ -18,12 +18,55 @@ const resourceTools: Array<{ kind: Exclude<DrawingObject['kind'], 'title-block'>
   { kind: 'dimension', label: '长度标注' }, { kind: 'label', label: '号码/标签' }, { kind: 'text', label: '文字' },
 ];
 
+const resourceDefaultPoints: Record<Exclude<DrawingObject['kind'], 'title-block'>, { x: number; y: number }> = {
+  connector: { x: 90, y: 210 },
+  'wire-bundle': { x: 245, y: 260 },
+  accessory: { x: 420, y: 238 },
+  table: { x: 600, y: 400 },
+  'wiring-table': { x: 600, y: 400 },
+  'bom-table': { x: 600, y: 505 },
+  line: { x: 360, y: 330 },
+  polyline: { x: 360, y: 330 },
+  curve: { x: 360, y: 330 },
+  freehand: { x: 360, y: 330 },
+  dimension: { x: 320, y: 170 },
+  label: { x: 420, y: 120 },
+  text: { x: 420, y: 120 },
+  'tech-requirements': { x: 70, y: 520 },
+};
+
 function cloneDrawing(drawing: DrawingDocument) {
   return JSON.parse(JSON.stringify(drawing)) as DrawingDocument;
 }
 
 function ToolButton({ label, title, onClick, disabled = false, children }: { label?: string; title: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return <button type="button" title={title} aria-label={title} disabled={disabled} onClick={onClick} className="flex shrink-0 cursor-pointer items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">{children}{label && <span>{label}</span>}</button>;
+}
+
+function overlaps(left: DrawingObject, right: DrawingObject) {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
+}
+
+function createPlacedResource(drawing: DrawingDocument, kind: Exclude<DrawingObject['kind'], 'title-block'>) {
+  const basePoint = resourceDefaultPoints[kind];
+  let point = { ...basePoint };
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const candidate = createDrawingResourceObject(kind, point);
+    if (!drawing.objects.some((object) => object.visible && overlaps(candidate, object))) {
+      return { ...candidate, zIndex: Math.max(...drawing.objects.map((object) => object.zIndex), 0) + 1 } as DrawingObject;
+    }
+    point = {
+      x: Math.min(drawing.page.width - candidate.width - 30, basePoint.x + ((attempt + 1) % 6) * 36),
+      y: Math.min(drawing.page.height - candidate.height - 30, basePoint.y + Math.floor((attempt + 1) / 6) * 42),
+    };
+  }
+  return {
+    ...createDrawingResourceObject(kind, point),
+    zIndex: Math.max(...drawing.objects.map((object) => object.zIndex), 0) + 1,
+  } as DrawingObject;
 }
 
 export function DrawingWorkbenchPage() {
@@ -62,7 +105,7 @@ export function DrawingWorkbenchPage() {
   const addResource = (kind: Exclude<DrawingObject['kind'], 'title-block'>) => {
     if (!drawing) return;
     remember();
-    const object = createDrawingResourceObject(kind, { x: 420, y: 220 });
+    const object = createPlacedResource(drawing, kind);
     update({ ...drawing, updatedAt: Date.now(), objects: [...drawing.objects, object] });
     setSelectedObjectId(object.id);
     setResourcesOpen(false);

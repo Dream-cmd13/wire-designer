@@ -76,7 +76,7 @@ function defaultDraft(resources: DrawingConnectorResource[]): DrawingWizardDraft
     singleConnector: connector,
     drawingNo: 'WH-A1008H-40P',
     totalLengthMm: 320,
-    toleranceMm: 10,
+    toleranceMm: 5,
     hasMold: false,
     heatShrink: '',
     wires: [],

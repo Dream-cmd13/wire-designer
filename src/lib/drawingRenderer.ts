@@ -19,9 +19,11 @@ function drawPolyline(context: CanvasRenderingContext2D, points: DrawingPoint[],
 }
 
 function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>) {
+  const titleHeight = 22;
   const rowHeight = 18;
   const columnWidth = object.width / Math.max(1, object.columns.length);
-  const maxBodyRows = Math.max(0, Math.floor(object.height / rowHeight) - 1);
+  const tableTop = titleHeight;
+  const maxBodyRows = Math.max(0, Math.floor((object.height - titleHeight) / rowHeight) - 1);
   const hasMoreRows = object.rows.length > maxBodyRows;
   const visibleRows = object.rows.slice(0, hasMoreRows ? Math.max(0, maxBodyRows - 1) : maxBodyRows);
   context.fillStyle = object.style.fill;
@@ -32,20 +34,26 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.rect(0, 0, object.width, object.height);
   context.clip();
   context.font = `600 ${object.style.fontSize}px Arial`;
+  context.fillText(object.title, 6, 15, object.width - 12);
+  context.beginPath();
+  context.moveTo(0, titleHeight);
+  context.lineTo(object.width, titleHeight);
+  context.stroke();
+  context.font = `600 ${object.style.fontSize}px Arial`;
   object.columns.forEach((column, index) => {
-    context.fillText(column, index * columnWidth + 5, rowHeight - 6);
+    context.fillText(column, index * columnWidth + 5, tableTop + rowHeight - 6);
     context.beginPath();
-    context.moveTo(index * columnWidth, 0);
+    context.moveTo(index * columnWidth, titleHeight);
     context.lineTo(index * columnWidth, object.height);
     context.stroke();
   });
   context.beginPath();
-  context.moveTo(0, rowHeight);
-  context.lineTo(object.width, rowHeight);
+  context.moveTo(0, tableTop + rowHeight);
+  context.lineTo(object.width, tableTop + rowHeight);
   context.stroke();
   context.font = `${Math.max(8, object.style.fontSize - 1)}px Arial`;
   visibleRows.forEach((row, rowIndex) => {
-    const y = rowHeight * (rowIndex + 2);
+    const y = tableTop + rowHeight * (rowIndex + 2);
     context.beginPath();
     context.moveTo(0, y);
     context.lineTo(object.width, y);
@@ -55,7 +63,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
     });
   });
   if (hasMoreRows) {
-    const y = rowHeight * (visibleRows.length + 2);
+    const y = tableTop + rowHeight * (visibleRows.length + 2);
     context.beginPath();
     context.moveTo(0, y - rowHeight);
     context.lineTo(object.width, y - rowHeight);
@@ -190,7 +198,9 @@ export function renderDrawingCanvas(
 
 export function getDrawingObjectAtPoint(document: DrawingDocument, point: DrawingPoint): DrawingObject | undefined {
   return document.objects
-    .filter((object) => object.visible)
-    .sort((left, right) => right.zIndex - left.zIndex)
-    .find((object) => point.x >= object.x && point.x <= object.x + object.width && point.y >= object.y && point.y <= object.y + object.height);
+    .map((object, index) => ({ object, index }))
+    .filter(({ object }) => object.visible)
+    .sort((left, right) => right.object.zIndex - left.object.zIndex || right.index - left.index)
+    .find(({ object }) => point.x >= object.x && point.x <= object.x + object.width && point.y >= object.y && point.y <= object.y + object.height)
+    ?.object;
 }
