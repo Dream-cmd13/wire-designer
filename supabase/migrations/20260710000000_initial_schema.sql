@@ -1,19 +1,106 @@
 -- Wire Harness Designer / Supabase initial schema
--- Run through Supabase CLI migrations or the Supabase SQL editor on a new project.
+-- Idempotent version: safe to run through Supabase CLI migrations or the SQL editor
+-- after an earlier version of this schema has already been applied.
 
 create extension if not exists pgcrypto;
 create extension if not exists btree_gist;
 
-create type public.app_role as enum ('user', 'catalog_admin');
-create type public.project_status as enum ('draft', 'in_progress', 'completed', 'archived');
-create type public.catalog_item_type as enum ('connector', 'wire', 'protective_sleeve', 'overmold');
-create type public.organization_kind as enum ('manufacturer', 'brand_owner', 'trader', 'supplier', 'other');
-create type public.organization_relationship_type as enum ('manufacturer', 'brand_owner', 'trader', 'supplier');
-create type public.supplier_price_status as enum ('active', 'expired', 'void');
-create type public.catalog_image_purpose as enum ('product', 'drawing', 'dimension', 'packaging', 'other');
-create type public.project_design_entity_type as enum ('connector', 'wire', 'protective_sleeve', 'overmold');
+do $$
+begin
+  create type public.app_role as enum ('user', 'catalog_admin');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.app_role add value if not exists 'user';
+alter type public.app_role add value if not exists 'catalog_admin';
 
-create table public.profiles (
+do $$
+begin
+  create type public.project_status as enum ('draft', 'in_progress', 'completed', 'archived');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.project_status add value if not exists 'draft';
+alter type public.project_status add value if not exists 'in_progress';
+alter type public.project_status add value if not exists 'completed';
+alter type public.project_status add value if not exists 'archived';
+
+do $$
+begin
+  create type public.catalog_item_type as enum ('connector', 'wire', 'protective_sleeve', 'overmold');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.catalog_item_type add value if not exists 'connector';
+alter type public.catalog_item_type add value if not exists 'wire';
+alter type public.catalog_item_type add value if not exists 'protective_sleeve';
+alter type public.catalog_item_type add value if not exists 'overmold';
+
+do $$
+begin
+  create type public.organization_kind as enum ('manufacturer', 'brand_owner', 'trader', 'supplier', 'other');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.organization_kind add value if not exists 'manufacturer';
+alter type public.organization_kind add value if not exists 'brand_owner';
+alter type public.organization_kind add value if not exists 'trader';
+alter type public.organization_kind add value if not exists 'supplier';
+alter type public.organization_kind add value if not exists 'other';
+
+do $$
+begin
+  create type public.organization_relationship_type as enum ('manufacturer', 'brand_owner', 'trader', 'supplier');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.organization_relationship_type add value if not exists 'manufacturer';
+alter type public.organization_relationship_type add value if not exists 'brand_owner';
+alter type public.organization_relationship_type add value if not exists 'trader';
+alter type public.organization_relationship_type add value if not exists 'supplier';
+
+do $$
+begin
+  create type public.supplier_price_status as enum ('active', 'expired', 'void');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.supplier_price_status add value if not exists 'active';
+alter type public.supplier_price_status add value if not exists 'expired';
+alter type public.supplier_price_status add value if not exists 'void';
+
+do $$
+begin
+  create type public.catalog_image_purpose as enum ('product', 'drawing', 'dimension', 'packaging', 'other');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.catalog_image_purpose add value if not exists 'product';
+alter type public.catalog_image_purpose add value if not exists 'drawing';
+alter type public.catalog_image_purpose add value if not exists 'dimension';
+alter type public.catalog_image_purpose add value if not exists 'packaging';
+alter type public.catalog_image_purpose add value if not exists 'other';
+
+do $$
+begin
+  create type public.project_design_entity_type as enum ('connector', 'wire', 'protective_sleeve', 'overmold');
+exception
+  when duplicate_object then null;
+end;
+$$;
+alter type public.project_design_entity_type add value if not exists 'connector';
+alter type public.project_design_entity_type add value if not exists 'wire';
+alter type public.project_design_entity_type add value if not exists 'protective_sleeve';
+alter type public.project_design_entity_type add value if not exists 'overmold';
+
+create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null default '',
   avatar_path text,
@@ -24,7 +111,7 @@ create table public.profiles (
   updated_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.projects (
+create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references public.profiles(id) on delete restrict,
   name text not null check (length(btrim(name)) between 1 and 200),
@@ -38,7 +125,7 @@ create table public.projects (
   deleted_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.project_documents (
+create table if not exists public.project_documents (
   project_id uuid primary key references public.projects(id) on delete cascade,
   document jsonb not null,
   schema_version integer not null check (schema_version > 0),
@@ -49,7 +136,7 @@ create table public.project_documents (
   updated_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.project_assets (
+create table if not exists public.project_assets (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,
   bucket text not null check (bucket = 'project-assets'),
@@ -65,7 +152,7 @@ create table public.project_assets (
   deleted_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.catalog_categories (
+create table if not exists public.catalog_categories (
   id uuid primary key default gen_random_uuid(),
   parent_id uuid references public.catalog_categories(id) on delete restrict,
   name text not null check (length(btrim(name)) between 1 and 100),
@@ -79,7 +166,82 @@ create table public.catalog_categories (
   deleted_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.organizations (
+create table if not exists public.wire_colors (
+  id uuid primary key default gen_random_uuid(),
+  code text not null check (code ~ '^[a-z0-9][a-z0-9_-]{0,63}$'),
+  display_name text not null check (length(btrim(display_name)) between 1 and 50),
+  hex_color char(7) not null check (hex_color ~ '^#[0-9A-Fa-f]{6}$'),
+  display_order integer not null default 0 check (display_order >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null
+);
+
+create table if not exists public.wire_gauges (
+  id uuid primary key default gen_random_uuid(),
+  awg numeric(8, 2) not null check (awg > 0),
+  conductor_diameter_mm numeric(10, 4) check (conductor_diameter_mm is null or conductor_diameter_mm > 0),
+  max_current_a numeric(10, 3) check (max_current_a is null or max_current_a > 0),
+  display_order integer not null default 0 check (display_order >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null
+);
+
+create table if not exists public.wire_types (
+  id uuid primary key default gen_random_uuid(),
+  code text not null check (code ~ '^[a-z0-9][a-z0-9_-]{0,63}$'),
+  display_name text not null check (length(btrim(display_name)) between 1 and 100),
+  description text not null default '',
+  temperature_rating_c numeric(8, 2) check (temperature_rating_c is null or temperature_rating_c > 0),
+  display_order integer not null default 0 check (display_order >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null
+);
+
+create table if not exists public.lead_time_options (
+  id uuid primary key default gen_random_uuid(),
+  code text not null check (code in ('rush', 'standard', 'economy')),
+  display_name text not null check (length(btrim(display_name)) between 1 and 50),
+  days_label text not null,
+  price_multiplier numeric(10, 4) not null check (price_multiplier > 0),
+  display_order integer not null default 0 check (display_order >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null
+);
+
+create table if not exists public.protection_options (
+  id uuid primary key default gen_random_uuid(),
+  code text not null check (code ~ '^[a-z0-9][a-z0-9_-]{0,63}$'),
+  display_name text not null check (length(btrim(display_name)) between 1 and 50),
+  unit_price numeric(18, 6) not null check (unit_price >= 0),
+  display_order integer not null default 0 check (display_order >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null
+);
+
+create table if not exists public.pricing_rules (
+  id uuid primary key default gen_random_uuid(),
+  rule_group text not null check (rule_group in ('connector_base', 'wire_gauge_multiplier', 'wire_type_multiplier', 'labor')),
+  rule_key text not null check (length(btrim(rule_key)) between 1 and 100),
+  numeric_value numeric(18, 6) not null check (numeric_value >= 0),
+  description text not null default '',
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  deleted_at timestamptz, deleted_by uuid references public.profiles(id) on delete set null,
+  unique (rule_group, rule_key)
+);
+
+create table if not exists public.organizations (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(btrim(name)) between 1 and 200),
   organization_kind public.organization_kind not null default 'other',
@@ -94,7 +256,7 @@ create table public.organizations (
   deleted_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.organization_contacts (
+create table if not exists public.organization_contacts (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete restrict,
   contact_name text not null check (length(btrim(contact_name)) between 1 and 100),
@@ -111,9 +273,10 @@ create table public.organization_contacts (
   check (phone is not null or email is not null)
 );
 
-create table public.catalog_items (
+create table if not exists public.catalog_items (
   id uuid primary key default gen_random_uuid(),
   item_type public.catalog_item_type not null,
+  legacy_key text check (legacy_key is null or legacy_key ~ '^[a-z0-9][a-z0-9_-]{0,99}$'),
   resource_name text not null check (length(btrim(resource_name)) between 1 and 200),
   model text not null check (length(btrim(model)) between 1 and 200),
   manufacturer_part_number text,
@@ -130,7 +293,14 @@ create table public.catalog_items (
   deleted_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.catalog_item_organizations (
+-- `create table if not exists` does not add columns to a table created by an
+-- earlier migration version. Keep this compatibility change before indexes
+-- that reference legacy_key.
+alter table public.catalog_items
+  add column if not exists legacy_key text
+    check (legacy_key is null or legacy_key ~ '^[a-z0-9][a-z0-9_-]{0,99}$');
+
+create table if not exists public.catalog_item_organizations (
   id uuid primary key default gen_random_uuid(),
   item_id uuid not null references public.catalog_items(id) on delete restrict,
   organization_id uuid not null references public.organizations(id) on delete restrict,
@@ -145,7 +315,7 @@ create table public.catalog_item_organizations (
   unique (id, relationship_type)
 );
 
-create table public.supplier_prices (
+create table if not exists public.supplier_prices (
   id uuid primary key default gen_random_uuid(),
   item_organization_id uuid not null,
   relationship_type public.organization_relationship_type not null default 'supplier'
@@ -171,17 +341,28 @@ create table public.supplier_prices (
   check (effective_to is null or effective_to >= effective_from)
 );
 
-alter table public.supplier_prices
-  add constraint supplier_prices_no_active_overlap
-  exclude using gist (
-    item_organization_id with =,
-    currency_code with =,
-    purchase_unit with =,
-    daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') with &&,
-    numrange(min_quantity, coalesce(max_quantity, 'infinity'::numeric), '[)') with &&
-  ) where (status = 'active');
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'supplier_prices_no_active_overlap'
+      and conrelid = 'public.supplier_prices'::regclass
+  ) then
+    alter table public.supplier_prices
+      add constraint supplier_prices_no_active_overlap
+      exclude using gist (
+        item_organization_id with =,
+        currency_code with =,
+        purchase_unit with =,
+        daterange(effective_from, coalesce(effective_to, 'infinity'::date), '[]') with &&,
+        numrange(min_quantity, coalesce(max_quantity, 'infinity'::numeric), '[)') with &&
+      ) where (status = 'active');
+  end if;
+end;
+$$;
 
-create table public.catalog_item_images (
+create table if not exists public.catalog_item_images (
   id uuid primary key default gen_random_uuid(),
   item_id uuid not null references public.catalog_items(id) on delete restrict,
   bucket text not null check (bucket = 'catalog-assets'),
@@ -202,7 +383,7 @@ create table public.catalog_item_images (
   deleted_by uuid references public.profiles(id) on delete set null
 );
 
-create table public.connector_specs (
+create table if not exists public.connector_specs (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete restrict,
   package text,
   series text,
@@ -216,6 +397,9 @@ create table public.connector_specs (
   color text,
   features text,
   insulation_material text,
+  housing_material text,
+  contact_material text,
+  nut_material text,
   operating_temperature_min_c numeric(8, 2),
   operating_temperature_max_c numeric(8, 2),
   rohs_status text,
@@ -230,9 +414,25 @@ create table public.connector_specs (
          or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
-create table public.wire_specs (
+create table if not exists public.connector_pins (
+  id uuid primary key default gen_random_uuid(),
+  catalog_item_id uuid not null references public.catalog_items(id) on delete restrict,
+  pin_number integer not null check (pin_number > 0),
+  pin_label text not null check (length(btrim(pin_label)) between 1 and 100),
+  display_order integer not null check (display_order >= 0),
+  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  unique (catalog_item_id, pin_number),
+  unique (catalog_item_id, display_order)
+);
+
+create table if not exists public.wire_specs (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete restrict,
   spool_length_m numeric(18, 3) check (spool_length_m is null or spool_length_m > 0),
+  core_count integer check (core_count is null or core_count > 0),
+  jacket_material text,
+  is_shielded boolean not null default false,
   conductor_color text,
   package text,
   cable_type text,
@@ -255,7 +455,7 @@ create table public.wire_specs (
          or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
-create table public.protective_sleeve_specs (
+create table if not exists public.protective_sleeve_specs (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete restrict,
   material text,
   color text,
@@ -277,10 +477,11 @@ create table public.protective_sleeve_specs (
          or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
-create table public.overmold_specs (
+create table if not exists public.overmold_specs (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete restrict,
   outer_material text,
   inner_material text,
+  inner_material_optional boolean not null default false,
   color text,
   outer_hardness_shore text,
   length_mm numeric(10, 3) check (length_mm is null or length_mm > 0),
@@ -300,7 +501,7 @@ create table public.overmold_specs (
          or compatible_wire_diameter_max_mm >= compatible_wire_diameter_min_mm)
 );
 
-create table public.project_catalog_references (
+create table if not exists public.project_catalog_references (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,
   design_entity_type public.project_design_entity_type not null,
@@ -337,16 +538,25 @@ declare table_name text;
 begin
   foreach table_name in array array[
     'profiles', 'projects', 'project_documents', 'project_assets',
-    'catalog_categories', 'organizations', 'organization_contacts',
+    'catalog_categories', 'wire_colors', 'wire_gauges', 'wire_types',
+    'lead_time_options', 'protection_options', 'pricing_rules',
+    'organizations', 'organization_contacts',
     'catalog_items', 'catalog_item_organizations', 'supplier_prices',
-    'catalog_item_images', 'connector_specs', 'wire_specs',
+    'catalog_item_images', 'connector_specs', 'connector_pins', 'wire_specs',
     'protective_sleeve_specs', 'overmold_specs', 'project_catalog_references'
   ] loop
-    execute format(
-      'create trigger %I before insert or update on public.%I '
-      || 'for each row execute function public.set_audit_fields()',
-      table_name || '_set_audit_fields', table_name
-    );
+    if not exists (
+      select 1
+      from pg_trigger
+      where tgname = table_name || '_set_audit_fields'
+        and tgrelid = format('public.%I', table_name)::regclass
+    ) then
+      execute format(
+        'create trigger %I before insert or update on public.%I '
+        || 'for each row execute function public.set_audit_fields()',
+        table_name || '_set_audit_fields', table_name
+      );
+    end if;
   end loop;
 end;
 $$;
@@ -368,18 +578,39 @@ begin
 end;
 $$;
 
-create trigger connector_specs_match_item_type
-  before insert or update on public.connector_specs
-  for each row execute function public.enforce_spec_item_type('connector');
-create trigger wire_specs_match_item_type
-  before insert or update on public.wire_specs
-  for each row execute function public.enforce_spec_item_type('wire');
-create trigger protective_sleeve_specs_match_item_type
-  before insert or update on public.protective_sleeve_specs
-  for each row execute function public.enforce_spec_item_type('protective_sleeve');
-create trigger overmold_specs_match_item_type
-  before insert or update on public.overmold_specs
-  for each row execute function public.enforce_spec_item_type('overmold');
+do $$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'connector_specs_match_item_type' and tgrelid = 'public.connector_specs'::regclass) then
+    create trigger connector_specs_match_item_type
+      before insert or update on public.connector_specs
+      for each row execute function public.enforce_spec_item_type('connector');
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'connector_pins_match_item_type' and tgrelid = 'public.connector_pins'::regclass) then
+    create trigger connector_pins_match_item_type
+      before insert or update on public.connector_pins
+      for each row execute function public.enforce_spec_item_type('connector');
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'wire_specs_match_item_type' and tgrelid = 'public.wire_specs'::regclass) then
+    create trigger wire_specs_match_item_type
+      before insert or update on public.wire_specs
+      for each row execute function public.enforce_spec_item_type('wire');
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'protective_sleeve_specs_match_item_type' and tgrelid = 'public.protective_sleeve_specs'::regclass) then
+    create trigger protective_sleeve_specs_match_item_type
+      before insert or update on public.protective_sleeve_specs
+      for each row execute function public.enforce_spec_item_type('protective_sleeve');
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'overmold_specs_match_item_type' and tgrelid = 'public.overmold_specs'::regclass) then
+    create trigger overmold_specs_match_item_type
+      before insert or update on public.overmold_specs
+      for each row execute function public.enforce_spec_item_type('overmold');
+  end if;
+end;
+$$;
 
 create or replace function public.enforce_active_catalog_item_integrity()
 returns trigger
@@ -414,35 +645,54 @@ begin
 end;
 $$;
 
-create constraint trigger active_catalog_items_require_leaf_category_and_spec
-  after insert or update on public.catalog_items
-  deferrable initially deferred
-  for each row execute function public.enforce_active_catalog_item_integrity();
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgname = 'active_catalog_items_require_leaf_category_and_spec'
+      and tgrelid = 'public.catalog_items'::regclass
+  ) then
+    create constraint trigger active_catalog_items_require_leaf_category_and_spec
+      after insert or update on public.catalog_items
+      deferrable initially deferred
+      for each row execute function public.enforce_active_catalog_item_integrity();
+  end if;
+end;
+$$;
 
-create unique index catalog_categories_active_sibling_code_key
+create unique index if not exists catalog_categories_active_sibling_code_key
   on public.catalog_categories (coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), code)
   where deleted_at is null;
-create unique index organizations_active_name_kind_key
+create unique index if not exists organizations_active_name_kind_key
   on public.organizations (name, organization_kind) where deleted_at is null;
-create unique index organization_contacts_one_active_primary
+create unique index if not exists organization_contacts_one_active_primary
   on public.organization_contacts (organization_id) where is_primary and deleted_at is null;
-create unique index catalog_items_active_model_key
+create unique index if not exists catalog_items_active_model_key
   on public.catalog_items (item_type, model) where deleted_at is null;
-create unique index catalog_item_images_one_active_primary
+create unique index if not exists catalog_items_active_legacy_key
+  on public.catalog_items (item_type, legacy_key) where deleted_at is null and legacy_key is not null;
+create unique index if not exists catalog_item_images_one_active_primary
   on public.catalog_item_images (item_id) where is_primary and deleted_at is null;
-create index projects_active_owner_updated_idx
+create index if not exists connector_pins_lookup_idx on public.connector_pins (catalog_item_id, display_order);
+create unique index if not exists wire_colors_active_code_key on public.wire_colors (code) where deleted_at is null;
+create unique index if not exists wire_gauges_active_awg_key on public.wire_gauges (awg) where deleted_at is null;
+create unique index if not exists wire_types_active_code_key on public.wire_types (code) where deleted_at is null;
+create unique index if not exists lead_time_options_active_code_key on public.lead_time_options (code) where deleted_at is null;
+create unique index if not exists protection_options_active_code_key on public.protection_options (code) where deleted_at is null;
+create index if not exists projects_active_owner_updated_idx
   on public.projects (owner_id, updated_at desc) where deleted_at is null;
-create index catalog_items_active_lookup_idx
+create index if not exists catalog_items_active_lookup_idx
   on public.catalog_items (item_type, category_id, model) where deleted_at is null and lifecycle_status = 'active';
-create index catalog_items_active_resource_name_search_idx
+create index if not exists catalog_items_active_resource_name_search_idx
   on public.catalog_items using gin (to_tsvector('simple', resource_name || ' ' || model))
   where deleted_at is null and lifecycle_status = 'active';
-create index catalog_item_organizations_lookup_idx
+create index if not exists catalog_item_organizations_lookup_idx
   on public.catalog_item_organizations (organization_id, relationship_type, item_id);
-create index supplier_prices_current_lookup_idx
+create index if not exists supplier_prices_current_lookup_idx
   on public.supplier_prices (item_organization_id, effective_from desc)
   where status = 'active';
-create index project_catalog_references_project_idx
+create index if not exists project_catalog_references_project_idx
   on public.project_catalog_references (project_id, catalog_item_id);
 
 create or replace function public.handle_new_user()
@@ -459,9 +709,15 @@ begin
 end;
 $$;
 
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+do $$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'on_auth_user_created' and tgrelid = 'auth.users'::regclass) then
+    create trigger on_auth_user_created
+      after insert on auth.users
+      for each row execute function public.handle_new_user();
+  end if;
+end;
+$$;
 
 insert into storage.buckets (id, name, public)
 values ('catalog-assets', 'catalog-assets', false), ('project-assets', 'project-assets', false)
@@ -490,47 +746,146 @@ revoke update on public.profiles from authenticated;
 grant update (display_name, avatar_path) on public.profiles to authenticated;
 
 alter table public.profiles enable row level security;
-create policy "profile owner can read" on public.profiles for select to authenticated
-  using ((select auth.uid()) = id);
-create policy "profile owner can update allowed columns" on public.profiles for update to authenticated
-  using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
+
+create or replace function pg_temp.create_policy_if_missing(
+  policy_name text,
+  schema_name text,
+  table_name text,
+  policy_sql text
+)
+returns void
+language plpgsql
+as $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = schema_name
+      and tablename = table_name
+      and policyname = policy_name
+  ) then
+    execute policy_sql;
+  end if;
+end;
+$$;
+
+select pg_temp.create_policy_if_missing(
+  'profile owner can read',
+  'public',
+  'profiles',
+  $policy$create policy "profile owner can read" on public.profiles for select to authenticated
+  using ((select auth.uid()) = id)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'profile owner can update allowed columns',
+  'public',
+  'profiles',
+  $policy$create policy "profile owner can update allowed columns" on public.profiles for update to authenticated
+  using ((select auth.uid()) = id) with check ((select auth.uid()) = id)$policy$
+);
 
 alter table public.projects enable row level security;
-create policy "owners read projects" on public.projects for select to authenticated
-  using (owner_id = (select auth.uid()));
-create policy "owners create projects" on public.projects for insert to authenticated
-  with check (owner_id = (select auth.uid()));
-create policy "owners update projects" on public.projects for update to authenticated
-  using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
+select pg_temp.create_policy_if_missing(
+  'owners read projects',
+  'public',
+  'projects',
+  $policy$create policy "owners read projects" on public.projects for select to authenticated
+  using (owner_id = (select auth.uid()))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners create projects',
+  'public',
+  'projects',
+  $policy$create policy "owners create projects" on public.projects for insert to authenticated
+  with check (owner_id = (select auth.uid()))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners update projects',
+  'public',
+  'projects',
+  $policy$create policy "owners update projects" on public.projects for update to authenticated
+  using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()))$policy$
+);
 
 alter table public.project_documents enable row level security;
-create policy "owners read project documents" on public.project_documents for select to authenticated
-  using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
-create policy "owners create project documents" on public.project_documents for insert to authenticated
-  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
-create policy "owners update project documents" on public.project_documents for update to authenticated
+select pg_temp.create_policy_if_missing(
+  'owners read project documents',
+  'public',
+  'project_documents',
+  $policy$create policy "owners read project documents" on public.project_documents for select to authenticated
+  using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners create project documents',
+  'public',
+  'project_documents',
+  $policy$create policy "owners create project documents" on public.project_documents for insert to authenticated
+  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners update project documents',
+  'public',
+  'project_documents',
+  $policy$create policy "owners update project documents" on public.project_documents for update to authenticated
   using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))
-  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
+  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
 
 alter table public.project_assets enable row level security;
-create policy "owners read project assets" on public.project_assets for select to authenticated
-  using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
-create policy "owners create project assets" on public.project_assets for insert to authenticated
-  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
-create policy "owners update project assets" on public.project_assets for update to authenticated
+select pg_temp.create_policy_if_missing(
+  'owners read project assets',
+  'public',
+  'project_assets',
+  $policy$create policy "owners read project assets" on public.project_assets for select to authenticated
+  using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners create project assets',
+  'public',
+  'project_assets',
+  $policy$create policy "owners create project assets" on public.project_assets for insert to authenticated
+  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners update project assets',
+  'public',
+  'project_assets',
+  $policy$create policy "owners update project assets" on public.project_assets for update to authenticated
   using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))
-  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
+  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
 
 alter table public.project_catalog_references enable row level security;
-create policy "owners read project catalog references" on public.project_catalog_references for select to authenticated
-  using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
-create policy "owners create project catalog references" on public.project_catalog_references for insert to authenticated
-  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
-create policy "owners update project catalog references" on public.project_catalog_references for update to authenticated
+select pg_temp.create_policy_if_missing(
+  'owners read project catalog references',
+  'public',
+  'project_catalog_references',
+  $policy$create policy "owners read project catalog references" on public.project_catalog_references for select to authenticated
+  using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners create project catalog references',
+  'public',
+  'project_catalog_references',
+  $policy$create policy "owners create project catalog references" on public.project_catalog_references for insert to authenticated
+  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners update project catalog references',
+  'public',
+  'project_catalog_references',
+  $policy$create policy "owners update project catalog references" on public.project_catalog_references for update to authenticated
   using (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))
-  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())));
+  with check (exists (select 1 from public.projects p where p.id = project_id and p.owner_id = (select auth.uid())))$policy$
+);
 
 alter table public.catalog_categories enable row level security;
+alter table public.wire_colors enable row level security;
+alter table public.wire_gauges enable row level security;
+alter table public.wire_types enable row level security;
+alter table public.lead_time_options enable row level security;
+alter table public.protection_options enable row level security;
+alter table public.pricing_rules enable row level security;
 alter table public.organizations enable row level security;
 alter table public.organization_contacts enable row level security;
 alter table public.catalog_items enable row level security;
@@ -538,49 +893,169 @@ alter table public.catalog_item_organizations enable row level security;
 alter table public.supplier_prices enable row level security;
 alter table public.catalog_item_images enable row level security;
 alter table public.connector_specs enable row level security;
+alter table public.connector_pins enable row level security;
 alter table public.wire_specs enable row level security;
 alter table public.protective_sleeve_specs enable row level security;
 alter table public.overmold_specs enable row level security;
 
-create policy "read active categories" on public.catalog_categories for select to authenticated using (deleted_at is null);
-create policy "read active organizations" on public.organizations for select to authenticated using (deleted_at is null);
-create policy "read active organization contacts" on public.organization_contacts for select to authenticated using (
-  deleted_at is null and exists (select 1 from public.organizations o where o.id = organization_id and o.deleted_at is null));
-create policy "read active catalog items" on public.catalog_items for select to authenticated using (deleted_at is null);
-create policy "read active item organizations" on public.catalog_item_organizations for select to authenticated using (
+select pg_temp.create_policy_if_missing(
+  'read active categories',
+  'public',
+  'catalog_categories',
+  $policy$create policy "read active categories" on public.catalog_categories for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active wire colors',
+  'public',
+  'wire_colors',
+  $policy$create policy "read active wire colors" on public.wire_colors for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active wire gauges',
+  'public',
+  'wire_gauges',
+  $policy$create policy "read active wire gauges" on public.wire_gauges for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active wire types',
+  'public',
+  'wire_types',
+  $policy$create policy "read active wire types" on public.wire_types for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active lead time options',
+  'public',
+  'lead_time_options',
+  $policy$create policy "read active lead time options" on public.lead_time_options for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active protection options',
+  'public',
+  'protection_options',
+  $policy$create policy "read active protection options" on public.protection_options for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active pricing rules',
+  'public',
+  'pricing_rules',
+  $policy$create policy "read active pricing rules" on public.pricing_rules for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active organizations',
+  'public',
+  'organizations',
+  $policy$create policy "read active organizations" on public.organizations for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active organization contacts',
+  'public',
+  'organization_contacts',
+  $policy$create policy "read active organization contacts" on public.organization_contacts for select to authenticated using (
+  deleted_at is null and exists (select 1 from public.organizations o where o.id = organization_id and o.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active catalog items',
+  'public',
+  'catalog_items',
+  $policy$create policy "read active catalog items" on public.catalog_items for select to authenticated using (deleted_at is null)$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active item organizations',
+  'public',
+  'catalog_item_organizations',
+  $policy$create policy "read active item organizations" on public.catalog_item_organizations for select to authenticated using (
   exists (select 1 from public.catalog_items i where i.id = item_id and i.deleted_at is null)
-  and exists (select 1 from public.organizations o where o.id = organization_id and o.deleted_at is null));
-create policy "read active supplier prices" on public.supplier_prices for select to authenticated using (
+  and exists (select 1 from public.organizations o where o.id = organization_id and o.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active supplier prices',
+  'public',
+  'supplier_prices',
+  $policy$create policy "read active supplier prices" on public.supplier_prices for select to authenticated using (
   exists (select 1 from public.catalog_item_organizations cio join public.catalog_items i on i.id = cio.item_id
-          where cio.id = item_organization_id and i.deleted_at is null));
-create policy "read active catalog images" on public.catalog_item_images for select to authenticated using (
-  deleted_at is null and exists (select 1 from public.catalog_items i where i.id = item_id and i.deleted_at is null));
-create policy "read active connector specs" on public.connector_specs for select to authenticated using (
-  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null));
-create policy "read active wire specs" on public.wire_specs for select to authenticated using (
-  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null));
-create policy "read active sleeve specs" on public.protective_sleeve_specs for select to authenticated using (
-  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null));
-create policy "read active overmold specs" on public.overmold_specs for select to authenticated using (
-  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null));
+          where cio.id = item_organization_id and i.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active catalog images',
+  'public',
+  'catalog_item_images',
+  $policy$create policy "read active catalog images" on public.catalog_item_images for select to authenticated using (
+  deleted_at is null and exists (select 1 from public.catalog_items i where i.id = item_id and i.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active connector specs',
+  'public',
+  'connector_specs',
+  $policy$create policy "read active connector specs" on public.connector_specs for select to authenticated using (
+  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active connector pins',
+  'public',
+  'connector_pins',
+  $policy$create policy "read active connector pins" on public.connector_pins for select to authenticated using (
+  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active wire specs',
+  'public',
+  'wire_specs',
+  $policy$create policy "read active wire specs" on public.wire_specs for select to authenticated using (
+  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active sleeve specs',
+  'public',
+  'protective_sleeve_specs',
+  $policy$create policy "read active sleeve specs" on public.protective_sleeve_specs for select to authenticated using (
+  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'read active overmold specs',
+  'public',
+  'overmold_specs',
+  $policy$create policy "read active overmold specs" on public.overmold_specs for select to authenticated using (
+  exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null))$policy$
+);
 
 do $$
 declare table_name text;
 begin
   foreach table_name in array array[
-    'catalog_categories', 'organizations', 'organization_contacts', 'catalog_items',
+    'catalog_categories', 'wire_colors', 'wire_gauges', 'wire_types',
+    'lead_time_options', 'protection_options', 'pricing_rules',
+    'organizations', 'organization_contacts', 'catalog_items',
     'catalog_item_organizations', 'supplier_prices', 'catalog_item_images',
-    'connector_specs', 'wire_specs', 'protective_sleeve_specs', 'overmold_specs'
+    'connector_specs', 'connector_pins', 'wire_specs', 'protective_sleeve_specs', 'overmold_specs'
   ] loop
-    execute format('create policy %I on public.%I for insert to authenticated with check ((select public.is_catalog_admin()))',
-                   table_name || ' insertable by catalog admins', table_name);
-    execute format('create policy %I on public.%I for update to authenticated using ((select public.is_catalog_admin())) with check ((select public.is_catalog_admin()))',
-                   table_name || ' updatable by catalog admins', table_name);
+    if not exists (
+      select 1 from pg_policies
+      where schemaname = 'public'
+        and tablename = table_name
+        and policyname = table_name || ' insertable by catalog admins'
+    ) then
+      execute format('create policy %I on public.%I for insert to authenticated with check ((select public.is_catalog_admin()))',
+                     table_name || ' insertable by catalog admins', table_name);
+    end if;
+
+    if not exists (
+      select 1 from pg_policies
+      where schemaname = 'public'
+        and tablename = table_name
+        and policyname = table_name || ' updatable by catalog admins'
+    ) then
+      execute format('create policy %I on public.%I for update to authenticated using ((select public.is_catalog_admin())) with check ((select public.is_catalog_admin()))',
+                     table_name || ' updatable by catalog admins', table_name);
+    end if;
   end loop;
 end;
 $$;
 
-create policy "authenticated users read catalog assets" on storage.objects for select to authenticated
+select pg_temp.create_policy_if_missing(
+  'authenticated users read catalog assets',
+  'storage',
+  'objects',
+  $policy$create policy "authenticated users read catalog assets" on storage.objects for select to authenticated
   using (
     bucket_id = 'catalog-assets'
     and exists (
@@ -591,14 +1066,29 @@ create policy "authenticated users read catalog assets" on storage.objects for s
         and image.deleted_at is null
         and item.deleted_at is null
     )
-  );
-create policy "catalog admins upload catalog assets" on storage.objects for insert to authenticated
-  with check (bucket_id = 'catalog-assets' and (select public.is_catalog_admin()));
-create policy "catalog admins update catalog assets" on storage.objects for update to authenticated
+  )$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'catalog admins upload catalog assets',
+  'storage',
+  'objects',
+  $policy$create policy "catalog admins upload catalog assets" on storage.objects for insert to authenticated
+  with check (bucket_id = 'catalog-assets' and (select public.is_catalog_admin()))$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'catalog admins update catalog assets',
+  'storage',
+  'objects',
+  $policy$create policy "catalog admins update catalog assets" on storage.objects for update to authenticated
   using (bucket_id = 'catalog-assets' and (select public.is_catalog_admin()))
-  with check (bucket_id = 'catalog-assets' and (select public.is_catalog_admin()));
+  with check (bucket_id = 'catalog-assets' and (select public.is_catalog_admin()))$policy$
+);
 
-create policy "owners read project assets in storage" on storage.objects for select to authenticated
+select pg_temp.create_policy_if_missing(
+  'owners read project assets in storage',
+  'storage',
+  'objects',
+  $policy$create policy "owners read project assets in storage" on storage.objects for select to authenticated
   using (
     bucket_id = 'project-assets'
     and exists (
@@ -606,8 +1096,13 @@ create policy "owners read project assets in storage" on storage.objects for sel
       where p.id::text = (storage.foldername(name))[1]
         and p.owner_id = (select auth.uid()) and p.deleted_at is null
     )
-  );
-create policy "owners upload project assets in storage" on storage.objects for insert to authenticated
+  )$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners upload project assets in storage',
+  'storage',
+  'objects',
+  $policy$create policy "owners upload project assets in storage" on storage.objects for insert to authenticated
   with check (
     bucket_id = 'project-assets'
     and exists (
@@ -615,8 +1110,13 @@ create policy "owners upload project assets in storage" on storage.objects for i
       where p.id::text = (storage.foldername(name))[1]
         and p.owner_id = (select auth.uid()) and p.deleted_at is null
     )
-  );
-create policy "owners update project assets in storage" on storage.objects for update to authenticated
+  )$policy$
+);
+select pg_temp.create_policy_if_missing(
+  'owners update project assets in storage',
+  'storage',
+  'objects',
+  $policy$create policy "owners update project assets in storage" on storage.objects for update to authenticated
   using (
     bucket_id = 'project-assets'
     and exists (
@@ -632,7 +1132,8 @@ create policy "owners update project assets in storage" on storage.objects for u
       where p.id::text = (storage.foldername(name))[1]
         and p.owner_id = (select auth.uid()) and p.deleted_at is null
     )
-  );
+  )$policy$
+);
 
 -- Promote the initial catalog administrator from a trusted SQL session only:
 -- update public.profiles set role = 'catalog_admin' where id = '<auth-user-uuid>';
