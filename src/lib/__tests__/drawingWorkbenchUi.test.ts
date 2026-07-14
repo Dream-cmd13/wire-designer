@@ -41,5 +41,6 @@ describe('drawing workbench UI contract', () => {
     expect(pageSource).toContain("moveLayers('front')");
     expect(pageSource).toContain("moveLayers('back')");
     expect(pageSource).toContain("selected.filter((object) => !object.locked && object.kind !== 'title-block')");
+    expect(pageSource).toContain("selected.filter((object) => object.kind !== 'title-block')");
   });
 });

@@ -80,13 +80,14 @@ export function DrawingWorkbenchPage() {
   const removeSelected = () => { if (!drawing) return; const ids = new Set(selected.filter((object) => !object.locked && object.kind !== 'title-block').map((object) => object.id)); if (!ids.size) return; remember(); apply({ ...drawing, objects: drawing.objects.filter((object) => !ids.has(object.id)), updatedAt: Date.now() }); setSelectedObjectIds([]); };
   const undo = () => { if (!drawing || !past.length) return; const previous = past.at(-1)!; setPast((items) => items.slice(0, -1)); setFuture((items) => [clone(drawing), ...items].slice(0, 50)); apply(previous); setSelectedObjectIds([]); };
   const redo = () => { if (!drawing || !future.length) return; const next = future[0]; setFuture((items) => items.slice(1)); setPast((items) => [...items, clone(drawing)].slice(-50)); apply(next); setSelectedObjectIds([]); };
-  const copySelected = () => { if (selected.length) setClipboard(clone(selected)); };
+  const copySelected = () => setClipboard(clone(selected.filter((object) => object.kind !== 'title-block')));
   const paste = (point?: DrawingPoint) => {
     if (!drawing || !clipboard.length) return;
     const minX = Math.min(...clipboard.map((object) => object.x));
     const minY = Math.min(...clipboard.map((object) => object.y));
     const target = point ?? { x: minX + 20, y: minY + 20 };
     const copies = placeDrawingCopiesAtPoint(clipboard, target, topLayer(drawing));
+    if (!copies.length) return;
     remember();
     apply({ ...drawing, objects: [...drawing.objects, ...copies], updatedAt: Date.now() });
     setSelectedObjectIds(copies.map((object) => object.id));
@@ -166,6 +167,7 @@ export function DrawingWorkbenchPage() {
       x={contextMenu.clientPoint.x}
       y={contextMenu.clientPoint.y}
       canPaste={clipboard.length > 0}
+      canCopy={selected.some((object) => object.kind !== 'title-block')}
       canDelete={selected.some((object) => !object.locked && object.kind !== 'title-block')}
       canCrop={Boolean(contextObject && !contextObject.locked && (contextObject.kind === 'line' || contextObject.kind === 'polyline' || contextObject.kind === 'curve' || contextObject.kind === 'freehand'))}
       canChangeLayer={selected.some((object) => !object.locked && object.kind !== 'title-block')}

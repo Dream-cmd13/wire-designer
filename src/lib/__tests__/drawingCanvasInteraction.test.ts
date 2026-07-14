@@ -27,4 +27,8 @@ describe('standalone drawing canvas interactions', () => {
     expect(canvasSource).toContain('getDrawingObjectAtPoint(drawing, point)');
     expect(canvasSource).toContain('clientPoint');
   });
+
+  it('does not start drawing or dragging from a secondary pointer button', () => {
+    expect(canvasSource.match(/event\.button !== 0/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
 });

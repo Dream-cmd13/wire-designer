@@ -95,6 +95,19 @@ describe('drawing document commands', () => {
     ]);
   });
 
+  it('splits a rotated path in its rendered world position', () => {
+    const rotated = { ...line('rotated', 10, 1), height: 1, rotation: 90 };
+    const result = splitDrawingPathAtPoint(documentWith([title, rotated]), 'rotated', { x: 20.5, y: 10.5 });
+    const paths = result.document.objects.filter((object): object is DrawingLineObject => object.kind === 'line');
+
+    expect(result.changed).toBe(true);
+    expect(paths.every((path) => path.rotation === 0)).toBe(true);
+    expect(paths.map((path) => path.points)).toEqual([
+      [{ x: 20.5, y: 0.5 }, { x: 20.5, y: 10.5 }],
+      [{ x: 20.5, y: 10.5 }, { x: 20.5, y: 20.5 }],
+    ]);
+  });
+
   it('rejects endpoint, locked, and non-path crop requests', () => {
     const source = line('a', 10, 1);
     const locked = { ...line('locked', 40, 2), locked: true };
@@ -117,5 +130,16 @@ describe('drawing document commands', () => {
     ]);
     expect(copies.map((object) => object.id)).not.toEqual(['a', 'text']);
     expect(copies[0].kind === 'line' && copies[0].points).toEqual([{ x: 300, y: 240 }, { x: 320, y: 240 }]);
+  });
+
+  it('protects the title block from locking and copied placement', () => {
+    const sourceLine = line('a', 10, 1);
+    const locked = toggleDrawingLocks(documentWith([title, sourceLine]), ['title', 'a']);
+    const copies = placeDrawingCopiesAtPoint([title, sourceLine], { x: 300, y: 240 }, 7);
+
+    expect(locked.objects.find((object) => object.id === 'title')?.locked).toBe(false);
+    expect(locked.objects.find((object) => object.id === 'a')?.locked).toBe(true);
+    expect(copies).toHaveLength(1);
+    expect(copies[0]).toMatchObject({ kind: 'line', x: 300, y: 240 });
   });
 });

@@ -6,6 +6,7 @@ interface DrawingCanvasContextMenuProps {
   x: number;
   y: number;
   canPaste: boolean;
+  canCopy: boolean;
   canDelete: boolean;
   canCrop: boolean;
   canChangeLayer: boolean;
@@ -28,6 +29,7 @@ export function DrawingCanvasContextMenu({
   x,
   y,
   canPaste,
+  canCopy,
   canDelete,
   canCrop,
   canChangeLayer,
@@ -94,7 +96,7 @@ export function DrawingCanvasContextMenu({
     {target === 'canvas' ? <button role="menuitem" type="button" disabled={!canPaste} onClick={run(onPaste)} className={menuItemClass}>
       <ClipboardPaste className="h-4 w-4"/>粘贴
     </button> : <>
-      <button role="menuitem" type="button" onClick={run(onCopy)} className={menuItemClass}><Copy className="h-4 w-4"/>复制</button>
+      <button role="menuitem" type="button" disabled={!canCopy} onClick={run(onCopy)} className={menuItemClass}><Copy className="h-4 w-4"/>复制</button>
       <button role="menuitem" type="button" disabled={!canDelete} onClick={run(onDelete)} className={menuItemClass}><Trash2 className="h-4 w-4"/>删除</button>
       <button role="menuitem" type="button" disabled={!canCrop} onClick={run(onCrop)} className={menuItemClass}><Scissors className="h-4 w-4"/>裁剪</button>
       <div className="my-1 border-t border-slate-100"/>

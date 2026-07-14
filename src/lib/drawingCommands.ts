@@ -22,10 +22,10 @@ export function clearDrawingCanvas(document: DrawingDocument): DrawingDocument {
 
 export function toggleDrawingLocks(document: DrawingDocument, objectIds: string[]): DrawingDocument {
   const selected = new Set(objectIds);
-  const candidates = document.objects.filter((object) => selected.has(object.id));
+  const candidates = document.objects.filter((object) => selected.has(object.id) && object.kind !== 'title-block');
   if (candidates.length === 0) return document;
   const nextLocked = candidates.some((object) => !object.locked);
-  return updated(document, document.objects.map((object) => selected.has(object.id) ? { ...object, locked: nextLocked } : object));
+  return updated(document, document.objects.map((object) => selected.has(object.id) && object.kind !== 'title-block' ? { ...object, locked: nextLocked } : object));
 }
 
 export function moveDrawingLayers(document: DrawingDocument, objectIds: string[], action: DrawingLayerAction): DrawingDocument {
@@ -154,21 +154,32 @@ export function splitDrawingPathAtPoint(
     return { document, changed: false, replacementIds: [] };
   }
 
+  const radians = (object.rotation * Math.PI) / 180;
+  const rawCos = Math.cos(radians);
+  const rawSin = Math.sin(radians);
+  const cos = Math.abs(rawCos) < 1e-12 ? 0 : rawCos;
+  const sin = Math.abs(rawSin) < 1e-12 ? 0 : rawSin;
+  const center = { x: object.x + object.width / 2, y: object.y + object.height / 2 };
+  const pathPoints = object.rotation === 0 ? object.points : object.points.map((pathPoint) => ({
+    x: center.x + (pathPoint.x - center.x) * cos - (pathPoint.y - center.y) * sin,
+    y: center.y + (pathPoint.x - center.x) * sin + (pathPoint.y - center.y) * cos,
+  }));
+
   let closest: { segment: number; point: DrawingPoint; distance: number; lengthFromStart: number } | null = null;
   let traversed = 0;
   let totalLength = 0;
   const segmentLengths: number[] = [];
-  for (let index = 0; index < object.points.length - 1; index += 1) {
-    const start = object.points[index];
-    const end = object.points[index + 1];
+  for (let index = 0; index < pathPoints.length - 1; index += 1) {
+    const start = pathPoints[index];
+    const end = pathPoints[index + 1];
     const length = pointDistance(start, end);
     segmentLengths.push(length);
     totalLength += length;
   }
 
-  for (let index = 0; index < object.points.length - 1; index += 1) {
-    const start = object.points[index];
-    const end = object.points[index + 1];
+  for (let index = 0; index < pathPoints.length - 1; index += 1) {
+    const start = pathPoints[index];
+    const end = pathPoints[index + 1];
     const length = segmentLengths[index];
     if (length < 0.001) continue;
     const dx = end.x - start.x;
@@ -186,15 +197,15 @@ export function splitDrawingPathAtPoint(
     return { document, changed: false, replacementIds: [] };
   }
 
-  const leftPoints = object.points.slice(0, closest.segment + 1);
+  const leftPoints = pathPoints.slice(0, closest.segment + 1);
   if (!samePoint(leftPoints.at(-1)!, closest.point)) leftPoints.push(closest.point);
-  const rightPoints = object.points.slice(closest.segment + 1);
+  const rightPoints = pathPoints.slice(closest.segment + 1);
   if (!samePoint(rightPoints[0], closest.point)) rightPoints.unshift(closest.point);
   if (leftPoints.length < 2 || rightPoints.length < 2) return { document, changed: false, replacementIds: [] };
 
   const createPart = (points: DrawingPoint[], zIndex: number): DrawingLineObject => ({
     ...createDrawingLineObject(object.kind, points, object.orthogonal),
-    rotation: object.rotation,
+    rotation: 0,
     zIndex,
     visible: object.visible,
     style: { ...object.style },
@@ -230,12 +241,13 @@ function cloneForPaste(object: DrawingObject, dx: number, dy: number, zIndex: nu
 }
 
 export function placeDrawingCopiesAtPoint(objects: DrawingObject[], point: DrawingPoint, firstZIndex: number): DrawingObject[] {
-  if (objects.length === 0) return [];
-  const minX = Math.min(...objects.map((item) => item.x));
-  const minY = Math.min(...objects.map((item) => item.y));
+  const editable = objects.filter((object) => object.kind !== 'title-block');
+  if (editable.length === 0) return [];
+  const minX = Math.min(...editable.map((item) => item.x));
+  const minY = Math.min(...editable.map((item) => item.y));
   const dx = point.x - minX;
   const dy = point.y - minY;
-  return objects.map((object, index) => cloneForPaste(object, dx, dy, firstZIndex + index));
+  return editable.map((object, index) => cloneForPaste(object, dx, dy, firstZIndex + index));
 }
 
 export function finalizeDrawingDraft(

@@ -172,6 +172,7 @@ function DrawingTableLayer({
   };
 
   const beginDrag = (event: React.PointerEvent<HTMLElement>, kind: 'table' | 'text', key?: string) => {
+    if (event.button !== 0) return;
     if (editing || object.locked) return;
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -378,6 +379,7 @@ export function StandaloneDrawingCanvas({
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0) return;
     if (editor) return;
     if (event.detail > 1) {
       setDrag(null);
