@@ -240,6 +240,7 @@ export type DrawingCatalogResource = {
   model: string;
   category: string;
   imageUrl?: string;
+  imageError?: string;
   gender?: DrawingConnectorResource['gender'];
   series?: string;
   pinCount?: number;

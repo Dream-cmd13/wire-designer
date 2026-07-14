@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   clearDrawingCanvas, finalizeDrawingDraft, getObjectsInSelectionRect, moveDrawingLayers,
-  snapOrthogonalPoint, splitDrawingObjects, toggleDrawingLocks,
+  patchDrawingObjects, snapOrthogonalPoint, splitDrawingObjects, toggleDrawingLocks,
 } from '@/lib/drawingCommands';
 import { defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
@@ -57,5 +57,14 @@ describe('drawing document commands', () => {
     expect(finalizeDrawingDraft('polyline', points, 'finish', false)?.kind).toBe('polyline');
     expect(finalizeDrawingDraft('curve', points, 'cancel', false)).toBeNull();
     expect(finalizeDrawingDraft('curve', [points[0]], 'finish', false)).toBeNull();
+  });
+
+  it('patches only unlocked selections and preserves each object style', () => {
+    const first = { ...line('a', 10, 1), style: { ...defaultDrawingObjectStyle, stroke: '#111111', fontSize: 12 } };
+    const second = { ...line('b', 40, 2), locked: true, style: { ...defaultDrawingObjectStyle, stroke: '#222222', fontSize: 18 } };
+    const patched = patchDrawingObjects(documentWith([title, first, second]), ['a', 'b'], {}, { fill: '#ff0000' });
+    expect(patched.objects.find((object) => object.id === 'a')?.style).toEqual(expect.objectContaining({ fill: '#ff0000', stroke: '#111111', fontSize: 12 }));
+    expect(patched.objects.find((object) => object.id === 'b')?.style).toEqual(second.style);
+    expect(patchDrawingObjects(patched, ['a', 'b'], { locked: false }).objects.filter((object) => object.id !== 'title').every((object) => !object.locked)).toBe(true);
   });
 });

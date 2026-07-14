@@ -58,6 +58,14 @@ describe('DrawingCatalogRepository', () => {
     await expect(repository.listResources()).resolves.toEqual([
       expect.objectContaining({ imageUrl: 'https://assets.example/catalog-assets/connectors/xh254.png' }),
     ]);
+
+    const failedSigning = new DrawingCatalogRepository({
+      ...fakeClient({ catalog_items: [{ ...connectorRow, catalog_item_images: [{ storage_path: 'connectors/xh254.png', is_primary: true }] }] }),
+      storage: { from: () => ({ createSignedUrl: async () => ({ data: null, error: { message: 'image unavailable' } }) }) },
+    });
+    await expect(failedSigning.listResources()).resolves.toEqual([
+      expect.objectContaining({ imageError: 'image unavailable' }),
+    ]);
   });
 
   it('returns empty results and validates template schema version', async () => {
@@ -69,5 +77,8 @@ describe('DrawingCatalogRepository', () => {
 
     const malformed = new DrawingCatalogRepository(fakeClient({ drawing_template_versions: [{ template_id: 't2', version_no: 1, schema_version: 1, drawing_json: { schemaVersion: 1, id: 'bad', name: 'bad', page: { width: 1200, height: 800 }, titleBlock: { title: 'bad' }, objects: [null] } }] }));
     await expect(malformed.loadTemplate('t2')).rejects.toThrow('模板版本不受支持');
+
+    const unsafeTable = new DrawingCatalogRepository(fakeClient({ drawing_template_versions: [{ template_id: 't3', version_no: 1, schema_version: 1, drawing_json: { schemaVersion: 1, id: 'bad-table', name: 'bad', createdAt: 1, updatedAt: 1, page: { size: 'A4', orientation: 'landscape', width: 1200, height: 800 }, titleBlock: { title: 'bad', drawingNo: 'D-1', revision: 'A' }, revisionTable: [], techRequirements: [], objects: [{ id: 'table', kind: 'table', x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 1, locked: false, visible: true, style: { fill: '#fff', stroke: '#000', strokeWidth: 1, fontSize: 12, color: '#000' }, title: 'bad', columns: ['value'], rows: [{ value: 42 }] }] } }] }));
+    await expect(unsafeTable.loadTemplate('t3')).rejects.toThrow('模板版本不受支持');
   });
 });

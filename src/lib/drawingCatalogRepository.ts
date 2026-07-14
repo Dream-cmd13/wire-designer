@@ -112,17 +112,28 @@ function isDrawingDocument(value: unknown): value is DrawingDocument {
     return typeof item.stroke === 'string' && typeof item.fill === 'string' && typeof item.color === 'string'
       && finite(item.strokeWidth) && finite(item.fontSize);
   };
+  const stringRecord = (candidate: unknown) => {
+    const item = record(candidate);
+    return candidate !== null && typeof candidate === 'object' && !Array.isArray(candidate)
+      && Object.values(item).every((cell) => typeof cell === 'string');
+  };
+  const textOffsets = (candidate: unknown) => candidate === undefined
+    || (candidate !== null && typeof candidate === 'object' && !Array.isArray(candidate) && Object.values(record(candidate)).every(point));
   const drawingObject = (candidate: unknown): boolean => {
     const item = record(candidate);
-    if (!item.id || typeof item.kind !== 'string' || !finite(item.x) || !finite(item.y) || !finite(item.width) || !finite(item.height)
+    if (typeof item.id !== 'string' || !item.id || typeof item.kind !== 'string' || !finite(item.x) || !finite(item.y) || !finite(item.width) || !finite(item.height)
       || !finite(item.rotation) || !finite(item.zIndex) || typeof item.locked !== 'boolean' || typeof item.visible !== 'boolean' || !style(item.style)) return false;
-    if (item.kind === 'connector') return typeof item.label === 'string' && finite(item.pinCount);
-    if (item.kind === 'wire-bundle') return typeof item.label === 'string' && finite(item.wireCount);
-    if (item.kind === 'accessory') return typeof item.label === 'string';
+    if (item.kind === 'connector') return typeof item.label === 'string' && finite(item.pinCount)
+      && (item.gender === 'male' || item.gender === 'female' || item.gender === 'receptacle')
+      && (item.side === 'left' || item.side === 'right' || item.side === 'none');
+    if (item.kind === 'wire-bundle') return typeof item.label === 'string' && finite(item.wireCount)
+      && (item.wireKind === 'electronic' || item.wireKind === 'twisted' || item.wireKind === 'ribbon' || item.wireKind === 'parallel' || item.wireKind === 'shielded');
+    if (item.kind === 'accessory') return typeof item.label === 'string'
+      && (item.accessoryType === 'sleeve' || item.accessoryType === 'packaging' || item.accessoryType === 'specification' || item.accessoryType === 'model');
     if (item.kind === 'text' || item.kind === 'label') return typeof item.text === 'string';
     if (item.kind === 'dimension') return typeof item.label === 'string' && point(item.start) && point(item.end);
-    if (item.kind === 'line' || item.kind === 'polyline' || item.kind === 'curve' || item.kind === 'freehand') return Array.isArray(item.points) && item.points.length >= 2 && item.points.every(point);
-    if (item.kind === 'table' || item.kind === 'bom-table' || item.kind === 'wiring-table') return typeof item.title === 'string' && Array.isArray(item.columns) && item.columns.every((column) => typeof column === 'string') && Array.isArray(item.rows) && item.rows.every((tableRow) => tableRow && typeof tableRow === 'object' && !Array.isArray(tableRow));
+    if (item.kind === 'line' || item.kind === 'polyline' || item.kind === 'curve' || item.kind === 'freehand') return typeof item.orthogonal === 'boolean' && Array.isArray(item.points) && item.points.length >= 2 && item.points.every(point);
+    if (item.kind === 'table' || item.kind === 'bom-table' || item.kind === 'wiring-table') return typeof item.title === 'string' && Array.isArray(item.columns) && item.columns.every((column) => typeof column === 'string') && Array.isArray(item.rows) && item.rows.every(stringRecord) && textOffsets(item.textOffsets);
     if (item.kind === 'tech-requirements') return Array.isArray(item.requirements) && item.requirements.every((requirement) => typeof requirement === 'string');
     if (item.kind === 'title-block') return typeof item.title === 'string' && typeof item.drawingNo === 'string' && typeof item.revision === 'string';
     if (item.kind === 'group') return (item.groupKind === 'wire-bundle' || item.groupKind === 'wire-core') && Array.isArray(item.children) && item.children.every(drawingObject);
@@ -144,6 +155,10 @@ function isDrawingDocument(value: unknown): value is DrawingDocument {
     && typeof titleBlock.drawingNo === 'string'
     && typeof titleBlock.revision === 'string'
     && Array.isArray(row.revisionTable)
+    && row.revisionTable.every((candidate) => {
+      const revision = record(candidate);
+      return typeof revision.revision === 'string' && typeof revision.description === 'string' && typeof revision.date === 'string';
+    })
     && Array.isArray(row.techRequirements)
     && row.techRequirements.every((item) => typeof item === 'string');
 }
@@ -170,7 +185,8 @@ export class DrawingCatalogRepository {
     const resources = await Promise.all(mapped.map(async ({ storagePath, ...resource }) => {
       if (!storagePath || !this.client.storage) return resource;
       const { data, error } = await this.client.storage.from('catalog-assets').createSignedUrl(storagePath, 60 * 60);
-      return error || !data?.signedUrl ? resource : { ...resource, imageUrl: data.signedUrl };
+      if (error) return { ...resource, imageError: error.message };
+      return !data?.signedUrl ? { ...resource, imageError: '资源图片签名地址为空。' } : { ...resource, imageUrl: data.signedUrl };
     }));
     return filterDrawingCatalogResources(resources, filters);
   }

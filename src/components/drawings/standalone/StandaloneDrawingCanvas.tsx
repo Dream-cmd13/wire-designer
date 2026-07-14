@@ -303,11 +303,14 @@ export function StandaloneDrawingCanvas({
 
   useEffect(() => {
     if (!drawingAction) return;
-    const object = finalizeDrawingDraft(draftKind, draftPoints, drawingAction.type, orthogonal);
-    if (object) onAddObject?.(object);
-    setDraftPoints([]);
-    setDraftKind(null);
-    setPointerPoint(null);
+    const timer = window.setTimeout(() => {
+      const object = finalizeDrawingDraft(draftKind, draftPoints, drawingAction.type, orthogonal);
+      if (object) onAddObject?.(object);
+      setDraftPoints([]);
+      setDraftKind(null);
+      setPointerPoint(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
   // drawingAction.id is the explicit finish/cancel event boundary.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawingAction?.id]);

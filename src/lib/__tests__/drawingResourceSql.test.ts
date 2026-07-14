@@ -27,6 +27,8 @@ describe('drawing workbench SQL resources', () => {
     expect(seed).toContain('XH2.54');
     expect(rls).toContain("'public catalog items read'");
     expect(rls).toContain("'catalog assets public read'");
+    expect(rls).toContain('catalog_item_images image');
+    expect(rls).toContain('image.storage_path = storage.objects.name');
     expect(upgrade).toContain("'public catalog items read', 'catalog_items'");
     expect(upgrade).toContain('to anon, authenticated');
     for (const value of ['model', 'accessory', 'packaging']) {

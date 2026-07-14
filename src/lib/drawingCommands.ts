@@ -1,5 +1,5 @@
 import { createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
-import type { DrawingDocument, DrawingLayerAction, DrawingLineObject, DrawingObject, DrawingPoint } from '@/types/drawing';
+import type { DrawingDocument, DrawingLayerAction, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint } from '@/types/drawing';
 
 export type { DrawingLayerAction } from '@/types/drawing';
 
@@ -57,6 +57,21 @@ export function setDrawingLayer(document: DrawingDocument, objectIds: string[], 
     : object);
   if (patched.every((object, index) => object === document.objects[index])) return document;
   return updated(document, normalizeLayers(patched));
+}
+
+export function patchDrawingObjects(
+  document: DrawingDocument,
+  objectIds: string[],
+  patch: Partial<DrawingObject>,
+  stylePatch: Partial<DrawingObjectStyle> = {},
+): DrawingDocument {
+  const selected = new Set(objectIds);
+  const changesLock = typeof patch.locked === 'boolean';
+  const objects = document.objects.map((object) => {
+    if (!selected.has(object.id) || object.kind === 'title-block' || (object.locked && !changesLock)) return object;
+    return { ...object, ...patch, style: { ...object.style, ...stylePatch } } as DrawingObject;
+  });
+  return objects.every((object, index) => object === document.objects[index]) ? document : updated(document, objects);
 }
 
 function pageChild(parent: DrawingObject, child: DrawingObject, zIndex: number): DrawingObject {

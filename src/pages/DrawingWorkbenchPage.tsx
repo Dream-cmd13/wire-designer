@@ -4,11 +4,11 @@ import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/Standa
 import { StandaloneDrawingInspector } from '@/components/drawings/standalone/StandaloneDrawingInspector';
 import { StandaloneDrawingWizard } from '@/components/drawings/standalone/StandaloneDrawingWizard';
 import { DrawingWorkbenchToolbar } from '@/components/drawings/standalone/DrawingWorkbenchToolbar';
-import { clearDrawingCanvas, moveDrawingLayers, setDrawingLayer, splitDrawingObjects, toggleDrawingLocks } from '@/lib/drawingCommands';
+import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, setDrawingLayer, splitDrawingObjects, toggleDrawingLocks } from '@/lib/drawingCommands';
 import { createDrawingId, createDrawingResourceObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { useDrawingStore } from '@/stores/drawingStore';
-import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingObject, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
+import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingObject, DrawingObjectStyle, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
 
 const resourceDefaultPoints: Record<DrawingResourceKind, { x: number; y: number }> = {
   connector: { x: 90, y: 210 }, 'wire-bundle': { x: 245, y: 260 }, accessory: { x: 420, y: 238 },
@@ -63,10 +63,9 @@ export function DrawingWorkbenchPage() {
   const apply = (next: DrawingDocument) => updateDocument(next);
   const applyCommand = (command: (document: DrawingDocument) => DrawingDocument) => { if (!drawing) return; const next = command(drawing); if (next === drawing) return; remember(); apply(next); };
   const addObject = (object: DrawingObject) => { if (!drawing) return; remember(); const next = { ...object, zIndex: topLayer(drawing) } as DrawingObject; apply({ ...drawing, objects: [...drawing.objects, next], updatedAt: Date.now() }); setSelectedObjectIds([next.id]); };
-  const updateSelectedObjects = (objectIds: string[], patch: Partial<DrawingObject>) => {
+  const updateSelectedObjects = (objectIds: string[], patch: Partial<DrawingObject>, stylePatch?: Partial<DrawingObjectStyle>) => {
     if (!drawing) return;
-    const ids = new Set(objectIds);
-    apply({ ...drawing, objects: drawing.objects.map((object) => ids.has(object.id) ? { ...object, ...patch } as DrawingObject : object), updatedAt: Date.now() });
+    apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
   };
   const addResource = (kind: DrawingResourceKind) => { if (!drawing) return; addObject(createPlacedResource(drawing, kind)); setResourcesOpen(false); };
   const removeSelected = () => { if (!drawing) return; const ids = new Set(selected.filter((object) => !object.locked).map((object) => object.id)); if (!ids.size) return; remember(); apply({ ...drawing, objects: drawing.objects.filter((object) => !ids.has(object.id)), updatedAt: Date.now() }); setSelectedObjectIds([]); };
@@ -105,7 +104,7 @@ export function DrawingWorkbenchPage() {
       if (!drawing || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
       const key = event.key.toLowerCase();
       if (event.key === 'Delete') { event.preventDefault(); removeSelected(); }
-      if (event.key === 'Escape') { setDrawingAction((current) => ({ id: current.id + 1, type: 'cancel' })); setToolMode('select'); setSelectedObjectIds([]); }
+      if (event.key === 'Escape') { setDrawingAction((current) => ({ id: current.id + 1, type: 'finish' })); setToolMode('select'); setSelectedObjectIds([]); }
       if (event.ctrlKey || event.metaKey) {
         if (key === 'z') { event.preventDefault(); undo(); }
         if (key === 'y') { event.preventDefault(); redo(); }

@@ -153,8 +153,10 @@ select pg_temp.create_public_read_policy('public drawing icons read', 'drawing_i
 
 do $$
 begin
-  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'catalog assets public read') then
-    create policy "catalog assets public read" on storage.objects for select to anon, authenticated using (bucket_id = 'catalog-assets');
-  end if;
+  drop policy if exists "catalog assets authenticated read" on storage.objects;
+  drop policy if exists "catalog assets public read" on storage.objects;
+  create policy "catalog assets public read" on storage.objects for select to anon, authenticated using (
+    bucket_id = 'catalog-assets' and exists (select 1 from public.catalog_item_images image join public.catalog_items item on item.id = image.item_id where image.storage_path = storage.objects.name and image.deleted_at is null and item.deleted_at is null and item.lifecycle_status = 'active')
+  );
 end;
 $$;
