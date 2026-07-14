@@ -132,6 +132,112 @@ export function createDrawingLineObject(kind: DrawingLineObject['kind'], points:
   return { id: createDrawingId(kind), kind, x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), rotation: 0, zIndex: 10, locked: false, visible: true, style: { ...defaultDrawingObjectStyle }, points, orthogonal };
 }
 
+function isPathObject(object: DrawingObject): object is DrawingLineObject {
+  return object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand';
+}
+
+function pointDistance(left: DrawingPoint, right: DrawingPoint): number {
+  return Math.hypot(right.x - left.x, right.y - left.y);
+}
+
+function samePoint(left: DrawingPoint, right: DrawingPoint): boolean {
+  return pointDistance(left, right) < 0.001;
+}
+
+export function splitDrawingPathAtPoint(
+  document: DrawingDocument,
+  objectId: string,
+  point: DrawingPoint,
+): { document: DrawingDocument; changed: boolean; replacementIds: string[] } {
+  const object = document.objects.find((item) => item.id === objectId);
+  if (!object || object.locked || !isPathObject(object) || object.points.length < 2) {
+    return { document, changed: false, replacementIds: [] };
+  }
+
+  let closest: { segment: number; point: DrawingPoint; distance: number; lengthFromStart: number } | null = null;
+  let traversed = 0;
+  let totalLength = 0;
+  const segmentLengths: number[] = [];
+  for (let index = 0; index < object.points.length - 1; index += 1) {
+    const start = object.points[index];
+    const end = object.points[index + 1];
+    const length = pointDistance(start, end);
+    segmentLengths.push(length);
+    totalLength += length;
+  }
+
+  for (let index = 0; index < object.points.length - 1; index += 1) {
+    const start = object.points[index];
+    const end = object.points[index + 1];
+    const length = segmentLengths[index];
+    if (length < 0.001) continue;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const t = Math.max(0, Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (length * length)));
+    const projection = { x: start.x + dx * t, y: start.y + dy * t };
+    const distance = pointDistance(point, projection);
+    if (!closest || distance < closest.distance) {
+      closest = { segment: index, point: projection, distance, lengthFromStart: traversed + length * t };
+    }
+    traversed += length;
+  }
+
+  if (!closest || closest.lengthFromStart <= 2 || totalLength - closest.lengthFromStart <= 2) {
+    return { document, changed: false, replacementIds: [] };
+  }
+
+  const leftPoints = object.points.slice(0, closest.segment + 1);
+  if (!samePoint(leftPoints.at(-1)!, closest.point)) leftPoints.push(closest.point);
+  const rightPoints = object.points.slice(closest.segment + 1);
+  if (!samePoint(rightPoints[0], closest.point)) rightPoints.unshift(closest.point);
+  if (leftPoints.length < 2 || rightPoints.length < 2) return { document, changed: false, replacementIds: [] };
+
+  const createPart = (points: DrawingPoint[], zIndex: number): DrawingLineObject => ({
+    ...createDrawingLineObject(object.kind, points, object.orthogonal),
+    rotation: object.rotation,
+    zIndex,
+    visible: object.visible,
+    style: { ...object.style },
+  });
+  const parts = [createPart(leftPoints, object.zIndex), createPart(rightPoints, object.zIndex + 1)];
+  const objects = document.objects.flatMap((item) => item.id === objectId ? parts : [item]);
+  return {
+    document: updated(document, normalizeLayers(objects)),
+    changed: true,
+    replacementIds: parts.map((item) => item.id),
+  };
+}
+
+function cloneForPaste(object: DrawingObject, dx: number, dy: number, zIndex: number): DrawingObject {
+  const clone = structuredClone(object);
+  const geometry = isPathObject(clone)
+    ? { points: clone.points.map((point) => ({ x: point.x + dx, y: point.y + dy })) }
+    : clone.kind === 'dimension'
+      ? { start: { x: clone.start.x + dx, y: clone.start.y + dy }, end: { x: clone.end.x + dx, y: clone.end.y + dy } }
+      : {};
+  const children = clone.kind === 'group'
+    ? { children: clone.children.map((child, index) => cloneForPaste(child, 0, 0, child.zIndex + index)) }
+    : {};
+  return {
+    ...clone,
+    ...geometry,
+    ...children,
+    id: createDrawingId(clone.kind),
+    x: clone.x + dx,
+    y: clone.y + dy,
+    zIndex,
+  } as DrawingObject;
+}
+
+export function placeDrawingCopiesAtPoint(objects: DrawingObject[], point: DrawingPoint, firstZIndex: number): DrawingObject[] {
+  if (objects.length === 0) return [];
+  const minX = Math.min(...objects.map((item) => item.x));
+  const minY = Math.min(...objects.map((item) => item.y));
+  const dx = point.x - minX;
+  const dy = point.y - minY;
+  return objects.map((object, index) => cloneForPaste(object, dx, dy, firstZIndex + index));
+}
+
 export function finalizeDrawingDraft(
   kind: DrawingLineObject['kind'] | null,
   points: DrawingPoint[],

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   clearDrawingCanvas, finalizeDrawingDraft, getObjectsInSelectionRect, moveDrawingLayers,
-  patchDrawingObjects, snapOrthogonalPoint, splitDrawingObjects, toggleDrawingLocks,
+  patchDrawingObjects, placeDrawingCopiesAtPoint, snapOrthogonalPoint, splitDrawingObjects,
+  splitDrawingPathAtPoint, toggleDrawingLocks,
 } from '@/lib/drawingCommands';
 import { defaultDrawingObjectStyle } from '@/lib/drawingDocument';
-import type { DrawingDocument, DrawingObject } from '@/types/drawing';
+import type { DrawingDocument, DrawingLineObject, DrawingObject } from '@/types/drawing';
 
 const base = (id: string, kind: DrawingObject['kind'], x: number, zIndex: number) => ({
   id, kind, x, y: 10, width: 20, height: 20, rotation: 0, zIndex,
@@ -66,5 +67,55 @@ describe('drawing document commands', () => {
     expect(patched.objects.find((object) => object.id === 'a')?.style).toEqual(expect.objectContaining({ fill: '#ff0000', stroke: '#111111', fontSize: 12 }));
     expect(patched.objects.find((object) => object.id === 'b')?.style).toEqual(second.style);
     expect(patchDrawingObjects(patched, ['a', 'b'], { locked: false }).objects.filter((object) => object.id !== 'title').every((object) => !object.locked)).toBe(true);
+  });
+
+  it('splits a path at the closest projected point and preserves its style', () => {
+    const source = { ...line('a', 10, 1), style: { ...defaultDrawingObjectStyle, stroke: '#ef4444', strokeWidth: 3 } };
+    const result = splitDrawingPathAtPoint(documentWith([title, source]), 'a', { x: 20, y: 16 });
+
+    expect(result.changed).toBe(true);
+    expect(result.replacementIds).toHaveLength(2);
+    const paths = result.document.objects.filter((object): object is DrawingLineObject => object.kind === 'line');
+    expect(paths).toHaveLength(2);
+    expect(paths.map((path) => path.points)).toEqual([
+      [{ x: 10, y: 10 }, { x: 20, y: 10 }],
+      [{ x: 20, y: 10 }, { x: 30, y: 10 }],
+    ]);
+    expect(paths.every((path) => path.style.stroke === '#ef4444' && path.style.strokeWidth === 3)).toBe(true);
+  });
+
+  it('splits a polyline on the nearest segment', () => {
+    const polyline = { ...line('path', 10, 1), kind: 'polyline' as const, width: 40, height: 30, points: [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 40 }] };
+    const result = splitDrawingPathAtPoint(documentWith([title, polyline]), 'path', { x: 47, y: 25 });
+    const paths = result.document.objects.filter((object): object is DrawingLineObject => object.kind === 'polyline');
+
+    expect(paths.map((path) => path.points)).toEqual([
+      [{ x: 10, y: 10 }, { x: 50, y: 10 }, { x: 50, y: 25 }],
+      [{ x: 50, y: 25 }, { x: 50, y: 40 }],
+    ]);
+  });
+
+  it('rejects endpoint, locked, and non-path crop requests', () => {
+    const source = line('a', 10, 1);
+    const locked = { ...line('locked', 40, 2), locked: true };
+    const text = { ...base('text', 'text', 70, 3), kind: 'text' as const, text: '不可裁剪' };
+    const document = documentWith([title, source, locked, text]);
+
+    expect(splitDrawingPathAtPoint(document, 'a', { x: 10.5, y: 10 }).changed).toBe(false);
+    expect(splitDrawingPathAtPoint(document, 'locked', { x: 50, y: 10 }).changed).toBe(false);
+    expect(splitDrawingPathAtPoint(document, 'text', { x: 75, y: 15 }).changed).toBe(false);
+  });
+
+  it('places copied objects at the context point while preserving relative geometry', () => {
+    const sourceLine = line('a', 10, 1);
+    const sourceText = { ...base('text', 'text', 40, 2), kind: 'text' as const, text: 'A' };
+    const copies = placeDrawingCopiesAtPoint([sourceLine, sourceText], { x: 300, y: 240 }, 7);
+
+    expect(copies.map((object) => ({ x: object.x, y: object.y, zIndex: object.zIndex }))).toEqual([
+      { x: 300, y: 240, zIndex: 7 },
+      { x: 330, y: 240, zIndex: 8 },
+    ]);
+    expect(copies.map((object) => object.id)).not.toEqual(['a', 'text']);
+    expect(copies[0].kind === 'line' && copies[0].points).toEqual([{ x: 300, y: 240 }, { x: 320, y: 240 }]);
   });
 });
