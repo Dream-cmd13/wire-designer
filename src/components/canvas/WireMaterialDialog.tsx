@@ -20,11 +20,12 @@ import type {
   WireEndTreatment,
 } from '@/types/harness';
 import { parseQuickInput } from '@/lib/wireParser';
+import { catalogRepository, type CatalogWire } from '@/lib/catalogRepository';
 
 interface WireMaterialDialogProps {
   material: CanvasWireMaterial | null;
   onCancel: () => void;
-  onConfirm: (updates: Pick<CanvasWireMaterial, 'spec' | 'width'>) => void;
+  onConfirm: (updates: Pick<CanvasWireMaterial, 'spec' | 'width' | 'name' | 'catalogItemId' | 'catalogImageUrl'>) => void;
 }
 
 const fieldClass =
@@ -75,6 +76,16 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
   const [error, setError] = useState<string | null>(null);
   const [electronicQuery, setElectronicQuery] = useState('');
   const [jacketedQuery, setJacketedQuery] = useState('');
+  const [catalogWires, setCatalogWires] = useState<CatalogWire[]>([]);
+  const [selectedCatalogWireId, setSelectedCatalogWireId] = useState(material?.catalogItemId ?? '');
+
+  useEffect(() => {
+    let cancelled = false;
+    catalogRepository.listWires()
+      .then((items) => { if (!cancelled) setCatalogWires(items); })
+      .catch(() => { if (!cancelled) setCatalogWires([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleQuickParse = (kind: 'electronic' | 'jacketed', query: string) => {
     if (!query.trim()) return;
@@ -139,7 +150,18 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
       setError(validationError);
       return;
     }
-    onConfirm({ spec, width: lengthMmToCanvasWidth(spec.lengthMm) });
+    const selectedCatalogWire = catalogWires.find((item) => item.catalogItemId === selectedCatalogWireId);
+    if (!selectedCatalogWire) {
+      setError('请选择线材库中的物料');
+      return;
+    }
+    onConfirm({
+      spec,
+      width: lengthMmToCanvasWidth(spec.lengthMm),
+      name: selectedCatalogWire.name,
+      catalogItemId: selectedCatalogWire.catalogItemId,
+      catalogImageUrl: selectedCatalogWire.image,
+    });
   };
 
   return (
@@ -161,6 +183,26 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
         </div>
 
         <div className="max-h-[calc(90vh-132px)] space-y-5 overflow-y-auto px-5 py-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+            <label className="mb-1.5 block text-xs font-semibold text-slate-700">线材物料</label>
+            <select
+              value={selectedCatalogWireId}
+              onChange={(event) => setSelectedCatalogWireId(event.target.value)}
+              className={fieldClass}
+            >
+              <option value="">请选择 Supabase 线材物料</option>
+              {catalogWires.map((wire) => (
+                <option key={wire.catalogItemId} value={wire.catalogItemId}>{wire.name}</option>
+              ))}
+            </select>
+            {catalogWires.find((wire) => wire.catalogItemId === selectedCatalogWireId)?.image && (
+              <img
+                src={catalogWires.find((wire) => wire.catalogItemId === selectedCatalogWireId)?.image}
+                alt="所选线材"
+                className="mt-3 h-20 w-full rounded-lg border border-slate-200 bg-white object-contain"
+              />
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
             <TypeButton
               active={spec.kind === 'electronic'}
@@ -541,4 +583,3 @@ function EndTreatmentFields({
     </div>
   );
 }
-

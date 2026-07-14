@@ -1595,7 +1595,7 @@ function HarnessCanvasInner() {
             const state = useHarnessStore.getState();
             const nextConfig = addConnector(state.config, {
               position: connectorDialog.position,
-              connectorId: connector.id,
+              connector,
             });
             state.replaceDocument(nextConfig);
             const added = nextConfig.connectors[nextConfig.connectors.length - 1];
@@ -1727,6 +1727,8 @@ function HarnessCanvasInner() {
               width: CANVAS_MODEL_SIZE,
               height: connectorHeight,
               overmoldSpecId: overmold.id,
+              catalogItemId: overmold.catalogItemId,
+              catalogImageUrl: overmold.image,
             };
             state.addModel(model);
             setSelection({ kind: 'model', id: model.id });

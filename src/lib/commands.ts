@@ -12,6 +12,7 @@ import type {
   ConnectorInstance,
   ConnectorJumper,
   ConnectorSide,
+  Connector,
   HarnessConfig,
   MaterialCircuit,
   MaterialEndpoint,
@@ -93,6 +94,7 @@ export function alignCircuits(
 export interface AddConnectorInput {
   position?: { x: number; y: number };
   connectorId?: string;
+  connector?: Connector;
   label?: string;
 }
 
@@ -101,9 +103,10 @@ export function addConnector(
   config: HarnessConfig,
   input: AddConnectorInput = {},
 ): HarnessConfig {
-  const connector = input.connectorId
+  const connector = input.connector
+    ?? (input.connectorId
     ? CONNECTORS.find((c) => c.id === input.connectorId) || CONNECTORS[0]
-    : CONNECTORS[0];
+    : CONNECTORS[0]);
 
   if (!connector) {
     throw new Error('No connector available in catalog');
@@ -148,17 +151,17 @@ export function updateConnector(
 export function changeConnectorPart(
   config: HarnessConfig,
   connectorId: string,
-  newPartId: string,
+  nextConnector: Connector | string,
 ): { config: HarnessConfig; warnings: string[] } {
   const instance = config.connectors.find((c) => c.id === connectorId);
   if (!instance) {
     throw new Error(`Connector not found: ${connectorId}`);
   }
 
-  const newConnector = CONNECTORS.find((c) => c.id === newPartId);
-  if (!newConnector) {
-    throw new Error(`Connector part not found: ${newPartId}`);
-  }
+  const newConnector = typeof nextConnector === 'string'
+    ? CONNECTORS.find((connector) => connector.id === nextConnector)
+    : nextConnector;
+  if (!newConnector) throw new Error(`Connector part not found: ${nextConnector}`);
 
   const newPinCount = newConnector.pinCount;
   const warnings: string[] = [];

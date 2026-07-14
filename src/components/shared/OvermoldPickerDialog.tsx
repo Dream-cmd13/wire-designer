@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { OVERMOLDS } from '@/lib/data';
+import { catalogRepository } from '@/lib/catalogRepository';
 import type { OvermoldSpec } from '@/types/harness';
 import { Search, X, Filter, Check } from 'lucide-react';
 
@@ -13,6 +13,7 @@ interface OvermoldPickerDialogProps {
 type FilterKey = 'outerMaterial' | 'outerHardness' | 'innerMaterial';
 
 export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermoldId }: OvermoldPickerDialogProps) {
+  const [overmolds, setOvermolds] = useState<OvermoldSpec[]>([]);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     outerMaterial: new Set(),
@@ -24,6 +25,14 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
   const dialogRef = useRef<HTMLDivElement>(null);
 
   const prevOpen = useRef(isOpen);
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    catalogRepository.listOvermolds()
+      .then((items) => { if (!cancelled) setOvermolds(items); })
+      .catch(() => { if (!cancelled) setOvermolds([]); });
+    return () => { cancelled = true; };
+  }, [isOpen]);
   useEffect(() => {
     const justOpened = isOpen && !prevOpen.current;
     prevOpen.current = isOpen;
@@ -43,11 +52,11 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
 
   if (!isOpen) return null;
 
-  const outerMaterials = [...new Set(OVERMOLDS.map((o) => o.outerMaterial))].sort();
-  const outerHardnesses = [...new Set(OVERMOLDS.filter((o) => o.outerHardness).map((o) => o.outerHardness!))].sort();
-  const innerMaterials = [...new Set(OVERMOLDS.map((o) => o.innerMaterial))].sort();
+  const outerMaterials = [...new Set(overmolds.map((o) => o.outerMaterial))].sort();
+  const outerHardnesses = [...new Set(overmolds.filter((o) => o.outerHardness).map((o) => o.outerHardness!))].sort();
+  const innerMaterials = [...new Set(overmolds.map((o) => o.innerMaterial))].sort();
 
-  let results = OVERMOLDS;
+  let results = overmolds;
   if (search.trim()) {
     const q = search.toLowerCase();
     results = results.filter((o) => o.name.toLowerCase().includes(q) || o.outerMaterial.toLowerCase().includes(q) || o.innerMaterial.toLowerCase().includes(q));
@@ -70,7 +79,7 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
   };
 
   const hasActiveFilters = search.trim() !== '' || filters.outerMaterial.size > 0 || filters.outerHardness.size > 0 || filters.innerMaterial.size > 0;
-  const selectedOvermold = OVERMOLDS.find((o) => o.id === selectedId);
+  const selectedOvermold = overmolds.find((o) => o.id === selectedId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -150,7 +159,7 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
         </div>
 
         <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
-          <div className="text-xs text-slate-400">共 {OVERMOLDS.length} 个规格{hasActiveFilters && ` · ${results.length} 个匹配`}</div>
+          <div className="text-xs text-slate-400">共 {overmolds.length} 个规格{hasActiveFilters && ` · ${results.length} 个匹配`}</div>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded cursor-pointer">取消</button>
             <button onClick={() => { if (selectedOvermold) { onSelect(selectedOvermold); onClose(); } }}

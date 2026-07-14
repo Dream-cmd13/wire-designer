@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
 import { Check, Search } from 'lucide-react';
-import { CONNECTORS } from '@/lib/data';
 import { changeConnectorPart, getActiveConnectorSide } from '@/lib/commands';
 import {
   getCanvasModelDisplayName,
@@ -50,7 +49,7 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
   };
 
   const handlePartChange = (connector: Connector) => {
-    const result = changeConnectorPart(config, connectorId, connector.id);
+    const result = changeConnectorPart(config, connectorId, connector);
     useHarnessStore.getState().replaceDocument(result.config);
     setSelection({ kind: 'connector', id: connectorId });
     setError(result.warnings.length > 0 ? result.warnings.join('；') : null);
@@ -80,21 +79,6 @@ function ConnectorEditor({ connectorId }: { connectorId: string }) {
 
       <FormField label="连接器型号">
         <div className="space-y-1.5">
-          <select
-            value={instance.connector.id}
-            onChange={(event) => {
-              const part = CONNECTORS.find((connector) => connector.id === event.target.value);
-              if (part) handlePartChange(part);
-            }}
-            className="w-full rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {CONNECTORS.map((connector) => (
-              <option key={connector.id} value={connector.id}>
-                {connector.name} ({connector.pinCount}P)
-              </option>
-            ))}
-          </select>
-
           <button
             type="button"
             onClick={() => setPickerOpen(true)}

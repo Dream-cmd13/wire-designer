@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { CONNECTORS } from '@/lib/data';
+import { catalogRepository } from '@/lib/catalogRepository';
 import type { Connector } from '@/types/harness';
 import { Search, X, Filter, Check } from 'lucide-react';
 
@@ -13,6 +13,7 @@ interface PartPickerDialogProps {
 type FilterKey = 'manufacturer' | 'pinCount' | 'pitch' | 'type' | 'housingMaterial' | 'contactMaterial' | 'nutMaterial';
 
 export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId }: PartPickerDialogProps) {
+  const [connectors, setConnectors] = useState<Connector[]>([]);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     manufacturer: new Set(),
@@ -29,6 +30,14 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
 
   // Track previous isOpen to detect transitions
   const prevOpen = useRef(isOpen);
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    catalogRepository.listConnectors()
+      .then((items) => { if (!cancelled) setConnectors(items); })
+      .catch(() => { if (!cancelled) setConnectors([]); });
+    return () => { cancelled = true; };
+  }, [isOpen]);
   useEffect(() => {
     const justOpened = isOpen && !prevOpen.current;
     prevOpen.current = isOpen;
@@ -77,16 +86,16 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   if (!isOpen) return null;
 
   // Extract filter options
-  const manufacturers = [...new Set(CONNECTORS.map((c) => c.manufacturer))].sort();
-  const pinCounts = [...new Set(CONNECTORS.map((c) => c.pinCount))].sort((a, b) => a - b);
-  const pitches = [...new Set(CONNECTORS.filter((c) => c.pitch).map((c) => c.pitch!))].sort((a, b) => a - b);
-  const types = [...new Set(CONNECTORS.map((c) => c.type))] as string[];
-  const housingMaterials = [...new Set(CONNECTORS.filter((c) => c.housingMaterial).map((c) => c.housingMaterial!))].sort();
-  const contactMaterials = [...new Set(CONNECTORS.filter((c) => c.contactMaterial).map((c) => c.contactMaterial!))].sort();
-  const nutMaterials = [...new Set(CONNECTORS.filter((c) => c.nutMaterial).map((c) => c.nutMaterial!))].sort();
+  const manufacturers = [...new Set(connectors.map((c) => c.manufacturer))].filter(Boolean).sort();
+  const pinCounts = [...new Set(connectors.map((c) => c.pinCount))].sort((a, b) => a - b);
+  const pitches = [...new Set(connectors.filter((c) => c.pitch).map((c) => c.pitch!))].sort((a, b) => a - b);
+  const types = [...new Set(connectors.map((c) => c.type))] as string[];
+  const housingMaterials = [...new Set(connectors.filter((c) => c.housingMaterial).map((c) => c.housingMaterial!))].sort();
+  const contactMaterials = [...new Set(connectors.filter((c) => c.contactMaterial).map((c) => c.contactMaterial!))].sort();
+  const nutMaterials = [...new Set(connectors.filter((c) => c.nutMaterial).map((c) => c.nutMaterial!))].sort();
 
   // Apply filters
-  let results = CONNECTORS;
+  let results = connectors;
   if (search.trim()) {
     const q = search.toLowerCase();
     results = results.filter(
@@ -140,7 +149,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
     filters.pitch.size > 0 || filters.type.size > 0 ||
     filters.housingMaterial.size > 0 || filters.contactMaterial.size > 0 || filters.nutMaterial.size > 0;
 
-  const selectedConnector = CONNECTORS.find((c) => c.id === selectedId);
+  const selectedConnector = connectors.find((c) => c.id === selectedId);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -276,7 +285,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
         {/* Footer */}
         <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
           <div className="text-xs text-slate-400">
-            共 {CONNECTORS.length} 个型号{hasActiveFilters && ` · ${results.length} 个匹配`}
+            共 {connectors.length} 个型号{hasActiveFilters && ` · ${results.length} 个匹配`}
           </div>
           <div className="flex items-center gap-2">
             <button
