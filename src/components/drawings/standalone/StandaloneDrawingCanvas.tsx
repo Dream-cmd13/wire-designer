@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
+import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import type { DrawingDocument, DrawingObject, DrawingTableRow } from '@/types/drawing';
 
 interface StandaloneDrawingCanvasProps {
@@ -258,57 +259,53 @@ export function StandaloneDrawingCanvas({
   onUpdateObject,
 }: StandaloneDrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const textEditorRef = useRef<HTMLDivElement | null>(null);
+  const editorInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const [measurementContext] = useState<CanvasRenderingContext2D | null>(() =>
+    document.createElement('canvas').getContext('2d'));
   const [drag, setDrag] = useState<DragState>(null);
   const [editor, setEditor] = useState<EditTarget | null>(null);
+  const [caretIndex, setCaretIndex] = useState(0);
+  const [fontsReady, setFontsReady] = useState(false);
   const tableObjects = useMemo(() => drawing.objects.filter((object): object is DrawingTableObject =>
     object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table'), [drawing.objects]);
   const tableObjectIds = useMemo(() => new Set(tableObjects.map((object) => object.id)), [tableObjects]);
-  const editingTextObject = useMemo(() => {
+  const editingObject = useMemo(() => {
     if (!editor) return undefined;
-    const object = drawing.objects.find((candidate) => candidate.id === editor.objectId);
-    return object?.kind === 'text' || object?.kind === 'label' ? object : undefined;
+    return drawing.objects.find((candidate) => candidate.id === editor.objectId);
   }, [drawing.objects, editor]);
-  const editingTextObjectId = editingTextObject?.id ?? null;
-  const editingTextObjectIds = useMemo(
-    () => new Set(editingTextObjectId ? [editingTextObjectId] : []),
-    [editingTextObjectId],
-  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFonts = async () => {
+      await document.fonts.ready;
+      if (!cancelled) setFontsReady(true);
+    };
+    void loadFonts();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !fontsReady) return;
     const scale = window.devicePixelRatio || 1;
     canvas.width = drawing.page.width * scale;
     canvas.height = drawing.page.height * scale;
     const context = canvas.getContext('2d');
     if (!context) return;
     context.setTransform(scale, 0, 0, scale, 0, 0);
-    renderDrawingCanvas(context, drawing, selectedObjectId, {
-      hiddenObjectIds: tableObjectIds,
-      hiddenTextObjectIds: editingTextObjectIds,
-    });
-  }, [drawing, editingTextObjectIds, selectedObjectId, tableObjectIds]);
+    renderDrawingCanvas(context, drawing, selectedObjectId, { hiddenObjectIds: tableObjectIds });
+  }, [drawing, fontsReady, selectedObjectId, tableObjectIds]);
+
+  const caretLine = useMemo(() => {
+    if (!fontsReady || !measurementContext || !editingObject || editor?.type !== 'field') return null;
+    return measureDrawingCaret(measurementContext, editingObject, editor.field, editor.value, caretIndex);
+  }, [caretIndex, editingObject, editor, fontsReady, measurementContext]);
+
+  const editorObjectId = editor?.objectId ?? null;
 
   useEffect(() => {
-    if (!editingTextObjectId) return;
-    let cancelled = false;
-    const focusEditor = async () => {
-      await document.fonts.ready;
-      if (cancelled) return;
-      const element = textEditorRef.current;
-      if (!element) return;
-      element.focus();
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(element);
-      range.collapse(false);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-    };
-    void focusEditor();
-    return () => { cancelled = true; };
-  }, [editingTextObjectId]);
+    editorInputRef.current?.setSelectionRange(caretIndex, caretIndex);
+  }, [caretIndex, editorObjectId]);
 
   const getPoint = (event: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -426,15 +423,20 @@ export function StandaloneDrawingCanvas({
     if (!object || object.locked) return;
     const nextEditor = createEditor(object, point);
     if (nextEditor) {
+      const nextCaretIndex = nextEditor.type === 'field' && measurementContext
+        ? getDrawingCaretIndexAtPoint(measurementContext, object, nextEditor.field, nextEditor.value, point)
+        : nextEditor.value.length;
       onStartEdit();
+      setCaretIndex(nextCaretIndex);
       setEditor(nextEditor);
     }
   };
 
-  const updateEditorValue = (value: string) => {
+  const updateEditorValue = (value: string, selectionStart = value.length) => {
     if (!editor) return;
     const nextEditor = { ...editor, value };
     setEditor(nextEditor);
+    setCaretIndex(selectionStart);
     const object = drawing.objects.find((candidate) => candidate.id === editor.objectId);
     if (!object) return;
     if (nextEditor.type === 'field') onUpdateObject(object.id, textPatch(object, nextEditor));
@@ -445,53 +447,14 @@ export function StandaloneDrawingCanvas({
   };
 
   const editorControl = editor && (
-    editor.type === 'field' && editingTextObject ? (
-      <div
-        ref={textEditorRef}
-        contentEditable
-        suppressContentEditableWarning
-        role="textbox"
-        aria-label="编辑文字"
-        spellCheck={false}
-        onInput={(event) => updateEditorValue(event.currentTarget.textContent ?? '')}
-        onBlur={commitEditor}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') setEditor(null);
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            commitEditor();
-          }
-        }}
-        className="absolute z-20 whitespace-pre border-0 bg-transparent p-0 outline-none"
-        style={{
-          left: editor.x * zoom,
-          top: editor.y * zoom,
-          width: Math.max(1, editor.width * zoom),
-          height: Math.max(editor.fontSize, editor.height) * zoom,
-          overflow: 'visible',
-          color: editingTextObject.style.color,
-          caretColor: '#0f172a',
-          fontFamily: 'Arial, sans-serif',
-          fontSize: editor.fontSize * zoom,
-          fontWeight: 400,
-          fontStyle: 'normal',
-          fontKerning: 'auto',
-          letterSpacing: 'normal',
-          lineHeight: `${editor.fontSize * zoom}px`,
-          textAlign: 'left',
-          direction: 'ltr',
-          transform: `rotate(${editingTextObject.rotation}deg)`,
-          transformOrigin: 'center center',
-        }}
-      >
-        {editor.value}
-      </div>
-    ) : editor.type === 'field' && editor.multiline ? (
+    editor.type === 'field' && editor.multiline ? (
       <textarea
+        ref={editorInputRef}
         autoFocus
         value={editor.value}
-        onFocus={(event) => event.currentTarget.setSelectionRange(event.currentTarget.value.length, event.currentTarget.value.length)}
-        onChange={(event) => updateEditorValue(event.target.value)}
+        onFocus={(event) => event.currentTarget.setSelectionRange(caretIndex, caretIndex)}
+        onSelect={(event) => setCaretIndex(event.currentTarget.selectionStart)}
+        onChange={(event) => updateEditorValue(event.target.value, event.target.selectionStart)}
         onBlur={commitEditor}
         onKeyDown={(event) => {
           if (event.key === 'Escape') setEditor(null);
@@ -505,14 +468,18 @@ export function StandaloneDrawingCanvas({
           height: editor.height * zoom,
           fontSize: editor.fontSize * zoom,
           lineHeight: `${editor.fontSize * zoom}px`,
+          caretColor: 'transparent',
+          pointerEvents: 'none',
         }}
       />
     ) : (
       <input
+        ref={editorInputRef}
         autoFocus
         value={editor.value}
-        onFocus={(event) => event.currentTarget.setSelectionRange(event.currentTarget.value.length, event.currentTarget.value.length)}
-        onChange={(event) => updateEditorValue(event.target.value)}
+        onFocus={(event) => event.currentTarget.setSelectionRange(caretIndex, caretIndex)}
+        onSelect={(event) => setCaretIndex(event.currentTarget.selectionStart ?? 0)}
+        onChange={(event) => updateEditorValue(event.target.value, event.target.selectionStart ?? event.target.value.length)}
         onBlur={commitEditor}
         onKeyDown={(event) => {
           if (event.key === 'Escape') setEditor(null);
@@ -526,6 +493,8 @@ export function StandaloneDrawingCanvas({
           height: Math.max(16, editor.height * zoom),
           fontSize: editor.fontSize * zoom,
           lineHeight: `${Math.max(16, editor.height * zoom)}px`,
+          caretColor: 'transparent',
+          pointerEvents: 'none',
         }}
       />
     )
@@ -556,6 +525,25 @@ export function StandaloneDrawingCanvas({
           />
         ))}
         {editorControl}
+        {caretLine && (
+          <svg
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 z-30 overflow-visible"
+            width={drawing.page.width * zoom}
+            height={drawing.page.height * zoom}
+          >
+            <line
+              x1={caretLine.start.x * zoom}
+              y1={caretLine.start.y * zoom}
+              x2={caretLine.end.x * zoom}
+              y2={caretLine.end.y * zoom}
+              stroke="#0f172a"
+              strokeWidth="1"
+            >
+              <animate attributeName="opacity" values="1;1;0;0" dur="1s" repeatCount="indefinite" />
+            </line>
+          </svg>
+        )}
       </div>
     </div>
   );

@@ -37,24 +37,25 @@ describe('standalone drawing table templates', () => {
   it('keeps non-table canvas text edits from drawing a second visible input value', () => {
     const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
 
-    expect(source).toContain('const updateEditorValue = (value: string) =>');
-    expect(source).toContain('onChange={(event) => updateEditorValue(event.target.value)}');
+    expect(source).toContain('const updateEditorValue = (value: string, selectionStart = value.length) =>');
+    expect(source).toContain('onChange={(event) => updateEditorValue(event.target.value, event.target.selectionStart');
     expect(source).toContain('text-transparent');
     expect(source).toContain('left: (editor.x + editor.textInsetX) * zoom');
-    expect(source).toContain('onFocus={(event) => event.currentTarget.setSelectionRange(event.currentTarget.value.length, event.currentTarget.value.length)}');
+    expect(source).toContain('onFocus={(event) => event.currentTarget.setSelectionRange(caretIndex, caretIndex)}');
   });
 
-  it('uses the same visible DOM text run for text glyphs and the native caret while editing', () => {
+  it('keeps Canvas text visible and renders only a measured caret overlay while editing', () => {
     const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
     const rendererSource = readFileSync('src/lib/drawingRenderer.ts', 'utf8');
 
-    expect(source).toContain('const textEditorRef = useRef<HTMLDivElement | null>(null);');
     expect(source).toContain('await document.fonts.ready;');
-    expect(source).toContain('contentEditable');
-    expect(source).toContain("fontFamily: 'Arial, sans-serif'");
-    expect(source).toContain('transform: `rotate(${editingTextObject.rotation}deg)`');
-    expect(source).toContain('hiddenTextObjectIds: editingTextObjectIds');
-    expect(rendererSource).toContain('hiddenTextObjectIds?: ReadonlySet<string>');
+    expect(source).toContain('measureDrawingCaret');
+    expect(source).toContain('editorInputRef.current?.setSelectionRange(caretIndex, caretIndex)');
+    expect(source).toContain("caretColor: 'transparent'");
+    expect(source).toContain('<line');
+    expect(source).not.toContain('ref={textEditorRef}');
+    expect(source).not.toContain('hiddenTextObjectIds');
+    expect(rendererSource).toContain('getEditableDrawingTextRuns');
   });
 
   it('uses a DOM table layer for in-place table editing', () => {

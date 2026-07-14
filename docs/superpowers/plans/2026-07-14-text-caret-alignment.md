@@ -1,57 +1,55 @@
-# Text Caret Alignment Implementation Plan
+# Direct Canvas Caret Alignment Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Align the native editing caret exactly with standalone drawing text and label glyphs.
+**Goal:** Keep every non-table Canvas text glyph visible and place the editing caret through the exact same text layout and transforms.
 
-**Architecture:** Replace the transparent native input for `text` and `label` objects with a visible DOM `contentEditable` overlay while temporarily omitting that object from Canvas rendering. Keep typography and transforms synchronized from one editor descriptor and retain the existing data/update flow.
+**Architecture:** Introduce pure shared text-run and caret geometry helpers. Refactor Canvas text drawing to consume the shared runs, retain transparent form controls for input/IME, and render only the caret as an SVG overlay.
 
-**Tech Stack:** React 19, TypeScript 6, Canvas 2D, DOM Selection/Range, Vitest.
+**Tech Stack:** React 19, TypeScript 6, Canvas 2D TextMetrics, SVG, Vitest.
 
 ## Global Constraints
 
-- Apply minimal changes only to standalone drawing text and label editing.
-- Do not add selection, resize, or rotation controls.
-- Preserve current project structure, styling, and object persistence.
+- Do not replace or hide Canvas text while editing.
+- Do not use fixed corrective offsets.
+- Do not change table editing or add transform handles.
+- Keep DPR out of CSS-coordinate caret conversion.
 
 ---
 
-### Task 1: Add a caret-alignment regression test
+### Task 1: Specify shared text layout and caret geometry
 
 **Files:**
+- Create: `src/lib/__tests__/drawingTextLayout.test.ts`
+- Create: `src/lib/drawingTextLayout.ts`
+
+- [ ] Write failing tests for dimension centering, wire-bundle baseline/suffix, connector max-width scaling, caret insertion index, and rotation.
+- [ ] Run the targeted test and verify it fails because the module does not exist.
+- [ ] Implement `getEditableDrawingTextRuns`, `measureDrawingCaret`, and `getDrawingCaretIndexAtPoint` minimally.
+- [ ] Run the targeted test and verify it passes.
+
+### Task 2: Make Canvas rendering consume shared runs
+
+**Files:**
+- Modify: `src/lib/drawingRenderer.ts`
 - Modify: `src/lib/__tests__/drawingCanvasTemplates.test.ts`
 
-**Interfaces:**
-- Consumes: `StandaloneDrawingCanvas.tsx` source contract.
-- Produces: a regression test for `contentEditable`, font readiness, Canvas hiding, and rotation synchronization.
+- [ ] Add a failing renderer/source regression test.
+- [ ] Replace duplicated editable text coordinates with shared text runs while leaving non-editable pin text unchanged.
+- [ ] Run the renderer tests and verify they pass.
 
-- [ ] **Step 1: Write the failing test** asserting the new editor contract.
-- [ ] **Step 2: Run `npm test -- src/lib/__tests__/drawingCanvasTemplates.test.ts` and confirm the new assertion fails because the old transparent input is still present.**
-
-### Task 2: Implement synchronized DOM text editing
+### Task 3: Render a measured caret over original Canvas text
 
 **Files:**
 - Modify: `src/components/drawings/standalone/StandaloneDrawingCanvas.tsx`
-- Modify: `src/lib/drawingRenderer.ts`
+- Modify: `src/lib/__tests__/drawingCanvasTemplates.test.ts`
 
-**Interfaces:**
-- Consumes: `EditTarget`, `renderDrawingCanvas`, and drawing object rotation/style.
-- Produces: a focused `contentEditable` overlay and `hiddenObjectIds` containing only the actively edited text/label object.
+- [ ] Add a failing regression test that rejects Canvas text hiding and DOM replacement text.
+- [ ] Track `selectionStart`, use the shared hit-test helper on double click, and hide the native form-control caret.
+- [ ] Render measured SVG caret endpoints after object rotation and zoom.
+- [ ] Wait for `document.fonts.ready` before drawing and measuring.
 
-- [ ] **Step 1: Add an editor ref and focus it after `document.fonts.ready`, collapsing the DOM selection at the text end.**
-- [ ] **Step 2: Render visible Arial text with synchronized font size, line height, position, zoom, transform origin, and rotation.**
-- [ ] **Step 3: Update object text from `textContent` and omit the edited text/label object from Canvas rendering.**
-- [ ] **Step 4: Run the targeted test and confirm it passes.**
+### Task 4: Verify
 
-### Task 3: Verify the regression and UI
-
-**Files:**
-- Test: `src/lib/__tests__/drawingCanvasTemplates.test.ts`
-
-**Interfaces:**
-- Consumes: completed implementation.
-- Produces: fresh automated and browser verification evidence.
-
-- [ ] **Step 1: Run `npm test -- src/lib/__tests__/drawingCanvasTemplates.test.ts`.**
-- [ ] **Step 2: Run `npm test`, `npm run lint`, and `npm run build`.**
-- [ ] **Step 3: Verify `红色222` at 72%, another zoom level, and a rotated angle on `http://localhost:5173`.**
+- [ ] Run targeted tests, all tests, changed-file lint, TypeScript, and production build.
+- [ ] Browser-check beginning/middle/end caret positions for text, dimension, wire bundle, and connector at 50%, 100%, 150%, 200%, including rotation.

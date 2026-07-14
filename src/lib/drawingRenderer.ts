@@ -1,4 +1,17 @@
 import type { DrawingDocument, DrawingObject, DrawingPoint } from '@/types/drawing';
+import { getEditableDrawingTextRuns, type EditableDrawingTextField } from '@/lib/drawingTextLayout';
+
+function drawEditableText(
+  context: CanvasRenderingContext2D,
+  object: DrawingObject,
+  field: EditableDrawingTextField,
+  value: string,
+) {
+  getEditableDrawingTextRuns(context, object, field, value).forEach((textRun) => {
+    context.font = textRun.font;
+    context.fillText(textRun.displayText, textRun.x, textRun.baseline, textRun.maxWidth);
+  });
+}
 
 function drawPolyline(context: CanvasRenderingContext2D, points: DrawingPoint[], curve: boolean) {
   if (points.length < 2) return;
@@ -78,7 +91,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.restore();
 }
 
-function drawObject(context: CanvasRenderingContext2D, object: DrawingObject, hideText = false) {
+function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
   context.save();
   context.translate(object.x + object.width / 2, object.y + object.height / 2);
   context.rotate((object.rotation * Math.PI) / 180);
@@ -93,8 +106,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject, hi
     context.fillRect(0, 0, object.width, object.height);
     context.strokeRect(0, 0, object.width, object.height);
     context.fillStyle = object.style.color;
-    context.font = `600 ${object.style.fontSize}px Arial`;
-    context.fillText(object.label, 8, 18, object.width - 16);
+    drawEditableText(context, object, 'label', object.label);
     context.beginPath();
     context.moveTo(0, 25);
     context.lineTo(object.width, 25);
@@ -119,15 +131,15 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject, hi
       context.stroke();
     }
     context.fillStyle = object.style.color;
-    context.fillText(`${object.label} · ${object.wireCount}芯`, 8, object.height - 5);
+    drawEditableText(context, object, 'label', object.label);
   } else if (object.kind === 'accessory') {
     context.fillStyle = object.style.fill;
     context.fillRect(0, 0, object.width, object.height);
     context.strokeRect(0, 0, object.width, object.height);
     context.fillStyle = object.style.color;
-    context.fillText(object.label, 6, object.height / 2 + 4);
+    drawEditableText(context, object, 'label', object.label);
   } else if (object.kind === 'text' || object.kind === 'label') {
-    if (!hideText) context.fillText(object.text, 0, object.style.fontSize);
+    drawEditableText(context, object, 'text', object.text);
   } else if (object.kind === 'dimension') {
     const y = object.height / 2;
     context.beginPath();
@@ -138,11 +150,13 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject, hi
     context.moveTo(object.width, y - 8);
     context.lineTo(object.width, y + 8);
     context.stroke();
-    const labelWidth = context.measureText(object.label).width;
+    const [textRun] = getEditableDrawingTextRuns(context, object, 'label', object.label);
+    context.font = textRun.font;
+    const labelWidth = context.measureText(textRun.displayText).width;
     context.fillStyle = '#ffffff';
-    context.fillRect(object.width / 2 - labelWidth / 2 - 5, y - 12, labelWidth + 10, 17);
+    context.fillRect(textRun.x - 5, y - 12, labelWidth + 10, 17);
     context.fillStyle = object.style.color;
-    context.fillText(object.label, object.width / 2 - labelWidth / 2, y + 1);
+    drawEditableText(context, object, 'label', object.label);
   } else if (object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') {
     drawPolyline(context, object.points.map((point) => ({ x: point.x - object.x, y: point.y - object.y })), object.kind === 'curve');
   } else if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') {
@@ -154,8 +168,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject, hi
     context.fillStyle = object.style.color;
     context.font = `600 ${object.style.fontSize}px Arial`;
     context.fillText('技术要求', 10, 18);
-    context.font = `${object.style.fontSize}px Arial`;
-    object.requirements.forEach((requirement, index) => context.fillText(`${index + 1}. ${requirement}`, 10, 38 + index * 18, object.width - 20));
+    drawEditableText(context, object, 'requirements', object.requirements.join('\n'));
   } else if (object.kind === 'title-block') {
     context.fillStyle = object.style.fill;
     context.fillRect(0, 0, object.width, object.height);
@@ -165,11 +178,9 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject, hi
     context.lineTo(object.width - 80, object.height);
     context.stroke();
     context.fillStyle = object.style.color;
-    context.font = `600 ${object.style.fontSize}px Arial`;
-    context.fillText(object.title, 10, 20, object.width - 100);
-    context.font = '10px Arial';
-    context.fillText(`图号：${object.drawingNo}`, 10, 42);
-    context.fillText(`版本：${object.revision}`, object.width - 70, 32);
+    drawEditableText(context, object, 'title', object.title);
+    drawEditableText(context, object, 'drawingNo', object.drawingNo);
+    drawEditableText(context, object, 'revision', object.revision);
   }
   context.restore();
 }
@@ -178,7 +189,7 @@ export function renderDrawingCanvas(
   context: CanvasRenderingContext2D,
   document: DrawingDocument,
   selectedObjectId?: string | null,
-  options: { hiddenObjectIds?: ReadonlySet<string>; hiddenTextObjectIds?: ReadonlySet<string> } = {},
+  options: { hiddenObjectIds?: ReadonlySet<string> } = {},
 ) {
   context.clearRect(0, 0, document.page.width, document.page.height);
   context.fillStyle = '#ffffff';
@@ -190,7 +201,7 @@ export function renderDrawingCanvas(
     .filter((object) => object.visible && !options.hiddenObjectIds?.has(object.id))
     .sort((left, right) => left.zIndex - right.zIndex)
     .forEach((object) => {
-      drawObject(context, object, options.hiddenTextObjectIds?.has(object.id));
+      drawObject(context, object);
       if (object.id === selectedObjectId) {
         context.save();
         context.strokeStyle = '#2563eb';

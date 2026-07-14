@@ -1,21 +1,19 @@
-# Text Caret Alignment Design
+# Direct Canvas Caret Alignment Design
 
 ## Scope
 
-Fix caret alignment only for standalone drawing `text` and `label` objects. Do not add selection handles, resize behavior, or rotation controls.
+Align the editing caret directly with every editable non-table Canvas text run: text, label, connector, wire bundle, accessory, dimension, title block, and technical requirements. Tables remain on their existing DOM editing path. Selection handles and transform controls are out of scope.
 
 ## Root Cause
 
-Canvas renders these objects with `Arial` and a baseline at `fontSize`, while the transparent native input inherits `system-ui` and uses the full object height as its line box. The editor also omits the object's rotation. Consequently, the visible Canvas glyphs and the native caret are produced by different typography and transform models.
+Canvas rendering and the DOM editor independently encode fonts, baselines, insets, centering, suffixes, maximum widths, zoom, and rotation. Several object editors use generic rectangles that do not match the object-specific Canvas text coordinates. Replacing Canvas text with DOM text only aligns the caret to the replacement, not to the original glyphs.
 
-## Design
+## Architecture
 
-While a text object is being edited, omit its Canvas rendering and show a single-line `contentEditable` DOM overlay containing the visible text and native caret. The overlay uses the same font family, size, weight, style, direction, spacing, position, zoom, and rotation as the Canvas object. Focus is deferred until `document.fonts.ready`, then the selection is collapsed at the end.
+Create a shared text-layout module that returns the exact editable Canvas text runs for an object field. Both the renderer and caret calculator consume those runs. Each run includes its display prefix/suffix, editable source range, Canvas font, local baseline, local x position, and optional max width.
 
-Input updates the drawing object immediately. Blur or Enter commits by leaving edit mode; Escape leaves edit mode without introducing separate selection or transform behavior.
+Keep the original Canvas text visible. A transparent input or textarea captures keyboard input, selection, and IME state with its native caret hidden. The visible caret is an SVG line calculated from `selectionStart`, `measureText()`, `actualBoundingBoxAscent`, and `actualBoundingBoxDescent`. The caret endpoints pass through the same object rotation and canvas zoom as the glyphs. Device pixel ratio remains limited to the Canvas backing store.
 
 ## Verification
 
-- Unit regression checks verify that the editor uses visible `contentEditable` text, waits for fonts, hides only the edited Canvas object, and synchronizes the rotation transform.
-- Existing drawing tests, lint, and production build must pass.
-- Browser walkthrough verifies `红色222|` at multiple zoom levels and a non-zero rotation.
+Unit tests cover object-specific baselines, centered dimensions, wire-bundle suffixes, max-width compression, insertion indices, and rotation. Browser checks cover beginning/middle/end positions, multiple zoom levels, and rotated objects without hiding or replacing Canvas text.
