@@ -78,7 +78,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.restore();
 }
 
-function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
+function drawObject(context: CanvasRenderingContext2D, object: DrawingObject, hideText = false) {
   context.save();
   context.translate(object.x + object.width / 2, object.y + object.height / 2);
   context.rotate((object.rotation * Math.PI) / 180);
@@ -127,7 +127,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
     context.fillStyle = object.style.color;
     context.fillText(object.label, 6, object.height / 2 + 4);
   } else if (object.kind === 'text' || object.kind === 'label') {
-    context.fillText(object.text, 0, object.style.fontSize);
+    if (!hideText) context.fillText(object.text, 0, object.style.fontSize);
   } else if (object.kind === 'dimension') {
     const y = object.height / 2;
     context.beginPath();
@@ -178,7 +178,7 @@ export function renderDrawingCanvas(
   context: CanvasRenderingContext2D,
   document: DrawingDocument,
   selectedObjectId?: string | null,
-  options: { hiddenObjectIds?: ReadonlySet<string> } = {},
+  options: { hiddenObjectIds?: ReadonlySet<string>; hiddenTextObjectIds?: ReadonlySet<string> } = {},
 ) {
   context.clearRect(0, 0, document.page.width, document.page.height);
   context.fillStyle = '#ffffff';
@@ -190,7 +190,7 @@ export function renderDrawingCanvas(
     .filter((object) => object.visible && !options.hiddenObjectIds?.has(object.id))
     .sort((left, right) => left.zIndex - right.zIndex)
     .forEach((object) => {
-      drawObject(context, object);
+      drawObject(context, object, options.hiddenTextObjectIds?.has(object.id));
       if (object.id === selectedObjectId) {
         context.save();
         context.strokeStyle = '#2563eb';

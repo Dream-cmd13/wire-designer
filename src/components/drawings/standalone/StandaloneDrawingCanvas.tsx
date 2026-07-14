@@ -258,11 +258,22 @@ export function StandaloneDrawingCanvas({
   onUpdateObject,
 }: StandaloneDrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const textEditorRef = useRef<HTMLDivElement | null>(null);
   const [drag, setDrag] = useState<DragState>(null);
   const [editor, setEditor] = useState<EditTarget | null>(null);
   const tableObjects = useMemo(() => drawing.objects.filter((object): object is DrawingTableObject =>
     object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table'), [drawing.objects]);
   const tableObjectIds = useMemo(() => new Set(tableObjects.map((object) => object.id)), [tableObjects]);
+  const editingTextObject = useMemo(() => {
+    if (!editor) return undefined;
+    const object = drawing.objects.find((candidate) => candidate.id === editor.objectId);
+    return object?.kind === 'text' || object?.kind === 'label' ? object : undefined;
+  }, [drawing.objects, editor]);
+  const editingTextObjectId = editingTextObject?.id ?? null;
+  const editingTextObjectIds = useMemo(
+    () => new Set(editingTextObjectId ? [editingTextObjectId] : []),
+    [editingTextObjectId],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -273,8 +284,31 @@ export function StandaloneDrawingCanvas({
     const context = canvas.getContext('2d');
     if (!context) return;
     context.setTransform(scale, 0, 0, scale, 0, 0);
-    renderDrawingCanvas(context, drawing, selectedObjectId, { hiddenObjectIds: tableObjectIds });
-  }, [drawing, selectedObjectId, tableObjectIds]);
+    renderDrawingCanvas(context, drawing, selectedObjectId, {
+      hiddenObjectIds: tableObjectIds,
+      hiddenTextObjectIds: editingTextObjectIds,
+    });
+  }, [drawing, editingTextObjectIds, selectedObjectId, tableObjectIds]);
+
+  useEffect(() => {
+    if (!editingTextObjectId) return;
+    let cancelled = false;
+    const focusEditor = async () => {
+      await document.fonts.ready;
+      if (cancelled) return;
+      const element = textEditorRef.current;
+      if (!element) return;
+      element.focus();
+      const selection = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+    void focusEditor();
+    return () => { cancelled = true; };
+  }, [editingTextObjectId]);
 
   const getPoint = (event: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -411,7 +445,48 @@ export function StandaloneDrawingCanvas({
   };
 
   const editorControl = editor && (
-    editor.type === 'field' && editor.multiline ? (
+    editor.type === 'field' && editingTextObject ? (
+      <div
+        ref={textEditorRef}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-label="编辑文字"
+        spellCheck={false}
+        onInput={(event) => updateEditorValue(event.currentTarget.textContent ?? '')}
+        onBlur={commitEditor}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setEditor(null);
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commitEditor();
+          }
+        }}
+        className="absolute z-20 whitespace-pre border-0 bg-transparent p-0 outline-none"
+        style={{
+          left: editor.x * zoom,
+          top: editor.y * zoom,
+          width: Math.max(1, editor.width * zoom),
+          height: Math.max(editor.fontSize, editor.height) * zoom,
+          overflow: 'visible',
+          color: editingTextObject.style.color,
+          caretColor: '#0f172a',
+          fontFamily: 'Arial, sans-serif',
+          fontSize: editor.fontSize * zoom,
+          fontWeight: 400,
+          fontStyle: 'normal',
+          fontKerning: 'auto',
+          letterSpacing: 'normal',
+          lineHeight: `${editor.fontSize * zoom}px`,
+          textAlign: 'left',
+          direction: 'ltr',
+          transform: `rotate(${editingTextObject.rotation}deg)`,
+          transformOrigin: 'center center',
+        }}
+      >
+        {editor.value}
+      </div>
+    ) : editor.type === 'field' && editor.multiline ? (
       <textarea
         autoFocus
         value={editor.value}

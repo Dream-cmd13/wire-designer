@@ -44,6 +44,19 @@ describe('standalone drawing table templates', () => {
     expect(source).toContain('onFocus={(event) => event.currentTarget.setSelectionRange(event.currentTarget.value.length, event.currentTarget.value.length)}');
   });
 
+  it('uses the same visible DOM text run for text glyphs and the native caret while editing', () => {
+    const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
+    const rendererSource = readFileSync('src/lib/drawingRenderer.ts', 'utf8');
+
+    expect(source).toContain('const textEditorRef = useRef<HTMLDivElement | null>(null);');
+    expect(source).toContain('await document.fonts.ready;');
+    expect(source).toContain('contentEditable');
+    expect(source).toContain("fontFamily: 'Arial, sans-serif'");
+    expect(source).toContain('transform: `rotate(${editingTextObject.rotation}deg)`');
+    expect(source).toContain('hiddenTextObjectIds: editingTextObjectIds');
+    expect(rendererSource).toContain('hiddenTextObjectIds?: ReadonlySet<string>');
+  });
+
   it('uses a DOM table layer for in-place table editing', () => {
     const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
 
