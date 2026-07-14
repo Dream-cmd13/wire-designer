@@ -1,15 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createDrawingLineObject,
+  getObjectsInSelectionRect,
+  normalizeDrawingRect,
+  sampleFreehandPoint,
+  snapOrthogonalPoint,
+} from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
-import type { DrawingDocument, DrawingObject, DrawingTableRow } from '@/types/drawing';
+import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
 
 interface StandaloneDrawingCanvasProps {
   drawing: DrawingDocument;
   selectedObjectId: string | null;
+  selectedObjectIds?: string[];
   zoom: number;
   onSelectObject: (objectId: string | null) => void;
+  onSelectionChange?: (objectIds: string[]) => void;
   onStartEdit: () => void;
   onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
+  onAddObject?: (object: DrawingObject) => void;
+  toolMode?: DrawingToolMode;
+  orthogonal?: boolean;
 }
 
 type DragState = { objectId: string; offsetX: number; offsetY: number } | null;
@@ -253,19 +265,30 @@ function DrawingTableLayer({
 export function StandaloneDrawingCanvas({
   drawing,
   selectedObjectId,
+  selectedObjectIds,
   zoom,
   onSelectObject,
+  onSelectionChange,
   onStartEdit,
   onUpdateObject,
+  onAddObject,
+  toolMode = 'select',
+  orthogonal = false,
 }: StandaloneDrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const editorInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [measurementContext] = useState<CanvasRenderingContext2D | null>(() =>
     document.createElement('canvas').getContext('2d'));
   const [drag, setDrag] = useState<DragState>(null);
+  const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
+  const [pointerPoint, setPointerPoint] = useState<DrawingPoint | null>(null);
+  const [selectionStart, setSelectionStart] = useState<DrawingPoint | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<DrawingPoint | null>(null);
   const [editor, setEditor] = useState<EditTarget | null>(null);
   const [caretIndex, setCaretIndex] = useState(0);
   const [fontsReady, setFontsReady] = useState(false);
+  const activeSelection = selectedObjectIds ?? (selectedObjectId ? [selectedObjectId] : []);
+  const activeSelectionSet = useMemo(() => new Set(activeSelection), [activeSelection]);
   const tableObjects = useMemo(() => drawing.objects.filter((object): object is DrawingTableObject =>
     object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table'), [drawing.objects]);
   const tableObjectIds = useMemo(() => new Set(tableObjects.map((object) => object.id)), [tableObjects]);
@@ -293,8 +316,8 @@ export function StandaloneDrawingCanvas({
     const context = canvas.getContext('2d');
     if (!context) return;
     context.setTransform(scale, 0, 0, scale, 0, 0);
-    renderDrawingCanvas(context, drawing, selectedObjectId, { hiddenObjectIds: tableObjectIds });
-  }, [drawing, fontsReady, selectedObjectId, tableObjectIds]);
+    renderDrawingCanvas(context, drawing, selectedObjectId, { hiddenObjectIds: tableObjectIds, selectedObjectIds: activeSelectionSet });
+  }, [activeSelectionSet, drawing, fontsReady, selectedObjectId, tableObjectIds]);
 
   const caretLine = useMemo(() => {
     if (!fontsReady || !measurementContext || !editingObject || editor?.type !== 'field') return null;
@@ -322,8 +345,40 @@ export function StandaloneDrawingCanvas({
       return;
     }
     const point = getPoint(event);
+    if (toolMode === 'freehand') {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDraftPoints([point]);
+      setPointerPoint(point);
+      return;
+    }
+    if (toolMode === 'line' || toolMode === 'polyline' || toolMode === 'curve') {
+      const origin = draftPoints.at(-1);
+      const nextPoint = orthogonal && origin ? snapOrthogonalPoint(origin, point) : point;
+      if (toolMode === 'line' && draftPoints.length === 1) {
+        onStartEdit();
+        onAddObject?.(createDrawingLineObject('line', [draftPoints[0], nextPoint], orthogonal));
+        setDraftPoints([]);
+        setPointerPoint(null);
+      } else {
+        setDraftPoints((items) => [...items, nextPoint]);
+        setPointerPoint(nextPoint);
+      }
+      return;
+    }
     const object = getDrawingObjectAtPoint(drawing, point);
-    onSelectObject(object?.id ?? null);
+    if (object) {
+      const nextSelection = event.shiftKey
+        ? activeSelection.includes(object.id) ? activeSelection.filter((id) => id !== object.id) : [...activeSelection, object.id]
+        : [object.id];
+      onSelectionChange?.(nextSelection);
+      onSelectObject(nextSelection.at(-1) ?? null);
+    } else {
+      onSelectionChange?.([]);
+      onSelectObject(null);
+      setSelectionStart(point);
+      setSelectionEnd(point);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     if (!object || object.locked) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     onStartEdit();
@@ -331,17 +386,45 @@ export function StandaloneDrawingCanvas({
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const point = getPoint(event);
+    if (toolMode === 'freehand' && draftPoints.length > 0) {
+      setDraftPoints((items) => sampleFreehandPoint(items, point));
+      setPointerPoint(point);
+      return;
+    }
+    if (toolMode !== 'select' && draftPoints.length > 0) {
+      const origin = draftPoints.at(-1)!;
+      setPointerPoint(orthogonal ? snapOrthogonalPoint(origin, point) : point);
+      return;
+    }
+    if (selectionStart) {
+      setSelectionEnd(point);
+      return;
+    }
     if (!drag) return;
     const object = drawing.objects.find((candidate) => candidate.id === drag.objectId);
     if (!object) return;
-    const point = getPoint(event);
     const x = Math.round(Math.min(drawing.page.width - 20 - object.width, Math.max(20, point.x - drag.offsetX)));
     const y = Math.round(Math.min(drawing.page.height - 20 - object.height, Math.max(20, point.y - drag.offsetY)));
     onUpdateObject(object.id, { x, y });
   };
 
   const endDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (toolMode === 'freehand' && draftPoints.length > 1) {
+      onStartEdit();
+      onAddObject?.(createDrawingLineObject('freehand', draftPoints));
+      setDraftPoints([]);
+      setPointerPoint(null);
+    }
+    if (selectionStart && selectionEnd) {
+      const ids = getObjectsInSelectionRect(drawing, normalizeDrawingRect(selectionStart, selectionEnd));
+      onSelectionChange?.(ids);
+      onSelectObject(ids.at(-1) ?? null);
+      setSelectionStart(null);
+      setSelectionEnd(null);
+    }
     if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setDrag(null);
   };
 
@@ -418,6 +501,19 @@ export function StandaloneDrawingCanvas({
     event.preventDefault();
     setDrag(null);
     const point = getPoint(event);
+    if ((toolMode === 'polyline' || toolMode === 'curve') && draftPoints.length > 0) {
+      const origin = draftPoints.at(-1)!;
+      const end = orthogonal ? snapOrthogonalPoint(origin, point) : point;
+      const points = [...draftPoints, end];
+      if (points.length >= 2) {
+        onStartEdit();
+        onAddObject?.(createDrawingLineObject(toolMode, points, orthogonal));
+      }
+      setDraftPoints([]);
+      setPointerPoint(null);
+      return;
+    }
+    if (toolMode !== 'select') return;
     const object = getDrawingObjectAtPoint(drawing, point);
     onSelectObject(object?.id ?? null);
     if (!object || object.locked) return;
@@ -499,6 +595,10 @@ export function StandaloneDrawingCanvas({
       />
     )
   );
+  const previewPoints = pointerPoint && draftPoints.length > 0 && toolMode !== 'freehand'
+    ? [...draftPoints, pointerPoint]
+    : draftPoints;
+  const selectionRect = selectionStart && selectionEnd ? normalizeDrawingRect(selectionStart, selectionEnd) : null;
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[size:24px_24px] p-5">
@@ -518,12 +618,41 @@ export function StandaloneDrawingCanvas({
             key={object.id}
             object={object}
             zoom={zoom}
-            selected={selectedObjectId === object.id}
+            selected={activeSelectionSet.has(object.id)}
             onSelect={() => onSelectObject(object.id)}
             onStartEdit={onStartEdit}
             onUpdateObject={onUpdateObject}
           />
         ))}
+        {(previewPoints.length > 0 || selectionRect) && (
+          <svg
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 z-20 overflow-visible"
+            width={drawing.page.width * zoom}
+            height={drawing.page.height * zoom}
+          >
+            {previewPoints.length > 0 && (
+              <polyline
+                points={previewPoints.map((point) => `${point.x * zoom},${point.y * zoom}`).join(' ')}
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth={2}
+                strokeDasharray={toolMode === 'freehand' ? undefined : '6 4'}
+              />
+            )}
+            {selectionRect && (
+              <rect
+                x={selectionRect.x * zoom}
+                y={selectionRect.y * zoom}
+                width={selectionRect.width * zoom}
+                height={selectionRect.height * zoom}
+                fill="rgba(37,99,235,0.08)"
+                stroke="#2563eb"
+                strokeDasharray="5 4"
+              />
+            )}
+          </svg>
+        )}
         {editorControl}
         {caretLine && (
           <svg

@@ -159,6 +159,17 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
     drawEditableText(context, object, 'label', object.label);
   } else if (object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') {
     drawPolyline(context, object.points.map((point) => ({ x: point.x - object.x, y: point.y - object.y })), object.kind === 'curve');
+  } else if (object.kind === 'group') {
+    object.children
+      .filter((child) => child.visible)
+      .sort((left, right) => left.zIndex - right.zIndex)
+      .forEach((child) => drawObject(context, child));
+  } else if (object.kind === 'icon') {
+    const path = new Path2D(object.svgPath);
+    context.save();
+    context.scale(object.width / 24, object.height / 24);
+    context.stroke(path);
+    context.restore();
   } else if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') {
     drawTable(context, object);
   } else if (object.kind === 'tech-requirements') {
@@ -189,7 +200,7 @@ export function renderDrawingCanvas(
   context: CanvasRenderingContext2D,
   document: DrawingDocument,
   selectedObjectId?: string | null,
-  options: { hiddenObjectIds?: ReadonlySet<string> } = {},
+  options: { hiddenObjectIds?: ReadonlySet<string>; selectedObjectIds?: ReadonlySet<string> } = {},
 ) {
   context.clearRect(0, 0, document.page.width, document.page.height);
   context.fillStyle = '#ffffff';
@@ -202,7 +213,7 @@ export function renderDrawingCanvas(
     .sort((left, right) => left.zIndex - right.zIndex)
     .forEach((object) => {
       drawObject(context, object);
-      if (object.id === selectedObjectId) {
+      if (object.id === selectedObjectId || options.selectedObjectIds?.has(object.id)) {
         context.save();
         context.strokeStyle = '#2563eb';
         context.lineWidth = 2;

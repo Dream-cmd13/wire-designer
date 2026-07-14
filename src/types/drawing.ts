@@ -155,6 +155,7 @@ export type DrawingObject =
 
 export type DrawingSelection = { objectIds: string[] };
 export type DrawingLayerAction = 'front' | 'forward' | 'backward' | 'back';
+export type DrawingToolMode = 'select' | 'line' | 'polyline' | 'curve' | 'freehand';
 export type DrawingResourceKind = Exclude<DrawingObjectKind, 'title-block' | 'group' | 'icon'>;
 
 export type DrawingDocument = {
