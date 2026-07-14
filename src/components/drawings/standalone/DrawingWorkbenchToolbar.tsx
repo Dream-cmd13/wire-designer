@@ -26,7 +26,8 @@ interface Props {
   onAddDimension: () => void;
   onAddTable: () => void;
   onSave: () => void;
-  onPdf: () => void;
+  onPdf: () => void | Promise<void>;
+  exporting?: boolean;
 }
 
 function Button({ title, active, disabled, onClick, children }: { title: string; active?: boolean; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -60,6 +61,6 @@ export function DrawingWorkbenchToolbar(props: Props) {
     <Button title="表格" onClick={props.onAddTable}><span>▦</span></Button>
     <span className="ml-auto"/>
     <Button title="保存" onClick={props.onSave}><Save className="h-4 w-4"/></Button>
-    <Button title="导出 PDF" onClick={props.onPdf}><FileText className="h-4 w-4"/>PDF</Button>
+    <Button title={props.exporting ? '正在导出 PDF' : '导出 PDF'} disabled={props.exporting} onClick={() => void props.onPdf()}><FileText className="h-4 w-4"/>{props.exporting ? '导出中…' : 'PDF'}</Button>
   </div>;
 }

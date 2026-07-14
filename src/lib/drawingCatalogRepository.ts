@@ -12,7 +12,11 @@ import type {
 type QueryError = { message: string } | null;
 type QueryResult = { data: unknown[] | null; error: QueryError };
 type SelectableTable = { select(columns: string): PromiseLike<QueryResult> };
-export type DrawingCatalogClient = { from(table: string): SelectableTable };
+type SignedUrlResult = { data: { signedUrl?: string } | null; error: QueryError };
+export type DrawingCatalogClient = {
+  from(table: string): SelectableTable;
+  storage?: { from(bucket: string): { createSignedUrl(path: string, expiresIn: number): PromiseLike<SignedUrlResult> } };
+};
 
 type UnknownRow = Record<string, unknown>;
 
@@ -45,7 +49,9 @@ function resourceType(value: unknown): DrawingCatalogResourceType | null {
   return null;
 }
 
-function mapCatalogRow(row: UnknownRow): DrawingCatalogResource | null {
+type CatalogResourceWithStoragePath = DrawingCatalogResource & { storagePath?: string };
+
+function mapCatalogRow(row: UnknownRow): CatalogResourceWithStoragePath | null {
   const type = resourceType(row.item_type);
   if (!type) return null;
   const connector = record(row.connector_specs);
@@ -66,7 +72,7 @@ function mapCatalogRow(row: UnknownRow): DrawingCatalogResource | null {
     name: text(row.resource_name),
     model: text(row.model),
     category: text(category.name),
-    imageUrl: text(primaryImage?.signed_url) || undefined,
+    storagePath: text(primaryImage?.storage_path) || undefined,
     gender,
     series: text(connector.series) || undefined,
     pinCount: numberValue(connector.pin_count),
@@ -99,13 +105,47 @@ function isDrawingDocument(value: unknown): value is DrawingDocument {
   const row = record(value);
   const page = record(row.page);
   const titleBlock = record(row.titleBlock);
+  const finite = (candidate: unknown) => typeof candidate === 'number' && Number.isFinite(candidate);
+  const point = (candidate: unknown) => { const item = record(candidate); return finite(item.x) && finite(item.y); };
+  const style = (candidate: unknown) => {
+    const item = record(candidate);
+    return typeof item.stroke === 'string' && typeof item.fill === 'string' && typeof item.color === 'string'
+      && finite(item.strokeWidth) && finite(item.fontSize);
+  };
+  const drawingObject = (candidate: unknown): boolean => {
+    const item = record(candidate);
+    if (!item.id || typeof item.kind !== 'string' || !finite(item.x) || !finite(item.y) || !finite(item.width) || !finite(item.height)
+      || !finite(item.rotation) || !finite(item.zIndex) || typeof item.locked !== 'boolean' || typeof item.visible !== 'boolean' || !style(item.style)) return false;
+    if (item.kind === 'connector') return typeof item.label === 'string' && finite(item.pinCount);
+    if (item.kind === 'wire-bundle') return typeof item.label === 'string' && finite(item.wireCount);
+    if (item.kind === 'accessory') return typeof item.label === 'string';
+    if (item.kind === 'text' || item.kind === 'label') return typeof item.text === 'string';
+    if (item.kind === 'dimension') return typeof item.label === 'string' && point(item.start) && point(item.end);
+    if (item.kind === 'line' || item.kind === 'polyline' || item.kind === 'curve' || item.kind === 'freehand') return Array.isArray(item.points) && item.points.length >= 2 && item.points.every(point);
+    if (item.kind === 'table' || item.kind === 'bom-table' || item.kind === 'wiring-table') return typeof item.title === 'string' && Array.isArray(item.columns) && item.columns.every((column) => typeof column === 'string') && Array.isArray(item.rows) && item.rows.every((tableRow) => tableRow && typeof tableRow === 'object' && !Array.isArray(tableRow));
+    if (item.kind === 'tech-requirements') return Array.isArray(item.requirements) && item.requirements.every((requirement) => typeof requirement === 'string');
+    if (item.kind === 'title-block') return typeof item.title === 'string' && typeof item.drawingNo === 'string' && typeof item.revision === 'string';
+    if (item.kind === 'group') return (item.groupKind === 'wire-bundle' || item.groupKind === 'wire-core') && Array.isArray(item.children) && item.children.every(drawingObject);
+    if (item.kind === 'icon') return typeof item.name === 'string' && typeof item.svgPath === 'string';
+    return false;
+  };
   return row.schemaVersion === 1
     && typeof row.id === 'string'
     && typeof row.name === 'string'
+    && finite(row.createdAt)
+    && finite(row.updatedAt)
+    && page.size === 'A4'
+    && page.orientation === 'landscape'
     && page.width === 1200
     && page.height === 800
     && Array.isArray(row.objects)
-    && typeof titleBlock.title === 'string';
+    && row.objects.every(drawingObject)
+    && typeof titleBlock.title === 'string'
+    && typeof titleBlock.drawingNo === 'string'
+    && typeof titleBlock.revision === 'string'
+    && Array.isArray(row.revisionTable)
+    && Array.isArray(row.techRequirements)
+    && row.techRequirements.every((item) => typeof item === 'string');
 }
 
 export class DrawingCatalogRepository {
@@ -123,10 +163,15 @@ export class DrawingCatalogRepository {
 
   async listResources(filters: DrawingCatalogFilters = {}): Promise<DrawingCatalogResource[]> {
     const rows = await this.rows('catalog_items', 'id,legacy_key,item_type,resource_name,model,short_description,display_order,lifecycle_status,deleted_at,catalog_categories(name),connector_specs(connector_type,series,pin_count,row_count,pitch_mm),wire_specs(cable_type),model_specs(model_kind),accessory_specs(specification,unit),packaging_specs(specification,unit),catalog_item_images(storage_path,is_primary,display_order)');
-    const resources = rows
+    const mapped = rows
       .filter((row) => row.lifecycle_status !== 'inactive' && !row.deleted_at)
       .map(mapCatalogRow)
-      .filter((resource): resource is DrawingCatalogResource => Boolean(resource));
+      .filter((resource): resource is CatalogResourceWithStoragePath => Boolean(resource));
+    const resources = await Promise.all(mapped.map(async ({ storagePath, ...resource }) => {
+      if (!storagePath || !this.client.storage) return resource;
+      const { data, error } = await this.client.storage.from('catalog-assets').createSignedUrl(storagePath, 60 * 60);
+      return error || !data?.signedUrl ? resource : { ...resource, imageUrl: data.signedUrl };
+    }));
     return filterDrawingCatalogResources(resources, filters);
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clearDrawingCanvas, getObjectsInSelectionRect, moveDrawingLayers,
+  clearDrawingCanvas, finalizeDrawingDraft, getObjectsInSelectionRect, moveDrawingLayers,
   snapOrthogonalPoint, splitDrawingObjects, toggleDrawingLocks,
 } from '@/lib/drawingCommands';
 import { defaultDrawingObjectStyle } from '@/lib/drawingDocument';
@@ -50,5 +50,12 @@ describe('drawing document commands', () => {
     expect(splitDrawingObjects(documentWith([title, lockedGroup]), ['locked']).changed).toBe(false);
     expect(getObjectsInSelectionRect(documentWith([title, line('a', 10, 1), line('b', 80, 2)]), { x: 5, y: 5, width: 40, height: 40 })).toEqual(['a']);
     expect(snapOrthogonalPoint({ x: 0, y: 0 }, { x: 20, y: 7 })).toEqual({ x: 20, y: 0 });
+  });
+
+  it('finishes valid path drafts and cancels without creating an object', () => {
+    const points = [{ x: 10, y: 10 }, { x: 40, y: 30 }];
+    expect(finalizeDrawingDraft('polyline', points, 'finish', false)?.kind).toBe('polyline');
+    expect(finalizeDrawingDraft('curve', points, 'cancel', false)).toBeNull();
+    expect(finalizeDrawingDraft('curve', [points[0]], 'finish', false)).toBeNull();
   });
 });

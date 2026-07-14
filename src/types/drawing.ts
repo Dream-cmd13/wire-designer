@@ -178,7 +178,7 @@ export type DrawingDocument = {
 
 export type DrawingTopology = {
   drawingType: 'internal' | 'external' | 'gallery';
-  topology: 'single-end' | 'double-end' | 'one-to-many';
+  topology: 'single-end' | 'double-end';
   wireKind: 'electronic' | 'twisted' | 'ribbon' | 'parallel' | 'shielded';
 };
 

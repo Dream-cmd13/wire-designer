@@ -96,3 +96,65 @@ do $$ begin
     create trigger packaging_specs_match_type before insert or update on public.packaging_specs for each row execute function public.enforce_catalog_spec_item_type('packaging');
   end if;
 end $$;
+
+-- Public workbench resources are intentionally readable without login.
+alter table public.model_specs enable row level security;
+alter table public.accessory_specs enable row level security;
+alter table public.packaging_specs enable row level security;
+alter table public.drawing_templates enable row level security;
+alter table public.drawing_template_versions enable row level security;
+alter table public.drawing_common_phrases enable row level security;
+alter table public.drawing_icons enable row level security;
+
+grant select on public.catalog_categories, public.wire_colors, public.wire_gauges, public.wire_types,
+  public.catalog_items, public.catalog_item_images, public.connector_specs, public.connector_pins,
+  public.wire_specs, public.protective_sleeve_specs, public.overmold_specs, public.model_specs,
+  public.accessory_specs, public.packaging_specs, public.drawing_templates, public.drawing_template_versions,
+  public.drawing_common_phrases, public.drawing_icons to anon, authenticated;
+
+create or replace function pg_temp.create_public_read_policy(target_policy text, target_table text, using_expression text)
+returns void language plpgsql as $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = target_table
+      and policyname = target_policy
+  ) then
+    execute format(
+      'create policy %I on public.%I for select to anon, authenticated using (%s)',
+      target_policy,
+      target_table,
+      using_expression
+    );
+  end if;
+end;
+$$;
+
+select pg_temp.create_public_read_policy('public categories read', 'catalog_categories', 'deleted_at is null');
+select pg_temp.create_public_read_policy('public wire colors read', 'wire_colors', 'deleted_at is null');
+select pg_temp.create_public_read_policy('public wire gauges read', 'wire_gauges', 'deleted_at is null');
+select pg_temp.create_public_read_policy('public wire types read', 'wire_types', 'deleted_at is null');
+select pg_temp.create_public_read_policy('public catalog items read', 'catalog_items', 'deleted_at is null and lifecycle_status = ''active''');
+select pg_temp.create_public_read_policy('public catalog images read', 'catalog_item_images', 'deleted_at is null and exists (select 1 from public.catalog_items i where i.id = item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public connector specs read', 'connector_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public connector pins read', 'connector_pins', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public wire specs read', 'wire_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public sleeve specs read', 'protective_sleeve_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public overmold specs read', 'overmold_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public model specs read', 'model_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public accessory specs read', 'accessory_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public packaging specs read', 'packaging_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public drawing templates read', 'drawing_templates', 'deleted_at is null and status = ''active''');
+select pg_temp.create_public_read_policy('public drawing template versions read', 'drawing_template_versions', 'exists (select 1 from public.drawing_templates t where t.id = template_id and t.deleted_at is null and t.status = ''active'')');
+select pg_temp.create_public_read_policy('public drawing phrases read', 'drawing_common_phrases', 'deleted_at is null and is_active');
+select pg_temp.create_public_read_policy('public drawing icons read', 'drawing_icons', 'deleted_at is null and is_active');
+
+do $$
+begin
+  if not exists (select 1 from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname = 'catalog assets public read') then
+    create policy "catalog assets public read" on storage.objects for select to anon, authenticated using (bucket_id = 'catalog-assets');
+  end if;
+end;
+$$;

@@ -116,3 +116,13 @@ export function createDrawingLineObject(kind: DrawingLineObject['kind'], points:
   const maxY = Math.max(...points.map((point) => point.y));
   return { id: createDrawingId(kind), kind, x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), rotation: 0, zIndex: 10, locked: false, visible: true, style: { ...defaultDrawingObjectStyle }, points, orthogonal };
 }
+
+export function finalizeDrawingDraft(
+  kind: DrawingLineObject['kind'] | null,
+  points: DrawingPoint[],
+  action: 'finish' | 'cancel',
+  orthogonal = false,
+): DrawingLineObject | null {
+  if (action === 'cancel' || !kind || points.length < 2) return null;
+  return createDrawingLineObject(kind, points, orthogonal);
+}

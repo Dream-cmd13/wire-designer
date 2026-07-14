@@ -20,7 +20,19 @@ function svgObject(object: DrawingObject): string {
   if (object.kind === 'dimension') {
     return `<g ${common} ${style}><line x1="0" y1="${object.height / 2}" x2="${object.width}" y2="${object.height / 2}"/><line x1="0" y1="${object.height / 2 - 8}" x2="0" y2="${object.height / 2 + 8}"/><line x1="${object.width}" y1="${object.height / 2 - 8}" x2="${object.width}" y2="${object.height / 2 + 8}"/><text x="${object.width / 2}" y="${object.height / 2}" text-anchor="middle" font-size="${object.style.fontSize}" fill="${object.style.color}">${escapeXml(object.label)}</text></g>`;
   }
-  if (object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') {
+  if (object.kind === 'curve') {
+    if (object.points.length < 2) return '';
+    const commands = [`M ${object.points[0].x} ${object.points[0].y}`];
+    for (let index = 1; index < object.points.length - 1; index += 1) {
+      const point = object.points[index];
+      const next = object.points[index + 1];
+      commands.push(`Q ${point.x} ${point.y} ${(point.x + next.x) / 2} ${(point.y + next.y) / 2}`);
+    }
+    const last = object.points.at(-1)!;
+    commands.push(`L ${last.x} ${last.y}`);
+    return `<path d="${commands.join(' ')}" fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"/>`;
+  }
+  if (object.kind === 'line' || object.kind === 'polyline' || object.kind === 'freehand') {
     const points = object.points.map((point) => `${point.x},${point.y}`).join(' ');
     return `<polyline points="${points}" fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"/>`;
   }

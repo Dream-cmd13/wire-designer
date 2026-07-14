@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   createDrawingLineObject,
+  finalizeDrawingDraft,
   getObjectsInSelectionRect,
   normalizeDrawingRect,
   sampleFreehandPoint,
@@ -22,9 +23,10 @@ interface StandaloneDrawingCanvasProps {
   onAddObject?: (object: DrawingObject) => void;
   toolMode?: DrawingToolMode;
   orthogonal?: boolean;
+  drawingAction?: { id: number; type: 'finish' | 'cancel' };
 }
 
-type DragState = { objectId: string; offsetX: number; offsetY: number } | null;
+type DragState = { objectId: string; offsetX: number; offsetY: number; remembered: boolean } | null;
 type DrawingTableObject = Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>;
 type TableEditTarget =
   | { key: 'title'; type: 'title' }
@@ -274,6 +276,7 @@ export function StandaloneDrawingCanvas({
   onAddObject,
   toolMode = 'select',
   orthogonal = false,
+  drawingAction,
 }: StandaloneDrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const editorInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -281,6 +284,7 @@ export function StandaloneDrawingCanvas({
     document.createElement('canvas').getContext('2d'));
   const [drag, setDrag] = useState<DragState>(null);
   const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
+  const [draftKind, setDraftKind] = useState<Extract<DrawingObject['kind'], 'line' | 'polyline' | 'curve' | 'freehand'> | null>(null);
   const [pointerPoint, setPointerPoint] = useState<DrawingPoint | null>(null);
   const [selectionStart, setSelectionStart] = useState<DrawingPoint | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<DrawingPoint | null>(null);
@@ -296,6 +300,17 @@ export function StandaloneDrawingCanvas({
     if (!editor) return undefined;
     return drawing.objects.find((candidate) => candidate.id === editor.objectId);
   }, [drawing.objects, editor]);
+
+  useEffect(() => {
+    if (!drawingAction) return;
+    const object = finalizeDrawingDraft(draftKind, draftPoints, drawingAction.type, orthogonal);
+    if (object) onAddObject?.(object);
+    setDraftPoints([]);
+    setDraftKind(null);
+    setPointerPoint(null);
+  // drawingAction.id is the explicit finish/cancel event boundary.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawingAction?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -348,6 +363,7 @@ export function StandaloneDrawingCanvas({
     if (toolMode === 'freehand') {
       event.currentTarget.setPointerCapture(event.pointerId);
       setDraftPoints([point]);
+      setDraftKind('freehand');
       setPointerPoint(point);
       return;
     }
@@ -355,12 +371,13 @@ export function StandaloneDrawingCanvas({
       const origin = draftPoints.at(-1);
       const nextPoint = orthogonal && origin ? snapOrthogonalPoint(origin, point) : point;
       if (toolMode === 'line' && draftPoints.length === 1) {
-        onStartEdit();
         onAddObject?.(createDrawingLineObject('line', [draftPoints[0], nextPoint], orthogonal));
         setDraftPoints([]);
+        setDraftKind(null);
         setPointerPoint(null);
       } else {
         setDraftPoints((items) => [...items, nextPoint]);
+        setDraftKind(toolMode);
         setPointerPoint(nextPoint);
       }
       return;
@@ -381,8 +398,7 @@ export function StandaloneDrawingCanvas({
     }
     if (!object || object.locked) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    onStartEdit();
-    setDrag({ objectId: object.id, offsetX: point.x - object.x, offsetY: point.y - object.y });
+    setDrag({ objectId: object.id, offsetX: point.x - object.x, offsetY: point.y - object.y, remembered: false });
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -404,6 +420,10 @@ export function StandaloneDrawingCanvas({
     if (!drag) return;
     const object = drawing.objects.find((candidate) => candidate.id === drag.objectId);
     if (!object) return;
+    if (!drag.remembered) {
+      onStartEdit();
+      setDrag({ ...drag, remembered: true });
+    }
     const x = Math.round(Math.min(drawing.page.width - 20 - object.width, Math.max(20, point.x - drag.offsetX)));
     const y = Math.round(Math.min(drawing.page.height - 20 - object.height, Math.max(20, point.y - drag.offsetY)));
     onUpdateObject(object.id, { x, y });
@@ -411,9 +431,9 @@ export function StandaloneDrawingCanvas({
 
   const endDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (toolMode === 'freehand' && draftPoints.length > 1) {
-      onStartEdit();
       onAddObject?.(createDrawingLineObject('freehand', draftPoints));
       setDraftPoints([]);
+      setDraftKind(null);
       setPointerPoint(null);
     }
     if (selectionStart && selectionEnd) {
@@ -506,10 +526,10 @@ export function StandaloneDrawingCanvas({
       const end = orthogonal ? snapOrthogonalPoint(origin, point) : point;
       const points = [...draftPoints, end];
       if (points.length >= 2) {
-        onStartEdit();
         onAddObject?.(createDrawingLineObject(toolMode, points, orthogonal));
       }
       setDraftPoints([]);
+      setDraftKind(null);
       setPointerPoint(null);
       return;
     }

@@ -32,6 +32,12 @@ describe('standalone drawing generator', () => {
     expect(bundle?.kind).toBe('group');
     if (bundle?.kind === 'group') expect(bundle.children.every((child) => child.kind === 'group' && child.groupKind === 'wire-core')).toBe(true);
     expect(drawing.objects.some((object) => object.kind === 'wiring-table' && object.rows[0].P2 === '1')).toBe(true);
+    const bom = drawing.objects.find((object) => object.kind === 'bom-table');
+    expect(bom?.kind).toBe('bom-table');
+    if (bom?.kind === 'bom-table') {
+      expect(bom.rows.find((row) => row['物料名称/规格'] === connector.name)?.用量).toBe('2');
+      expect(bom.rows.find((row) => row['物料名称/规格'] === wireResource.name)).toMatchObject({ 单位: 'M', 用量: '1.28' });
+    }
   });
 
   it('blocks missing wire resources, invalid core lengths, and out-of-range targets', () => {

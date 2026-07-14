@@ -8,6 +8,7 @@ describe('drawing workbench SQL resources', () => {
     const catalog = read('supabase/sql/10_schema/02_catalog.sql');
     const integrity = read('supabase/sql/10_schema/03_integrity.sql');
     const drawing = read('supabase/sql/10_schema/04_drawing_resources.sql');
+    const rls = read('supabase/sql/30_security/01_rls.sql');
     const upgrade = read('supabase/sql/50_upgrade/01_drawing_workbench_resources.sql');
     const seed = read('supabase/sql/40_seed/03_drawing_workbench_resources.sql');
 
@@ -24,6 +25,10 @@ describe('drawing workbench SQL resources', () => {
     expect(seed).toContain('on conflict');
     expect(seed).toContain('UL1007');
     expect(seed).toContain('XH2.54');
+    expect(rls).toContain("'public catalog items read'");
+    expect(rls).toContain("'catalog assets public read'");
+    expect(upgrade).toContain("'public catalog items read', 'catalog_items'");
+    expect(upgrade).toContain('to anon, authenticated');
     for (const value of ['model', 'accessory', 'packaging']) {
       expect(integrity).toContain(`enforce_catalog_spec_item_type('${value}')`);
       expect(`${integrity}\n${upgrade}`).toContain(`when '${value}' then exists`);

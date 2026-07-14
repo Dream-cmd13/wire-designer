@@ -1,6 +1,7 @@
 import { createBlankDrawingDocument, createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import type {
   DrawingDocument,
+  DrawingConnectorResource,
   DrawingGroupObject,
   DrawingObject,
   DrawingObjectStyle,
@@ -122,6 +123,25 @@ function connectorObject(
   };
 }
 
+function drawingBomRows(draft: DrawingWizardDraft, left?: DrawingConnectorResource, right?: DrawingConnectorResource) {
+  const materials = new Map<string, { name: string; unit: string; quantity: number }>();
+  const add = (key: string, name: string | undefined, unit: string, quantity: number) => {
+    if (!name) return;
+    const current = materials.get(key);
+    materials.set(key, { name, unit, quantity: (current?.quantity ?? 0) + quantity });
+  };
+  add(`connector:${left?.id}`, left?.name, 'PCS', 1);
+  add(`connector:${right?.id}`, right?.name, 'PCS', 1);
+  const wireLengthM = draft.wires.reduce((total, wire) => total + wire.lengthMm, 0) / 1000;
+  add(`wire:${draft.wireResource?.catalogItemId}`, draft.wireResource?.name, 'M', wireLengthM);
+  if (draft.hasMold) add(`model:${draft.modelResource?.catalogItemId ?? 'generic'}`, draft.modelResource?.name ?? '外线模具', 'PCS', 1);
+  add(`accessory:${draft.heatShrink}`, draft.heatShrink, 'PCS', 1);
+  return [...materials.values()].map((material, index) => ({
+    序号: String(index + 1), 物料编码: '', '物料名称/规格': material.name, 单位: material.unit,
+    用量: String(Number(material.quantity.toFixed(3))), 备注: '',
+  }));
+}
+
 export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocument {
   const validation = validateStandaloneDrawingWizard(draft);
   if (validation.errors.length > 0) throw new Error(validation.errors.join(' '));
@@ -139,9 +159,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       };
     }
     if (object.kind === 'bom-table') {
-      const connectorNames = [...new Set([left?.name, right?.name].filter((value): value is string => Boolean(value)))];
-      const names = [...connectorNames, draft.wireResource?.name, draft.hasMold ? draft.modelResource?.name ?? '外线模具' : undefined, draft.heatShrink].filter((value): value is string => Boolean(value));
-      return { ...object, rows: names.map((value, index) => ({ 序号: String(index + 1), 物料编码: '', '物料名称/规格': value, 单位: 'PCS', 用量: '1', 备注: '' })) };
+      return { ...object, rows: drawingBomRows(draft, left, right) };
     }
     if (object.kind !== 'table' || object.title !== 'XXx公司') return object;
     return {

@@ -37,11 +37,37 @@ describe('DrawingCatalogRepository', () => {
     await expect(repository.listResources({})).rejects.toEqual(expect.objectContaining<Partial<DrawingCatalogError>>({ message: 'network unavailable' }));
   });
 
+  it('signs catalog image storage paths without blocking resource data', async () => {
+    const repository = new DrawingCatalogRepository({
+      ...fakeClient({
+        catalog_items: [{
+          ...connectorRow,
+          catalog_item_images: [{ storage_path: 'connectors/xh254.png', is_primary: true }],
+        }],
+      }),
+      storage: {
+        from: (bucket: string) => ({
+          createSignedUrl: async (path: string) => ({
+            data: { signedUrl: `https://assets.example/${bucket}/${path}` },
+            error: null,
+          }),
+        }),
+      },
+    });
+
+    await expect(repository.listResources()).resolves.toEqual([
+      expect.objectContaining({ imageUrl: 'https://assets.example/catalog-assets/connectors/xh254.png' }),
+    ]);
+  });
+
   it('returns empty results and validates template schema version', async () => {
     const empty = new DrawingCatalogRepository(fakeClient({ catalog_items: [] }));
     await expect(empty.listResources({})).resolves.toEqual([]);
 
     const invalid = new DrawingCatalogRepository(fakeClient({ drawing_template_versions: [{ template_id: 't1', version_no: 1, schema_version: 2, drawing_json: {} }] }));
     await expect(invalid.loadTemplate('t1')).rejects.toThrow('模板版本不受支持');
+
+    const malformed = new DrawingCatalogRepository(fakeClient({ drawing_template_versions: [{ template_id: 't2', version_no: 1, schema_version: 1, drawing_json: { schemaVersion: 1, id: 'bad', name: 'bad', page: { width: 1200, height: 800 }, titleBlock: { title: 'bad' }, objects: [null] } }] }));
+    await expect(malformed.loadTemplate('t2')).rejects.toThrow('模板版本不受支持');
   });
 });
