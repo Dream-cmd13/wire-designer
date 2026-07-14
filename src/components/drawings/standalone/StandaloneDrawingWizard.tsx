@@ -67,6 +67,8 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
     finally { setLoading(false); }
   };
 
+  // Opening the wizard is the external event that starts its one-time catalog fetch.
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { if (open && resources.length === 0 && !loading) void loadResources(); }, [open]);
   if (!open) return null;
 

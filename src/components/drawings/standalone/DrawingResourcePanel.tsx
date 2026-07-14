@@ -40,6 +40,8 @@ export function DrawingResourcePanel({ open, onClose, onAddKind, onAddCatalog, o
     finally { setLoading(false); }
   };
 
+  // The overlay opening is the external event that starts its Supabase fetch.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (open) void load(); }, [open]);
   const normalized = query.trim().toLocaleLowerCase();
   const visibleResources = useMemo(() => resources.filter((item) => !normalized || `${item.name} ${item.model} ${item.category}`.toLocaleLowerCase().includes(normalized)), [normalized, resources]);

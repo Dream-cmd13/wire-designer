@@ -57,6 +57,13 @@ function svgObject(object: DrawingObject): string {
       : '';
     return `<g ${common} ${style}><defs><clipPath id="${clipId}"><rect width="${object.width}" height="${object.height}"/></clipPath></defs><g clip-path="url(#${clipId})"><rect width="${object.width}" height="${object.height}"/>${verticals}<line x1="0" y1="${rowHeight}" x2="${object.width}" y2="${rowHeight}"/>${labels}${rows}${more}</g></g>`;
   }
+  if (object.kind === 'group') {
+    const children = object.children.filter((child) => child.visible).sort((left, right) => left.zIndex - right.zIndex).map(svgObject).join('');
+    return `<g ${common}>${children}</g>`;
+  }
+  if (object.kind === 'icon') {
+    return `<g ${common} fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}" transform-origin="center"><path d="${escapeXml(object.svgPath)}" transform="scale(${object.width / 24} ${object.height / 24})"/></g>`;
+  }
   const label = object.kind === 'accessory' ? object.label : '';
   return `<g ${common} ${style}><rect width="${object.width}" height="${object.height}"/><text x="6" y="${object.height / 2 + 4}" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(label)}</text></g>`;
 }
@@ -100,18 +107,49 @@ export async function downloadDrawingPng(drawing: DrawingDocument) {
   downloadBlob(blob, filename(drawing, 'png'));
 }
 
-export function downloadDrawingPdf(drawing: DrawingDocument) {
-  const title = drawing.titleBlock.title.replace(/[()\\]/g, '');
-  const drawingNo = drawing.titleBlock.drawingNo.replace(/[()\\]/g, '');
-  const content = `BT /F1 16 Tf 40 540 Td (${title}) Tj ET\nBT /F1 11 Tf 40 518 Td (Drawing: ${drawingNo}) Tj ET\n0.7 w 20 20 802 555 re S`;
-  const parts = [
-    '%PDF-1.4\n',
-    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
-    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n',
-    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
-    `5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`,
-    'xref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000254 00000 n \n0000000324 00000 n \ntrailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n0\n%%EOF',
-  ];
-  downloadBlob(new Blob(parts, { type: 'application/pdf' }), filename(drawing, 'pdf'));
+function binaryString(dataUrl: string): Uint8Array {
+  const raw = atob(dataUrl.split(',')[1] ?? '');
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+}
+
+function buildImagePdf(jpeg: Uint8Array, width: number, height: number): Uint8Array {
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  const offsets: number[] = [0];
+  let length = 0;
+  const push = (value: string | Uint8Array) => { const bytes = typeof value === 'string' ? encoder.encode(value) : value; chunks.push(bytes); length += bytes.length; };
+  push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+  const object = (id: number, body: string | Uint8Array, prefix = '') => {
+    offsets[id] = length; push(`${id} 0 obj\n${prefix}`); push(body); push('\nendobj\n');
+  };
+  object(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  object(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  object(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>');
+  offsets[4] = length;
+  push(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`);
+  push(jpeg);
+  push('\nendstream\nendobj\n');
+  const content = 'q\n802 0 0 535 20 30 cm\n/Im0 Do\nQ';
+  object(5, `<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  const xref = length;
+  push(`xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  const result = new Uint8Array(length); let cursor = 0;
+  chunks.forEach((chunk) => { result.set(chunk, cursor); cursor += chunk.length; });
+  return result;
+}
+
+export async function downloadDrawingPdf(drawing: DrawingDocument) {
+  const image = new Image();
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serializeDrawingSvg(drawing))}`;
+  await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('PDF 画布渲染失败')); });
+  const canvas = document.createElement('canvas');
+  canvas.width = drawing.page.width * 2; canvas.height = drawing.page.height * 2;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas 2D 不可用');
+  context.fillStyle = '#ffffff'; context.fillRect(0, 0, canvas.width, canvas.height); context.drawImage(image, 0, 0, canvas.width, canvas.height);
+  const jpeg = binaryString(canvas.toDataURL('image/jpeg', 0.92));
+  const pdfBytes = buildImagePdf(jpeg, canvas.width, canvas.height);
+  const pdfBuffer = new ArrayBuffer(pdfBytes.byteLength);
+  new Uint8Array(pdfBuffer).set(pdfBytes);
+  downloadBlob(new Blob([pdfBuffer], { type: 'application/pdf' }), filename(drawing, 'pdf'));
 }

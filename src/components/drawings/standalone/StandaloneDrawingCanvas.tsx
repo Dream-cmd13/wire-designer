@@ -287,7 +287,7 @@ export function StandaloneDrawingCanvas({
   const [editor, setEditor] = useState<EditTarget | null>(null);
   const [caretIndex, setCaretIndex] = useState(0);
   const [fontsReady, setFontsReady] = useState(false);
-  const activeSelection = selectedObjectIds ?? (selectedObjectId ? [selectedObjectId] : []);
+  const activeSelection = useMemo(() => selectedObjectIds ?? (selectedObjectId ? [selectedObjectId] : []), [selectedObjectId, selectedObjectIds]);
   const activeSelectionSet = useMemo(() => new Set(activeSelection), [activeSelection]);
   const tableObjects = useMemo(() => drawing.objects.filter((object): object is DrawingTableObject =>
     object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table'), [drawing.objects]);

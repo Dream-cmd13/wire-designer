@@ -10,6 +10,10 @@ export interface CatalogWire {
 
 type CatalogImageRow = { storage_path: string; is_primary: boolean; display_order: number };
 
+function firstRelation<T>(value: T | T[] | null | undefined): T | undefined {
+  return Array.isArray(value) ? value[0] : value ?? undefined;
+}
+
 async function primaryImageUrl(images: CatalogImageRow[] | null | undefined): Promise<string | undefined> {
   const primary = [...(images ?? [])]
     .filter((image) => image.is_primary)
@@ -27,19 +31,22 @@ export class CatalogRepository {
       .eq('item_type', 'connector').eq('lifecycle_status', 'active').is('deleted_at', null)
       .order('display_order').order('updated_at', { ascending: false });
     if (error) throw error;
-    return Promise.all((data ?? []).map(async (item: any) => ({
-      id: item.legacy_key, name: item.resource_name,
-      catalogItemId: item.id,
-      manufacturer: item.manufacturer_part_number ?? '',
-      pinCount: item.connector_specs?.pin_count ?? 0,
-      pitch: item.connector_specs?.pitch_mm ?? undefined,
-      type: item.connector_specs?.connector_type === 'male' ? 'male' : 'female',
-      pinLabels: [...(item.connector_pins ?? [])].sort((a, b) => a.display_order - b.display_order).map((pin) => pin.pin_label),
-      housingMaterial: item.connector_specs?.housing_material ?? undefined,
-      contactMaterial: item.connector_specs?.contact_material ?? undefined,
-      nutMaterial: item.connector_specs?.nut_material ?? undefined,
-      image: await primaryImageUrl(item.catalog_item_images),
-    })));
+    return Promise.all((data ?? []).map(async (item) => {
+      const specs = firstRelation(item.connector_specs);
+      return {
+        id: item.legacy_key, name: item.resource_name,
+        catalogItemId: item.id,
+        manufacturer: item.manufacturer_part_number ?? '',
+        pinCount: specs?.pin_count ?? 0,
+        pitch: specs?.pitch_mm ?? undefined,
+        type: specs?.connector_type === 'male' ? 'male' : 'female',
+        pinLabels: [...(item.connector_pins ?? [])].sort((a, b) => a.display_order - b.display_order).map((pin) => pin.pin_label),
+        housingMaterial: specs?.housing_material ?? undefined,
+        contactMaterial: specs?.contact_material ?? undefined,
+        nutMaterial: specs?.nut_material ?? undefined,
+        image: await primaryImageUrl(item.catalog_item_images),
+      };
+    }));
   }
 
   async listWireColors(): Promise<WireColor[]> {
@@ -56,12 +63,15 @@ export class CatalogRepository {
       .eq('item_type', 'overmold').eq('lifecycle_status', 'active').is('deleted_at', null)
       .order('display_order').order('updated_at', { ascending: false });
     if (error) throw error;
-    return Promise.all((data ?? []).map(async (item: any) => ({
-      id: item.legacy_key, catalogItemId: item.id, name: item.resource_name,
-      outerMaterial: item.overmold_specs?.outer_material ?? '', outerHardness: item.overmold_specs?.outer_hardness_shore ?? undefined,
-      innerMaterial: item.overmold_specs?.inner_material ?? '', innerMaterialOptional: item.overmold_specs?.inner_material_optional ?? false,
-      image: await primaryImageUrl(item.catalog_item_images),
-    })));
+    return Promise.all((data ?? []).map(async (item) => {
+      const specs = firstRelation(item.overmold_specs);
+      return {
+        id: item.legacy_key, catalogItemId: item.id, name: item.resource_name,
+        outerMaterial: specs?.outer_material ?? '', outerHardness: specs?.outer_hardness_shore ?? undefined,
+        innerMaterial: specs?.inner_material ?? '', innerMaterialOptional: specs?.inner_material_optional ?? false,
+        image: await primaryImageUrl(item.catalog_item_images),
+      };
+    }));
   }
 
   async listWires(): Promise<CatalogWire[]> {
@@ -71,7 +81,7 @@ export class CatalogRepository {
       .eq('item_type', 'wire').eq('lifecycle_status', 'active').is('deleted_at', null)
       .order('display_order').order('updated_at', { ascending: false });
     if (error) throw error;
-    return Promise.all((data ?? []).map(async (item: any) => ({
+    return Promise.all((data ?? []).map(async (item) => ({
       id: item.legacy_key,
       catalogItemId: item.id,
       name: item.resource_name,
