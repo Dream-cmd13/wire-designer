@@ -130,6 +130,7 @@ describe('standalone drawing table templates', () => {
       topology: { drawingType: 'internal', topology: 'single-end', wireKind: 'electronic' },
       singleConnector: { id: 'c20', name: 'AC电源插座C20公座-1', gender: 'male', pinCount: 2, category: 'power', series: 'C20', rowCount: 1, scope: 'public' },
       drawingNo: 'WH-001', totalLengthMm: 2, toleranceMm: 0, hasMold: false,
+      wireResource: { id: 'ul1007', catalogItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007', category: '线材' },
       wires: [{ pin: 1, color: '黑', lengthMm: 2, wireNo: '黑', connectionNo: '1', targetPin: 2 }],
     };
 
@@ -139,7 +140,8 @@ describe('standalone drawing table templates', () => {
     expect(tables.some((table) => table.title === '变更记录' && table.columns.includes('变更内容'))).toBe(true);
     expect(tables.some((table) => table.title === 'XXx公司' && table.rows.some((row) => row.字段 === '单位' && row.内容 === 'mm'))).toBe(true);
     expect(tables.some((table) => table.title === 'XXx公司' && table.rows.some((row) => row.字段 === '工程图号' && row.内容 === 'WH-001'))).toBe(true);
-    expect(tables.some((table) => table.title === '接线表' && table.rows.some((row) => row.P1 === '黑' && row.长度 === '2'))).toBe(true);
-    expect(tables.some((table) => table.kind === 'bom-table' && table.rows.some((row) => row['物料名称/规格'] === 'AC电源插座C20公座-1俯面' && row.单位 === 'PCS' && row.用量 === '1'))).toBe(true);
+    expect(tables.some((table) => table.title === '接线表' && table.rows.some((row) => row.P1 === '1' && row.颜色 === '黑' && row.P2 === '2' && row.长度 === '2'))).toBe(true);
+    expect(tables.some((table) => table.kind === 'bom-table' && table.rows.some((row) => row['物料名称/规格'] === 'AC电源插座C20公座-1' && row.单位 === 'PCS' && row.用量 === '1'))).toBe(true);
+    expect(tables.some((table) => table.kind === 'bom-table' && table.rows.some((row) => row['物料名称/规格'] === 'UL1007'))).toBe(true);
   });
 });

@@ -1,8 +1,10 @@
 import { createBlankDrawingDocument, createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import type {
   DrawingDocument,
+  DrawingGroupObject,
   DrawingObject,
   DrawingObjectStyle,
+  DrawingWireDraft,
   DrawingWizardDraft,
 } from '@/types/drawing';
 
@@ -10,6 +12,36 @@ export type DrawingWizardValidation = {
   errors: string[];
   warnings: string[];
 };
+
+export type DrawingWireBatch = {
+  color?: string;
+  lengthMm?: number;
+  wireNoPrefix?: string;
+  startNumber?: number;
+  connection?: 'straight' | 'reverse';
+};
+
+export function applyDrawingWireBatch(wires: DrawingWireDraft[], batch: DrawingWireBatch): DrawingWireDraft[] {
+  const start = batch.startNumber ?? 1;
+  return wires.map((wire, index) => ({
+    ...wire,
+    color: batch.color ?? wire.color,
+    lengthMm: batch.lengthMm ?? wire.lengthMm,
+    wireNo: batch.wireNoPrefix === undefined ? wire.wireNo : `${batch.wireNoPrefix}${String(start + index).padStart(2, '0')}`,
+    targetPin: batch.connection === 'reverse' ? wires.length - index : batch.connection === 'straight' ? index + 1 : wire.targetPin,
+  }));
+}
+
+export function countDrawingMaterialKinds(draft: DrawingWizardDraft): number {
+  const ids = new Set<string>();
+  for (const connector of [draft.singleConnector, draft.leftConnector, draft.rightConnector]) {
+    if (connector) ids.add(`connector:${connector.id}`);
+  }
+  if (draft.wireResource) ids.add(`wire:${draft.wireResource.catalogItemId}`);
+  if (draft.hasMold) ids.add(`mold:${draft.modelResource?.catalogItemId ?? 'configured'}`);
+  if (draft.heatShrink?.trim()) ids.add(`accessory:${draft.heatShrink.trim()}`);
+  return ids.size;
+}
 
 function style(patch: Partial<DrawingObjectStyle> = {}): DrawingObjectStyle {
   return { ...defaultDrawingObjectStyle, ...patch };
@@ -22,11 +54,49 @@ export function validateStandaloneDrawingWizard(draft: DrawingWizardDraft): Draw
 
   if (isSingle && !draft.singleConnector) errors.push('请选择连接器/模型。');
   if (!isSingle && (!draft.leftConnector || !draft.rightConnector)) errors.push('请选择左、右连接器/模型。');
+  if (!draft.wireResource) errors.push('请选择线材规格。');
   if (!draft.totalLengthMm || draft.totalLengthMm <= 0) errors.push('总长度必须大于 0mm。');
   if (draft.wires.length === 0) errors.push('至少需要一条线材配置。');
   if (draft.wires.some((wire) => !wire.wireNo.trim())) warnings.push('存在未填写线号的线材。');
-  if (draft.wires.some((wire) => !wire.lengthMm || wire.lengthMm <= 0)) warnings.push('存在未填写有效长度的线材。');
+  if (draft.wires.some((wire) => !wire.lengthMm || wire.lengthMm <= 0)) errors.push('芯线长度必须大于 0mm。');
+  if (!isSingle && draft.rightConnector && draft.wires.some((wire) => !wire.targetPin || wire.targetPin < 1 || wire.targetPin > draft.rightConnector!.pinCount)) {
+    errors.push('目标 PIN 必须在右连接器 PIN 范围内。');
+  }
   return { errors, warnings };
+}
+
+function relativeBase(id: string, kind: DrawingObject['kind'], x: number, y: number, width: number, height: number, zIndex: number) {
+  return { id, kind, x, y, width, height, rotation: 0, zIndex, locked: false, visible: true, style: style() };
+}
+
+function wireBundleObject(draft: DrawingWizardDraft, width: number): DrawingGroupObject {
+  const coreHeight = 18;
+  const children = draft.wires.map((wire, index): DrawingGroupObject => {
+    const coreId = createDrawingId(`wire-core-${wire.pin}`);
+    return {
+      ...relativeBase(coreId, 'group', 0, index * coreHeight, width, coreHeight, index + 1),
+      kind: 'group', groupKind: 'wire-core',
+      children: [
+        {
+          ...relativeBase(createDrawingId('line'), 'line', 0, 0, width, coreHeight, 1), kind: 'line',
+          style: style({ stroke: wire.color, color: wire.color, strokeWidth: 2 }),
+          points: [{ x: 0, y: coreHeight / 2 }, { x: width, y: coreHeight / 2 }], orthogonal: false,
+        },
+        {
+          ...relativeBase(createDrawingId('text'), 'text', Math.max(0, width / 2 - 45), 0, 90, coreHeight, 2),
+          kind: 'text', text: wire.wireNo,
+        },
+        {
+          ...relativeBase(createDrawingId('label'), 'label', width - 28, 0, 28, coreHeight, 3),
+          kind: 'label', text: String(wire.targetPin ?? ''),
+        },
+      ],
+    };
+  });
+  return {
+    ...relativeBase(createDrawingId('wire-bundle'), 'group', 245, 260, width, Math.max(36, children.length * coreHeight), 3),
+    kind: 'group', groupKind: 'wire-bundle', children,
+  };
 }
 
 function connectorObject(
@@ -61,8 +131,18 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
   const isSingle = draft.topology.topology === 'single-end';
   const left = isSingle ? draft.singleConnector : draft.leftConnector;
   const right = isSingle ? undefined : draft.rightConnector;
-  const wireCount = draft.wires.length;
   const frameObjects = base.objects.map((object) => {
+    if (object.kind === 'wiring-table') {
+      return {
+        ...object,
+        rows: draft.wires.map((wire) => ({ P1: String(wire.pin), 颜色: wire.color, P2: String(wire.targetPin ?? ''), 长度: String(wire.lengthMm), 线号: wire.wireNo })),
+      };
+    }
+    if (object.kind === 'bom-table') {
+      const connectorNames = [...new Set([left?.name, right?.name].filter((value): value is string => Boolean(value)))];
+      const names = [...connectorNames, draft.wireResource?.name, draft.hasMold ? draft.modelResource?.name ?? '外线模具' : undefined, draft.heatShrink].filter((value): value is string => Boolean(value));
+      return { ...object, rows: names.map((value, index) => ({ 序号: String(index + 1), 物料编码: '', '物料名称/规格': value, 单位: 'PCS', 用量: '1', 备注: '' })) };
+    }
     if (object.kind !== 'table' || object.title !== 'XXx公司') return object;
     return {
       ...object,
@@ -74,22 +154,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
   const objects: DrawingObject[] = [
     ...(left ? [connectorObject(left, isSingle ? 'none' : 'left')] : []),
     ...(right ? [connectorObject(right, 'right')] : []),
-    {
-      id: createDrawingId('wire-bundle'),
-      kind: 'wire-bundle',
-      x: 245,
-      y: 260,
-      width: isSingle ? 620 : 690,
-      height: 125,
-      rotation: 0,
-      zIndex: 3,
-      locked: false,
-      visible: true,
-      style: style({ fill: '#f1f5f9' }),
-      label: draft.drawingNo || '线束',
-      wireCount,
-      wireKind: draft.topology.wireKind,
-    },
+    wireBundleObject(draft, isSingle ? 620 : 690),
     {
       id: createDrawingId('dimension'),
       kind: 'dimension',
