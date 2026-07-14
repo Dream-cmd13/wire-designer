@@ -9,6 +9,8 @@ import {
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
+import { moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
+import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
 import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
 
 interface StandaloneDrawingCanvasProps {
@@ -31,7 +33,11 @@ interface StandaloneDrawingCanvasProps {
   }) => void;
 }
 
-type DragState = { objectId: string; offsetX: number; offsetY: number; remembered: boolean } | null;
+type TransformInteraction =
+  | { kind: 'move'; object: DrawingObject; startPointer: DrawingPoint }
+  | { kind: 'resize'; object: DrawingObject; startPointer: DrawingPoint; handle: ResizeHandle }
+  | { kind: 'rotate'; object: DrawingObject; startPointer: DrawingPoint }
+  | null;
 type DrawingTableObject = Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>;
 type TableEditTarget =
   | { key: 'title'; type: 'title' }
@@ -236,7 +242,7 @@ function DrawingTableLayer({
   return (
     <div
       ref={tableRef}
-      className={`absolute z-10 box-border overflow-hidden border border-slate-900 bg-white text-slate-900 ${selected ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+      className="absolute z-10 box-border overflow-hidden border border-slate-900 bg-white text-slate-900"
       style={{
         left: object.x * zoom,
         top: object.y * zoom,
@@ -245,7 +251,10 @@ function DrawingTableLayer({
         fontFamily: 'Arial, sans-serif',
         fontSize: object.style.fontSize * zoom,
         lineHeight: `${rowHeight}px`,
+        transform: `rotate(${object.rotation}deg)`,
+        transformOrigin: 'center center',
       }}
+      aria-selected={selected}
       onClick={(event) => { event.stopPropagation(); onSelect(); }}
       onPointerDown={(event) => beginDrag(event, 'table')}
       onPointerMove={handleTablePointerMove}
@@ -289,7 +298,7 @@ export function StandaloneDrawingCanvas({
   const editorInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [measurementContext] = useState<CanvasRenderingContext2D | null>(() =>
     document.createElement('canvas').getContext('2d'));
-  const [drag, setDrag] = useState<DragState>(null);
+  const [interaction, setInteraction] = useState<TransformInteraction>(null);
   const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
   const [draftKind, setDraftKind] = useState<Extract<DrawingObject['kind'], 'line' | 'polyline' | 'curve' | 'freehand'> | null>(null);
   const [pointerPoint, setPointerPoint] = useState<DrawingPoint | null>(null);
@@ -307,6 +316,7 @@ export function StandaloneDrawingCanvas({
     if (!editor) return undefined;
     return drawing.objects.find((candidate) => candidate.id === editor.objectId);
   }, [drawing.objects, editor]);
+  const selectedObject = useMemo(() => drawing.objects.find((object) => object.id === selectedObjectId), [drawing.objects, selectedObjectId]);
 
   useEffect(() => {
     if (!drawingAction) return;
@@ -355,20 +365,22 @@ export function StandaloneDrawingCanvas({
     editorInputRef.current?.setSelectionRange(caretIndex, caretIndex);
   }, [caretIndex, editorObjectId]);
 
-  const getPoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
-    const rect = event.currentTarget.getBoundingClientRect();
+  const getDrawingPoint = (clientX: number, clientY: number): DrawingPoint | null => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
     return {
-      x: ((event.clientX - rect.left) / rect.width) * drawing.page.width,
-      y: ((event.clientY - rect.top) / rect.height) * drawing.page.height,
+      x: ((clientX - rect.left) / rect.width) * drawing.page.width,
+      y: ((clientY - rect.top) / rect.height) * drawing.page.height,
     };
   };
 
   const handleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    const point = getPoint(event);
+    const point = getDrawingPoint(event.clientX, event.clientY);
+    if (!point) return;
     const object = getDrawingObjectAtPoint(drawing, point);
-    setDrag(null);
+    setInteraction(null);
     setSelectionStart(null);
     setSelectionEnd(null);
     onContextMenuRequest?.({
@@ -382,10 +394,11 @@ export function StandaloneDrawingCanvas({
     if (event.button !== 0) return;
     if (editor) return;
     if (event.detail > 1) {
-      setDrag(null);
+      setInteraction(null);
       return;
     }
-    const point = getPoint(event);
+    const point = getDrawingPoint(event.clientX, event.clientY);
+    if (!point) return;
     if (toolMode === 'freehand') {
       event.currentTarget.setPointerCapture(event.pointerId);
       setDraftPoints([point]);
@@ -424,11 +437,13 @@ export function StandaloneDrawingCanvas({
     }
     if (!object || object.locked) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    setDrag({ objectId: object.id, offsetX: point.x - object.x, offsetY: point.y - object.y, remembered: false });
+    onStartEdit();
+    setInteraction({ kind: 'move', object: structuredClone(object), startPointer: point });
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const point = getPoint(event);
+    const point = getDrawingPoint(event.clientX, event.clientY);
+    if (!point) return;
     if (toolMode === 'freehand' && draftPoints.length > 0) {
       setDraftPoints((items) => sampleFreehandPoint(items, point));
       setPointerPoint(point);
@@ -443,16 +458,46 @@ export function StandaloneDrawingCanvas({
       setSelectionEnd(point);
       return;
     }
-    if (!drag) return;
-    const object = drawing.objects.find((candidate) => candidate.id === drag.objectId);
-    if (!object) return;
-    if (!drag.remembered) {
-      onStartEdit();
-      setDrag({ ...drag, remembered: true });
-    }
-    const x = Math.round(Math.min(drawing.page.width - 20 - object.width, Math.max(20, point.x - drag.offsetX)));
-    const y = Math.round(Math.min(drawing.page.height - 20 - object.height, Math.max(20, point.y - drag.offsetY)));
-    onUpdateObject(object.id, { x, y });
+    updateTransform(event.clientX, event.clientY, event.shiftKey);
+  };
+
+  const updateTransform = (clientX: number, clientY: number, shiftKey: boolean) => {
+    if (!interaction) return;
+    const point = getDrawingPoint(clientX, clientY);
+    if (!point || !drawing.objects.some((object) => object.id === interaction.object.id)) return;
+    const patch = interaction.kind === 'move'
+      ? moveDrawingObject(interaction.object, { x: point.x - interaction.startPointer.x, y: point.y - interaction.startPointer.y }, { width: drawing.page.width, height: drawing.page.height, inset: 20 })
+      : interaction.kind === 'resize'
+        ? resizeDrawingObject(interaction.object, interaction.handle, point, shiftKey).patch
+        : rotateDrawingObject(interaction.object, interaction.startPointer, point, shiftKey);
+    if (Object.values(patch).every((value) => typeof value !== 'number' || Number.isFinite(value))) onUpdateObject(interaction.object.id, patch);
+  };
+
+  const beginResize = (handle: ResizeHandle, event: React.PointerEvent<SVGRectElement>) => {
+    if (!selectedObject || selectedObject.locked) return;
+    const point = getDrawingPoint(event.clientX, event.clientY);
+    if (!point) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onStartEdit();
+    setInteraction({ kind: 'resize', object: structuredClone(selectedObject), startPointer: point, handle });
+  };
+
+  const beginRotate = (event: React.PointerEvent<SVGCircleElement>) => {
+    if (!selectedObject || selectedObject.locked) return;
+    const point = getDrawingPoint(event.clientX, event.clientY);
+    if (!point) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    onStartEdit();
+    setInteraction({ kind: 'rotate', object: structuredClone(selectedObject), startPointer: point });
+  };
+
+  const endTransform = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setInteraction(null);
   };
 
   const endDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -469,9 +514,8 @@ export function StandaloneDrawingCanvas({
       setSelectionStart(null);
       setSelectionEnd(null);
     }
-    if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    setDrag(null);
+    setInteraction(null);
   };
 
   const createEditor = (object: DrawingObject, point: { x: number; y: number }): EditTarget | null => {
@@ -545,8 +589,9 @@ export function StandaloneDrawingCanvas({
 
   const handleDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     event.preventDefault();
-    setDrag(null);
-    const point = getPoint(event);
+    setInteraction(null);
+    const point = getDrawingPoint(event.clientX, event.clientY);
+    if (!point) return;
     if ((toolMode === 'polyline' || toolMode === 'curve') && draftPoints.length > 0) {
       const origin = draftPoints.at(-1)!;
       const end = orthogonal ? snapOrthogonalPoint(origin, point) : point;
@@ -699,6 +744,19 @@ export function StandaloneDrawingCanvas({
               />
             )}
           </svg>
+        )}
+        {selectedObject && !editor && (
+          <StandaloneDrawingSelectionOverlay
+            object={selectedObject}
+            zoom={zoom}
+            pageWidth={drawing.page.width}
+            pageHeight={drawing.page.height}
+            controlsVisible={!selectedObject.locked}
+            onResizePointerDown={beginResize}
+            onRotatePointerDown={beginRotate}
+            onPointerMove={(event) => updateTransform(event.clientX, event.clientY, event.shiftKey)}
+            onPointerEnd={endTransform}
+          />
         )}
         {editorControl}
         {caretLine && (

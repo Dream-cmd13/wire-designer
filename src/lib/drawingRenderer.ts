@@ -1,4 +1,5 @@
 import type { DrawingDocument, DrawingObject, DrawingPoint } from '@/types/drawing';
+import { containsDrawingPoint } from '@/lib/drawingTransform';
 import { getEditableDrawingTextRuns, type EditableDrawingTextField } from '@/lib/drawingTextLayout';
 
 function drawEditableText(
@@ -199,7 +200,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
 export function renderDrawingCanvas(
   context: CanvasRenderingContext2D,
   document: DrawingDocument,
-  selectedObjectId?: string | null,
+  _selectedObjectId?: string | null,
   options: { hiddenObjectIds?: ReadonlySet<string>; selectedObjectIds?: ReadonlySet<string> } = {},
 ) {
   context.clearRect(0, 0, document.page.width, document.page.height);
@@ -213,14 +214,6 @@ export function renderDrawingCanvas(
     .sort((left, right) => left.zIndex - right.zIndex)
     .forEach((object) => {
       drawObject(context, object);
-      if (object.id === selectedObjectId || options.selectedObjectIds?.has(object.id)) {
-        context.save();
-        context.strokeStyle = '#2563eb';
-        context.lineWidth = 2;
-        context.setLineDash([5, 4]);
-        context.strokeRect(object.x - 4, object.y - 4, object.width + 8, object.height + 8);
-        context.restore();
-      }
     });
 }
 
@@ -229,6 +222,6 @@ export function getDrawingObjectAtPoint(document: DrawingDocument, point: Drawin
     .map((object, index) => ({ object, index }))
     .filter(({ object }) => object.visible)
     .sort((left, right) => right.object.zIndex - left.object.zIndex || right.index - left.index)
-    .find(({ object }) => point.x >= object.x && point.x <= object.x + object.width && point.y >= object.y && point.y <= object.y + object.height)
+    .find(({ object }) => containsDrawingPoint(object, point))
     ?.object;
 }

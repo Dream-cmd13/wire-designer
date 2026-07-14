@@ -29,3 +29,5 @@ dist-ssr
 *.zip
 .superpowers/
 .worktrees/
+.pnpm-store/
+.pnpm-store/v11/files/

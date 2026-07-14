@@ -66,6 +66,32 @@ describe('standalone drawing table templates', () => {
     expect(source).toContain('hiddenObjectIds: tableObjectIds');
   });
 
+  it('renders one SVG transform overlay with eight resize handles and a rotation control', () => {
+    const overlay = readFileSync('src/components/drawings/standalone/StandaloneDrawingSelectionOverlay.tsx', 'utf8');
+    expect(overlay).toContain("const resizeHandles: ResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']");
+    expect(overlay).toContain('stroke="#60a5fa"');
+    expect(overlay).toContain('HANDLE_SIZE_CSS');
+    expect(overlay).toContain('HANDLE_HIT_SIZE_CSS');
+    expect(overlay).toContain('onResizePointerDown(handle, event)');
+    expect(overlay).toContain('onRotatePointerDown(event)');
+  });
+
+  it('uses immutable transform interactions and rotates DOM tables without a duplicate selection ring', () => {
+    const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
+    const renderer = readFileSync('src/lib/drawingRenderer.ts', 'utf8');
+    expect(source).toContain("type TransformInteraction =");
+    expect(source).toContain("kind: 'resize'");
+    expect(source).toContain("kind: 'rotate'");
+    expect(source).toContain('moveDrawingObject(interaction.object');
+    expect(source).toContain('resizeDrawingObject(interaction.object');
+    expect(source).toContain('rotateDrawingObject(interaction.object');
+    expect(source).toContain('<StandaloneDrawingSelectionOverlay');
+    expect(source).toContain('transform: `rotate(${object.rotation}deg)`');
+    expect(source).toContain("transformOrigin: 'center center'");
+    expect(source).not.toContain('ring-2 ring-blue-500 ring-offset-1');
+    expect(renderer).not.toContain('context.strokeRect(object.x - 4');
+  });
+
   it('keeps table cells in the grid while allowing the grid and its text to move independently', () => {
     const canvasSource = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
     const rendererSource = readFileSync('src/lib/drawingRenderer.ts', 'utf8');
