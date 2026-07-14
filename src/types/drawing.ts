@@ -194,3 +194,53 @@ export type DrawingWizardDraft = {
   heatShrink?: string;
   wires: DrawingWireDraft[];
 };
+
+export type DrawingCatalogResourceType = 'connector' | 'model' | 'wire' | 'accessory' | 'packaging';
+
+export type DrawingCatalogFilters = {
+  resourceType?: DrawingCatalogResourceType;
+  query?: string;
+  gender?: DrawingConnectorResource['gender'];
+  category?: string;
+  series?: string;
+  pinCount?: number;
+  rowCount?: number;
+  pitchMm?: number;
+};
+
+export type DrawingCatalogResource = {
+  id: string;
+  catalogItemId: string;
+  resourceType: DrawingCatalogResourceType;
+  name: string;
+  model: string;
+  category: string;
+  imageUrl?: string;
+  gender?: DrawingConnectorResource['gender'];
+  series?: string;
+  pinCount?: number;
+  rowCount?: number;
+  pitchMm?: number;
+  specification?: string;
+  unit?: string;
+};
+
+export type DrawingTemplateSummary = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  thumbnailPath?: string;
+  currentVersion: number;
+};
+
+export type DrawingCommonPhrase = { id: string; category: string; phrase: string };
+
+export type DrawingIconResource = {
+  id: string;
+  name: string;
+  category: string;
+  svgPath: string;
+  defaultWidth: number;
+  defaultHeight: number;
+};
