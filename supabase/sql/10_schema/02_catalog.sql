@@ -1,7 +1,7 @@
 -- Catalog data for connectors, wires, protective sleeves, and overmolds.
 
 do $$ begin
-  create type public.catalog_item_type as enum ('connector', 'wire', 'protective_sleeve', 'overmold');
+  create type public.catalog_item_type as enum ('connector', 'wire', 'protective_sleeve', 'overmold', 'model', 'accessory', 'packaging');
 exception when duplicate_object then null;
 end $$;
 
@@ -225,4 +225,36 @@ create table if not exists public.overmold_specs (
   created_by uuid references public.profiles(id) on delete set null,
   updated_by uuid references public.profiles(id) on delete set null,
   check (compatible_wire_diameter_max_mm is null or compatible_wire_diameter_min_mm is null or compatible_wire_diameter_max_mm >= compatible_wire_diameter_min_mm)
+);
+
+create table if not exists public.model_specs (
+  catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
+  model_kind text not null,
+  default_width_mm numeric(12, 3) not null check (default_width_mm > 0),
+  default_height_mm numeric(12, 3) not null check (default_height_mm > 0),
+  default_orientation text not null default 'none',
+  model_parameters jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.accessory_specs (
+  catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
+  accessory_kind text not null,
+  specification text not null,
+  material text,
+  color text,
+  unit text not null default 'PCS',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.packaging_specs (
+  catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
+  packaging_kind text not null,
+  specification text not null,
+  unit text not null default 'PCS',
+  instructions text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );

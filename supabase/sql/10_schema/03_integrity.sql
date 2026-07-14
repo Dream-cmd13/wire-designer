@@ -54,6 +54,15 @@ begin
   if not exists (select 1 from pg_trigger where tgname = 'overmold_specs_match_type' and tgrelid = 'public.overmold_specs'::regclass) then
     create trigger overmold_specs_match_type before insert or update on public.overmold_specs for each row execute function public.enforce_catalog_spec_item_type('overmold');
   end if;
+  if not exists (select 1 from pg_trigger where tgname = 'model_specs_match_type' and tgrelid = 'public.model_specs'::regclass) then
+    create trigger model_specs_match_type before insert or update on public.model_specs for each row execute function public.enforce_catalog_spec_item_type('model');
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'accessory_specs_match_type' and tgrelid = 'public.accessory_specs'::regclass) then
+    create trigger accessory_specs_match_type before insert or update on public.accessory_specs for each row execute function public.enforce_catalog_spec_item_type('accessory');
+  end if;
+  if not exists (select 1 from pg_trigger where tgname = 'packaging_specs_match_type' and tgrelid = 'public.packaging_specs'::regclass) then
+    create trigger packaging_specs_match_type before insert or update on public.packaging_specs for each row execute function public.enforce_catalog_spec_item_type('packaging');
+  end if;
 end;
 $$;
 
@@ -72,6 +81,9 @@ begin
     when 'wire' then exists (select 1 from public.wire_specs where catalog_item_id = new.id)
     when 'protective_sleeve' then exists (select 1 from public.protective_sleeve_specs where catalog_item_id = new.id)
     when 'overmold' then exists (select 1 from public.overmold_specs where catalog_item_id = new.id)
+    when 'model' then exists (select 1 from public.model_specs where catalog_item_id = new.id)
+    when 'accessory' then exists (select 1 from public.accessory_specs where catalog_item_id = new.id)
+    when 'packaging' then exists (select 1 from public.packaging_specs where catalog_item_id = new.id)
   end into has_spec;
   if not coalesce(has_spec, false) then
     raise exception 'active catalog item % requires a matching specification', new.id;
