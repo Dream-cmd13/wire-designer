@@ -19,4 +19,12 @@ describe('standalone drawing canvas interactions', () => {
     expect(rendererSource).toContain("object.kind === 'icon'");
     expect(rendererSource).toContain('new Path2D(object.svgPath)');
   });
+
+  it('suppresses the browser menu and reports canvas hit context', () => {
+    expect(canvasSource).toContain('onContextMenuRequest');
+    expect(canvasSource).toContain('onContextMenu={handleContextMenu}');
+    expect(canvasSource).toContain('event.preventDefault()');
+    expect(canvasSource).toContain('getDrawingObjectAtPoint(drawing, point)');
+    expect(canvasSource).toContain('clientPoint');
+  });
 });

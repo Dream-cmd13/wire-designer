@@ -1,14 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
 import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
 import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/StandaloneDrawingCanvas';
 import { StandaloneDrawingInspector } from '@/components/drawings/standalone/StandaloneDrawingInspector';
 import { StandaloneDrawingWizard } from '@/components/drawings/standalone/StandaloneDrawingWizard';
 import { DrawingWorkbenchToolbar } from '@/components/drawings/standalone/DrawingWorkbenchToolbar';
-import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, setDrawingLayer, splitDrawingObjects, toggleDrawingLocks } from '@/lib/drawingCommands';
+import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawingCopiesAtPoint, setDrawingLayer, splitDrawingObjects, splitDrawingPathAtPoint, toggleDrawingLocks } from '@/lib/drawingCommands';
 import { createDrawingId, createDrawingResourceObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { useDrawingStore } from '@/stores/drawingStore';
-import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingObject, DrawingObjectStyle, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
+import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
+
+type DrawingContextState = {
+  objectId: string | null;
+  canvasPoint: DrawingPoint;
+  clientPoint: { x: number; y: number };
+};
 
 const resourceDefaultPoints: Record<DrawingResourceKind, { x: number; y: number }> = {
   connector: { x: 90, y: 210 }, 'wire-bundle': { x: 245, y: 260 }, accessory: { x: 420, y: 238 },
@@ -52,9 +59,11 @@ export function DrawingWorkbenchPage() {
   const [exportError, setExportError] = useState('');
   const [past, setPast] = useState<DrawingDocument[]>([]);
   const [future, setFuture] = useState<DrawingDocument[]>([]);
-  const clipboard = useRef<DrawingObject[]>([]);
+  const [contextMenu, setContextMenu] = useState<DrawingContextState | null>(null);
+  const [clipboard, setClipboard] = useState<DrawingObject[]>([]);
   const primaryId = selectedObjectIds.at(-1) ?? null;
   const selected = drawing?.objects.filter((object) => selectedObjectIds.includes(object.id)) ?? [];
+  const contextObject = contextMenu?.objectId ? drawing?.objects.find((object) => object.id === contextMenu.objectId) : undefined;
 
   useEffect(() => { if (!drawing) createDocument('未命名线束图'); }, [createDocument, drawing]);
   useEffect(() => { if (saveState !== 'dirty') return; const timer = window.setTimeout(markSaved, 500); return () => window.clearTimeout(timer); }, [markSaved, saveState]);
@@ -68,14 +77,36 @@ export function DrawingWorkbenchPage() {
     apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
   };
   const addResource = (kind: DrawingResourceKind) => { if (!drawing) return; addObject(createPlacedResource(drawing, kind)); setResourcesOpen(false); };
-  const removeSelected = () => { if (!drawing) return; const ids = new Set(selected.filter((object) => !object.locked).map((object) => object.id)); if (!ids.size) return; remember(); apply({ ...drawing, objects: drawing.objects.filter((object) => !ids.has(object.id)), updatedAt: Date.now() }); setSelectedObjectIds([]); };
+  const removeSelected = () => { if (!drawing) return; const ids = new Set(selected.filter((object) => !object.locked && object.kind !== 'title-block').map((object) => object.id)); if (!ids.size) return; remember(); apply({ ...drawing, objects: drawing.objects.filter((object) => !ids.has(object.id)), updatedAt: Date.now() }); setSelectedObjectIds([]); };
   const undo = () => { if (!drawing || !past.length) return; const previous = past.at(-1)!; setPast((items) => items.slice(0, -1)); setFuture((items) => [clone(drawing), ...items].slice(0, 50)); apply(previous); setSelectedObjectIds([]); };
   const redo = () => { if (!drawing || !future.length) return; const next = future[0]; setFuture((items) => items.slice(1)); setPast((items) => [...items, clone(drawing)].slice(-50)); apply(next); setSelectedObjectIds([]); };
-  const paste = () => { if (!drawing || !clipboard.current.length) return; remember(); const stamp = Date.now(); const copies = clipboard.current.map((object, index) => ({ ...clone(object), id: `${object.id}-copy-${stamp}-${index}`, x: object.x + 20, y: object.y + 20, zIndex: topLayer(drawing) + index })) as DrawingObject[]; apply({ ...drawing, objects: [...drawing.objects, ...copies], updatedAt: Date.now() }); setSelectedObjectIds(copies.map((object) => object.id)); };
+  const copySelected = () => { if (selected.length) setClipboard(clone(selected)); };
+  const paste = (point?: DrawingPoint) => {
+    if (!drawing || !clipboard.length) return;
+    const minX = Math.min(...clipboard.map((object) => object.x));
+    const minY = Math.min(...clipboard.map((object) => object.y));
+    const target = point ?? { x: minX + 20, y: minY + 20 };
+    const copies = placeDrawingCopiesAtPoint(clipboard, target, topLayer(drawing));
+    remember();
+    apply({ ...drawing, objects: [...drawing.objects, ...copies], updatedAt: Date.now() });
+    setSelectedObjectIds(copies.map((object) => object.id));
+  };
   const clear = () => { applyCommand(clearDrawingCanvas); setSelectedObjectIds([]); };
   const toggleLocks = () => applyCommand((document) => toggleDrawingLocks(document, selectedObjectIds));
   const moveLayers = (action: 'front' | 'forward' | 'backward' | 'back') => applyCommand((document) => moveDrawingLayers(document, selectedObjectIds, action));
   const split = () => { if (!drawing) return; const result = splitDrawingObjects(drawing, selectedObjectIds); if (!result.changed) return; remember(); apply(result.document); setSelectedObjectIds(result.replacementIds); };
+  const cropContextPath = () => {
+    if (!drawing || !contextMenu?.objectId) return;
+    const result = splitDrawingPathAtPoint(drawing, contextMenu.objectId, contextMenu.canvasPoint);
+    if (!result.changed) return;
+    remember();
+    apply(result.document);
+    setSelectedObjectIds(result.replacementIds);
+  };
+  const openContextMenu = (request: DrawingContextState) => {
+    if (request.objectId && !selectedObjectIds.includes(request.objectId)) setSelectedObjectIds([request.objectId]);
+    setContextMenu(request);
+  };
   const exportPdf = async () => {
     if (!drawing || exporting) return;
     setExporting(true); setExportError('');
@@ -108,7 +139,7 @@ export function DrawingWorkbenchPage() {
       if (event.ctrlKey || event.metaKey) {
         if (key === 'z') { event.preventDefault(); undo(); }
         if (key === 'y') { event.preventDefault(); redo(); }
-        if (key === 'c') { event.preventDefault(); clipboard.current = clone(selected); }
+        if (key === 'c') { event.preventDefault(); copySelected(); }
         if (key === 'v') { event.preventDefault(); paste(); }
         if (key === 'u') { event.preventDefault(); clear(); }
         if (event.key.toLowerCase() === 'x') { event.preventDefault(); split(); }
@@ -127,9 +158,28 @@ export function DrawingWorkbenchPage() {
     <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} canUndo={past.length > 0} canRedo={future.length > 0} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleLock={toggleLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => addResource('table')} onSave={markSaved} onPdf={exportPdf} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
-      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onAddObject={addObject}/>
+      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onAddObject={addObject} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
     </div>
+    {contextMenu && (!contextMenu.objectId || contextObject) && <DrawingCanvasContextMenu
+      target={contextMenu.objectId ? 'object' : 'canvas'}
+      x={contextMenu.clientPoint.x}
+      y={contextMenu.clientPoint.y}
+      canPaste={clipboard.length > 0}
+      canDelete={selected.some((object) => !object.locked && object.kind !== 'title-block')}
+      canCrop={Boolean(contextObject && !contextObject.locked && (contextObject.kind === 'line' || contextObject.kind === 'polyline' || contextObject.kind === 'curve' || contextObject.kind === 'freehand'))}
+      canChangeLayer={selected.some((object) => !object.locked && object.kind !== 'title-block')}
+      canToggleLock={selected.some((object) => object.kind !== 'title-block')}
+      locked={selected.length > 0 && selected.every((object) => object.locked)}
+      onPaste={() => paste(contextMenu.canvasPoint)}
+      onCopy={copySelected}
+      onDelete={removeSelected}
+      onCrop={cropContextPath}
+      onBringToFront={() => moveLayers('front')}
+      onSendToBack={() => moveLayers('back')}
+      onToggleLock={toggleLocks}
+      onClose={() => setContextMenu(null)}
+    />}
     {exportError && <div role="alert" className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded border border-red-200 bg-white px-4 py-2 text-sm text-red-700 shadow-lg"><span>{exportError}</span><button type="button" onClick={() => void exportPdf()} className="font-medium underline">重试</button><button type="button" aria-label="关闭导出错误" onClick={() => setExportError('')}>×</button></div>}
     <StandaloneDrawingWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
   </div>;

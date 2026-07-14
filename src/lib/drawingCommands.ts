@@ -216,7 +216,7 @@ function cloneForPaste(object: DrawingObject, dx: number, dy: number, zIndex: nu
       ? { start: { x: clone.start.x + dx, y: clone.start.y + dy }, end: { x: clone.end.x + dx, y: clone.end.y + dy } }
       : {};
   const children = clone.kind === 'group'
-    ? { children: clone.children.map((child, index) => cloneForPaste(child, 0, 0, child.zIndex + index)) }
+    ? { children: clone.children.map((child) => cloneForPaste(child, 0, 0, child.zIndex)) }
     : {};
   return {
     ...clone,

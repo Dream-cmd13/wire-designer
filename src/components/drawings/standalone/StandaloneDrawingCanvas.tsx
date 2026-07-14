@@ -24,6 +24,11 @@ interface StandaloneDrawingCanvasProps {
   toolMode?: DrawingToolMode;
   orthogonal?: boolean;
   drawingAction?: { id: number; type: 'finish' | 'cancel' };
+  onContextMenuRequest?: (request: {
+    objectId: string | null;
+    canvasPoint: DrawingPoint;
+    clientPoint: { x: number; y: number };
+  }) => void;
 }
 
 type DragState = { objectId: string; offsetX: number; offsetY: number; remembered: boolean } | null;
@@ -277,6 +282,7 @@ export function StandaloneDrawingCanvas({
   toolMode = 'select',
   orthogonal = false,
   drawingAction,
+  onContextMenuRequest,
 }: StandaloneDrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const editorInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -348,12 +354,27 @@ export function StandaloneDrawingCanvas({
     editorInputRef.current?.setSelectionRange(caretIndex, caretIndex);
   }, [caretIndex, editorObjectId]);
 
-  const getPoint = (event: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>) => {
+  const getPoint = (event: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
     const rect = event.currentTarget.getBoundingClientRect();
     return {
       x: ((event.clientX - rect.left) / rect.width) * drawing.page.width,
       y: ((event.clientY - rect.top) / rect.height) * drawing.page.height,
     };
+  };
+
+  const handleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = getPoint(event);
+    const object = getDrawingObjectAtPoint(drawing, point);
+    setDrag(null);
+    setSelectionStart(null);
+    setSelectionEnd(null);
+    onContextMenuRequest?.({
+      objectId: object?.id ?? null,
+      canvasPoint: point,
+      clientPoint: { x: event.clientX, y: event.clientY },
+    });
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -625,7 +646,7 @@ export function StandaloneDrawingCanvas({
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[size:24px_24px] p-5">
-      <div className="relative inline-block">
+      <div className="relative inline-block" onContextMenu={handleContextMenu}>
         <canvas
           ref={canvasRef}
           className="block bg-white shadow-lg touch-none"
@@ -635,6 +656,7 @@ export function StandaloneDrawingCanvas({
           onPointerMove={handlePointerMove}
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
+          onContextMenu={handleContextMenu}
         />
         {tableObjects.map((object) => (
           <DrawingTableLayer

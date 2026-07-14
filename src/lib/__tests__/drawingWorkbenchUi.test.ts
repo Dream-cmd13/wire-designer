@@ -32,4 +32,14 @@ describe('drawing workbench UI contract', () => {
     expect(pageSource).toContain('exportError');
     expect(pageSource).toContain('await downloadDrawingPdf');
   });
+
+  it('routes canvas and entity context actions through document commands', () => {
+    expect(pageSource).toContain('DrawingCanvasContextMenu');
+    expect(pageSource).toContain('splitDrawingPathAtPoint');
+    expect(pageSource).toContain('placeDrawingCopiesAtPoint');
+    expect(pageSource).toContain('onContextMenuRequest');
+    expect(pageSource).toContain("moveLayers('front')");
+    expect(pageSource).toContain("moveLayers('back')");
+    expect(pageSource).toContain("selected.filter((object) => !object.locked && object.kind !== 'title-block')");
+  });
 });

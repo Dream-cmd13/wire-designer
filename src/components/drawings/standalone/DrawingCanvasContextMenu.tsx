@@ -9,6 +9,7 @@ interface DrawingCanvasContextMenuProps {
   canDelete: boolean;
   canCrop: boolean;
   canChangeLayer: boolean;
+  canToggleLock: boolean;
   locked: boolean;
   onPaste: () => void;
   onCopy: () => void;
@@ -30,6 +31,7 @@ export function DrawingCanvasContextMenu({
   canDelete,
   canCrop,
   canChangeLayer,
+  canToggleLock,
   locked,
   onPaste,
   onCopy,
@@ -58,7 +60,11 @@ export function DrawingCanvasContextMenu({
       if (!menuRef.current?.contains(event.target as Node)) onClose();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
     };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
@@ -94,7 +100,7 @@ export function DrawingCanvasContextMenu({
       <div className="my-1 border-t border-slate-100"/>
       <button role="menuitem" type="button" disabled={!canChangeLayer} onClick={run(onBringToFront)} className={menuItemClass}><BringToFront className="h-4 w-4"/>移到顶层</button>
       <button role="menuitem" type="button" disabled={!canChangeLayer} onClick={run(onSendToBack)} className={menuItemClass}><SendToBack className="h-4 w-4"/>移到底层</button>
-      <button role="menuitem" type="button" onClick={run(onToggleLock)} className={menuItemClass}>
+      <button role="menuitem" type="button" disabled={!canToggleLock} onClick={run(onToggleLock)} className={menuItemClass}>
         {locked ? <Unlock className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}{locked ? '解锁' : '锁定'}
       </button>
     </>}
