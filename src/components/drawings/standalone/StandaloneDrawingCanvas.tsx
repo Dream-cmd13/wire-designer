@@ -449,7 +449,7 @@ export function StandaloneDrawingCanvas({
   const editorControl = editor && (
     editor.type === 'field' && editor.multiline ? (
       <textarea
-        ref={editorInputRef}
+        ref={(element) => { editorInputRef.current = element; }}
         autoFocus
         value={editor.value}
         onFocus={(event) => event.currentTarget.setSelectionRange(caretIndex, caretIndex)}
@@ -474,7 +474,7 @@ export function StandaloneDrawingCanvas({
       />
     ) : (
       <input
-        ref={editorInputRef}
+        ref={(element) => { editorInputRef.current = element; }}
         autoFocus
         value={editor.value}
         onFocus={(event) => event.currentTarget.setSelectionRange(caretIndex, caretIndex)}

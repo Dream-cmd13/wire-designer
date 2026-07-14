@@ -42,6 +42,8 @@ export type DrawingObjectKind =
   | 'bom-table'
   | 'wiring-table'
   | 'tech-requirements'
+  | 'group'
+  | 'icon'
   | 'title-block';
 
 export type DrawingPoint = { x: number; y: number };
@@ -124,6 +126,18 @@ export type DrawingTitleBlockObject = DrawingObjectBase & {
   revision: string;
 };
 
+export type DrawingGroupObject = DrawingObjectBase & {
+  kind: 'group';
+  groupKind: 'wire-bundle' | 'wire-core';
+  children: DrawingObject[];
+};
+
+export type DrawingIconObject = DrawingObjectBase & {
+  kind: 'icon';
+  name: string;
+  svgPath: string;
+};
+
 export type DrawingObject =
   | DrawingConnectorObject
   | DrawingWireBundleObject
@@ -135,7 +149,13 @@ export type DrawingObject =
   | DrawingBomTableObject
   | DrawingWiringTableObject
   | DrawingTechRequirementsObject
+  | DrawingGroupObject
+  | DrawingIconObject
   | DrawingTitleBlockObject;
+
+export type DrawingSelection = { objectIds: string[] };
+export type DrawingLayerAction = 'front' | 'forward' | 'backward' | 'back';
+export type DrawingResourceKind = Exclude<DrawingObjectKind, 'title-block' | 'group' | 'icon'>;
 
 export type DrawingDocument = {
   schemaVersion: 1;

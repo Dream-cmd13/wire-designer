@@ -3,6 +3,7 @@ import type {
   DrawingObject,
   DrawingObjectStyle,
   DrawingPoint,
+  DrawingResourceKind,
   DrawingTitleBlockObject,
 } from '@/types/drawing';
 
@@ -177,8 +178,6 @@ export function patchDrawingObject(
   }, updatedObject);
   return next;
 }
-
-type DrawingResourceKind = Exclude<DrawingObject['kind'], 'title-block'>;
 
 function objectBase(kind: DrawingResourceKind, point: DrawingPoint, width: number, height: number) {
   return {

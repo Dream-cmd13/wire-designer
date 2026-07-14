@@ -9,16 +9,16 @@ import { StandaloneDrawingWizard } from '@/components/drawings/standalone/Standa
 import { createDrawingResourceObject } from '@/lib/drawingDocument';
 import { downloadDrawingPdf, downloadDrawingPng, downloadDrawingSvg } from '@/lib/drawingExport';
 import { useDrawingStore } from '@/stores/drawingStore';
-import type { DrawingDocument, DrawingObject } from '@/types/drawing';
+import type { DrawingDocument, DrawingObject, DrawingResourceKind } from '@/types/drawing';
 
-const resourceTools: Array<{ kind: Exclude<DrawingObject['kind'], 'title-block'>; label: string }> = [
+const resourceTools: Array<{ kind: DrawingResourceKind; label: string }> = [
   { kind: 'connector', label: '连接器/模型' }, { kind: 'wire-bundle', label: '线材' }, { kind: 'accessory', label: '辅材' },
   { kind: 'table', label: '表格' }, { kind: 'wiring-table', label: '接线表' }, { kind: 'bom-table', label: '物料表' },
   { kind: 'line', label: '直线' }, { kind: 'polyline', label: '分岔线' }, { kind: 'curve', label: '交叉线' },
   { kind: 'dimension', label: '长度标注' }, { kind: 'label', label: '号码/标签' }, { kind: 'text', label: '文字' },
 ];
 
-const resourceDefaultPoints: Record<Exclude<DrawingObject['kind'], 'title-block'>, { x: number; y: number }> = {
+const resourceDefaultPoints: Record<DrawingResourceKind, { x: number; y: number }> = {
   connector: { x: 90, y: 210 },
   'wire-bundle': { x: 245, y: 260 },
   accessory: { x: 420, y: 238 },
@@ -50,7 +50,7 @@ function overlaps(left: DrawingObject, right: DrawingObject) {
     && left.y + left.height > right.y;
 }
 
-function createPlacedResource(drawing: DrawingDocument, kind: Exclude<DrawingObject['kind'], 'title-block'>) {
+function createPlacedResource(drawing: DrawingDocument, kind: DrawingResourceKind) {
   const basePoint = resourceDefaultPoints[kind];
   let point = { ...basePoint };
   for (let attempt = 0; attempt < 18; attempt += 1) {
@@ -102,7 +102,7 @@ export function DrawingWorkbenchPage() {
   };
   const update = (document: DrawingDocument) => updateDocument(document);
   const selected = drawing?.objects.find((object) => object.id === selectedObjectId);
-  const addResource = (kind: Exclude<DrawingObject['kind'], 'title-block'>) => {
+  const addResource = (kind: DrawingResourceKind) => {
     if (!drawing) return;
     remember();
     const object = createPlacedResource(drawing, kind);
