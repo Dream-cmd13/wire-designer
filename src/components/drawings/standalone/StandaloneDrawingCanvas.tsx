@@ -319,14 +319,18 @@ export function StandaloneDrawingCanvas({
   const selectedObject = useMemo(() => drawing.objects.find((object) => object.id === selectedObjectId), [drawing.objects, selectedObjectId]);
   const selectedTransformObject = useMemo(() => selectedObject ? getDrawingTransformObject(selectedObject) : undefined, [selectedObject]);
 
+  const finalizeActiveDraft = (action: 'finish' | 'cancel') => {
+    const object = finalizeDrawingDraft(draftKind, draftPoints, action, orthogonal);
+    if (object) onAddObject?.(object);
+    setDraftPoints([]);
+    setDraftKind(null);
+    setPointerPoint(null);
+  };
+
   useEffect(() => {
     if (!drawingAction) return;
     const timer = window.setTimeout(() => {
-      const object = finalizeDrawingDraft(draftKind, draftPoints, drawingAction.type, orthogonal);
-      if (object) onAddObject?.(object);
-      setDraftPoints([]);
-      setDraftKind(null);
-      setPointerPoint(null);
+      finalizeActiveDraft(drawingAction.type);
     }, 0);
     return () => window.clearTimeout(timer);
   // drawingAction.id is the explicit finish/cancel event boundary.
@@ -380,6 +384,7 @@ export function StandaloneDrawingCanvas({
     event.stopPropagation();
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
+    finalizeActiveDraft('finish');
     const object = getDrawingObjectAtPoint(drawing, point);
     setInteraction(null);
     setSelectionStart(null);

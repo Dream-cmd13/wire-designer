@@ -28,6 +28,13 @@ export function toggleDrawingLocks(document: DrawingDocument, objectIds: string[
   return updated(document, document.objects.map((object) => selected.has(object.id) && object.kind !== 'title-block' ? { ...object, locked: nextLocked } : object));
 }
 
+export function toggleAllDrawingLocks(document: DrawingDocument): DrawingDocument {
+  const editable = document.objects.filter((object) => object.kind !== 'title-block');
+  if (editable.length === 0) return document;
+  const locked = editable.some((object) => !object.locked);
+  return updated(document, document.objects.map((object) => object.kind === 'title-block' ? object : { ...object, locked }));
+}
+
 export function moveDrawingLayers(document: DrawingDocument, objectIds: string[], action: DrawingLayerAction): DrawingDocument {
   const selected = new Set(objectIds);
   const editable = document.objects.filter((object) => object.kind !== 'title-block').sort((left, right) => left.zIndex - right.zIndex);

@@ -94,12 +94,13 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function filename(drawing: DrawingDocument, extension: string) {
-  return `${safeFilename(drawing.titleBlock.drawingNo || drawing.name)}.${extension}`;
+export function getDrawingExportFilename(drawing: DrawingDocument, extension: string, requestedFilename?: string) {
+  const requestedBase = requestedFilename?.trim().replace(new RegExp(`\\.${extension}$`, 'i'), '');
+  return `${safeFilename(requestedBase || drawing.titleBlock.drawingNo || drawing.name)}.${extension}`;
 }
 
 export function downloadDrawingSvg(drawing: DrawingDocument) {
-  downloadBlob(new Blob([serializeDrawingSvg(drawing)], { type: 'image/svg+xml;charset=utf-8' }), filename(drawing, 'svg'));
+  downloadBlob(new Blob([serializeDrawingSvg(drawing)], { type: 'image/svg+xml;charset=utf-8' }), getDrawingExportFilename(drawing, 'svg'));
 }
 
 export async function downloadDrawingPng(drawing: DrawingDocument) {
@@ -116,7 +117,7 @@ export async function downloadDrawingPng(drawing: DrawingDocument) {
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((result: Blob | null) => result ? resolve(result) : reject(new Error('PNG 编码失败')), 'image/png'));
-  downloadBlob(blob, filename(drawing, 'png'));
+  downloadBlob(blob, getDrawingExportFilename(drawing, 'png'));
 }
 
 function binaryString(dataUrl: string): Uint8Array {
@@ -150,7 +151,7 @@ function buildImagePdf(jpeg: Uint8Array, width: number, height: number): Uint8Ar
   return result;
 }
 
-export async function downloadDrawingPdf(drawing: DrawingDocument) {
+export async function downloadDrawingPdf(drawing: DrawingDocument, requestedFilename?: string) {
   const image = new Image();
   image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serializeDrawingSvg(drawing))}`;
   await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('PDF 画布渲染失败')); });
@@ -163,5 +164,5 @@ export async function downloadDrawingPdf(drawing: DrawingDocument) {
   const pdfBytes = buildImagePdf(jpeg, canvas.width, canvas.height);
   const pdfBuffer = new ArrayBuffer(pdfBytes.byteLength);
   new Uint8Array(pdfBuffer).set(pdfBytes);
-  downloadBlob(new Blob([pdfBuffer], { type: 'application/pdf' }), filename(drawing, 'pdf'));
+  downloadBlob(new Blob([pdfBuffer], { type: 'application/pdf' }), getDrawingExportFilename(drawing, 'pdf', requestedFilename));
 }

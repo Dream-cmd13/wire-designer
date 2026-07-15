@@ -31,4 +31,13 @@ describe('standalone drawing canvas interactions', () => {
   it('does not start drawing or dragging from a secondary pointer button', () => {
     expect(canvasSource.match(/event\.button !== 0/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
+
+  it('finishes the current path before opening a right-click context menu', () => {
+    const contextMenuStart = canvasSource.indexOf('const handleContextMenu');
+    const contextMenuEnd = canvasSource.indexOf('const handlePointerDown', contextMenuStart);
+    const contextMenuSource = canvasSource.slice(contextMenuStart, contextMenuEnd);
+
+    expect(contextMenuSource).toContain("finalizeActiveDraft('finish')");
+    expect(contextMenuSource.indexOf("finalizeActiveDraft('finish')")).toBeLessThan(contextMenuSource.indexOf('onContextMenuRequest?.'));
+  });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clearDrawingCanvas, finalizeDrawingDraft, getObjectsInSelectionRect, moveDrawingLayers,
   patchDrawingObjects, placeDrawingCopiesAtPoint, snapOrthogonalPoint, splitDrawingObjects,
-  splitDrawingPathAtPoint, toggleDrawingLocks,
+  splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks,
 } from '@/lib/drawingCommands';
 import { defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import type { DrawingDocument, DrawingLineObject, DrawingObject } from '@/types/drawing';
@@ -34,6 +34,18 @@ describe('drawing document commands', () => {
     const unlocked = toggleDrawingLocks(locked, ['a', 'b']);
     const moved = moveDrawingLayers(unlocked, ['a'], 'front');
     expect(moved.objects.filter((object) => object.kind !== 'title-block').sort((a, b) => a.zIndex - b.zIndex).at(-1)?.id).toBe('a');
+  });
+
+  it('locks and unlocks every editable object while preserving the title block', () => {
+    const source = documentWith([title, line('a', 10, 1), { ...line('b', 40, 2), locked: true }]);
+    const locked = toggleAllDrawingLocks(source);
+
+    expect(locked.objects.find((object) => object.id === 'a')?.locked).toBe(true);
+    expect(locked.objects.find((object) => object.id === 'b')?.locked).toBe(true);
+    expect(locked.objects.find((object) => object.id === 'title')?.locked).toBe(title.locked);
+
+    const unlocked = toggleAllDrawingLocks(locked);
+    expect(unlocked.objects.filter((object) => object.kind !== 'title-block').every((object) => !object.locked)).toBe(true);
   });
 
   it('progressively splits a bundle into core groups and then primitives', () => {

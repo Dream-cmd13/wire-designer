@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createBlankDrawingDocument, createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
-import { serializeDrawingSvg } from '@/lib/drawingExport';
+import { getDrawingExportFilename, serializeDrawingSvg } from '@/lib/drawingExport';
 import type { DrawingGroupObject, DrawingIconObject, DrawingLineObject } from '@/types/drawing';
 
 describe('completed drawing export', () => {
@@ -27,5 +27,13 @@ describe('completed drawing export', () => {
     expect(source).toContain('/Subtype /Image');
     expect(source).toContain('/DCTDecode');
     expect(source).toContain("canvas.toDataURL('image/jpeg'");
+  });
+
+  it('sanitizes a requested PDF filename and falls back to the drawing number', () => {
+    const drawing = createBlankDrawingDocument('导出测试');
+    const numbered = { ...drawing, titleBlock: { ...drawing.titleBlock, drawingNo: 'WH-001' } };
+
+    expect(getDrawingExportFilename(numbered, 'pdf', ' 客户/图纸.pdf ')).toBe('客户-图纸.pdf');
+    expect(getDrawingExportFilename(numbered, 'pdf')).toBe('WH-001.pdf');
   });
 });

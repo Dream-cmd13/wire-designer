@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
+import { ActionToast } from '@/components/shared/ActionToast';
 import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
+import { DrawingPdfExportDialog } from '@/components/drawings/standalone/DrawingPdfExportDialog';
 import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
 import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/StandaloneDrawingCanvas';
 import { StandaloneDrawingInspector } from '@/components/drawings/standalone/StandaloneDrawingInspector';
 import { StandaloneDrawingWizard } from '@/components/drawings/standalone/StandaloneDrawingWizard';
 import { DrawingWorkbenchToolbar } from '@/components/drawings/standalone/DrawingWorkbenchToolbar';
-import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawingCopiesAtPoint, setDrawingLayer, splitDrawingObjects, splitDrawingPathAtPoint, toggleDrawingLocks } from '@/lib/drawingCommands';
+import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawingCopiesAtPoint, setDrawingLayer, splitDrawingObjects, splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks } from '@/lib/drawingCommands';
 import { createDrawingId, createDrawingResourceObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { useDrawingStore } from '@/stores/drawingStore';
@@ -57,16 +59,22 @@ export function DrawingWorkbenchPage() {
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [exportFilename, setExportFilename] = useState('');
+  const [selectionWarning, setSelectionWarning] = useState(false);
   const [past, setPast] = useState<DrawingDocument[]>([]);
   const [future, setFuture] = useState<DrawingDocument[]>([]);
   const [contextMenu, setContextMenu] = useState<DrawingContextState | null>(null);
   const [clipboard, setClipboard] = useState<DrawingObject[]>([]);
   const primaryId = selectedObjectIds.at(-1) ?? null;
   const selected = drawing?.objects.filter((object) => selectedObjectIds.includes(object.id)) ?? [];
+  const editableObjects = drawing?.objects.filter((object) => object.kind !== 'title-block') ?? [];
+  const allObjectsLocked = editableObjects.length > 0 && editableObjects.every((object) => object.locked);
   const contextObject = contextMenu?.objectId ? drawing?.objects.find((object) => object.id === contextMenu.objectId) : undefined;
 
   useEffect(() => { if (!drawing) createDocument('未命名线束图'); }, [createDocument, drawing]);
   useEffect(() => { if (saveState !== 'dirty') return; const timer = window.setTimeout(markSaved, 500); return () => window.clearTimeout(timer); }, [markSaved, saveState]);
+  useEffect(() => { if (!selectionWarning) return; const timer = window.setTimeout(() => setSelectionWarning(false), 2200); return () => window.clearTimeout(timer); }, [selectionWarning]);
 
   const remember = () => { if (!drawing) return; setPast((items) => [...items.slice(-49), clone(drawing)]); setFuture([]); };
   const apply = (next: DrawingDocument) => updateDocument(next);
@@ -93,8 +101,13 @@ export function DrawingWorkbenchPage() {
     setSelectedObjectIds(copies.map((object) => object.id));
   };
   const clear = () => { applyCommand(clearDrawingCanvas); setSelectedObjectIds([]); };
-  const toggleLocks = () => applyCommand((document) => toggleDrawingLocks(document, selectedObjectIds));
-  const moveLayers = (action: 'front' | 'forward' | 'backward' | 'back') => applyCommand((document) => moveDrawingLayers(document, selectedObjectIds, action));
+  const requireSelection = (action: () => void) => {
+    if (!selected.length) { setSelectionWarning(true); return; }
+    action();
+  };
+  const toggleSelectionLocks = () => requireSelection(() => applyCommand((document) => toggleDrawingLocks(document, selectedObjectIds)));
+  const toggleAllLocks = () => applyCommand(toggleAllDrawingLocks);
+  const moveLayers = (action: 'front' | 'forward' | 'backward' | 'back') => requireSelection(() => applyCommand((document) => moveDrawingLayers(document, selectedObjectIds, action)));
   const split = () => { if (!drawing) return; const result = splitDrawingObjects(drawing, selectedObjectIds); if (!result.changed) return; remember(); apply(result.document); setSelectedObjectIds(result.replacementIds); };
   const cropContextPath = () => {
     if (!drawing || !contextMenu?.objectId) return;
@@ -108,15 +121,23 @@ export function DrawingWorkbenchPage() {
     if (request.objectId && !selectedObjectIds.includes(request.objectId)) setSelectedObjectIds([request.objectId]);
     setContextMenu(request);
   };
-  const exportPdf = async () => {
+  const breakDrawingPath = () => setDrawingAction((current) => ({ id: current.id + 1, type: 'finish' }));
+  const requestPdfExport = () => {
+    const defaultFilename = drawing?.titleBlock.drawingNo || drawing?.name || 'drawing';
+    setExportFilename(defaultFilename);
+    setExportError('');
+    setPdfDialogOpen(true);
+  };
+  const exportPdf = async (requestedFilename = exportFilename) => {
     if (!drawing || exporting) return;
+    setExportFilename(requestedFilename);
     setExporting(true); setExportError('');
-    try { await downloadDrawingPdf(drawing); }
+    try { await downloadDrawingPdf(drawing, requestedFilename); setPdfDialogOpen(false); }
     catch (reason) { setExportError(reason instanceof Error ? reason.message : 'PDF 导出失败，请重试。'); }
     finally { setExporting(false); }
   };
   const changeTool = (mode: DrawingToolMode) => {
-    if (toolMode !== 'select') setDrawingAction((current) => ({ id: current.id + 1, type: 'finish' }));
+    if (toolMode !== 'select') breakDrawingPath();
     setToolMode(mode === toolMode && mode !== 'select' ? 'select' : mode);
   };
 
@@ -135,15 +156,15 @@ export function DrawingWorkbenchPage() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!drawing || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
       const key = event.key.toLowerCase();
-      if (event.key === 'Delete') { event.preventDefault(); removeSelected(); }
+      if (event.key === 'Delete') { event.preventDefault(); breakDrawingPath(); removeSelected(); }
       if (event.key === 'Escape') { setDrawingAction((current) => ({ id: current.id + 1, type: 'finish' })); setToolMode('select'); setSelectedObjectIds([]); }
       if (event.ctrlKey || event.metaKey) {
-        if (key === 'z') { event.preventDefault(); undo(); }
-        if (key === 'y') { event.preventDefault(); redo(); }
-        if (key === 'c') { event.preventDefault(); copySelected(); }
-        if (key === 'v') { event.preventDefault(); paste(); }
-        if (key === 'u') { event.preventDefault(); clear(); }
-        if (event.key.toLowerCase() === 'x') { event.preventDefault(); split(); }
+        if (key === 'z') { event.preventDefault(); breakDrawingPath(); undo(); }
+        if (key === 'y') { event.preventDefault(); breakDrawingPath(); redo(); }
+        if (key === 'c') { event.preventDefault(); breakDrawingPath(); copySelected(); }
+        if (key === 'v') { event.preventDefault(); breakDrawingPath(); paste(); }
+        if (key === 'u') { event.preventDefault(); breakDrawingPath(); clear(); }
+        if (event.key.toLowerCase() === 'x') { event.preventDefault(); breakDrawingPath(); split(); }
       }
       if (event.shiftKey && key === 'q') { event.preventDefault(); setOrthogonal((value) => !value); }
       if (event.shiftKey && key === 'w') { event.preventDefault(); changeTool('line'); }
@@ -156,7 +177,7 @@ export function DrawingWorkbenchPage() {
 
   if (!drawing) return null;
   return <div className="flex h-full min-h-0 flex-col bg-slate-100">
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} canUndo={past.length > 0} canRedo={future.length > 0} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleLock={toggleLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => addResource('table')} onSave={markSaved} onPdf={exportPdf} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => addResource('table')} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
       <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onAddObject={addObject} onContextMenuRequest={openContextMenu}/>
@@ -179,10 +200,12 @@ export function DrawingWorkbenchPage() {
       onCrop={cropContextPath}
       onBringToFront={() => moveLayers('front')}
       onSendToBack={() => moveLayers('back')}
-      onToggleLock={toggleLocks}
+      onToggleLock={toggleSelectionLocks}
       onClose={() => setContextMenu(null)}
     />}
-    {exportError && <div role="alert" className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded border border-red-200 bg-white px-4 py-2 text-sm text-red-700 shadow-lg"><span>{exportError}</span><button type="button" onClick={() => void exportPdf()} className="font-medium underline">重试</button><button type="button" aria-label="关闭导出错误" onClick={() => setExportError('')}>×</button></div>}
+    {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
+    {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
+    {exportError && <div role="alert" className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded border border-red-200 bg-white px-4 py-2 text-sm text-red-700 shadow-lg"><span>{exportError}</span><button type="button" onClick={() => void exportPdf(exportFilename)} className="font-medium underline">重试</button><button type="button" aria-label="关闭导出错误" onClick={() => setExportError('')}>×</button></div>}
     <StandaloneDrawingWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
   </div>;
 }
