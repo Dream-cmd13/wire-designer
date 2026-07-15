@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultDrawingObjectStyle } from '@/lib/drawingDocument';
-import { containsDrawingPoint, getDrawingTransformObject, getTransformFrame, getTransformHandlePoints, localToWorldPoint, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, worldToLocalPoint } from '@/lib/drawingTransform';
+import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getTransformFrame, getTransformHandlePoints, getWheelScaleFactor, localToWorldPoint, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, scaleDrawingObjectFromCenter, worldToLocalPoint } from '@/lib/drawingTransform';
 import type { DrawingObject } from '@/types/drawing';
 
 const object = { id: 'text-1', kind: 'text', text: 'A', x: 100, y: 200, width: 80, height: 40, rotation: 90, zIndex: 1, locked: false, visible: true, style: defaultDrawingObjectStyle } as DrawingObject;
@@ -84,5 +84,21 @@ describe('drawing transform geometry', () => {
     const center = { x: 140, y: 220 };
     expect(rotateDrawingObject(start, { x: center.x, y: center.y - 100 }, { x: center.x + 100, y: center.y }, false)).toEqual({ rotation: 100 });
     expect(rotateDrawingObject(start, { x: center.x, y: center.y - 100 }, { x: center.x + 100, y: center.y }, true)).toEqual({ rotation: 105 });
+  });
+
+  it('clamps canvas zoom and converts wheel direction to ten-percent factors', () => {
+    expect(clampDrawingZoom(0.1)).toBe(0.25);
+    expect(clampDrawingZoom(3.4)).toBe(3);
+    expect(getWheelScaleFactor(-100)).toBe(1.1);
+    expect(getWheelScaleFactor(100)).toBeCloseTo(1 / 1.1);
+  });
+
+  it('scales an object around its center and scales line points', () => {
+    expect(scaleDrawingObjectFromCenter(object, 1.5)).toMatchObject({ x: 80, y: 190, width: 120, height: 60 });
+    const line = { ...object, kind: 'line', rotation: 0, points: [{ x: 100, y: 200 }, { x: 180, y: 240 }], orthogonal: false } as DrawingObject;
+    expect(scaleDrawingObjectFromCenter(line, 2)).toMatchObject({
+      x: 60, y: 180, width: 160, height: 80,
+      points: [{ x: 60, y: 180 }, { x: 220, y: 260 }],
+    });
   });
 });

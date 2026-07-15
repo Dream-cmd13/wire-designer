@@ -16,6 +16,10 @@ export const HANDLE_HIT_SIZE_CSS = 16;
 export const ROTATION_HANDLE_SIZE_CSS = 10;
 export const ROTATION_OFFSET_CSS = 24;
 export const MIN_OBJECT_SIZE = 8;
+export const MIN_CANVAS_ZOOM = 0.25;
+export const MAX_CANVAS_ZOOM = 3;
+export const MIN_OBJECT_SCALE = 0.2;
+export const MAX_OBJECT_SCALE = 5;
 
 const lineKinds = new Set<DrawingObject['kind']>(['line', 'polyline', 'curve', 'freehand']);
 const handleAxes: Record<ResizeHandle, { x: -1 | 0 | 1; y: -1 | 0 | 1 }> = {
@@ -76,6 +80,21 @@ export function containsDrawingPoint(object: DrawingObject, point: DrawingPoint)
 
 function isLineLike(object: DrawingObject): object is Extract<DrawingObject, { kind: 'line' | 'polyline' | 'curve' | 'freehand' }> {
   return lineKinds.has(object.kind);
+}
+
+export const clampDrawingZoom = (zoom: number) => Math.min(MAX_CANVAS_ZOOM, Math.max(MIN_CANVAS_ZOOM, zoom));
+export const getWheelScaleFactor = (deltaY: number) => deltaY < 0 ? 1.1 : 1 / 1.1;
+
+export function scaleDrawingObjectFromCenter(object: DrawingObject, factor: number): DrawingTransformPatch {
+  const width = Math.max(MIN_OBJECT_SIZE, object.width * factor);
+  const height = Math.max(MIN_OBJECT_SIZE, object.height * factor);
+  const center = getObjectCenter(object);
+  const patch: DrawingTransformPatch = { x: center.x - width / 2, y: center.y - height / 2, width, height };
+  if (isLineLike(object)) patch.points = object.points.map((point) => ({
+    x: center.x + (point.x - center.x) * factor,
+    y: center.y + (point.y - center.y) * factor,
+  }));
+  return patch;
 }
 
 export function getDrawingTransformObject(object: DrawingObject): DrawingObject {
