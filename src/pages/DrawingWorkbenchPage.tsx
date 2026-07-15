@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
 import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
@@ -12,6 +12,7 @@ import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawin
 import { createDrawingId, createDrawingResourceObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
+import { getDrawingTransformObject, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { useDrawingStore } from '@/stores/drawingStore';
 import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
@@ -20,6 +21,13 @@ type DrawingContextState = {
   objectId: string | null;
   canvasPoint: DrawingPoint;
   clientPoint: { x: number; y: number };
+};
+
+type WheelGestureState = {
+  objectId: string;
+  startObject: DrawingObject;
+  cumulativeScale: number;
+  timeoutId: number;
 };
 
 const resourceDefaultPoints: Record<DrawingResourceKind, { x: number; y: number }> = {
@@ -64,7 +72,7 @@ export function DrawingWorkbenchPage() {
   const [toolMode, setToolMode] = useState<DrawingToolMode>('select');
   const [drawingAction, setDrawingAction] = useState<{ id: number; type: 'finish' | 'cancel' }>({ id: 0, type: 'cancel' });
   const [orthogonal, setOrthogonal] = useState(false);
-  const [zoom] = useState(0.72);
+  const [zoom, setZoom] = useState(0.72);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -77,6 +85,7 @@ export function DrawingWorkbenchPage() {
   const [contextMenu, setContextMenu] = useState<DrawingContextState | null>(null);
   const [clipboard, setClipboard] = useState<DrawingObject[]>([]);
   const [lineEditorObjectId, setLineEditorObjectId] = useState<string | null>(null);
+  const wheelGestureRef = useRef<WheelGestureState | null>(null);
   const primaryId = selectedObjectIds.at(-1) ?? null;
   const selected = drawing?.objects.filter((object) => selectedObjectIds.includes(object.id)) ?? [];
   const editableObjects = drawing?.objects.filter((object) => object.kind !== 'title-block') ?? [];
@@ -87,6 +96,7 @@ export function DrawingWorkbenchPage() {
   useEffect(() => { if (!drawing) createDocument('未命名线束图'); }, [createDocument, drawing]);
   useEffect(() => { if (saveState !== 'dirty') return; const timer = window.setTimeout(markSaved, 500); return () => window.clearTimeout(timer); }, [markSaved, saveState]);
   useEffect(() => { if (!selectionWarning) return; const timer = window.setTimeout(() => setSelectionWarning(false), 2200); return () => window.clearTimeout(timer); }, [selectionWarning]);
+  useEffect(() => () => { if (wheelGestureRef.current) window.clearTimeout(wheelGestureRef.current.timeoutId); }, []);
 
   const remember = () => { if (!drawing) return; setPast((items) => [...items.slice(-49), clone(drawing)]); setFuture([]); };
   const apply = (next: DrawingDocument) => updateDocument(next);
@@ -97,6 +107,22 @@ export function DrawingWorkbenchPage() {
     apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
   };
   const addResource = (kind: DrawingResourceKind) => { if (!drawing) return; addObject(createPlacedResource(drawing, kind)); setResourcesOpen(false); };
+  const scaleSelectedObject = (objectId: string, factor: number) => {
+    if (!drawing) return;
+    const currentObject = drawing.objects.find((object) => object.id === objectId);
+    if (!currentObject || currentObject.locked) return;
+    let gesture = wheelGestureRef.current;
+    if (!gesture || gesture.objectId !== objectId) {
+      if (gesture) window.clearTimeout(gesture.timeoutId);
+      remember();
+      gesture = { objectId, startObject: clone(currentObject), cumulativeScale: 1, timeoutId: 0 };
+      wheelGestureRef.current = gesture;
+    }
+    gesture.cumulativeScale = Math.min(MAX_OBJECT_SCALE, Math.max(MIN_OBJECT_SCALE, gesture.cumulativeScale * factor));
+    window.clearTimeout(gesture.timeoutId);
+    gesture.timeoutId = window.setTimeout(() => { if (wheelGestureRef.current === gesture) wheelGestureRef.current = null; }, 180);
+    updateObject(objectId, scaleDrawingObjectFromCenter(getDrawingTransformObject(gesture.startObject), gesture.cumulativeScale));
+  };
   const removeSelected = () => { if (!drawing) return; const ids = new Set(selected.filter((object) => !object.locked && object.kind !== 'title-block').map((object) => object.id)); if (!ids.size) return; remember(); apply({ ...drawing, objects: drawing.objects.filter((object) => !ids.has(object.id)), updatedAt: Date.now() }); setSelectedObjectIds([]); };
   const undo = () => { if (!drawing || !past.length) return; const previous = past.at(-1)!; setPast((items) => items.slice(0, -1)); setFuture((items) => [clone(drawing), ...items].slice(0, 50)); apply(previous); setSelectedObjectIds([]); };
   const redo = () => { if (!drawing || !future.length) return; const next = future[0]; setFuture((items) => items.slice(1)); setPast((items) => [...items, clone(drawing)].slice(-50)); apply(next); setSelectedObjectIds([]); };
@@ -199,7 +225,7 @@ export function DrawingWorkbenchPage() {
     <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => addResource('table')} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
-      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onContextMenuRequest={openContextMenu}/>
+      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onCanvasZoom={setZoom} onScaleObject={scaleSelectedObject} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
     </div>
     {contextMenu && (!contextMenu.objectId || contextObject) && <DrawingCanvasContextMenu

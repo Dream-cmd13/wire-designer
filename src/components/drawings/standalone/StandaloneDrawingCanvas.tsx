@@ -9,7 +9,7 @@ import {
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
-import { getDrawingTransformObject, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
+import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
 import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
 
@@ -22,6 +22,8 @@ interface StandaloneDrawingCanvasProps {
   onSelectionChange?: (objectIds: string[]) => void;
   onStartEdit: () => void;
   onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
+  onCanvasZoom?: (zoom: number) => void;
+  onScaleObject?: (objectId: string, factor: number) => void;
   onAddObject?: (object: DrawingObject) => void;
   onEditLineRequest?: (objectId: string) => void;
   toolMode?: DrawingToolMode;
@@ -289,6 +291,8 @@ export function StandaloneDrawingCanvas({
   onSelectionChange,
   onStartEdit,
   onUpdateObject,
+  onCanvasZoom,
+  onScaleObject,
   onAddObject,
   onEditLineRequest,
   toolMode = 'select',
@@ -448,6 +452,19 @@ export function StandaloneDrawingCanvas({
     event.currentTarget.setPointerCapture(event.pointerId);
     onStartEdit();
     setInteraction({ kind: 'move', object: structuredClone(object), startPointer: point });
+  };
+
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const point = getDrawingPoint(event.clientX, event.clientY);
+    if (!point) return;
+    const factor = getWheelScaleFactor(event.deltaY);
+    if (toolMode === 'select' && selectedObject && selectedTransformObject && !selectedObject.locked
+      && containsDrawingPoint(selectedTransformObject, point)) {
+      onScaleObject?.(selectedObject.id, factor);
+      return;
+    }
+    onCanvasZoom?.(clampDrawingZoom(zoom * factor));
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -724,7 +741,7 @@ export function StandaloneDrawingCanvas({
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[size:24px_24px] p-5">
-      <div className="relative inline-block" onContextMenu={handleContextMenu}>
+      <div className="relative inline-block" onContextMenu={handleContextMenu} onWheel={handleWheel}>
         <canvas
           ref={canvasRef}
           className={`block bg-white shadow-lg touch-none ${toolMode !== 'select' ? 'cursor-crosshair' : ''}`}

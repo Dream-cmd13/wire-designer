@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const canvasSource = readFileSync(new URL('../../components/drawings/standalone/StandaloneDrawingCanvas.tsx', import.meta.url), 'utf8');
 const rendererSource = readFileSync(new URL('../drawingRenderer.ts', import.meta.url), 'utf8');
+const pageSource = readFileSync(new URL('../../pages/DrawingWorkbenchPage.tsx', import.meta.url), 'utf8');
 
 describe('standalone drawing canvas interactions', () => {
   it('supports selection boxes and interactive path tools', () => {
@@ -67,5 +68,15 @@ describe('standalone drawing canvas interactions', () => {
 
   it('uses a crosshair cursor only while a drawing tool is active', () => {
     expect(canvasSource).toContain("toolMode !== 'select' ? 'cursor-crosshair' : ''");
+  });
+
+  it('routes wheel input by the current selected-object hit area', () => {
+    expect(canvasSource).toContain('onWheel={handleWheel}');
+    expect(canvasSource).toContain('containsDrawingPoint(selectedTransformObject, point)');
+    expect(canvasSource).toContain('selectedObject.locked');
+    expect(canvasSource).toContain('onCanvasZoom?.(clampDrawingZoom');
+    expect(canvasSource).toContain('onScaleObject?.(');
+    expect(pageSource).toContain('const [zoom, setZoom] = useState(0.72)');
+    expect(pageSource).toContain('wheelGestureRef');
   });
 });
