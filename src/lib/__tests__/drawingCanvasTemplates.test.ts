@@ -137,6 +137,9 @@ describe('standalone drawing table templates', () => {
     expect(canvasSource).toContain('onSelectTarget={setTableTarget}');
     expect(canvasSource).toContain('getDrawingTableTargetObject');
     expect(canvasSource).toContain('activeTransformObject');
+    expect(canvasSource).toContain('resolveTablePointerAction(selected, activeTarget');
+    expect(canvasSource).toContain('resolveTableDoubleClickAction(activeTarget, localTarget)');
+    expect(canvasSource).toContain('activeTarget={activeTableTarget?.objectId === object.id ? activeTableTarget : null}');
     expect(overlaySource).toContain('showRotation');
     expect(overlaySource).toContain('props.showRotation !== false');
   });

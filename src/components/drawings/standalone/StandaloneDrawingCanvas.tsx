@@ -8,6 +8,7 @@ import {
   snapOrthogonalPoint,
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
+import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
 import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
@@ -140,6 +141,7 @@ function DrawingTableLayer({
   object,
   zoom,
   selected,
+  activeTarget,
   onSelect,
   onSelectTarget,
   onEditingChange,
@@ -149,6 +151,7 @@ function DrawingTableLayer({
   object: DrawingTableObject;
   zoom: number;
   selected: boolean;
+  activeTarget: DrawingTableLocalTarget | null;
   onSelect: () => void;
   onSelectTarget: (target: DrawingTableLocalTarget | null) => void;
   onEditingChange: (editing: boolean) => void;
@@ -218,6 +221,30 @@ function DrawingTableLayer({
     onEditingChange(false);
   };
 
+  const handleTextPointerDown = (event: React.PointerEvent<HTMLElement>, target: DrawingTableLocalTarget) => {
+    const action = resolveTablePointerAction(selected, activeTarget, 'text');
+    if (action === 'move-table') beginDrag(event, 'table');
+    else {
+      onSelectTarget(target);
+      beginDrag(event, 'text', target.key);
+    }
+  };
+
+  const handleLocalDoubleClick = (
+    event: React.MouseEvent<HTMLElement>,
+    localTarget: DrawingTableLocalTarget,
+    editTarget?: TableEditTarget,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onSelect();
+    if (editTarget && resolveTableDoubleClickAction(activeTarget, localTarget) === 'edit-text') {
+      beginEdit(event, editTarget);
+      return;
+    }
+    onSelectTarget(localTarget);
+  };
+
   const renderEditableText = (value: string, target: TableEditTarget, className = '') => {
     const isEditing = editing?.key === target.key;
     const localTarget: DrawingTableLocalTarget = {
@@ -234,11 +261,11 @@ function DrawingTableLayer({
         suppressContentEditableWarning
         role="textbox"
         tabIndex={0}
-        onClick={(event) => { event.stopPropagation(); onSelect(); onSelectTarget(localTarget); }}
-        onPointerDown={(event) => { onSelectTarget(localTarget); beginDrag(event, 'text', target.key); }}
+        onClick={(event) => { event.stopPropagation(); onSelect(); }}
+        onPointerDown={(event) => handleTextPointerDown(event, localTarget)}
         onPointerMove={handleTablePointerMove}
         onPointerUp={endTableDrag}
-        onDoubleClick={(event) => beginEdit(event, target)}
+        onDoubleClick={(event) => handleLocalDoubleClick(event, localTarget, target)}
         onBlur={(event) => { if (isEditing) commitEdit(event, target); }}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
@@ -262,9 +289,17 @@ function DrawingTableLayer({
 
   const selectCell = (event: React.PointerEvent<HTMLElement>, rowIndex: number, columnIndex: number, key: string) => {
     if (event.button !== 0 || object.locked) return;
+    if (resolveTablePointerAction(selected, activeTarget, 'cell') === 'move-table') {
+      beginDrag(event, 'table');
+      return;
+    }
     event.stopPropagation();
     onSelect();
     onSelectTarget({ kind: 'table-cell', objectId: object.id, key, rowIndex, columnIndex });
+  };
+
+  const selectCellOnDoubleClick = (event: React.MouseEvent<HTMLElement>, rowIndex: number, columnIndex: number, key: string) => {
+    handleLocalDoubleClick(event, { kind: 'table-cell', objectId: object.id, key, rowIndex, columnIndex });
   };
 
   return (
@@ -293,12 +328,12 @@ function DrawingTableLayer({
       </div>}
       <div className="grid font-semibold" style={{ gridTemplateColumns: layout.columnWidths.map((width) => `${width * zoom}px`).join(' ') }}>
         {object.columns.map((column, columnIndex) => (
-          <div key={columnIndex} onPointerDown={(event) => selectCell(event, -1, columnIndex, `column-${columnIndex}`)} className="box-border border-b border-r border-slate-900 last:border-r-0" style={{ height: rowHeight }}>
+          <div key={columnIndex} onPointerDown={(event) => selectCell(event, -1, columnIndex, `column-${columnIndex}`)} onDoubleClick={(event) => selectCellOnDoubleClick(event, -1, columnIndex, `column-${columnIndex}`)} className="box-border border-b border-r border-slate-900 last:border-r-0" style={{ height: rowHeight }}>
             {renderEditableText(column, { key: `column-${columnIndex}`, type: 'table-cell', rowIndex: -1, columnIndex })}
           </div>
         ))}
         {object.rows.flatMap((row, rowIndex) => object.columns.map((column, columnIndex) => (
-          <div key={`${rowIndex}-${columnIndex}`} onPointerDown={(event) => selectCell(event, rowIndex, columnIndex, `row-${rowIndex}-column-${columnIndex}`)} className="box-border border-b border-r border-slate-300 last:border-r-0" style={{ height: layout.rowHeights[rowIndex] * zoom, fontSize: Math.max(8, object.style.fontSize - 1) * zoom, fontWeight: 400 }}>
+          <div key={`${rowIndex}-${columnIndex}`} onPointerDown={(event) => selectCell(event, rowIndex, columnIndex, `row-${rowIndex}-column-${columnIndex}`)} onDoubleClick={(event) => selectCellOnDoubleClick(event, rowIndex, columnIndex, `row-${rowIndex}-column-${columnIndex}`)} className="box-border border-b border-r border-slate-300 last:border-r-0" style={{ height: layout.rowHeights[rowIndex] * zoom, fontSize: Math.max(8, object.style.fontSize - 1) * zoom, fontWeight: 400 }}>
             {renderEditableText(row[column] ?? '', { key: `row-${rowIndex}-column-${columnIndex}`, type: 'table-cell', rowIndex, columnIndex })}
           </div>
         )))}
@@ -815,6 +850,7 @@ export function StandaloneDrawingCanvas({
             object={object}
             zoom={zoom}
             selected={activeSelectionSet.has(object.id)}
+            activeTarget={activeTableTarget?.objectId === object.id ? activeTableTarget : null}
             onSelect={() => onSelectObject(object.id)}
             onSelectTarget={setTableTarget}
             onEditingChange={setTableEditing}
