@@ -39,11 +39,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <p className="text-sm text-slate-600 mb-4">
               应用遇到了意外错误。请尝试刷新页面。
             </p>
-            {this.state.error && (
-              <pre className="text-xs text-red-600 bg-red-50 p-3 rounded mb-4 text-left overflow-auto max-h-32">
-                {this.state.error.message}
-              </pre>
-            )}
+            {this.state.error && <p className="text-xs text-red-600 bg-red-50 p-3 rounded mb-4">错误详情已记录，请点击重试。</p>}
             <button
               onClick={this.handleReset}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer text-sm"

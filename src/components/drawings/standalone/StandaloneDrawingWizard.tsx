@@ -5,6 +5,7 @@ import { DrawingWireBatchEditor } from '@/components/drawings/standalone/Drawing
 import { WIRE_COLORS } from '@/lib/data';
 import { drawingCatalogRepository, filterDrawingCatalogResources } from '@/lib/drawingCatalogRepository';
 import { applyDrawingWireBatch, countDrawingMaterialKinds, createDrawingFromWizard, validateStandaloneDrawingWizard } from '@/lib/drawingGenerator';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { DrawingCatalogFilters, DrawingCatalogResource, DrawingConnectorResource, DrawingDocument, DrawingTemplateSummary, DrawingWizardDraft } from '@/types/drawing';
 
 interface StandaloneDrawingWizardProps {
@@ -63,7 +64,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
         const next = { ...current, singleConnector: current.singleConnector ?? connector, leftConnector: current.leftConnector ?? connector, rightConnector: current.rightConnector ?? connector, wireResource: current.wireResource ?? wireResource };
         return { ...next, wires: resizeWires(next, connector?.pinCount ?? 1) };
       });
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '公共资源加载失败。'); }
+    } catch (reason) { console.error('公共资源加载失败:', reason); setError(getUserErrorMessage(reason, '公共资源加载失败，请重试。')); }
     finally { setLoading(false); }
   };
 
@@ -88,7 +89,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
   const loadTemplate = async () => {
     if (!drawingCatalogRepository || !selectedTemplateId) return;
     try { (onLoadTemplate ?? onGenerate)(await drawingCatalogRepository.loadTemplate(selectedTemplateId)); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : '图库模板加载失败。'); }
+    catch (reason) { console.error('图库模板加载失败:', reason); setError(getUserErrorMessage(reason, '图库模板加载失败，请重试。')); }
   };
 
   const canNext = step === 0

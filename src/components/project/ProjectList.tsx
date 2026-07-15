@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, Edit3, FolderOpen, HardDrive, History, Plus, Trash2, Upload } from 'lucide-react';
 import { createDesignFile, downloadTextFile, safeFilename, type DesignFilePreview } from '@/lib/designFile';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { ImportProjectDialog } from '@/components/project/ImportProjectDialog';
@@ -62,9 +63,10 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
         message: `已删除项目“${project.name}”`,
       });
     } catch (error) {
+      console.error('项目删除失败:', error);
       setStatusToast({
         tone: 'danger',
-        message: error instanceof Error ? error.message : '删除失败',
+        message: getUserErrorMessage(error, '删除失败，请重试。'),
       });
     } finally {
       setDeletingProjectId(null);

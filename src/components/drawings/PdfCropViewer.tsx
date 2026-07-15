@@ -19,6 +19,7 @@ import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { generateId } from '@/lib/commands';
 import type { PdfDrawing } from '@/lib/pdfDrawings';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage } from '@/types/harness';
 
@@ -215,7 +216,8 @@ function PdfCropViewerContent({ drawing }: PdfCropViewerProps) {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setErrorMessage(error instanceof Error ? error.message : 'PDF 加载失败');
+        console.error('PDF 加载失败:', error);
+        setErrorMessage(getUserErrorMessage(error, 'PDF 加载失败，请重试。'));
         setLoadingMessage('');
       });
 
@@ -275,7 +277,8 @@ function PdfCropViewerContent({ drawing }: PdfCropViewerProps) {
         }
       } catch (error) {
         if (cancelled || (error instanceof Error && error.name === 'RenderingCancelledException')) return;
-        setErrorMessage(error instanceof Error ? error.message : 'PDF 页面渲染失败');
+        console.error('PDF 页面渲染失败:', error);
+        setErrorMessage(getUserErrorMessage(error, 'PDF 页面渲染失败，请重试。'));
         setLoadingMessage('');
       }
     };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, Search, X } from 'lucide-react';
 import { drawingCatalogRepository } from '@/lib/drawingCatalogRepository';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingIconResource, DrawingResourceKind } from '@/types/drawing';
 
 interface Props {
@@ -36,7 +37,7 @@ export function DrawingResourcePanel({ open, onClose, onAddKind, onAddCatalog, o
         drawingCatalogRepository.listResources(), drawingCatalogRepository.listCommonPhrases(), drawingCatalogRepository.listIcons(),
       ]);
       setResources(nextResources); setPhrases(nextPhrases); setIcons(nextIcons);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : '公共资源加载失败。'); }
+    } catch (reason) { console.error('公共资源加载失败:', reason); setError(getUserErrorMessage(reason, '公共资源加载失败，请重试。')); }
     finally { setLoading(false); }
   };
 

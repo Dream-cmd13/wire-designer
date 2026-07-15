@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FileJson, Upload, X } from 'lucide-react';
 import { parseDesignFile, type DesignFilePreview } from '@/lib/designFile';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 
 interface ImportProjectDialogProps {
   isOpen: boolean;
@@ -55,7 +56,8 @@ export function ImportProjectDialog({ isOpen, onClose, onImport }: ImportProject
       await onImport(preview);
       close();
     } catch (importError) {
-      setError(importError instanceof Error ? importError.message : '导入失败');
+      console.error('项目导入失败:', importError);
+      setError(getUserErrorMessage(importError, '导入失败，请重试。'));
     } finally {
       setImporting(false);
     }

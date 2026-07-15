@@ -16,6 +16,7 @@ import { useAppRoute } from '@/hooks/useAppRoute';
 import { appRoutes } from '@/lib/appRoute';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { pdfDrawings, type PdfDrawing } from '@/lib/pdfDrawings';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { projectRepository } from '@/repositories/projectRepository';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useHistoryStore } from '@/stores/historyStore';
@@ -185,7 +186,8 @@ export default function App() {
           markSaved();
         }
       } catch (error) {
-        markSaveError(error instanceof Error ? error.message : '保存失败');
+        console.error('项目保存失败:', error);
+        markSaveError(getUserErrorMessage(error, '保存失败，请重试。'));
       }
     })();
 

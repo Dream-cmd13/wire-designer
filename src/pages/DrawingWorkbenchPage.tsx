@@ -12,6 +12,7 @@ import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawin
 import { createDrawingId, createDrawingResourceObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { useDrawingStore } from '@/stores/drawingStore';
 import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
 
@@ -144,7 +145,7 @@ export function DrawingWorkbenchPage() {
     setExportFilename(requestedFilename);
     setExporting(true); setExportError('');
     try { await downloadDrawingPdf(drawing, requestedFilename); setPdfDialogOpen(false); }
-    catch (reason) { setExportError(reason instanceof Error ? reason.message : 'PDF 导出失败，请重试。'); }
+    catch (reason) { console.error('PDF 导出失败:', reason); setExportError(getUserErrorMessage(reason, 'PDF 导出失败，请重试。')); }
     finally { setExporting(false); }
   };
   const changeTool = (mode: DrawingToolMode) => {
