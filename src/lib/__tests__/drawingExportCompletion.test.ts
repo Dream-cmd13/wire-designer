@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createBlankDrawingDocument, createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { getDrawingExportFilename, serializeDrawingSvg } from '@/lib/drawingExport';
-import type { DrawingGroupObject, DrawingIconObject, DrawingLineObject } from '@/types/drawing';
+import type { DrawingGroupObject, DrawingIconObject, DrawingLineObject, DrawingTableObject } from '@/types/drawing';
 
 describe('completed drawing export', () => {
   it('serializes grouped children and icons into SVG', () => {
@@ -35,6 +35,20 @@ describe('completed drawing export', () => {
     const svg = serializeDrawingSvg({ ...drawing, objects: [...drawing.objects, dot] });
 
     expect(svg).toContain('<circle cx="24" cy="36" r="3" fill="#ff0000"');
+  });
+
+  it('uses custom table columns and optional title rows in SVG exports', () => {
+    const drawing = createBlankDrawingDocument('table export');
+    const table: DrawingTableObject = {
+      id: 'table-layout', kind: 'table', x: 40, y: 50, width: 200, height: 54,
+      rotation: 0, zIndex: 20, locked: false, visible: true, style: { ...defaultDrawingObjectStyle },
+      title: '隐藏表名', columns: ['列1', '列2'], rows: [{ 列1: '甲', 列2: '乙' }],
+      showTitleRow: false, columnWidths: [70, 130], headerRowHeight: 20, rowHeights: [34],
+    };
+    const svg = serializeDrawingSvg({ ...drawing, objects: [...drawing.objects, table] });
+    expect(svg).not.toContain('隐藏表名');
+    expect(svg).toContain('<line x1="70" y1="0" x2="70" y2="54"');
+    expect(svg).toContain('>甲</text>');
   });
 
   it('sanitizes a requested PDF filename and falls back to the drawing number', () => {

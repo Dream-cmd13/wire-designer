@@ -4,6 +4,7 @@ import type {
   DrawingObjectStyle,
   DrawingPoint,
   DrawingResourceKind,
+  DrawingTableObject,
   DrawingTitleBlockObject,
 } from '@/types/drawing';
 
@@ -218,15 +219,36 @@ export function createDrawingResourceObject(kind: DrawingResourceKind, point: Dr
       orthogonal: false,
     };
   }
-  if (kind === 'table' || kind === 'bom-table' || kind === 'wiring-table') {
+  if (kind === 'table') return createDrawingTableObject(point, { rowCount: 3, columnCount: 3, showTitleRow: true });
+  if (kind === 'bom-table' || kind === 'wiring-table') {
     const title = kind === 'bom-table' ? '物料表' : kind === 'wiring-table' ? '接线表' : '自定义表格';
     const base = objectBase(kind, point, 360, 120);
     const columns = kind === 'wiring-table' ? ['PIN', '颜色', '线号', '长度'] : ['序号', '名称', '数量'];
     const rows = Array.from({ length: 3 }, () =>
       Object.fromEntries(columns.map((column) => [column, ''])));
-    if (kind === 'table') return { ...base, kind: 'table', title, columns, rows };
     if (kind === 'bom-table') return { ...base, kind: 'bom-table', title, columns, rows };
     return { ...base, kind: 'wiring-table', title, columns, rows };
   }
   return { ...objectBase(kind, point, 360, 120), kind: 'tech-requirements', requirements: ['请填写技术要求。'] };
+}
+
+export type DrawingTableCreateInput = { rowCount: number; columnCount: number; showTitleRow: boolean };
+
+export function createDrawingTableObject(point: DrawingPoint, input: DrawingTableCreateInput): DrawingTableObject {
+  const columns = Array.from({ length: input.columnCount }, (_, index) => `列${index + 1}`);
+  const rows = Array.from({ length: input.rowCount }, () => Object.fromEntries(columns.map((column) => [column, ''])));
+  const width = Math.max(180, input.columnCount * 90);
+  const height = (input.showTitleRow ? 22 : 0) + 18 + input.rowCount * 18;
+  return {
+    ...objectBase('table', point, width, height),
+    kind: 'table',
+    title: '表格',
+    columns,
+    rows,
+    showTitleRow: input.showTitleRow,
+    columnWidths: Array.from({ length: input.columnCount }, () => width / input.columnCount),
+    titleRowHeight: 22,
+    headerRowHeight: 18,
+    rowHeights: Array.from({ length: input.rowCount }, () => 18),
+  };
 }

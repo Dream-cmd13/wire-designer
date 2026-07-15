@@ -129,6 +129,24 @@ describe('standalone drawing table templates', () => {
     expect(textCalls.find((call) => call.text === '黑')?.fillStyle).toBe(defaultDrawingObjectStyle.color);
   });
 
+  it('omits disabled table title rows from Canvas rendering', () => {
+    const document: DrawingDocument = {
+      schemaVersion: 1, id: 'drawing-no-title', name: 'no title', createdAt: 0, updatedAt: 0,
+      page: { size: 'A4', orientation: 'landscape', width: 1200, height: 800 },
+      titleBlock: { title: 'title', drawingNo: 'D-1', revision: 'A' }, revisionTable: [], techRequirements: [],
+      objects: [{
+        id: 'table-no-title', kind: 'table', x: 10, y: 10, width: 200, height: 54,
+        rotation: 0, zIndex: 1, locked: false, visible: true, style: defaultDrawingObjectStyle,
+        title: '不要显示', columns: ['列1', '列2'], rows: [{ 列1: '甲', 列2: '乙' }],
+        showTitleRow: false, columnWidths: [70, 130], headerRowHeight: 20, rowHeights: [34],
+      }],
+    };
+    const { context, textCalls } = createRecordingContext();
+    renderDrawingCanvas(context, document);
+    expect(textCalls.map((call) => call.text)).not.toContain('不要显示');
+    expect(textCalls.map((call) => call.text)).toEqual(expect.arrayContaining(['列1', '列2', '甲', '乙']));
+  });
+
   it('can omit DOM-managed table objects from the interactive canvas render', () => {
     const document: DrawingDocument = {
       schemaVersion: 1,

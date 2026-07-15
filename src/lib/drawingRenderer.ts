@@ -1,5 +1,6 @@
 import type { DrawingDocument, DrawingObject, DrawingPoint } from '@/types/drawing';
 import { containsDrawingPoint } from '@/lib/drawingTransform';
+import { resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getEditableDrawingTextRuns, type EditableDrawingTextField } from '@/lib/drawingTextLayout';
 
 function drawEditableText(
@@ -40,13 +41,10 @@ function drawPolyline(context: CanvasRenderingContext2D, points: DrawingPoint[],
 }
 
 function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>) {
-  const titleHeight = 22;
-  const rowHeight = 18;
-  const columnWidth = object.width / Math.max(1, object.columns.length);
-  const tableTop = titleHeight;
-  const maxBodyRows = Math.max(0, Math.floor((object.height - titleHeight) / rowHeight) - 1);
-  const hasMoreRows = object.rows.length > maxBodyRows;
-  const visibleRows = object.rows.slice(0, hasMoreRows ? Math.max(0, maxBodyRows - 1) : maxBodyRows);
+  const layout = resolveDrawingTableLayout(object);
+  const titleHeight = layout.showTitleRow ? layout.titleRowHeight : 0;
+  const headerBottom = titleHeight + layout.headerRowHeight;
+  const columnStarts = layout.columnWidths.map((_, index) => layout.columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0));
   context.fillStyle = object.style.fill;
   context.fillRect(0, 0, object.width, object.height);
   context.strokeRect(0, 0, object.width, object.height);
@@ -55,47 +53,41 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.rect(0, 0, object.width, object.height);
   context.clip();
   context.fillStyle = object.style.color;
-  const drawCellText = (key: string, text: string, x: number, y: number, maxWidth?: number) => {
+  const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, maxWidth?: number) => {
     const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
+    context.font = `${layout.textSizes[key]?.fontSize ?? fallbackSize}px Arial`;
     context.fillText(text, x + offset.x, y + offset.y, maxWidth);
   };
-  context.font = `600 ${object.style.fontSize}px Arial`;
-  drawCellText('title', object.title, 6, 15, object.width - 12);
-  context.beginPath();
-  context.moveTo(0, titleHeight);
-  context.lineTo(object.width, titleHeight);
-  context.stroke();
-  context.font = `600 ${object.style.fontSize}px Arial`;
-  object.columns.forEach((column, index) => {
-    drawCellText(`column-${index}`, column, index * columnWidth + 5, tableTop + rowHeight - 6);
+  if (layout.showTitleRow) {
+    drawCellText('title', object.title, 6, layout.titleRowHeight - 6, object.style.fontSize, object.width - 12);
     context.beginPath();
-    context.moveTo(index * columnWidth, titleHeight);
-    context.lineTo(index * columnWidth, object.height);
+    context.moveTo(0, titleHeight);
+    context.lineTo(object.width, titleHeight);
+    context.stroke();
+  }
+  object.columns.forEach((column, index) => {
+    drawCellText(`column-${index}`, column, columnStarts[index] + 5, headerBottom - 6, object.style.fontSize, layout.columnWidths[index] - 8);
+    context.beginPath();
+    context.moveTo(columnStarts[index], titleHeight);
+    context.lineTo(columnStarts[index], object.height);
     context.stroke();
   });
   context.beginPath();
-  context.moveTo(0, tableTop + rowHeight);
-  context.lineTo(object.width, tableTop + rowHeight);
+  context.moveTo(0, headerBottom);
+  context.lineTo(object.width, headerBottom);
   context.stroke();
-  context.font = `${Math.max(8, object.style.fontSize - 1)}px Arial`;
-  visibleRows.forEach((row, rowIndex) => {
-    const y = tableTop + rowHeight * (rowIndex + 2);
+  let rowTop = headerBottom;
+  object.rows.forEach((row, rowIndex) => {
+    const y = rowTop + layout.rowHeights[rowIndex];
     context.beginPath();
     context.moveTo(0, y);
     context.lineTo(object.width, y);
     context.stroke();
     object.columns.forEach((column, columnIndex) => {
-      drawCellText(`row-${rowIndex}-column-${columnIndex}`, row[column] ?? '', columnIndex * columnWidth + 5, y - 6, columnWidth - 8);
+      drawCellText(`row-${rowIndex}-column-${columnIndex}`, row[column] ?? '', columnStarts[columnIndex] + 5, y - 6, Math.max(8, object.style.fontSize - 1), layout.columnWidths[columnIndex] - 8);
     });
+    rowTop = y;
   });
-  if (hasMoreRows) {
-    const y = tableTop + rowHeight * (visibleRows.length + 2);
-    context.beginPath();
-    context.moveTo(0, y - rowHeight);
-    context.lineTo(object.width, y - rowHeight);
-    context.stroke();
-    context.fillText(`另有 ${object.rows.length - visibleRows.length} 行，详见导出明细`, 5, y - 6, object.width - 10);
-  }
   context.restore();
 }
 

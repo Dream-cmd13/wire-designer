@@ -1,4 +1,5 @@
 import { safeFilename } from '@/lib/designFile';
+import { resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
 function escapeXml(value: string) {
@@ -56,22 +57,28 @@ function svgObject(object: DrawingObject): string {
     return `<g ${common} ${style}><rect width="${object.width}" height="${object.height}"/><line x1="${object.width - 80}" y1="0" x2="${object.width - 80}" y2="${object.height}"/><text x="10" y="20" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(object.title)}</text><text x="10" y="42" font-size="10" fill="${object.style.color}" stroke="none">图号：${escapeXml(object.drawingNo)}</text><text x="${object.width - 70}" y="32" font-size="10" fill="${object.style.color}" stroke="none">版本：${escapeXml(object.revision)}</text></g>`;
   }
   if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') {
-    const columnWidth = object.width / Math.max(1, object.columns.length);
-    const rowHeight = 18;
-    const maxBodyRows = Math.max(0, Math.floor(object.height / rowHeight) - 1);
-    const hasMoreRows = object.rows.length > maxBodyRows;
-    const visibleRows = object.rows.slice(0, hasMoreRows ? Math.max(0, maxBodyRows - 1) : maxBodyRows);
+    const layout = resolveDrawingTableLayout(object);
+    const titleHeight = layout.showTitleRow ? layout.titleRowHeight : 0;
+    const headerBottom = titleHeight + layout.headerRowHeight;
+    const columnStarts = layout.columnWidths.map((_, index) => layout.columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0));
     const clipId = `clip-${svgId(object.id)}`;
-    const verticals = object.columns.map((_, index) => `<line x1="${index * columnWidth}" y1="0" x2="${index * columnWidth}" y2="${object.height}"/>`).join('');
-    const labels = object.columns.map((column, index) => `<text x="${index * columnWidth + 5}" y="${rowHeight - 6}" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(column)}</text>`).join('');
-    const rows = visibleRows.map((row, rowIndex) => {
-      const y = rowHeight * (rowIndex + 2);
-      return `<line x1="0" y1="${y}" x2="${object.width}" y2="${y}"/>${object.columns.map((column, columnIndex) => `<text x="${columnIndex * columnWidth + 5}" y="${y - 6}" font-size="${Math.max(8, object.style.fontSize - 1)}" fill="${object.style.color}" stroke="none">${escapeXml(row[column] ?? '')}</text>`).join('')}`;
+    const text = (key: string, value: string, x: number, baseline: number, fallbackSize: number) => {
+      const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
+      const fontSize = layout.textSizes[key]?.fontSize ?? fallbackSize;
+      return `<text x="${x + offset.x}" y="${baseline + offset.y}" font-size="${fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(value)}</text>`;
+    };
+    const verticals = columnStarts.map((x) => `<line x1="${x}" y1="${titleHeight}" x2="${x}" y2="${object.height}"/>`).join('');
+    const title = layout.showTitleRow ? text('title', object.title, 5, layout.titleRowHeight - 6, object.style.fontSize) : '';
+    const labels = object.columns.map((column, index) => text(`column-${index}`, column, columnStarts[index] + 5, headerBottom - 6, object.style.fontSize)).join('');
+    let rowTop = headerBottom;
+    const rows = object.rows.map((row, rowIndex) => {
+      const rowBottom = rowTop + layout.rowHeights[rowIndex];
+      const output = `<line x1="0" y1="${rowBottom}" x2="${object.width}" y2="${rowBottom}"/>${object.columns.map((column, columnIndex) => text(`row-${rowIndex}-column-${columnIndex}`, row[column] ?? '', columnStarts[columnIndex] + 5, rowBottom - 6, Math.max(8, object.style.fontSize - 1))).join('')}`;
+      rowTop = rowBottom;
+      return output;
     }).join('');
-    const more = hasMoreRows
-      ? `<line x1="0" y1="${rowHeight * (visibleRows.length + 1)}" x2="${object.width}" y2="${rowHeight * (visibleRows.length + 1)}"/><text x="5" y="${rowHeight * (visibleRows.length + 2) - 6}" font-size="${Math.max(8, object.style.fontSize - 1)}" fill="${object.style.color}" stroke="none">${escapeXml(`另有 ${object.rows.length - visibleRows.length} 行，详见导出明细`)}</text>`
-      : '';
-    return `<g ${common} ${style}><defs><clipPath id="${clipId}"><rect width="${object.width}" height="${object.height}"/></clipPath></defs><g clip-path="url(#${clipId})"><rect width="${object.width}" height="${object.height}"/>${verticals}<line x1="0" y1="${rowHeight}" x2="${object.width}" y2="${rowHeight}"/>${labels}${rows}${more}</g></g>`;
+    const titleSeparator = layout.showTitleRow ? `<line x1="0" y1="${titleHeight}" x2="${object.width}" y2="${titleHeight}"/>` : '';
+    return `<g ${common} ${style}><defs><clipPath id="${clipId}"><rect width="${object.width}" height="${object.height}"/></clipPath></defs><g clip-path="url(#${clipId})"><rect width="${object.width}" height="${object.height}"/>${verticals}${titleSeparator}<line x1="0" y1="${headerBottom}" x2="${object.width}" y2="${headerBottom}"/>${title}${labels}${rows}</g></g>`;
   }
   if (object.kind === 'group') {
     const children = object.children.filter((child) => child.visible).sort((left, right) => left.zIndex - right.zIndex).map(svgObject).join('');

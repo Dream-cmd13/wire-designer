@@ -50,6 +50,22 @@ export type DrawingPoint = { x: number; y: number };
 
 export type DrawingTableRow = Record<string, string>;
 export type DrawingTableTextOffsets = Record<string, DrawingPoint>;
+export type DrawingTableTextSize = { width: number; height: number; fontSize: number };
+export type DrawingTableLayoutFields = {
+  showTitleRow?: boolean;
+  columnWidths?: number[];
+  titleRowHeight?: number;
+  headerRowHeight?: number;
+  rowHeights?: number[];
+  textSizes?: Record<string, DrawingTableTextSize>;
+};
+export type DrawingTableLocalTarget = {
+  kind: 'table-cell' | 'table-text';
+  objectId: string;
+  key: string;
+  rowIndex?: number;
+  columnIndex?: number;
+};
 
 export type DrawingConnectorObject = DrawingObjectBase & {
   kind: 'connector';
@@ -91,7 +107,7 @@ export type DrawingLineObject = DrawingObjectBase & {
   orthogonal: boolean;
 };
 
-export type DrawingTableObject = DrawingObjectBase & {
+export type DrawingTableObject = DrawingObjectBase & DrawingTableLayoutFields & {
   kind: 'table';
   title: string;
   columns: string[];
@@ -99,7 +115,7 @@ export type DrawingTableObject = DrawingObjectBase & {
   textOffsets?: DrawingTableTextOffsets;
 };
 
-export type DrawingBomTableObject = DrawingObjectBase & {
+export type DrawingBomTableObject = DrawingObjectBase & DrawingTableLayoutFields & {
   kind: 'bom-table';
   title: string;
   columns: string[];
@@ -107,7 +123,7 @@ export type DrawingBomTableObject = DrawingObjectBase & {
   textOffsets?: DrawingTableTextOffsets;
 };
 
-export type DrawingWiringTableObject = DrawingObjectBase & {
+export type DrawingWiringTableObject = DrawingObjectBase & DrawingTableLayoutFields & {
   kind: 'wiring-table';
   title: string;
   columns: string[];
