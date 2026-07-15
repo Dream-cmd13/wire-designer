@@ -289,13 +289,14 @@ function DrawingTableLayer({
 
   const selectCell = (event: React.PointerEvent<HTMLElement>, rowIndex: number, columnIndex: number, key: string) => {
     if (event.button !== 0 || object.locked) return;
+    const localTarget: DrawingTableLocalTarget = { kind: 'table-cell', objectId: object.id, key, rowIndex, columnIndex };
     if (resolveTablePointerAction(selected, activeTarget, 'cell') === 'move-table') {
       beginDrag(event, 'table');
       return;
     }
     event.stopPropagation();
     onSelect();
-    onSelectTarget({ kind: 'table-cell', objectId: object.id, key, rowIndex, columnIndex });
+    onSelectTarget(localTarget);
   };
 
   const selectCellOnDoubleClick = (event: React.MouseEvent<HTMLElement>, rowIndex: number, columnIndex: number, key: string) => {
@@ -644,6 +645,7 @@ export function StandaloneDrawingCanvas({
     }
     if (selectionStart && selectionEnd) {
       const ids = getObjectsInSelectionRect(drawing, normalizeDrawingRect(selectionStart, selectionEnd));
+      if (ids.some((id) => tableObjectIds.has(id))) setTableTarget(null);
       onSelectionChange?.(ids);
       onSelectObject(ids.at(-1) ?? null);
       setSelectionStart(null);
@@ -895,6 +897,7 @@ export function StandaloneDrawingCanvas({
             pageHeight={drawing.page.height}
             controlsVisible={!activeTransformObject.locked}
             showRotation={!activeTableTarget}
+            compactHitTargets={activeTableTarget?.kind === 'table-text'}
             onResizePointerDown={beginResize}
             onRotatePointerDown={beginRotate}
             onPointerMove={(event) => updateTransform(event.clientX, event.clientY, event.shiftKey)}

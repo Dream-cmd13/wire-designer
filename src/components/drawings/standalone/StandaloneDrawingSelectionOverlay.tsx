@@ -5,6 +5,7 @@ import type { DrawingObject } from '@/types/drawing';
 type OverlayProps = {
   object: DrawingObject; zoom: number; pageWidth: number; pageHeight: number; controlsVisible: boolean;
   showRotation?: boolean;
+  compactHitTargets?: boolean;
   onResizePointerDown: (handle: ResizeHandle, event: ReactPointerEvent<SVGRectElement>) => void;
   onRotatePointerDown: (event: ReactPointerEvent<SVGCircleElement>) => void;
   onPointerMove: (event: ReactPointerEvent<SVGSVGElement>) => void;
@@ -16,12 +17,13 @@ export function StandaloneDrawingSelectionOverlay(props: OverlayProps) {
   const frame = getTransformFrame(props.object);
   const points = getTransformHandlePoints(props.object, props.zoom);
   const polygon = frame.corners.map((point) => `${point.x * props.zoom},${point.y * props.zoom}`).join(' ');
+  const hitSize = props.compactHitTargets ? HANDLE_SIZE_CSS : HANDLE_HIT_SIZE_CSS;
   return <svg aria-label="对象变换控制" className="pointer-events-none absolute left-0 top-0 z-40 overflow-visible" width={props.pageWidth * props.zoom} height={props.pageHeight * props.zoom} onPointerMove={props.onPointerMove} onPointerUp={props.onPointerEnd} onPointerCancel={props.onPointerEnd}>
     <polygon points={polygon} fill="none" stroke="#60a5fa" strokeWidth="1.5" pointerEvents="none" />
     {props.controlsVisible && <>
       {props.showRotation !== false && <line x1={points.n.x * props.zoom} y1={points.n.y * props.zoom} x2={points.rotate.x * props.zoom} y2={points.rotate.y * props.zoom} stroke="#60a5fa" strokeWidth="1.5" pointerEvents="none" />}
       {resizeHandles.map((handle) => { const point = points[handle]; return <g key={handle}>
-        <rect pointerEvents="all" x={point.x * props.zoom - HANDLE_HIT_SIZE_CSS / 2} y={point.y * props.zoom - HANDLE_HIT_SIZE_CSS / 2} width={HANDLE_HIT_SIZE_CSS} height={HANDLE_HIT_SIZE_CSS} fill="transparent" style={{ cursor: getResizeCursor(handle, props.object.rotation), touchAction: 'none' }} onPointerDown={(event) => props.onResizePointerDown(handle, event)} />
+        <rect pointerEvents="all" x={point.x * props.zoom - hitSize / 2} y={point.y * props.zoom - hitSize / 2} width={hitSize} height={hitSize} fill="transparent" style={{ cursor: getResizeCursor(handle, props.object.rotation), touchAction: 'none' }} onPointerDown={(event) => props.onResizePointerDown(handle, event)} />
         <rect x={point.x * props.zoom - HANDLE_SIZE_CSS / 2} y={point.y * props.zoom - HANDLE_SIZE_CSS / 2} width={HANDLE_SIZE_CSS} height={HANDLE_SIZE_CSS} fill="white" stroke="#3b82f6" strokeWidth="1.5" pointerEvents="none" />
       </g>; })}
       {props.showRotation !== false && <>

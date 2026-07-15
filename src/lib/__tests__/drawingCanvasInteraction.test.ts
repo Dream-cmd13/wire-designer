@@ -15,6 +15,10 @@ describe('standalone drawing canvas interactions', () => {
     expect(canvasSource).toContain('onAddObject');
   });
 
+  it('restores whole-table mode when marquee selection includes a table', () => {
+    expect(canvasSource).toContain('if (ids.some((id) => tableObjectIds.has(id))) setTableTarget(null)');
+  });
+
   it('renders grouped resources and public icon paths', () => {
     expect(rendererSource).toContain("object.kind === 'group'");
     expect(rendererSource).toContain("object.kind === 'icon'");

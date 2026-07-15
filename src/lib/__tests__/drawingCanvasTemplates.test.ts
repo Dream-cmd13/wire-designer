@@ -139,6 +139,8 @@ describe('standalone drawing table templates', () => {
     expect(canvasSource).toContain('activeTransformObject');
     expect(canvasSource).toContain('resolveTablePointerAction(selected, activeTarget');
     expect(canvasSource).toContain('resolveTableDoubleClickAction(activeTarget, localTarget)');
+    expect(canvasSource).toContain("compactHitTargets={activeTableTarget?.kind === 'table-text'}");
+    expect(overlaySource).toContain('props.compactHitTargets ? HANDLE_SIZE_CSS : HANDLE_HIT_SIZE_CSS');
     expect(canvasSource).toContain('activeTarget={activeTableTarget?.objectId === object.id ? activeTableTarget : null}');
     expect(overlaySource).toContain('showRotation');
     expect(overlaySource).toContain('props.showRotation !== false');
