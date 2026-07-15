@@ -1,0 +1,132 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic "线束设计器" [ref=e6]
+      - generic [ref=e11]:
+        - heading "线束设计器" [level=1] [ref=e12]
+        - paragraph [ref=e13]: Admin Console v2.0
+      - button "收缩侧边栏" [ref=e14] [cursor=pointer]
+    - navigation [ref=e18]:
+      - generic [ref=e19]:
+        - button "首页" [ref=e21] [cursor=pointer]
+        - generic [ref=e26]:
+          - button "线束设计器" [ref=e27] [cursor=pointer]
+          - generic [ref=e33]:
+            - button "设计图" [ref=e34] [cursor=pointer]
+            - button "PDF" [ref=e41] [cursor=pointer]
+            - button "成品图" [ref=e46] [cursor=pointer]
+        - button "制作图纸" [ref=e54] [cursor=pointer]
+        - generic [ref=e61]:
+          - button "正式库" [ref=e62] [cursor=pointer]
+          - generic [ref=e68]:
+            - button "数据库连接器" [ref=e69] [cursor=pointer]
+            - button "线束库" [ref=e75] [cursor=pointer]
+  - generic [ref=e79]:
+    - banner [ref=e80]:
+      - generic [ref=e82]:
+        - paragraph [ref=e83]: 制作图纸
+        - paragraph [ref=e84]: 选择项目后可进入完整设计流程
+      - button "登录" [ref=e85] [cursor=pointer]
+    - main [ref=e90]:
+      - generic [ref=e91]:
+        - toolbar "绘图工具栏" [ref=e92]:
+          - button "配置向导" [ref=e93]
+          - button "绘图资源" [ref=e97]
+          - button "撤销" [disabled] [ref=e99]
+          - button "重做" [disabled] [ref=e103]
+          - button "清空画板（Ctrl+U）" [ref=e107]
+          - button "删除" [disabled] [ref=e111]
+          - button "锁定/解锁" [disabled] [ref=e115]
+          - button "图层上移" [disabled] [ref=e120]
+          - button "图层下移" [disabled] [ref=e124]
+          - button "置于顶层" [disabled] [ref=e127]
+          - button "置于底层" [disabled] [ref=e132]
+          - button "选择" [pressed] [ref=e135]
+          - button "正交（Shift+Q）" [ref=e138]
+          - button "直线（Shift+W）" [ref=e141]:
+            - generic [ref=e142]: ╱
+          - button "折线（Shift+E）" [ref=e143]:
+            - generic [ref=e144]: ⌁
+          - button "曲线（Shift+R）" [ref=e145]:
+            - generic [ref=e146]: ⌒
+          - button "自由画笔" [ref=e147]
+          - button "添加文字" [ref=e151]
+          - button "号码/标签" [ref=e154]:
+            - generic [ref=e155]: ①
+          - button "长度标注" [ref=e156]:
+            - generic [ref=e157]: ↔
+          - button "表格" [ref=e158]:
+            - generic [ref=e159]: ▦
+          - button "保存" [ref=e160]
+          - button "导出 PDF" [ref=e165]
+        - generic [ref=e169]:
+          - generic [ref=e171]:
+            - generic [ref=e173]:
+              - textbox [ref=e175]
+              - generic [ref=e176]:
+                - textbox [ref=e178]
+                - textbox [ref=e180]
+                - textbox [ref=e182]
+                - textbox [ref=e184]
+                - textbox [ref=e186]
+                - textbox [ref=e188]
+                - textbox [ref=e190]
+                - textbox [ref=e192]
+            - generic [ref=e193]:
+              - textbox [ref=e195]
+              - generic [ref=e196]:
+                - textbox [ref=e198]
+                - textbox [ref=e200]
+                - textbox [ref=e202]
+                - textbox [ref=e204]
+                - textbox [ref=e206]
+                - textbox [ref=e208]
+                - textbox [ref=e210]
+                - textbox [ref=e212]
+            - generic [ref=e213]:
+              - textbox [ref=e215]
+              - generic [ref=e216]:
+                - textbox [ref=e218]
+                - textbox [ref=e220]
+                - textbox [ref=e222]
+                - textbox [ref=e224]
+                - textbox [ref=e226]
+                - textbox [ref=e228]
+                - textbox [ref=e230]
+                - textbox [ref=e232]
+                - textbox [ref=e234]
+                - textbox [ref=e236]
+                - textbox [ref=e238]
+                - textbox [ref=e240]
+            - generic [ref=e241]:
+              - textbox [ref=e243]
+              - generic [ref=e244]:
+                - textbox [ref=e246]
+                - textbox [ref=e248]
+                - textbox [ref=e250]
+                - textbox [ref=e252]
+                - textbox [ref=e254]
+                - textbox [ref=e256]
+                - textbox [ref=e258]
+                - textbox [ref=e260]
+                - textbox [ref=e262]
+                - textbox [ref=e264]
+                - textbox [ref=e266]
+                - textbox [ref=e268]
+                - textbox [ref=e270]
+                - textbox [ref=e272]
+                - textbox [ref=e274]
+                - textbox [ref=e276]
+                - textbox [ref=e278]
+                - textbox [ref=e280]
+                - textbox [ref=e282]
+                - textbox [ref=e284]
+                - textbox [ref=e286]
+                - textbox [ref=e288]
+                - textbox [ref=e290]
+                - textbox [ref=e292]
+                - textbox [ref=e294]
+                - textbox [ref=e296]
+                - textbox [ref=e298]
+                - textbox [ref=e300]
+          - complementary [ref=e301]: 选择画布对象后，可编辑位置、尺寸、图层、锁定状态与业务属性。

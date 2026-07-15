@@ -78,6 +78,32 @@ function isLineLike(object: DrawingObject): object is Extract<DrawingObject, { k
   return lineKinds.has(object.kind);
 }
 
+export function getDrawingTransformObject(object: DrawingObject): DrawingObject {
+  if (!isLineLike(object) || object.points.length === 0) return object;
+  const localPoints = object.points.map((point) => ({ x: point.x - object.x, y: point.y - object.y }));
+  const minX = Math.min(...localPoints.map((point) => point.x));
+  const maxX = Math.max(...localPoints.map((point) => point.x));
+  const minY = Math.min(...localPoints.map((point) => point.y));
+  const maxY = Math.max(...localPoints.map((point) => point.y));
+  const contentWidth = maxX - minX;
+  const contentHeight = maxY - minY;
+  const width = Math.max(MIN_OBJECT_SIZE, contentWidth);
+  const height = Math.max(MIN_OBJECT_SIZE, contentHeight);
+  const left = minX - (width - contentWidth) / 2;
+  const top = minY - (height - contentHeight) / 2;
+  const center = localToWorldPoint(object, { x: left + width / 2, y: top + height / 2 });
+  const x = center.x - width / 2;
+  const y = center.y - height / 2;
+  return {
+    ...object,
+    x,
+    y,
+    width,
+    height,
+    points: localPoints.map((point) => ({ x: x + point.x - left, y: y + point.y - top })),
+  };
+}
+
 export function moveDrawingObject(object: DrawingObject, delta: DrawingPoint, bounds?: DrawingMoveBounds): DrawingTransformPatch {
   const x = bounds ? Math.min(bounds.width - bounds.inset - object.width, Math.max(bounds.inset, object.x + delta.x)) : object.x + delta.x;
   const y = bounds ? Math.min(bounds.height - bounds.inset - object.height, Math.max(bounds.inset, object.y + delta.y)) : object.y + delta.y;

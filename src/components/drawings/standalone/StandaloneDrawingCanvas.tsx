@@ -9,7 +9,7 @@ import {
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
-import { moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
+import { getDrawingTransformObject, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
 import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
 
@@ -317,6 +317,7 @@ export function StandaloneDrawingCanvas({
     return drawing.objects.find((candidate) => candidate.id === editor.objectId);
   }, [drawing.objects, editor]);
   const selectedObject = useMemo(() => drawing.objects.find((object) => object.id === selectedObjectId), [drawing.objects, selectedObjectId]);
+  const selectedTransformObject = useMemo(() => selectedObject ? getDrawingTransformObject(selectedObject) : undefined, [selectedObject]);
 
   useEffect(() => {
     if (!drawingAction) return;
@@ -474,25 +475,43 @@ export function StandaloneDrawingCanvas({
   };
 
   const beginResize = (handle: ResizeHandle, event: React.PointerEvent<SVGRectElement>) => {
-    if (!selectedObject || selectedObject.locked) return;
+    if (!selectedObject || !selectedTransformObject || selectedObject.locked) return;
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     onStartEdit();
-    setInteraction({ kind: 'resize', object: structuredClone(selectedObject), startPointer: point, handle });
+    if (selectedTransformObject !== selectedObject && 'points' in selectedTransformObject) {
+      onUpdateObject(selectedObject.id, {
+        x: selectedTransformObject.x,
+        y: selectedTransformObject.y,
+        width: selectedTransformObject.width,
+        height: selectedTransformObject.height,
+        points: selectedTransformObject.points,
+      } as Partial<DrawingObject>);
+    }
+    setInteraction({ kind: 'resize', object: structuredClone(selectedTransformObject), startPointer: point, handle });
   };
 
   const beginRotate = (event: React.PointerEvent<SVGCircleElement>) => {
-    if (!selectedObject || selectedObject.locked) return;
+    if (!selectedObject || !selectedTransformObject || selectedObject.locked) return;
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     onStartEdit();
-    setInteraction({ kind: 'rotate', object: structuredClone(selectedObject), startPointer: point });
+    if (selectedTransformObject !== selectedObject && 'points' in selectedTransformObject) {
+      onUpdateObject(selectedObject.id, {
+        x: selectedTransformObject.x,
+        y: selectedTransformObject.y,
+        width: selectedTransformObject.width,
+        height: selectedTransformObject.height,
+        points: selectedTransformObject.points,
+      } as Partial<DrawingObject>);
+    }
+    setInteraction({ kind: 'rotate', object: structuredClone(selectedTransformObject), startPointer: point });
   };
 
   const endTransform = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -745,13 +764,13 @@ export function StandaloneDrawingCanvas({
             )}
           </svg>
         )}
-        {selectedObject && !editor && (
+        {selectedTransformObject && !editor && (
           <StandaloneDrawingSelectionOverlay
-            object={selectedObject}
+            object={selectedTransformObject}
             zoom={zoom}
             pageWidth={drawing.page.width}
             pageHeight={drawing.page.height}
-            controlsVisible={!selectedObject.locked}
+            controlsVisible={!selectedTransformObject.locked}
             onResizePointerDown={beginResize}
             onRotatePointerDown={beginRotate}
             onPointerMove={(event) => updateTransform(event.clientX, event.clientY, event.shiftKey)}

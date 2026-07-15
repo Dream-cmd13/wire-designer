@@ -72,8 +72,10 @@ describe('standalone drawing table templates', () => {
     expect(overlay).toContain('stroke="#60a5fa"');
     expect(overlay).toContain('HANDLE_SIZE_CSS');
     expect(overlay).toContain('HANDLE_HIT_SIZE_CSS');
+    expect(overlay).toContain('pointerEvents="all"');
+    expect(overlay).not.toContain('className="pointer-events-all"');
     expect(overlay).toContain('onResizePointerDown(handle, event)');
-    expect(overlay).toContain('onRotatePointerDown(event)');
+    expect(overlay).toContain('onPointerDown={props.onRotatePointerDown}');
   });
 
   it('uses immutable transform interactions and rotates DOM tables without a duplicate selection ring', () => {
