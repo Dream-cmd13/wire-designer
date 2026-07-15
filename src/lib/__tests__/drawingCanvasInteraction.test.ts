@@ -61,7 +61,7 @@ describe('standalone drawing canvas interactions', () => {
   });
 
   it('only shows transform controls in selection mode and routes path double-clicks to property editing', () => {
-    expect(canvasSource).toContain("toolMode === 'select' && selectedTransformObject");
+    expect(canvasSource).toContain("toolMode === 'select' && activeTransformObject");
     expect(canvasSource).toContain('onEditLineRequest');
     expect(canvasSource).toContain('onEditLineRequest?.(object.id)');
   });
@@ -72,11 +72,19 @@ describe('standalone drawing canvas interactions', () => {
 
   it('routes wheel input by the current selected-object hit area', () => {
     expect(canvasSource).toContain('onWheel={handleWheel}');
-    expect(canvasSource).toContain('containsDrawingPoint(selectedTransformObject, point)');
+    expect(canvasSource).toContain('containsDrawingPoint(activeTransformObject, point)');
     expect(canvasSource).toContain('selectedObject.locked');
     expect(canvasSource).toContain('onCanvasZoom?.(clampDrawingZoom');
     expect(canvasSource).toContain('onScaleObject?.(');
     expect(pageSource).toContain('const [zoom, setZoom] = useState(0.72)');
     expect(pageSource).toContain('wheelGestureRef');
+  });
+
+  it('routes wheel scaling to an active table cell or text target', () => {
+    expect(canvasSource).toContain('onScaleTableTarget?.(');
+    expect(canvasSource).toContain('containsDrawingPoint(activeTransformObject, point)');
+    expect(pageSource).toContain('scaleTableTarget');
+    expect(pageSource).toContain('resizeDrawingTableCell');
+    expect(pageSource).toContain('resizeDrawingTableText');
   });
 });

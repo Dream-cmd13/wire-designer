@@ -8,10 +8,11 @@ import {
   snapOrthogonalPoint,
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
+import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
-import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
+import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableLocalTarget, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
 
 interface StandaloneDrawingCanvasProps {
   drawing: DrawingDocument;
@@ -24,6 +25,7 @@ interface StandaloneDrawingCanvasProps {
   onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
   onCanvasZoom?: (zoom: number) => void;
   onScaleObject?: (objectId: string, factor: number) => void;
+  onScaleTableTarget?: (objectId: string, target: DrawingTableLocalTarget, factor: number) => void;
   onAddObject?: (object: DrawingObject) => void;
   onEditLineRequest?: (objectId: string) => void;
   toolMode?: DrawingToolMode;
@@ -40,6 +42,7 @@ type TransformInteraction =
   | { kind: 'move'; object: DrawingObject; startPointer: DrawingPoint }
   | { kind: 'resize'; object: DrawingObject; startPointer: DrawingPoint; handle: ResizeHandle }
   | { kind: 'rotate'; object: DrawingObject; startPointer: DrawingPoint }
+  | { kind: 'table-resize'; object: DrawingObject; table: DrawingTableObject; target: DrawingTableLocalTarget; startPointer: DrawingPoint; handle: ResizeHandle }
   | null;
 type DrawingTableObject = Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>;
 type TableEditTarget =
@@ -73,8 +76,6 @@ type EditTarget =
       textInsetX: number;
     };
 
-const TABLE_ROW_HEIGHT = 18;
-const TABLE_TITLE_HEIGHT = 22;
 
 function textPatch(object: DrawingObject, field: EditTarget & { type: 'field' }): Partial<DrawingObject> {
   if ((object.kind === 'text' || object.kind === 'label') && field.field === 'text') {
@@ -140,6 +141,8 @@ function DrawingTableLayer({
   zoom,
   selected,
   onSelect,
+  onSelectTarget,
+  onEditingChange,
   onStartEdit,
   onUpdateObject,
 }: {
@@ -147,16 +150,17 @@ function DrawingTableLayer({
   zoom: number;
   selected: boolean;
   onSelect: () => void;
+  onSelectTarget: (target: DrawingTableLocalTarget | null) => void;
+  onEditingChange: (editing: boolean) => void;
   onStartEdit: () => void;
   onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
 }) {
   const tableRef = useRef<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState<TableEditTarget | null>(null);
   const [drag, setDrag] = useState<{ kind: 'table' | 'text'; key?: string; startX: number; startY: number; x: number; y: number } | null>(null);
-  const rowHeight = TABLE_ROW_HEIGHT * zoom;
-  const titleHeight = TABLE_TITLE_HEIGHT * zoom;
-  const maxBodyRows = Math.max(0, Math.floor((object.height - TABLE_TITLE_HEIGHT) / TABLE_ROW_HEIGHT) - 1);
-  const visibleRows = object.rows.slice(0, maxBodyRows);
+  const layout = resolveDrawingTableLayout(object);
+  const rowHeight = layout.headerRowHeight * zoom;
+  const titleHeight = layout.titleRowHeight * zoom;
 
   useEffect(() => {
     if (!editing) return;
@@ -178,6 +182,7 @@ function DrawingTableLayer({
     onSelect();
     onStartEdit();
     setEditing(target);
+    onEditingChange(true);
   };
 
   const beginDrag = (event: React.PointerEvent<HTMLElement>, kind: 'table' | 'text', key?: string) => {
@@ -187,6 +192,7 @@ function DrawingTableLayer({
     event.currentTarget.setPointerCapture(event.pointerId);
     const origin = kind === 'table' ? { x: object.x, y: object.y } : object.textOffsets?.[key ?? ''] ?? { x: 0, y: 0 };
     onSelect();
+    if (kind === 'table') onSelectTarget(null);
     onStartEdit();
     setDrag({ kind, key, startX: event.clientX, startY: event.clientY, ...origin });
   };
@@ -209,10 +215,17 @@ function DrawingTableLayer({
     if (target.type === 'title') onUpdateObject(object.id, { title: value } as Partial<DrawingObject>);
     else onUpdateObject(object.id, tableCellPatch(object, { ...target, value }));
     setEditing(null);
+    onEditingChange(false);
   };
 
   const renderEditableText = (value: string, target: TableEditTarget, className = '') => {
     const isEditing = editing?.key === target.key;
+    const localTarget: DrawingTableLocalTarget = {
+      kind: 'table-text', objectId: object.id, key: target.key,
+      rowIndex: target.type === 'table-cell' ? target.rowIndex : undefined,
+      columnIndex: target.type === 'table-cell' ? target.columnIndex : undefined,
+    };
+    const textSize = object.textSizes?.[target.key];
     return (
       <span
         key={target.key}
@@ -221,8 +234,8 @@ function DrawingTableLayer({
         suppressContentEditableWarning
         role="textbox"
         tabIndex={0}
-        onClick={(event) => { event.stopPropagation(); onSelect(); }}
-        onPointerDown={(event) => beginDrag(event, 'text', target.key)}
+        onClick={(event) => { event.stopPropagation(); onSelect(); onSelectTarget(localTarget); }}
+        onPointerDown={(event) => { onSelectTarget(localTarget); beginDrag(event, 'text', target.key); }}
         onPointerMove={handleTablePointerMove}
         onPointerUp={endTableDrag}
         onDoubleClick={(event) => beginEdit(event, target)}
@@ -235,11 +248,23 @@ function DrawingTableLayer({
           if (event.key === 'Escape') event.currentTarget.blur();
         }}
         className={`block h-full min-w-0 overflow-hidden whitespace-nowrap px-[0.35em] leading-[inherit] outline-none ${isEditing ? 'bg-blue-50' : ''} ${className}`}
-        style={{ transform: `translate(${(object.textOffsets?.[target.key]?.x ?? 0) * zoom}px, ${(object.textOffsets?.[target.key]?.y ?? 0) * zoom}px)` }}
+        style={{
+          transform: `translate(${(object.textOffsets?.[target.key]?.x ?? 0) * zoom}px, ${(object.textOffsets?.[target.key]?.y ?? 0) * zoom}px)`,
+          width: textSize ? textSize.width * zoom : undefined,
+          height: textSize ? textSize.height * zoom : undefined,
+          fontSize: textSize ? textSize.fontSize * zoom : undefined,
+        }}
       >
         {value}
       </span>
     );
+  };
+
+  const selectCell = (event: React.PointerEvent<HTMLElement>, rowIndex: number, columnIndex: number, key: string) => {
+    if (event.button !== 0 || object.locked) return;
+    event.stopPropagation();
+    onSelect();
+    onSelectTarget({ kind: 'table-cell', objectId: object.id, key, rowIndex, columnIndex });
   };
 
   return (
@@ -263,17 +288,17 @@ function DrawingTableLayer({
       onPointerMove={handleTablePointerMove}
       onPointerUp={endTableDrag}
     >
-      <div className="box-border border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
+      {layout.showTitleRow && <div className="box-border border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
         {renderEditableText(object.title, { key: 'title', type: 'title' })}
-      </div>
-      <div className="grid font-semibold" style={{ gridTemplateColumns: `repeat(${object.columns.length}, minmax(0, 1fr))` }}>
+      </div>}
+      <div className="grid font-semibold" style={{ gridTemplateColumns: layout.columnWidths.map((width) => `${width * zoom}px`).join(' ') }}>
         {object.columns.map((column, columnIndex) => (
-          <div key={columnIndex} className="box-border border-b border-r border-slate-900 last:border-r-0" style={{ height: rowHeight }}>
+          <div key={columnIndex} onPointerDown={(event) => selectCell(event, -1, columnIndex, `column-${columnIndex}`)} className="box-border border-b border-r border-slate-900 last:border-r-0" style={{ height: rowHeight }}>
             {renderEditableText(column, { key: `column-${columnIndex}`, type: 'table-cell', rowIndex: -1, columnIndex })}
           </div>
         ))}
-        {visibleRows.flatMap((row, rowIndex) => object.columns.map((column, columnIndex) => (
-          <div key={`${rowIndex}-${columnIndex}`} className="box-border border-b border-r border-slate-300 last:border-r-0" style={{ height: rowHeight, fontSize: Math.max(8, object.style.fontSize - 1) * zoom, fontWeight: 400 }}>
+        {object.rows.flatMap((row, rowIndex) => object.columns.map((column, columnIndex) => (
+          <div key={`${rowIndex}-${columnIndex}`} onPointerDown={(event) => selectCell(event, rowIndex, columnIndex, `row-${rowIndex}-column-${columnIndex}`)} className="box-border border-b border-r border-slate-300 last:border-r-0" style={{ height: layout.rowHeights[rowIndex] * zoom, fontSize: Math.max(8, object.style.fontSize - 1) * zoom, fontWeight: 400 }}>
             {renderEditableText(row[column] ?? '', { key: `row-${rowIndex}-column-${columnIndex}`, type: 'table-cell', rowIndex, columnIndex })}
           </div>
         )))}
@@ -293,6 +318,7 @@ export function StandaloneDrawingCanvas({
   onUpdateObject,
   onCanvasZoom,
   onScaleObject,
+  onScaleTableTarget,
   onAddObject,
   onEditLineRequest,
   toolMode = 'select',
@@ -311,6 +337,8 @@ export function StandaloneDrawingCanvas({
   const [selectionStart, setSelectionStart] = useState<DrawingPoint | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<DrawingPoint | null>(null);
   const [editor, setEditor] = useState<EditTarget | null>(null);
+  const [tableTarget, setTableTarget] = useState<DrawingTableLocalTarget | null>(null);
+  const [tableEditing, setTableEditing] = useState(false);
   const [caretIndex, setCaretIndex] = useState(0);
   const [fontsReady, setFontsReady] = useState(false);
   const activeSelection = useMemo(() => selectedObjectIds ?? (selectedObjectId ? [selectedObjectId] : []), [selectedObjectId, selectedObjectIds]);
@@ -324,6 +352,12 @@ export function StandaloneDrawingCanvas({
   }, [drawing.objects, editor]);
   const selectedObject = useMemo(() => drawing.objects.find((object) => object.id === selectedObjectId), [drawing.objects, selectedObjectId]);
   const selectedTransformObject = useMemo(() => selectedObject ? getDrawingTransformObject(selectedObject) : undefined, [selectedObject]);
+  const activeTableTarget = toolMode === 'select' && tableTarget?.objectId === selectedObjectId ? tableTarget : null;
+  const activeTransformObject = useMemo(() => {
+    if (!activeTableTarget || !selectedObject || activeTableTarget.objectId !== selectedObject.id
+      || (selectedObject.kind !== 'table' && selectedObject.kind !== 'bom-table' && selectedObject.kind !== 'wiring-table')) return selectedTransformObject;
+    return getDrawingTableTargetObject(selectedObject, activeTableTarget);
+  }, [activeTableTarget, selectedObject, selectedTransformObject]);
 
   const finalizeActiveDraft = (action: 'finish' | 'cancel') => {
     const object = finalizeDrawingDraft(draftKind, draftPoints, action, orthogonal);
@@ -459,8 +493,12 @@ export function StandaloneDrawingCanvas({
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
     const factor = getWheelScaleFactor(event.deltaY);
-    if (toolMode === 'select' && selectedObject && selectedTransformObject && !selectedObject.locked
-      && containsDrawingPoint(selectedTransformObject, point)) {
+    if (toolMode === 'select' && selectedObject && activeTransformObject && !selectedObject.locked
+      && containsDrawingPoint(activeTransformObject, point)) {
+      if (activeTableTarget) {
+        onScaleTableTarget?.(selectedObject.id, activeTableTarget, factor);
+        return;
+      }
       onScaleObject?.(selectedObject.id, factor);
       return;
     }
@@ -490,7 +528,20 @@ export function StandaloneDrawingCanvas({
   const updateTransform = (clientX: number, clientY: number, shiftKey: boolean) => {
     if (!interaction) return;
     const point = getDrawingPoint(clientX, clientY);
-    if (!point || !drawing.objects.some((object) => object.id === interaction.object.id)) return;
+    const interactionObjectId = interaction.kind === 'table-resize' ? interaction.table.id : interaction.object.id;
+    if (!point || !drawing.objects.some((object) => object.id === interactionObjectId)) return;
+    if (interaction.kind === 'table-resize') {
+      const resized = resizeDrawingObject(interaction.object, interaction.handle, point, false).patch;
+      const width = resized.width ?? interaction.object.width;
+      const height = resized.height ?? interaction.object.height;
+      const patch = interaction.target.kind === 'table-cell'
+        ? resizeDrawingTableCell(interaction.table, { rowIndex: interaction.target.rowIndex ?? -1, columnIndex: interaction.target.columnIndex ?? 0 }, { width, height })
+        : resizeDrawingTableText(interaction.table, interaction.target.key, {
+          width, height, fontSize: interaction.table.textSizes?.[interaction.target.key]?.fontSize ?? interaction.table.style.fontSize,
+        });
+      onUpdateObject(interaction.table.id, patch as Partial<DrawingObject>);
+      return;
+    }
     const patch = interaction.kind === 'move'
       ? moveDrawingObject(interaction.object, { x: point.x - interaction.startPointer.x, y: point.y - interaction.startPointer.y }, { width: drawing.page.width, height: drawing.page.height, inset: 20 })
       : interaction.kind === 'resize'
@@ -500,13 +551,18 @@ export function StandaloneDrawingCanvas({
   };
 
   const beginResize = (handle: ResizeHandle, event: React.PointerEvent<SVGRectElement>) => {
-    if (!selectedObject || !selectedTransformObject || selectedObject.locked) return;
+    if (!selectedObject || !activeTransformObject || selectedObject.locked) return;
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
     onStartEdit();
+    if (activeTableTarget && (selectedObject.kind === 'table' || selectedObject.kind === 'bom-table' || selectedObject.kind === 'wiring-table')) {
+      setInteraction({ kind: 'table-resize', object: structuredClone(activeTransformObject), table: structuredClone(selectedObject), target: activeTableTarget, startPointer: point, handle });
+      return;
+    }
+    if (!selectedTransformObject) return;
     if (selectedTransformObject !== selectedObject && 'points' in selectedTransformObject) {
       onUpdateObject(selectedObject.id, {
         x: selectedTransformObject.x,
@@ -520,7 +576,7 @@ export function StandaloneDrawingCanvas({
   };
 
   const beginRotate = (event: React.PointerEvent<SVGCircleElement>) => {
-    if (!selectedObject || !selectedTransformObject || selectedObject.locked) return;
+    if (!selectedObject || !selectedTransformObject || selectedObject.locked || activeTableTarget) return;
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
     event.preventDefault();
@@ -760,6 +816,8 @@ export function StandaloneDrawingCanvas({
             zoom={zoom}
             selected={activeSelectionSet.has(object.id)}
             onSelect={() => onSelectObject(object.id)}
+            onSelectTarget={setTableTarget}
+            onEditingChange={setTableEditing}
             onStartEdit={onStartEdit}
             onUpdateObject={onUpdateObject}
           />
@@ -793,13 +851,14 @@ export function StandaloneDrawingCanvas({
             )}
           </svg>
         )}
-        {toolMode === 'select' && selectedTransformObject && !editor && (
+        {toolMode === 'select' && activeTransformObject && !editor && !tableEditing && (
           <StandaloneDrawingSelectionOverlay
-            object={selectedTransformObject}
+            object={activeTransformObject}
             zoom={zoom}
             pageWidth={drawing.page.width}
             pageHeight={drawing.page.height}
-            controlsVisible={!selectedTransformObject.locked}
+            controlsVisible={!activeTransformObject.locked}
+            showRotation={!activeTableTarget}
             onResizePointerDown={beginResize}
             onRotatePointerDown={beginRotate}
             onPointerMove={(event) => updateTransform(event.clientX, event.clientY, event.shiftKey)}

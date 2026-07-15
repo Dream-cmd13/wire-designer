@@ -129,6 +129,18 @@ describe('standalone drawing table templates', () => {
     expect(textCalls.find((call) => call.text === '黑')?.fillStyle).toBe(defaultDrawingObjectStyle.color);
   });
 
+  it('selects one table, cell, or text target and reuses the eight-handle overlay', () => {
+    const canvasSource = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
+    const overlaySource = readFileSync('src/components/drawings/standalone/StandaloneDrawingSelectionOverlay.tsx', 'utf8');
+    expect(canvasSource).toContain("kind: 'table-cell'");
+    expect(canvasSource).toContain("kind: 'table-text'");
+    expect(canvasSource).toContain('onSelectTarget={setTableTarget}');
+    expect(canvasSource).toContain('getDrawingTableTargetObject');
+    expect(canvasSource).toContain('activeTransformObject');
+    expect(overlaySource).toContain('showRotation');
+    expect(overlaySource).toContain('props.showRotation !== false');
+  });
+
   it('omits disabled table title rows from Canvas rendering', () => {
     const document: DrawingDocument = {
       schemaVersion: 1, id: 'drawing-no-title', name: 'no title', createdAt: 0, updatedAt: 0,
