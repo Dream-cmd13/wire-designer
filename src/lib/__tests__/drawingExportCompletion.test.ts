@@ -29,6 +29,14 @@ describe('completed drawing export', () => {
     expect(source).toContain("canvas.toDataURL('image/jpeg'");
   });
 
+  it('exports a one-point freehand object as a visible dot', () => {
+    const drawing = createBlankDrawingDocument('dot export');
+    const dot: DrawingLineObject = { id: createDrawingId('freehand'), kind: 'freehand', points: [{ x: 24, y: 36 }], orthogonal: false, x: 20, y: 32, width: 8, height: 8, rotation: 0, zIndex: 20, locked: false, visible: true, style: { ...defaultDrawingObjectStyle, stroke: '#ff0000', strokeWidth: 6 } };
+    const svg = serializeDrawingSvg({ ...drawing, objects: [...drawing.objects, dot] });
+
+    expect(svg).toContain('<circle cx="24" cy="36" r="3" fill="#ff0000"');
+  });
+
   it('sanitizes a requested PDF filename and falls back to the drawing number', () => {
     const drawing = createBlankDrawingDocument('导出测试');
     const numbered = { ...drawing, titleBlock: { ...drawing.titleBlock, drawingNo: 'WH-001' } };

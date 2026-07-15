@@ -86,6 +86,7 @@ export type DrawingDimensionObject = DrawingObjectBase & {
 
 export type DrawingLineObject = DrawingObjectBase & {
   kind: 'line' | 'polyline' | 'curve' | 'freehand';
+  name?: string;
   points: DrawingPoint[];
   orthogonal: boolean;
 };

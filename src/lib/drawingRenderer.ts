@@ -15,6 +15,13 @@ function drawEditableText(
 }
 
 function drawPolyline(context: CanvasRenderingContext2D, points: DrawingPoint[], curve: boolean) {
+  if (points.length === 1) {
+    context.beginPath();
+    context.arc(points[0].x, points[0].y, Math.max(1, context.lineWidth / 2), 0, Math.PI * 2);
+    context.fillStyle = context.strokeStyle;
+    context.fill();
+    return;
+  }
   if (points.length < 2) return;
   context.beginPath();
   context.moveTo(points[0].x, points[0].y);

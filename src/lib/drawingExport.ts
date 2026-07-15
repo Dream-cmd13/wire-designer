@@ -20,6 +20,10 @@ function svgObject(object: DrawingObject): string {
   if (object.kind === 'dimension') {
     return `<g ${common} ${style}><line x1="0" y1="${object.height / 2}" x2="${object.width}" y2="${object.height / 2}"/><line x1="0" y1="${object.height / 2 - 8}" x2="0" y2="${object.height / 2 + 8}"/><line x1="${object.width}" y1="${object.height / 2 - 8}" x2="${object.width}" y2="${object.height / 2 + 8}"/><text x="${object.width / 2}" y="${object.height / 2}" text-anchor="middle" font-size="${object.style.fontSize}" fill="${object.style.color}">${escapeXml(object.label)}</text></g>`;
   }
+  if ((object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') && object.points.length === 1) {
+    const point = object.points[0];
+    return `<circle cx="${point.x}" cy="${point.y}" r="${Math.max(1, object.style.strokeWidth / 2)}" fill="${object.style.stroke}"/>`;
+  }
   if (object.kind === 'curve') {
     if (object.points.length < 2) return '';
     const commands = [`M ${object.points[0].x} ${object.points[0].y}`];

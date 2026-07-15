@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clearDrawingCanvas, finalizeDrawingDraft, getObjectsInSelectionRect, moveDrawingLayers,
+  clearDrawingCanvas, createDrawingLineObject, finalizeDrawingDraft, getObjectsInSelectionRect, moveDrawingLayers,
   patchDrawingObjects, placeDrawingCopiesAtPoint, snapOrthogonalPoint, splitDrawingObjects,
   splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks,
 } from '@/lib/drawingCommands';
@@ -70,6 +70,14 @@ describe('drawing document commands', () => {
     expect(finalizeDrawingDraft('polyline', points, 'finish', false)?.kind).toBe('polyline');
     expect(finalizeDrawingDraft('curve', points, 'cancel', false)).toBeNull();
     expect(finalizeDrawingDraft('curve', [points[0]], 'finish', false)).toBeNull();
+  });
+
+  it('creates a selectable freehand dot from one point', () => {
+    const dot = createDrawingLineObject('freehand', [{ x: 20, y: 30 }]);
+
+    expect(dot.points).toEqual([{ x: 20, y: 30 }]);
+    expect(dot.width).toBeGreaterThanOrEqual(8);
+    expect(dot.height).toBeGreaterThanOrEqual(8);
   });
 
   it('patches only unlocked selections and preserves each object style', () => {

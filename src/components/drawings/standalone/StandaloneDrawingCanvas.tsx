@@ -23,6 +23,7 @@ interface StandaloneDrawingCanvasProps {
   onStartEdit: () => void;
   onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
   onAddObject?: (object: DrawingObject) => void;
+  onEditLineRequest?: (objectId: string) => void;
   toolMode?: DrawingToolMode;
   orthogonal?: boolean;
   drawingAction?: { id: number; type: 'finish' | 'cancel' };
@@ -289,6 +290,7 @@ export function StandaloneDrawingCanvas({
   onStartEdit,
   onUpdateObject,
   onAddObject,
+  onEditLineRequest,
   toolMode = 'select',
   orthogonal = false,
   drawingAction,
@@ -385,6 +387,7 @@ export function StandaloneDrawingCanvas({
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
     finalizeActiveDraft('finish');
+    if (toolMode !== 'select') return;
     const object = getDrawingObjectAtPoint(drawing, point);
     setInteraction(null);
     setSelectionStart(null);
@@ -450,7 +453,7 @@ export function StandaloneDrawingCanvas({
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const point = getDrawingPoint(event.clientX, event.clientY);
     if (!point) return;
-    if (toolMode === 'freehand' && draftPoints.length > 0) {
+    if (toolMode === 'freehand' && draftPoints.length > 0 && event.buttons === 1) {
       setDraftPoints((items) => sampleFreehandPoint(items, point));
       setPointerPoint(point);
       return;
@@ -525,7 +528,7 @@ export function StandaloneDrawingCanvas({
   };
 
   const endDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (toolMode === 'freehand' && draftPoints.length > 1) {
+    if (toolMode === 'freehand' && draftPoints.length > 0) {
       onAddObject?.(createDrawingLineObject('freehand', draftPoints));
       setDraftPoints([]);
       setDraftKind(null);
@@ -632,6 +635,10 @@ export function StandaloneDrawingCanvas({
     const object = getDrawingObjectAtPoint(drawing, point);
     onSelectObject(object?.id ?? null);
     if (!object || object.locked) return;
+    if (object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') {
+      onEditLineRequest?.(object.id);
+      return;
+    }
     const nextEditor = createEditor(object, point);
     if (nextEditor) {
       const nextCaretIndex = nextEditor.type === 'field' && measurementContext
@@ -711,8 +718,8 @@ export function StandaloneDrawingCanvas({
     )
   );
   const previewPoints = pointerPoint && draftPoints.length > 0 && toolMode !== 'freehand'
-    ? [...draftPoints, pointerPoint]
-    : draftPoints;
+      ? [...draftPoints, pointerPoint]
+      : draftPoints;
   const selectionRect = selectionStart && selectionEnd ? normalizeDrawingRect(selectionStart, selectionEnd) : null;
 
   return (
@@ -769,7 +776,7 @@ export function StandaloneDrawingCanvas({
             )}
           </svg>
         )}
-        {selectedTransformObject && !editor && (
+        {toolMode === 'select' && selectedTransformObject && !editor && (
           <StandaloneDrawingSelectionOverlay
             object={selectedTransformObject}
             zoom={zoom}

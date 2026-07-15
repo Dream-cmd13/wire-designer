@@ -168,3 +168,35 @@ Expected: exit code 0.
 Run: `git diff --check` and `git diff -- src/components/drawings/standalone src/pages/DrawingWorkbenchPage.tsx src/lib/drawingCommands.ts src/lib/drawingExport.ts src/lib/__tests__ docs/superpowers`
 Expected: no whitespace errors and only scoped changes.
 
+### Task 5: Freehand dots and line properties
+
+**Files:**
+- Modify: `src/components/drawings/standalone/StandaloneDrawingCanvas.tsx`
+- Test: `src/lib/__tests__/drawingCanvasInteraction.test.ts`
+
+**Interfaces:**
+- A freehand pointer-up always creates an object; one sampled point renders as a dot.
+- Path objects own an optional persisted `name` for backward compatibility.
+- `DrawingLinePropertiesDialog` sends one validated property payload to the page.
+- Geometry transforms scale and rotate the full path around its first point.
+
+- [x] **Step 1: Add failing interaction and geometry tests**
+
+Cover one-click dots, dot rendering/export, selection-only handles, property-dialog routing, path length, alignment, and style updates.
+
+- [x] **Step 2: Run focused tests and verify RED**
+
+Expected failures: old click anchor remains; dot geometry/rendering and line-properties modules are absent.
+
+- [x] **Step 3: Implement dot creation and rendering**
+
+Create a one-point freehand object on click, retain sampled drag paths, give dots a selectable hit box, and render/export them as filled circles.
+
+- [x] **Step 4: Implement line naming and property editing**
+
+Assign default sequential names, hide transform controls outside selection mode, route path double-clicks to the dialog, and apply name/style/length/alignment as one undoable update.
+
+- [x] **Step 5: Run full verification**
+
+Run: `npm.cmd test -- src/lib/__tests__/drawingCanvasInteraction.test.ts`, `npm.cmd test`, `npm.cmd run lint`, and `npm.cmd run build`.
+Expected: all commands exit 0.

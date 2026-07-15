@@ -136,7 +136,8 @@ export function createDrawingLineObject(kind: DrawingLineObject['kind'], points:
   const minY = Math.min(...points.map((point) => point.y));
   const maxX = Math.max(...points.map((point) => point.x));
   const maxY = Math.max(...points.map((point) => point.y));
-  return { id: createDrawingId(kind), kind, x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY), rotation: 0, zIndex: 10, locked: false, visible: true, style: { ...defaultDrawingObjectStyle }, points, orthogonal };
+  const pointPadding = points.length === 1 ? 4 : 0;
+  return { id: createDrawingId(kind), kind, x: minX - pointPadding, y: minY - pointPadding, width: points.length === 1 ? 8 : Math.max(1, maxX - minX), height: points.length === 1 ? 8 : Math.max(1, maxY - minY), rotation: 0, zIndex: 10, locked: false, visible: true, style: { ...defaultDrawingObjectStyle }, points, orthogonal };
 }
 
 function isPathObject(object: DrawingObject): object is DrawingLineObject {

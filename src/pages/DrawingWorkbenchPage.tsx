@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
+import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
 import { DrawingPdfExportDialog } from '@/components/drawings/standalone/DrawingPdfExportDialog';
 import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
 import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/StandaloneDrawingCanvas';
@@ -10,8 +11,9 @@ import { DrawingWorkbenchToolbar } from '@/components/drawings/standalone/Drawin
 import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawingCopiesAtPoint, setDrawingLayer, splitDrawingObjects, splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks } from '@/lib/drawingCommands';
 import { createDrawingId, createDrawingResourceObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
+import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
 import { useDrawingStore } from '@/stores/drawingStore';
-import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
+import type { DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingToolMode } from '@/types/drawing';
 
 type DrawingContextState = {
   objectId: string | null;
@@ -29,6 +31,13 @@ const resourceDefaultPoints: Record<DrawingResourceKind, { x: number; y: number 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 function overlaps(left: DrawingObject, right: DrawingObject) { return left.x < right.x + right.width && left.x + left.width > right.x && left.y < right.y + right.height && left.y + left.height > right.y; }
 function topLayer(drawing: DrawingDocument) { return Math.max(...drawing.objects.map((object) => object.zIndex), 0) + 1; }
+function isLineObject(object: DrawingObject): object is DrawingLineObject { return object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand'; }
+function fallbackLineName(drawing: DrawingDocument, objectId: string) { return `线${drawing.objects.filter(isLineObject).findIndex((object) => object.id === objectId) + 1}`; }
+function nextLineName(drawing: DrawingDocument) {
+  const lines = drawing.objects.filter(isLineObject);
+  const highest = lines.reduce((maximum, object) => Math.max(maximum, Number(object.name?.match(/^线(\d+)$/)?.[1] ?? 0)), lines.length);
+  return `线${highest + 1}`;
+}
 
 function createPlacedResource(drawing: DrawingDocument, kind: DrawingResourceKind): DrawingObject {
   const base = resourceDefaultPoints[kind];
@@ -66,11 +75,13 @@ export function DrawingWorkbenchPage() {
   const [future, setFuture] = useState<DrawingDocument[]>([]);
   const [contextMenu, setContextMenu] = useState<DrawingContextState | null>(null);
   const [clipboard, setClipboard] = useState<DrawingObject[]>([]);
+  const [lineEditorObjectId, setLineEditorObjectId] = useState<string | null>(null);
   const primaryId = selectedObjectIds.at(-1) ?? null;
   const selected = drawing?.objects.filter((object) => selectedObjectIds.includes(object.id)) ?? [];
   const editableObjects = drawing?.objects.filter((object) => object.kind !== 'title-block') ?? [];
   const allObjectsLocked = editableObjects.length > 0 && editableObjects.every((object) => object.locked);
   const contextObject = contextMenu?.objectId ? drawing?.objects.find((object) => object.id === contextMenu.objectId) : undefined;
+  const lineEditorObject = lineEditorObjectId ? drawing?.objects.find((object): object is DrawingLineObject => object.id === lineEditorObjectId && isLineObject(object)) : undefined;
 
   useEffect(() => { if (!drawing) createDocument('未命名线束图'); }, [createDocument, drawing]);
   useEffect(() => { if (saveState !== 'dirty') return; const timer = window.setTimeout(markSaved, 500); return () => window.clearTimeout(timer); }, [markSaved, saveState]);
@@ -79,7 +90,7 @@ export function DrawingWorkbenchPage() {
   const remember = () => { if (!drawing) return; setPast((items) => [...items.slice(-49), clone(drawing)]); setFuture([]); };
   const apply = (next: DrawingDocument) => updateDocument(next);
   const applyCommand = (command: (document: DrawingDocument) => DrawingDocument) => { if (!drawing) return; const next = command(drawing); if (next === drawing) return; remember(); apply(next); };
-  const addObject = (object: DrawingObject) => { if (!drawing) return; remember(); const next = { ...object, zIndex: topLayer(drawing) } as DrawingObject; apply({ ...drawing, objects: [...drawing.objects, next], updatedAt: Date.now() }); setSelectedObjectIds([next.id]); };
+  const addObject = (object: DrawingObject) => { if (!drawing) return; remember(); const named = isLineObject(object) && !object.name ? { ...object, name: nextLineName(drawing) } : object; const next = { ...named, zIndex: topLayer(drawing) } as DrawingObject; apply({ ...drawing, objects: [...drawing.objects, next], updatedAt: Date.now() }); setSelectedObjectIds([next.id]); };
   const updateSelectedObjects = (objectIds: string[], patch: Partial<DrawingObject>, stylePatch?: Partial<DrawingObjectStyle>) => {
     if (!drawing) return;
     apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
@@ -140,6 +151,13 @@ export function DrawingWorkbenchPage() {
     if (toolMode !== 'select') breakDrawingPath();
     setToolMode(mode === toolMode && mode !== 'select' ? 'select' : mode);
   };
+  const updateLineProperties = (values: DrawingLinePropertiesInput) => {
+    if (!drawing || !lineEditorObject) return;
+    remember();
+    const nextObject = applyDrawingLineProperties(lineEditorObject, values);
+    updateObject(nextObject.id, nextObject);
+    setLineEditorObjectId(null);
+  };
 
   const addCatalog = (resource: DrawingCatalogResource) => {
     if (!drawing) return;
@@ -180,7 +198,7 @@ export function DrawingWorkbenchPage() {
     <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => addResource('table')} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
-      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onAddObject={addObject} onContextMenuRequest={openContextMenu}/>
+      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
     </div>
     {contextMenu && (!contextMenu.objectId || contextObject) && <DrawingCanvasContextMenu
@@ -205,6 +223,7 @@ export function DrawingWorkbenchPage() {
     />}
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
     {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
+    {lineEditorObject && <DrawingLinePropertiesDialog object={lineEditorObject} defaultName={lineEditorObject.name || fallbackLineName(drawing, lineEditorObject.id)} onClose={() => setLineEditorObjectId(null)} onConfirm={updateLineProperties}/>}
     {exportError && <div role="alert" className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded border border-red-200 bg-white px-4 py-2 text-sm text-red-700 shadow-lg"><span>{exportError}</span><button type="button" onClick={() => void exportPdf(exportFilename)} className="font-medium underline">重试</button><button type="button" aria-label="关闭导出错误" onClick={() => setExportError('')}>×</button></div>}
     <StandaloneDrawingWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
   </div>;

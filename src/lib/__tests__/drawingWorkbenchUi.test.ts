@@ -6,6 +6,7 @@ const toolbarSource = readFileSync(new URL('../../components/drawings/standalone
 const resourceSource = readFileSync(new URL('../../components/drawings/standalone/DrawingResourcePanel.tsx', import.meta.url), 'utf8');
 const inspectorSource = readFileSync(new URL('../../components/drawings/standalone/StandaloneDrawingInspector.tsx', import.meta.url), 'utf8');
 const pdfDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingPdfExportDialog.tsx', import.meta.url), 'utf8');
+const lineDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingLinePropertiesDialog.tsx', import.meta.url), 'utf8');
 
 describe('drawing workbench UI contract', () => {
   it('exposes the required editing commands and shortcuts', () => {
@@ -51,6 +52,13 @@ describe('drawing workbench UI contract', () => {
     expect(pageSource).toContain('breakDrawingPath');
     expect(toolbarSource).toContain('onBeforeAction');
     expect(pageSource).toContain('onBeforeAction={breakDrawingPath}');
+  });
+
+  it('opens an editable line-properties dialog with alignment, color, width, and length fields', () => {
+    expect(pageSource).toContain('DrawingLinePropertiesDialog');
+    expect(pageSource).toContain('onEditLineRequest');
+    expect(lineDialogSource).toContain('调整线属性');
+    ['名称', '对齐', '颜色', '粗细', '长度', '保持当前角度', '水平', '垂直', '取消', '确定'].forEach((label) => expect(lineDialogSource).toContain(label));
   });
 
   it('routes canvas and entity context actions through document commands', () => {

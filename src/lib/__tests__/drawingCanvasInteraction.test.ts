@@ -40,4 +40,28 @@ describe('standalone drawing canvas interactions', () => {
     expect(contextMenuSource).toContain("finalizeActiveDraft('finish')");
     expect(contextMenuSource.indexOf("finalizeActiveDraft('finish')")).toBeLessThan(contextMenuSource.indexOf('onContextMenuRequest?.'));
   });
+
+  it('does not open the context menu while a drawing tool is active', () => {
+    const contextMenuStart = canvasSource.indexOf('const handleContextMenu');
+    const contextMenuEnd = canvasSource.indexOf('const handlePointerDown', contextMenuStart);
+    const contextMenuSource = canvasSource.slice(contextMenuStart, contextMenuEnd);
+    const drawingGuard = "if (toolMode !== 'select') return;";
+
+    expect(contextMenuSource).toContain(drawingGuard);
+    expect(contextMenuSource.indexOf("finalizeActiveDraft('finish')")).toBeLessThan(contextMenuSource.indexOf(drawingGuard));
+    expect(contextMenuSource.indexOf(drawingGuard)).toBeLessThan(contextMenuSource.indexOf('onContextMenuRequest?.'));
+  });
+
+  it('creates a dot from a freehand click while preserving drag drawing', () => {
+    expect(canvasSource).not.toContain('freehandClickAnchor');
+    expect(canvasSource).toContain("onAddObject?.(createDrawingLineObject('freehand', draftPoints))");
+    expect(canvasSource).toContain('event.buttons === 1');
+    expect(rendererSource).toContain('context.arc');
+  });
+
+  it('only shows transform controls in selection mode and routes path double-clicks to property editing', () => {
+    expect(canvasSource).toContain("toolMode === 'select' && selectedTransformObject");
+    expect(canvasSource).toContain('onEditLineRequest');
+    expect(canvasSource).toContain('onEditLineRequest?.(object.id)');
+  });
 });
