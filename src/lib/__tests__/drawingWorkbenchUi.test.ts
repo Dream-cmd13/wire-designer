@@ -7,6 +7,7 @@ const resourceSource = readFileSync(new URL('../../components/drawings/standalon
 const inspectorSource = readFileSync(new URL('../../components/drawings/standalone/StandaloneDrawingInspector.tsx', import.meta.url), 'utf8');
 const pdfDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingPdfExportDialog.tsx', import.meta.url), 'utf8');
 const lineDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingLinePropertiesDialog.tsx', import.meta.url), 'utf8');
+const tableDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingTableCreateDialog.tsx', import.meta.url), 'utf8');
 
 describe('drawing workbench UI contract', () => {
   it('exposes the required editing commands and shortcuts', () => {
@@ -70,5 +71,14 @@ describe('drawing workbench UI contract', () => {
     expect(pageSource).toContain("moveLayers('back')");
     expect(pageSource).toContain("selected.filter((object) => !object.locked && object.kind !== 'title-block')");
     expect(pageSource).toContain("selected.filter((object) => object.kind !== 'title-block')");
+  });
+
+  it('opens a parameter dialog before creating a custom table', () => {
+    expect(pageSource).toContain('setTableDialogOpen(true)');
+    expect(pageSource).toContain('<DrawingTableCreateDialog');
+    expect(tableDialogSource).toContain('数据行数');
+    expect(tableDialogSource).toContain('列数');
+    expect(tableDialogSource).toContain('显示表名行');
+    expect(tableDialogSource).toContain('onConfirm({ rowCount, columnCount, showTitleRow })');
   });
 });

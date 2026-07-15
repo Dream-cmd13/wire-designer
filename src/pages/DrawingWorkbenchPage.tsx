@@ -4,12 +4,13 @@ import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/Drawi
 import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
 import { DrawingPdfExportDialog } from '@/components/drawings/standalone/DrawingPdfExportDialog';
 import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
+import { DrawingTableCreateDialog } from '@/components/drawings/standalone/DrawingTableCreateDialog';
 import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/StandaloneDrawingCanvas';
 import { StandaloneDrawingInspector } from '@/components/drawings/standalone/StandaloneDrawingInspector';
 import { StandaloneDrawingWizard } from '@/components/drawings/standalone/StandaloneDrawingWizard';
 import { DrawingWorkbenchToolbar } from '@/components/drawings/standalone/DrawingWorkbenchToolbar';
 import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawingCopiesAtPoint, setDrawingLayer, splitDrawingObjects, splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks } from '@/lib/drawingCommands';
-import { createDrawingId, createDrawingResourceObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+import { createDrawingId, createDrawingResourceObject, createDrawingTableObject, defaultDrawingObjectStyle, type DrawingTableCreateInput } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
 import { getDrawingTransformObject, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
@@ -75,6 +76,7 @@ export function DrawingWorkbenchPage() {
   const [zoom, setZoom] = useState(0.72);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
@@ -107,6 +109,17 @@ export function DrawingWorkbenchPage() {
     apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
   };
   const addResource = (kind: DrawingResourceKind) => { if (!drawing) return; addObject(createPlacedResource(drawing, kind)); setResourcesOpen(false); };
+  const addTable = (input: DrawingTableCreateInput) => {
+    if (!drawing) return;
+    const base = resourceDefaultPoints.table;
+    let table = createDrawingTableObject(base, input);
+    for (let attempt = 0; attempt < 18 && drawing.objects.some((object) => object.visible && overlaps(table, object)); attempt += 1) {
+      table = createDrawingTableObject({ x: base.x + ((attempt + 1) % 6) * 36, y: base.y + Math.floor((attempt + 1) / 6) * 42 }, input);
+    }
+    addObject(table);
+    setResourcesOpen(false);
+    setTableDialogOpen(false);
+  };
   const scaleSelectedObject = (objectId: string, factor: number) => {
     if (!drawing) return;
     const currentObject = drawing.objects.find((object) => object.id === objectId);
@@ -222,7 +235,7 @@ export function DrawingWorkbenchPage() {
 
   if (!drawing) return null;
   return <div className="flex h-full min-h-0 flex-col bg-slate-100">
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => addResource('table')} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
       <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onCanvasZoom={setZoom} onScaleObject={scaleSelectedObject} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onContextMenuRequest={openContextMenu}/>
@@ -250,6 +263,7 @@ export function DrawingWorkbenchPage() {
     />}
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
     {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
+    <DrawingTableCreateDialog open={tableDialogOpen} onClose={() => setTableDialogOpen(false)} onConfirm={addTable}/>
     {lineEditorObject && <DrawingLinePropertiesDialog object={lineEditorObject} defaultName={lineEditorObject.name || fallbackLineName(drawing, lineEditorObject.id)} onClose={() => setLineEditorObjectId(null)} onConfirm={updateLineProperties}/>}
     {exportError && <div role="alert" className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded border border-red-200 bg-white px-4 py-2 text-sm text-red-700 shadow-lg"><span>{exportError}</span><button type="button" onClick={() => void exportPdf(exportFilename)} className="font-medium underline">重试</button><button type="button" aria-label="关闭导出错误" onClick={() => setExportError('')}>×</button></div>}
     <StandaloneDrawingWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
