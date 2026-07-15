@@ -727,7 +727,7 @@ export function StandaloneDrawingCanvas({
       <div className="relative inline-block" onContextMenu={handleContextMenu}>
         <canvas
           ref={canvasRef}
-          className="block bg-white shadow-lg touch-none"
+          className={`block bg-white shadow-lg touch-none ${toolMode !== 'select' ? 'cursor-crosshair' : ''}`}
           style={{ width: `${drawing.page.width * zoom}px`, height: `${drawing.page.height * zoom}px` }}
           onDoubleClick={handleDoubleClick}
           onPointerDown={handlePointerDown}

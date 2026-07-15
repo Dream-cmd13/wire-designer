@@ -64,4 +64,8 @@ describe('standalone drawing canvas interactions', () => {
     expect(canvasSource).toContain('onEditLineRequest');
     expect(canvasSource).toContain('onEditLineRequest?.(object.id)');
   });
+
+  it('uses a crosshair cursor only while a drawing tool is active', () => {
+    expect(canvasSource).toContain("toolMode !== 'select' ? 'cursor-crosshair' : ''");
+  });
 });
