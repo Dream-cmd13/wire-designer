@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDrawingTableObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
-import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
+import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
 import type { DrawingTableObject } from '@/types/drawing';
 
 const legacyTable: DrawingTableObject = {
@@ -43,5 +43,27 @@ describe('drawing table layout', () => {
     expect(cell.width).toBeCloseTo(table.width / 4);
     expect(text.width).toBeLessThan(cell.width);
     expect(resizeDrawingTableText(table, 'row-0-column-1', { width: 60, height: 16, fontSize: 10 }).textSizes?.['row-0-column-1']).toEqual({ width: 60, height: 16, fontSize: 10 });
+  });
+
+  it('resolves merged header and body cells without covered duplicates', () => {
+    const table: DrawingTableObject = {
+      ...legacyTable,
+      height: 76,
+      columnWidths: [100, 100, 100],
+      headerRowHeight: 20,
+      rowHeights: [24, 32],
+      showTitleRow: false,
+      mergedCells: [
+        { rowIndex: -1, columnIndex: 0, rowSpan: 1, columnSpan: 2 },
+        { rowIndex: 0, columnIndex: 0, rowSpan: 2, columnSpan: 1 },
+      ],
+    };
+
+    const cells = resolveDrawingTableCells(table);
+    expect(cells).toHaveLength(7);
+    expect(cells.find((cell) => cell.key === 'column-0')).toMatchObject({ width: 200, height: 20, rowSpan: 1, columnSpan: 2 });
+    expect(cells.find((cell) => cell.key === 'row-0-column-0')).toMatchObject({ width: 100, height: 56, rowSpan: 2, columnSpan: 1 });
+    expect(cells.some((cell) => cell.key === 'column-1')).toBe(false);
+    expect(cells.some((cell) => cell.key === 'row-1-column-0')).toBe(false);
   });
 });

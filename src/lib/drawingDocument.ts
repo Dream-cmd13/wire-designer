@@ -53,39 +53,64 @@ function createTitleBlock(name: string): DrawingTitleBlockObject {
   };
 }
 
-function createRevisionTable(): DrawingObject {
+export function formatDrawingDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}.${month}.${day}`;
+}
+
+function createRevisionTable(date: Date): DrawingObject {
   return {
-    ...objectBase('table', { x: 840, y: 48 }, 320, 76),
+    ...objectBase('table', { x: 840, y: 48 }, 320, 60),
     kind: 'table',
     title: '变更记录',
     columns: ['版本', '变更内容', '日期', '变更者'],
-    rows: [{ 版本: 'A', 变更内容: '新版发行', 日期: '2026.07.10', 变更者: '' }],
-  };
-}
-
-function createTitleInformationTable(drawingNo: string): DrawingObject {
-  return {
-    ...objectBase('table', { x: 820, y: 615 }, 340, 150),
-    kind: 'table',
-    title: 'XXx公司',
-    columns: ['字段', '内容', '字段（续）', '内容（续）'],
     rows: [
-      { 字段: '品名', 内容: '', 字段_2: '版本', 内容_2: 'A' },
-      { 字段: '绘制', 内容: '2026.07.10', 字段_2: '料号', 内容_2: '' },
-      { 字段: '图副', 内容: 'A4', 字段_2: '审查', 内容_2: '' },
-      { 字段: '客户料号', 内容: '', 字段_2: '核准', 内容_2: '' },
-      { 字段: '单位', 内容: 'mm', 字段_2: '比例', 内容_2: 'none' },
-      { 字段: '工程图号', 内容: drawingNo, 字段_2: '页次', 内容_2: '1 of 1' },
-    ].map((row) => ({
-      字段: row.字段,
-      内容: row.内容,
-      '字段（续）': row.字段_2,
-      '内容（续）': row.内容_2,
-    })),
+      { 版本: 'A', 变更内容: '新版发行', 日期: formatDrawingDate(date), 变更者: '' },
+      { 版本: '', 变更内容: '', 日期: '', 变更者: '' },
+    ],
+    showTitleRow: false,
+    tableRole: 'revision',
+    columnWidths: [50, 130, 90, 50],
+    headerRowHeight: 20,
+    rowHeights: [20, 20],
   };
 }
 
-function createWiringTable(): DrawingObject {
+function createTitleInformationTable(drawingNo: string, date: Date): DrawingObject {
+  const columns = ['xxx公司', '', '', '', '', '品名', '', '', ''];
+  return {
+    ...objectBase('table', { x: 820, y: 640 }, 360, 124),
+    kind: 'table',
+    title: '标题栏',
+    columns,
+    columnKeys: ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'],
+    rows: [
+      { C1: '版本', C2: 'A', C3: '绘制', C4: '', C5: formatDrawingDate(date), C6: '料号', C7: '', C8: '', C9: '' },
+      { C1: '图幅', C2: 'A4', C3: '审查', C4: '', C5: '', C6: '客户料号', C7: '', C8: '', C9: '' },
+      { C1: '', C2: '', C3: '核准', C4: '', C5: '', C6: '单位', C7: 'mm', C8: '比例', C9: 'none' },
+      { C1: '', C2: '', C3: '工程图号', C4: drawingNo, C5: '', C6: '页次', C7: '1 of 1', C8: '', C9: '' },
+    ],
+    showTitleRow: false,
+    tableRole: 'title-block',
+    columnWidths: [40, 40, 48, 42, 58, 52, 26, 28, 26],
+    headerRowHeight: 28,
+    rowHeights: [24, 24, 24, 24],
+    mergedCells: [
+      { rowIndex: -1, columnIndex: 0, rowSpan: 1, columnSpan: 5 },
+      { rowIndex: -1, columnIndex: 5, rowSpan: 1, columnSpan: 4 },
+      { rowIndex: 0, columnIndex: 6, rowSpan: 1, columnSpan: 3 },
+      { rowIndex: 1, columnIndex: 6, rowSpan: 1, columnSpan: 3 },
+      { rowIndex: 2, columnIndex: 0, rowSpan: 2, columnSpan: 2 },
+      { rowIndex: 3, columnIndex: 3, rowSpan: 1, columnSpan: 2 },
+      { rowIndex: 3, columnIndex: 6, rowSpan: 1, columnSpan: 3 },
+    ],
+    projectionCellKey: 'row-2-column-0',
+  };
+}
+
+export function createWiringTable(): DrawingObject {
   return {
     ...objectBase('wiring-table', { x: 600, y: 430 }, 520, 94),
     kind: 'wiring-table',
@@ -97,22 +122,20 @@ function createWiringTable(): DrawingObject {
 
 function createBomTable(): DrawingObject {
   return {
-    ...objectBase('bom-table', { x: 48, y: 650 }, 710, 115),
+    ...objectBase('bom-table', { x: 40, y: 740 }, 720, 24),
     kind: 'bom-table',
-    title: 'BOM表',
+    title: '物料表',
     columns: ['序号', '物料编码', '物料名称/规格', '单位', '用量', '备注'],
-    rows: [{
-      序号: '①',
-      物料编码: '',
-      '物料名称/规格': 'AC电源插座C20公座-1俯面',
-      单位: 'PCS',
-      用量: '1',
-      备注: '',
-    }],
+    rows: [],
+    showTitleRow: false,
+    tableRole: 'bom',
+    columnWidths: [50, 120, 260, 70, 70, 150],
+    headerRowHeight: 24,
+    rowHeights: [],
   };
 }
 
-export function createBlankDrawingDocument(name = '未命名线束图'): DrawingDocument {
+export function createBlankDrawingDocument(name = '未命名线束图', date = new Date()): DrawingDocument {
   const now = Date.now();
   const titleBlock = createTitleBlock(name);
   return {
@@ -122,7 +145,7 @@ export function createBlankDrawingDocument(name = '未命名线束图'): Drawing
     createdAt: now,
     updatedAt: now,
     page: { ...DRAWING_PAGE },
-    objects: [titleBlock, createRevisionTable(), createWiringTable(), createBomTable(), createTitleInformationTable(titleBlock.drawingNo)],
+    objects: [titleBlock, createBomTable(), createRevisionTable(date), createTitleInformationTable(titleBlock.drawingNo, date)],
     titleBlock: {
       title: titleBlock.title,
       drawingNo: titleBlock.drawingNo,

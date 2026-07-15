@@ -25,6 +25,7 @@ function createRecordingContext() {
     clip: () => undefined,
     moveTo: () => undefined,
     lineTo: () => undefined,
+    arc: () => undefined,
     stroke: () => undefined,
     translate: () => undefined,
     rotate: () => undefined,
@@ -64,6 +65,17 @@ describe('standalone drawing table templates', () => {
     expect(source).toContain('function DrawingTableLayer');
     expect(source).toContain('contentEditable={isEditing}');
     expect(source).toContain('hiddenObjectIds: tableObjectIds');
+    expect(source).toContain('resolveDrawingTableCells');
+    expect(source).toContain('data-table-cell={cell.key}');
+  });
+
+  it('opens the semantic BOM table before local cell editing', () => {
+    const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
+
+    expect(source).toContain('onOpenMaterialTable?: (objectId: string) => void');
+    expect(source).toContain("object.tableRole !== 'bom'");
+    expect(source).toContain('onDoubleClickCapture');
+    expect(source).toContain('onOpenMaterialTable(object.id)');
   });
 
   it('renders one SVG transform overlay with eight resize handles and a rotation control', () => {
@@ -201,8 +213,8 @@ describe('standalone drawing table templates', () => {
     const tables = drawing.objects.filter((object) => object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table');
 
     expect(tables.some((table) => table.title === '变更记录' && table.columns.includes('变更内容'))).toBe(true);
-    expect(tables.some((table) => table.title === 'XXx公司' && table.rows.some((row) => row.字段 === '单位' && row.内容 === 'mm'))).toBe(true);
-    expect(tables.some((table) => table.title === 'XXx公司' && table.rows.some((row) => row.字段 === '工程图号' && row.内容 === 'WH-001'))).toBe(true);
+    expect(tables.some((table) => table.tableRole === 'title-block' && table.rows.some((row) => row.C6 === '单位' && row.C7 === 'mm'))).toBe(true);
+    expect(tables.some((table) => table.tableRole === 'title-block' && table.rows.some((row) => row.C3 === '工程图号' && row.C4 === 'WH-001'))).toBe(true);
     expect(tables.some((table) => table.title === '接线表' && table.rows.some((row) => row.P1 === '1' && row.颜色 === '黑' && row.P2 === '2' && row.长度 === '2'))).toBe(true);
     expect(tables.some((table) => table.kind === 'bom-table' && table.rows.some((row) => row['物料名称/规格'] === 'AC电源插座C20公座-1' && row.单位 === 'PCS' && row.用量 === '1'))).toBe(true);
     expect(tables.some((table) => table.kind === 'bom-table' && table.rows.some((row) => row['物料名称/规格'] === 'UL1007'))).toBe(true);

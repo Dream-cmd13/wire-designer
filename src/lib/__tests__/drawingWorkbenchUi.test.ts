@@ -8,6 +8,8 @@ const inspectorSource = readFileSync(new URL('../../components/drawings/standalo
 const pdfDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingPdfExportDialog.tsx', import.meta.url), 'utf8');
 const lineDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingLinePropertiesDialog.tsx', import.meta.url), 'utf8');
 const tableDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingTableCreateDialog.tsx', import.meta.url), 'utf8');
+const materialTableDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingMaterialTableDialog.tsx', import.meta.url), 'utf8');
+const materialFormDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingMaterialFormDialog.tsx', import.meta.url), 'utf8');
 
 describe('drawing workbench UI contract', () => {
   it('exposes the required editing commands and shortcuts', () => {
@@ -80,5 +82,26 @@ describe('drawing workbench UI contract', () => {
     expect(tableDialogSource).toContain('列数');
     expect(tableDialogSource).toContain('显示表名行');
     expect(tableDialogSource).toContain('onConfirm({ rowCount, columnCount, showTitleRow })');
+  });
+
+  it('provides current and company material workflows with Chinese error handling', () => {
+    ['当前物料表', '公司物料表', '添加物料', '导出物料表（XLSX）', '物料名称/规格请输入搜索', '搜索', '新增物料', '重置', '操作'].forEach((label) => expect(materialTableDialogSource).toContain(label));
+    expect(materialTableDialogSource).toContain('drawingMaterialRepository.list');
+    expect(materialTableDialogSource).toContain('drawingMaterialRepository.create');
+    expect(materialTableDialogSource).toContain('downloadDrawingMaterialXlsx');
+    expect(materialTableDialogSource).toContain('getUserErrorMessage');
+    expect(materialTableDialogSource).toContain('点击重试');
+    expect(materialTableDialogSource).toContain('role="dialog"');
+    ['物料编码', '请输入物料编码', '物料名称/规格', '输入或选择物料规格', '单位', '请输入或选择单位', '用量', '请输入用量', '备注', '请输入备注'].forEach((label) => expect(materialFormDialogSource).toContain(label));
+    expect(materialFormDialogSource).toContain('role="dialog"');
+  });
+
+  it('wires BOM double-click and current-material additions through drawing history', () => {
+    expect(pageSource).toContain('materialTableObjectId');
+    expect(pageSource).toContain('onOpenMaterialTable={setMaterialTableObjectId}');
+    expect(pageSource).toContain('<DrawingMaterialTableDialog');
+    expect(pageSource).toContain('appendDrawingMaterial');
+    expect(pageSource).toContain('remember();');
+    expect(pageSource).toContain('onAddCurrent={addCurrentMaterial}');
   });
 });

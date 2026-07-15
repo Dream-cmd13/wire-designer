@@ -9,7 +9,7 @@ import {
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
-import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
@@ -29,6 +29,7 @@ interface StandaloneDrawingCanvasProps {
   onScaleTableTarget?: (objectId: string, target: DrawingTableLocalTarget, factor: number) => void;
   onAddObject?: (object: DrawingObject) => void;
   onEditLineRequest?: (objectId: string) => void;
+  onOpenMaterialTable?: (objectId: string) => void;
   toolMode?: DrawingToolMode;
   orthogonal?: boolean;
   drawingAction?: { id: number; type: 'finish' | 'cancel' };
@@ -117,6 +118,7 @@ function tableCellPatch(
     const oldColumn = columns[editor.columnIndex];
     const newColumn = editor.value.trim() || oldColumn;
     columns[editor.columnIndex] = newColumn;
+    if (object.columnKeys) return { columns } as Partial<DrawingObject>;
     const rows = object.rows.map((row) => {
       if (newColumn === oldColumn) return { ...row };
       const nextRow = { ...row, [newColumn]: row[oldColumn] ?? '' };
@@ -130,10 +132,8 @@ function tableCellPatch(
   while (rows.length <= editor.rowIndex) {
     rows.push(Object.fromEntries(columns.map((column) => [column, ''])) as DrawingTableRow);
   }
-  const oldColumn = object.columns[editor.columnIndex];
-  const newColumn = columns[editor.columnIndex] ?? oldColumn;
-  rows[editor.rowIndex][newColumn] = editor.value;
-  if (newColumn !== oldColumn) delete rows[editor.rowIndex][oldColumn];
+  const oldColumn = object.columnKeys?.[editor.columnIndex] ?? object.columns[editor.columnIndex];
+  rows[editor.rowIndex][oldColumn] = editor.value;
   return { rows } as Partial<DrawingObject>;
 }
 
@@ -147,6 +147,7 @@ function DrawingTableLayer({
   onEditingChange,
   onStartEdit,
   onUpdateObject,
+  onOpenMaterialTable,
 }: {
   object: DrawingTableObject;
   zoom: number;
@@ -157,6 +158,7 @@ function DrawingTableLayer({
   onEditingChange: (editing: boolean) => void;
   onStartEdit: () => void;
   onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
+  onOpenMaterialTable?: (objectId: string) => void;
 }) {
   const tableRef = useRef<HTMLDivElement | null>(null);
   const [editing, setEditing] = useState<TableEditTarget | null>(null);
@@ -164,6 +166,7 @@ function DrawingTableLayer({
   const layout = resolveDrawingTableLayout(object);
   const rowHeight = layout.headerRowHeight * zoom;
   const titleHeight = layout.titleRowHeight * zoom;
+  const cells = resolveDrawingTableCells(object);
 
   useEffect(() => {
     if (!editing) return;
@@ -320,6 +323,12 @@ function DrawingTableLayer({
       }}
       aria-selected={selected}
       onClick={(event) => { event.stopPropagation(); onSelect(); }}
+      onDoubleClickCapture={(event) => {
+        if (object.tableRole !== 'bom' || !onOpenMaterialTable) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onOpenMaterialTable(object.id);
+      }}
       onPointerDown={(event) => beginDrag(event, 'table')}
       onPointerMove={handleTablePointerMove}
       onPointerUp={endTableDrag}
@@ -327,17 +336,34 @@ function DrawingTableLayer({
       {layout.showTitleRow && <div className="box-border border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
         {renderEditableText(object.title, { key: 'title', type: 'title' })}
       </div>}
-      <div className="grid font-semibold" style={{ gridTemplateColumns: layout.columnWidths.map((width) => `${width * zoom}px`).join(' ') }}>
-        {object.columns.map((column, columnIndex) => (
-          <div key={columnIndex} onPointerDown={(event) => selectCell(event, -1, columnIndex, `column-${columnIndex}`)} onDoubleClick={(event) => selectCellOnDoubleClick(event, -1, columnIndex, `column-${columnIndex}`)} className="box-border border-b border-r border-slate-900 last:border-r-0" style={{ height: rowHeight }}>
-            {renderEditableText(column, { key: `column-${columnIndex}`, type: 'table-cell', rowIndex: -1, columnIndex })}
+      <div className="grid font-semibold" style={{
+        gridTemplateColumns: layout.columnWidths.map((width) => `${width * zoom}px`).join(' '),
+        gridTemplateRows: [layout.headerRowHeight, ...layout.rowHeights].map((height) => `${height * zoom}px`).join(' '),
+      }}>
+        {cells.map((cell) => (
+          <div
+            key={cell.key}
+            data-table-cell={cell.key}
+            onPointerDown={(event) => selectCell(event, cell.rowIndex, cell.columnIndex, cell.key)}
+            onDoubleClick={(event) => selectCellOnDoubleClick(event, cell.rowIndex, cell.columnIndex, cell.key)}
+            className={`box-border border-b border-r ${cell.header ? 'border-slate-900' : 'border-slate-300'}`}
+            style={{
+              gridColumn: `${cell.columnIndex + 1} / span ${cell.columnSpan}`,
+              gridRow: `${cell.rowIndex + 2} / span ${cell.rowSpan}`,
+              fontSize: (cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1)) * zoom,
+              fontWeight: cell.header ? 600 : 400,
+              lineHeight: `${cell.height * zoom}px`,
+            }}
+          >
+            {object.projectionCellKey === cell.key ? (
+              <svg viewBox="0 0 100 50" className="h-full w-full" aria-label="投影图标">
+                <path d="M16 15 L40 19 L40 31 L16 35 Z" fill="none" stroke="currentColor" strokeWidth="2"/>
+                <circle cx="78" cy="25" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
+                <line x1="6" y1="25" x2="94" y2="25" stroke="currentColor" strokeWidth="1" strokeDasharray="4 3"/>
+              </svg>
+            ) : renderEditableText(cell.value, { key: cell.key, type: 'table-cell', rowIndex: cell.rowIndex, columnIndex: cell.columnIndex })}
           </div>
         ))}
-        {object.rows.flatMap((row, rowIndex) => object.columns.map((column, columnIndex) => (
-          <div key={`${rowIndex}-${columnIndex}`} onPointerDown={(event) => selectCell(event, rowIndex, columnIndex, `row-${rowIndex}-column-${columnIndex}`)} onDoubleClick={(event) => selectCellOnDoubleClick(event, rowIndex, columnIndex, `row-${rowIndex}-column-${columnIndex}`)} className="box-border border-b border-r border-slate-300 last:border-r-0" style={{ height: layout.rowHeights[rowIndex] * zoom, fontSize: Math.max(8, object.style.fontSize - 1) * zoom, fontWeight: 400 }}>
-            {renderEditableText(row[column] ?? '', { key: `row-${rowIndex}-column-${columnIndex}`, type: 'table-cell', rowIndex, columnIndex })}
-          </div>
-        )))}
       </div>
     </div>
   );
@@ -357,6 +383,7 @@ export function StandaloneDrawingCanvas({
   onScaleTableTarget,
   onAddObject,
   onEditLineRequest,
+  onOpenMaterialTable,
   toolMode = 'select',
   orthogonal = false,
   drawingAction,
@@ -858,6 +885,7 @@ export function StandaloneDrawingCanvas({
             onEditingChange={setTableEditing}
             onStartEdit={onStartEdit}
             onUpdateObject={onUpdateObject}
+            onOpenMaterialTable={onOpenMaterialTable}
           />
         ))}
         {(previewPoints.length > 0 || selectionRect) && (

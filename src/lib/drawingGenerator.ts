@@ -1,4 +1,4 @@
-import { createBlankDrawingDocument, createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, createDrawingId, createWiringTable, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import type {
   DrawingDocument,
   DrawingConnectorResource,
@@ -151,7 +151,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
   const isSingle = draft.topology.topology === 'single-end';
   const left = isSingle ? draft.singleConnector : draft.leftConnector;
   const right = isSingle ? undefined : draft.rightConnector;
-  const frameObjects = base.objects.map((object) => {
+  const frameObjects = [...base.objects, createWiringTable()].map((object) => {
     if (object.kind === 'wiring-table') {
       return {
         ...object,
@@ -161,12 +161,10 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
     if (object.kind === 'bom-table') {
       return { ...object, rows: drawingBomRows(draft, left, right) };
     }
-    if (object.kind !== 'table' || object.title !== 'XXx公司') return object;
+    if (object.kind !== 'table' || object.tableRole !== 'title-block') return object;
     return {
       ...object,
-      rows: object.rows.map((row) => row.字段 === '工程图号'
-        ? { ...row, 内容: draft.drawingNo || 'WH-NEW' }
-        : row),
+      rows: object.rows.map((row) => row.C3 === '工程图号' ? { ...row, C4: draft.drawingNo || 'WH-NEW' } : row),
     };
   });
   const objects: DrawingObject[] = [

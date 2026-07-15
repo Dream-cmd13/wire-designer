@@ -47,8 +47,19 @@ describe('completed drawing export', () => {
     };
     const svg = serializeDrawingSvg({ ...drawing, objects: [...drawing.objects, table] });
     expect(svg).not.toContain('隐藏表名');
-    expect(svg).toContain('<line x1="70" y1="0" x2="70" y2="54"');
+    expect(svg).toContain('data-table-cell="column-0"');
+    expect(svg).toContain('width="70" height="20"');
     expect(svg).toContain('>甲</text>');
+  });
+
+  it('exports merged title cells and the projection symbol from resolved geometry', () => {
+    const drawing = createBlankDrawingDocument('merged table', new Date(2026, 6, 15));
+    const svg = serializeDrawingSvg(drawing);
+
+    expect(svg).toContain('data-table-cell="column-0"');
+    expect(svg).toContain('data-table-cell="row-2-column-0"');
+    expect(svg).toContain('data-projection-symbol="true"');
+    expect(svg).not.toContain('2026.07.15(当天日期');
   });
 
   it('sanitizes a requested PDF filename and falls back to the drawing number', () => {

@@ -179,7 +179,7 @@ export class DrawingCatalogRepository {
   async listResources(filters: DrawingCatalogFilters = {}): Promise<DrawingCatalogResource[]> {
     const rows = await this.rows('catalog_items', 'id,legacy_key,item_type,resource_name,model,short_description,display_order,lifecycle_status,deleted_at,catalog_categories(name),connector_specs(connector_type,series,pin_count,row_count,pitch_mm),wire_specs(cable_type),model_specs(model_kind),accessory_specs(specification,unit),packaging_specs(specification,unit),catalog_item_images(storage_path,is_primary,display_order)');
     const mapped = rows
-      .filter((row) => row.lifecycle_status !== 'inactive' && !row.deleted_at)
+      .filter((row) => row.lifecycle_status === 'active' && !row.deleted_at)
       .map(mapCatalogRow)
       .filter((resource): resource is CatalogResourceWithStoragePath => Boolean(resource));
     const resources = await Promise.all(mapped.map(async ({ storagePath, ...resource }) => {

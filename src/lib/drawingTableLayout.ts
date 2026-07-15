@@ -1,8 +1,28 @@
 import { localToWorldPoint } from '@/lib/drawingTransform';
-import type { DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingTableLayoutFields, DrawingTableLocalTarget, DrawingTableTextOffsets, DrawingTableTextSize } from '@/types/drawing';
+import type { DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingTableLayoutFields, DrawingTableLocalTarget, DrawingTableMerge, DrawingTableTextOffsets, DrawingTableTextSize } from '@/types/drawing';
 
 export type DrawingTableObject = Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>;
-export type ResolvedDrawingTableLayout = Required<Omit<DrawingTableLayoutFields, 'textSizes'>> & { textSizes: Record<string, DrawingTableTextSize> };
+export type ResolvedDrawingTableLayout = {
+  showTitleRow: boolean;
+  columnWidths: number[];
+  titleRowHeight: number;
+  headerRowHeight: number;
+  rowHeights: number[];
+  textSizes: Record<string, DrawingTableTextSize>;
+};
+export type ResolvedDrawingTableCell = {
+  key: string;
+  value: string;
+  rowIndex: number;
+  columnIndex: number;
+  rowSpan: number;
+  columnSpan: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  header: boolean;
+};
 export type DrawingTablePatch = Partial<Pick<DrawingTableObject, 'x' | 'y' | 'width' | 'height'>> & DrawingTableLayoutFields & {
   style?: DrawingObjectStyle;
   textOffsets?: DrawingTableTextOffsets;
@@ -30,6 +50,61 @@ export function resolveDrawingTableLayout(table: DrawingTableObject): ResolvedDr
   };
 }
 
+function normalizeMerge(merge: DrawingTableMerge, columnCount: number, rowCount: number): DrawingTableMerge | null {
+  if (merge.rowIndex < -1 || merge.rowIndex >= rowCount || merge.columnIndex < 0 || merge.columnIndex >= columnCount) return null;
+  const availableRows = rowCount - merge.rowIndex;
+  return {
+    rowIndex: merge.rowIndex,
+    columnIndex: merge.columnIndex,
+    rowSpan: Math.max(1, Math.min(Math.floor(merge.rowSpan), availableRows)),
+    columnSpan: Math.max(1, Math.min(Math.floor(merge.columnSpan), columnCount - merge.columnIndex)),
+  };
+}
+
+export function resolveDrawingTableCells(table: DrawingTableObject): ResolvedDrawingTableCell[] {
+  const layout = resolveDrawingTableLayout(table);
+  const columnCount = layout.columnWidths.length;
+  const rowCount = table.rows.length;
+  const merges = (table.mergedCells ?? []).map((merge) => normalizeMerge(merge, columnCount, rowCount)).filter((merge): merge is DrawingTableMerge => Boolean(merge));
+  const mergeAt = new Map(merges.map((merge) => [`${merge.rowIndex}:${merge.columnIndex}`, merge]));
+  const covered = new Set<string>();
+  merges.forEach((merge) => {
+    for (let row = merge.rowIndex; row < merge.rowIndex + merge.rowSpan; row += 1) {
+      for (let column = merge.columnIndex; column < merge.columnIndex + merge.columnSpan; column += 1) {
+        if (row !== merge.rowIndex || column !== merge.columnIndex) covered.add(`${row}:${column}`);
+      }
+    }
+  });
+  const columnStarts = layout.columnWidths.map((_, index) => layout.columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0));
+  const titleHeight = layout.showTitleRow ? layout.titleRowHeight : 0;
+  const rowHeight = (rowIndex: number) => rowIndex < 0 ? layout.headerRowHeight : layout.rowHeights[rowIndex];
+  const rowStart = (rowIndex: number) => titleHeight + (rowIndex < 0 ? 0 : layout.headerRowHeight + layout.rowHeights.slice(0, rowIndex).reduce((sum, height) => sum + height, 0));
+  const cells: ResolvedDrawingTableCell[] = [];
+  for (let rowIndex = -1; rowIndex < rowCount; rowIndex += 1) {
+    for (let columnIndex = 0; columnIndex < columnCount; columnIndex += 1) {
+      if (covered.has(`${rowIndex}:${columnIndex}`)) continue;
+      const merge = mergeAt.get(`${rowIndex}:${columnIndex}`);
+      const rowSpan = merge?.rowSpan ?? 1;
+      const columnSpan = merge?.columnSpan ?? 1;
+      const key = rowIndex < 0 ? `column-${columnIndex}` : `row-${rowIndex}-column-${columnIndex}`;
+      cells.push({
+        key,
+        value: rowIndex < 0 ? table.columns[columnIndex] ?? '' : table.rows[rowIndex]?.[table.columnKeys?.[columnIndex] ?? table.columns[columnIndex]] ?? '',
+        rowIndex,
+        columnIndex,
+        rowSpan,
+        columnSpan,
+        x: columnStarts[columnIndex],
+        y: rowStart(rowIndex),
+        width: layout.columnWidths.slice(columnIndex, columnIndex + columnSpan).reduce((sum, width) => sum + width, 0),
+        height: Array.from({ length: rowSpan }, (_, offset) => rowHeight(rowIndex + offset)).reduce((sum, height) => sum + height, 0),
+        header: rowIndex < 0,
+      });
+    }
+  }
+  return cells;
+}
+
 function rowBounds(table: DrawingTableObject, rowIndex: number | undefined) {
   const layout = resolveDrawingTableLayout(table);
   const titleHeight = layout.showTitleRow ? layout.titleRowHeight : 0;
@@ -51,8 +126,9 @@ function columnBounds(table: DrawingTableObject, columnIndex: number | undefined
 }
 
 export function getDrawingTableTargetObject(table: DrawingTableObject, target: DrawingTableLocalTarget): DrawingObject {
-  const column = columnBounds(table, target.columnIndex);
-  const row = rowBounds(table, target.key === 'title' ? undefined : target.rowIndex);
+  const mergedCell = target.key === 'title' ? undefined : resolveDrawingTableCells(table).find((cell) => cell.key === target.key);
+  const column = mergedCell ? { x: mergedCell.x, width: mergedCell.width } : columnBounds(table, target.columnIndex);
+  const row = mergedCell ? { y: mergedCell.y, height: mergedCell.height } : rowBounds(table, target.key === 'title' ? undefined : target.rowIndex);
   const offset = table.textOffsets?.[target.key] ?? { x: 0, y: 0 };
   const configuredText = table.textSizes?.[target.key];
   const inset = target.kind === 'table-text' ? 5 : 0;

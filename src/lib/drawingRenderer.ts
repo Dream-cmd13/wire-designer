@@ -1,6 +1,6 @@
 import type { DrawingDocument, DrawingObject, DrawingPoint } from '@/types/drawing';
 import { containsDrawingPoint } from '@/lib/drawingTransform';
-import { resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getEditableDrawingTextRuns, type EditableDrawingTextField } from '@/lib/drawingTextLayout';
 
 function drawEditableText(
@@ -42,9 +42,6 @@ function drawPolyline(context: CanvasRenderingContext2D, points: DrawingPoint[],
 
 function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>) {
   const layout = resolveDrawingTableLayout(object);
-  const titleHeight = layout.showTitleRow ? layout.titleRowHeight : 0;
-  const headerBottom = titleHeight + layout.headerRowHeight;
-  const columnStarts = layout.columnWidths.map((_, index) => layout.columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0));
   context.fillStyle = object.style.fill;
   context.fillRect(0, 0, object.width, object.height);
   context.strokeRect(0, 0, object.width, object.height);
@@ -61,32 +58,29 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   if (layout.showTitleRow) {
     drawCellText('title', object.title, 6, layout.titleRowHeight - 6, object.style.fontSize, object.width - 12);
     context.beginPath();
-    context.moveTo(0, titleHeight);
-    context.lineTo(object.width, titleHeight);
+    context.moveTo(0, layout.titleRowHeight);
+    context.lineTo(object.width, layout.titleRowHeight);
     context.stroke();
   }
-  object.columns.forEach((column, index) => {
-    drawCellText(`column-${index}`, column, columnStarts[index] + 5, headerBottom - 6, object.style.fontSize, layout.columnWidths[index] - 8);
-    context.beginPath();
-    context.moveTo(columnStarts[index], titleHeight);
-    context.lineTo(columnStarts[index], object.height);
-    context.stroke();
-  });
-  context.beginPath();
-  context.moveTo(0, headerBottom);
-  context.lineTo(object.width, headerBottom);
-  context.stroke();
-  let rowTop = headerBottom;
-  object.rows.forEach((row, rowIndex) => {
-    const y = rowTop + layout.rowHeights[rowIndex];
-    context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(object.width, y);
-    context.stroke();
-    object.columns.forEach((column, columnIndex) => {
-      drawCellText(`row-${rowIndex}-column-${columnIndex}`, row[column] ?? '', columnStarts[columnIndex] + 5, y - 6, Math.max(8, object.style.fontSize - 1), layout.columnWidths[columnIndex] - 8);
-    });
-    rowTop = y;
+  resolveDrawingTableCells(object).forEach((cell) => {
+    context.strokeRect(cell.x, cell.y, cell.width, cell.height);
+    if (object.projectionCellKey === cell.key) {
+      const centerY = cell.y + cell.height / 2;
+      const left = cell.x + cell.width * 0.16;
+      const right = cell.x + cell.width * 0.82;
+      context.beginPath();
+      context.moveTo(left, centerY - cell.height * 0.2);
+      context.lineTo(left + cell.width * 0.24, centerY - cell.height * 0.12);
+      context.lineTo(left + cell.width * 0.24, centerY + cell.height * 0.12);
+      context.lineTo(left, centerY + cell.height * 0.2);
+      context.closePath();
+      context.stroke();
+      context.beginPath();
+      context.arc(right, centerY, Math.min(cell.width, cell.height) * 0.14, 0, Math.PI * 2);
+      context.stroke();
+      return;
+    }
+    drawCellText(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width - 8);
   });
   context.restore();
 }

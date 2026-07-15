@@ -1,5 +1,5 @@
 import { safeFilename } from '@/lib/designFile';
-import { resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
 function escapeXml(value: string) {
@@ -58,27 +58,21 @@ function svgObject(object: DrawingObject): string {
   }
   if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') {
     const layout = resolveDrawingTableLayout(object);
-    const titleHeight = layout.showTitleRow ? layout.titleRowHeight : 0;
-    const headerBottom = titleHeight + layout.headerRowHeight;
-    const columnStarts = layout.columnWidths.map((_, index) => layout.columnWidths.slice(0, index).reduce((sum, width) => sum + width, 0));
     const clipId = `clip-${svgId(object.id)}`;
     const text = (key: string, value: string, x: number, baseline: number, fallbackSize: number) => {
       const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
       const fontSize = layout.textSizes[key]?.fontSize ?? fallbackSize;
       return `<text x="${x + offset.x}" y="${baseline + offset.y}" font-size="${fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(value)}</text>`;
     };
-    const verticals = columnStarts.map((x) => `<line x1="${x}" y1="${titleHeight}" x2="${x}" y2="${object.height}"/>`).join('');
     const title = layout.showTitleRow ? text('title', object.title, 5, layout.titleRowHeight - 6, object.style.fontSize) : '';
-    const labels = object.columns.map((column, index) => text(`column-${index}`, column, columnStarts[index] + 5, headerBottom - 6, object.style.fontSize)).join('');
-    let rowTop = headerBottom;
-    const rows = object.rows.map((row, rowIndex) => {
-      const rowBottom = rowTop + layout.rowHeights[rowIndex];
-      const output = `<line x1="0" y1="${rowBottom}" x2="${object.width}" y2="${rowBottom}"/>${object.columns.map((column, columnIndex) => text(`row-${rowIndex}-column-${columnIndex}`, row[column] ?? '', columnStarts[columnIndex] + 5, rowBottom - 6, Math.max(8, object.style.fontSize - 1))).join('')}`;
-      rowTop = rowBottom;
-      return output;
+    const cells = resolveDrawingTableCells(object).map((cell) => {
+      const projection = object.projectionCellKey === cell.key
+        ? `<g data-projection-symbol="true" fill="none"><path d="M ${cell.x + cell.width * 0.16} ${cell.y + cell.height * 0.3} L ${cell.x + cell.width * 0.4} ${cell.y + cell.height * 0.38} L ${cell.x + cell.width * 0.4} ${cell.y + cell.height * 0.62} L ${cell.x + cell.width * 0.16} ${cell.y + cell.height * 0.7} Z"/><circle cx="${cell.x + cell.width * 0.82}" cy="${cell.y + cell.height / 2}" r="${Math.min(cell.width, cell.height) * 0.14}"/></g>`
+        : text(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1));
+      return `<g data-table-cell="${cell.key}"><rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}"/>${projection}</g>`;
     }).join('');
-    const titleSeparator = layout.showTitleRow ? `<line x1="0" y1="${titleHeight}" x2="${object.width}" y2="${titleHeight}"/>` : '';
-    return `<g ${common} ${style}><defs><clipPath id="${clipId}"><rect width="${object.width}" height="${object.height}"/></clipPath></defs><g clip-path="url(#${clipId})"><rect width="${object.width}" height="${object.height}"/>${verticals}${titleSeparator}<line x1="0" y1="${headerBottom}" x2="${object.width}" y2="${headerBottom}"/>${title}${labels}${rows}</g></g>`;
+    const titleSeparator = layout.showTitleRow ? `<line x1="0" y1="${layout.titleRowHeight}" x2="${object.width}" y2="${layout.titleRowHeight}"/>` : '';
+    return `<g ${common} ${style}><defs><clipPath id="${clipId}"><rect width="${object.width}" height="${object.height}"/></clipPath></defs><g clip-path="url(#${clipId})"><rect width="${object.width}" height="${object.height}"/>${titleSeparator}${title}${cells}</g></g>`;
   }
   if (object.kind === 'group') {
     const children = object.children.filter((child) => child.visible).sort((left, right) => left.zIndex - right.zIndex).map(svgObject).join('');

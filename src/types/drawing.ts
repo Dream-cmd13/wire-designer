@@ -51,6 +51,8 @@ export type DrawingPoint = { x: number; y: number };
 export type DrawingTableRow = Record<string, string>;
 export type DrawingTableTextOffsets = Record<string, DrawingPoint>;
 export type DrawingTableTextSize = { width: number; height: number; fontSize: number };
+export type DrawingTableRole = 'bom' | 'revision' | 'title-block';
+export type DrawingTableMerge = { rowIndex: number; columnIndex: number; rowSpan: number; columnSpan: number };
 export type DrawingTableLayoutFields = {
   showTitleRow?: boolean;
   columnWidths?: number[];
@@ -58,6 +60,10 @@ export type DrawingTableLayoutFields = {
   headerRowHeight?: number;
   rowHeights?: number[];
   textSizes?: Record<string, DrawingTableTextSize>;
+  columnKeys?: string[];
+  tableRole?: DrawingTableRole;
+  mergedCells?: DrawingTableMerge[];
+  projectionCellKey?: string;
 };
 export type DrawingTableLocalTarget = {
   kind: 'table-cell' | 'table-text';
