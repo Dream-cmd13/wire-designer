@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import { createBlankDrawingDocument, patchDrawingObject } from '@/lib/drawingDocument';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
@@ -7,6 +7,35 @@ type DrawingSaveState = 'saved' | 'dirty';
 export type DrawingHydrationResult = 'hydrated' | 'recovered';
 
 const hydrationErrorListeners = new Set<() => void>();
+const ANONYMOUS_DRAWING_OWNER = 'anonymous';
+let activeDrawingOwner = ANONYMOUS_DRAWING_OWNER;
+
+function drawingStorageKey(name: string) {
+  return `${name}:${activeDrawingOwner}`;
+}
+
+const userScopedStorage = {
+  getItem: (name: string) => {
+    if (typeof localStorage === 'undefined') throw new Error('Browser storage is unavailable.');
+    return localStorage.getItem(drawingStorageKey(name));
+  },
+  setItem: (name: string, value: string) => {
+    try {
+      localStorage.setItem(drawingStorageKey(name), value);
+    } catch {
+      // Persistence errors are handled by the store's hydration recovery path.
+    }
+  },
+  removeItem: (name: string) => {
+    try {
+      localStorage.removeItem(drawingStorageKey(name));
+    } catch {
+      // Ignore unavailable browser storage.
+    }
+  },
+};
+
+const drawingStorage = createJSONStorage(() => userScopedStorage);
 
 interface DrawingStore {
   documents: Record<string, DrawingDocument>;
@@ -81,6 +110,7 @@ export const useDrawingStore = create<DrawingStore>()(
     }),
     {
       name: 'standalone-drawing-library',
+      storage: drawingStorage,
       skipHydration: true,
       onRehydrateStorage: () => (_state, error) => {
         if (error) hydrationErrorListeners.forEach((listener) => listener());
@@ -99,7 +129,9 @@ function resetDrawingLibraryAfterHydrationFailure() {
   } catch { /* The in-memory state is updated before a storage write can fail. */ }
 }
 
-export async function hydrateDrawingStore(): Promise<DrawingHydrationResult> {
+export async function hydrateDrawingStore(ownerId?: string | null): Promise<DrawingHydrationResult> {
+  activeDrawingOwner = ownerId || ANONYMOUS_DRAWING_OWNER;
+  useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
   let persistApi: typeof useDrawingStore.persist | undefined;
   try { persistApi = useDrawingStore.persist; } catch { /* Treat inaccessible persistence as unavailable. */ }
   if (!persistApi) {

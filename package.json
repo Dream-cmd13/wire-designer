@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "user:create": "node scripts/create-user.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -9,7 +9,7 @@ import {
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
-import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
@@ -75,8 +75,14 @@ type EditTarget =
       width: number;
       height: number;
       fontSize: number;
-      textInsetX: number;
-    };
+     textInsetX: number;
+   };
+
+type DrawingTableTextLayout = {
+  width: number;
+  height: number;
+  fontSize: number;
+};
 
 
 function textPatch(object: DrawingObject, field: EditTarget & { type: 'field' }): Partial<DrawingObject> {
@@ -248,7 +254,7 @@ function DrawingTableLayer({
     onSelectTarget(localTarget);
   };
 
-  const renderEditableText = (value: string, target: TableEditTarget, className = '') => {
+  const renderEditableText = (value: string, target: TableEditTarget, className = '', textLayout?: DrawingTableTextLayout) => {
     const isEditing = editing?.key === target.key;
     const localTarget: DrawingTableLocalTarget = {
       kind: 'table-text', objectId: object.id, key: target.key,
@@ -256,6 +262,10 @@ function DrawingTableLayer({
       columnIndex: target.type === 'table-cell' ? target.columnIndex : undefined,
     };
     const textSize = object.textSizes?.[target.key];
+    const textWidth = textSize?.width ?? textLayout?.width ?? object.width;
+    const textHeight = textSize?.height ?? textLayout?.height ?? 18;
+    const configuredFontSize = textSize?.fontSize ?? textLayout?.fontSize ?? object.style.fontSize;
+    const fittedFontSize = getDrawingTableTextFontSize(value, textWidth, configuredFontSize);
     return (
       <span
         key={target.key}
@@ -277,12 +287,14 @@ function DrawingTableLayer({
           }
           if (event.key === 'Escape') event.currentTarget.blur();
         }}
-        className={`block h-full min-w-0 overflow-hidden whitespace-nowrap px-[0.35em] leading-[inherit] outline-none ${isEditing ? 'bg-blue-50' : ''} ${className}`}
+        className={`flex h-full min-w-0 ${textSize ? '' : 'flex-1'} items-center overflow-hidden whitespace-normal break-all px-[0.25em] outline-none ${isEditing ? 'bg-blue-50' : ''} ${className}`}
         style={{
           transform: `translate(${(object.textOffsets?.[target.key]?.x ?? 0) * zoom}px, ${(object.textOffsets?.[target.key]?.y ?? 0) * zoom}px)`,
           width: textSize ? textSize.width * zoom : undefined,
           height: textSize ? textSize.height * zoom : undefined,
-          fontSize: textSize ? textSize.fontSize * zoom : undefined,
+          boxSizing: 'border-box',
+          fontSize: fittedFontSize * zoom,
+          lineHeight: `${Math.max(1, Math.min(textHeight * zoom, fittedFontSize * zoom * 1.15))}px`,
         }}
       >
         {value}
@@ -333,8 +345,8 @@ function DrawingTableLayer({
       onPointerMove={handleTablePointerMove}
       onPointerUp={endTableDrag}
     >
-      {layout.showTitleRow && <div className="box-border border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
-        {renderEditableText(object.title, { key: 'title', type: 'title' })}
+      {layout.showTitleRow && <div className="box-border min-w-0 overflow-hidden border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
+        {renderEditableText(object.title, { key: 'title', type: 'title' }, '', { width: object.width, height: layout.titleRowHeight, fontSize: object.style.fontSize })}
       </div>}
       <div className="grid font-semibold" style={{
         gridTemplateColumns: layout.columnWidths.map((width) => `${width * zoom}px`).join(' '),
@@ -353,6 +365,9 @@ function DrawingTableLayer({
               fontSize: (cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1)) * zoom,
               fontWeight: cell.header ? 600 : 400,
               lineHeight: `${cell.height * zoom}px`,
+              minWidth: 0,
+              minHeight: 0,
+              overflow: 'hidden',
             }}
           >
             {object.projectionCellKey === cell.key ? (
@@ -361,7 +376,12 @@ function DrawingTableLayer({
                 <circle cx="78" cy="25" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
                 <line x1="6" y1="25" x2="94" y2="25" stroke="currentColor" strokeWidth="1" strokeDasharray="4 3"/>
               </svg>
-            ) : renderEditableText(cell.value, { key: cell.key, type: 'table-cell', rowIndex: cell.rowIndex, columnIndex: cell.columnIndex })}
+            ) : renderEditableText(
+              cell.value,
+              { key: cell.key, type: 'table-cell', rowIndex: cell.rowIndex, columnIndex: cell.columnIndex },
+              '',
+              { width: cell.width, height: cell.height, fontSize: cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1) },
+            )}
           </div>
         ))}
       </div>

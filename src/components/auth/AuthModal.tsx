@@ -5,9 +5,10 @@ import { useUserStore } from '@/stores/userStore';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onBeforeSignOut?: () => Promise<boolean>;
 }
 
-export function AuthModal({ isOpen, onClose }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -36,6 +37,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setSubmitting(true);
 
     try {
+      if (onBeforeSignOut && !(await onBeforeSignOut())) return;
       await signOut();
       onClose();
     } catch (authError) {

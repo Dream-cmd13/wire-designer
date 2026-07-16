@@ -1,5 +1,5 @@
 import { safeFilename } from '@/lib/designFile';
-import { resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
 function escapeXml(value: string) {
@@ -59,16 +59,20 @@ function svgObject(object: DrawingObject): string {
   if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') {
     const layout = resolveDrawingTableLayout(object);
     const clipId = `clip-${svgId(object.id)}`;
-    const text = (key: string, value: string, x: number, baseline: number, fallbackSize: number) => {
+    const text = (key: string, value: string, x: number, baseline: number, fallbackSize: number, cellWidth: number) => {
       const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
-      const fontSize = layout.textSizes[key]?.fontSize ?? fallbackSize;
-      return `<text x="${x + offset.x}" y="${baseline + offset.y}" font-size="${fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(value)}</text>`;
+      const configuredFontSize = layout.textSizes[key]?.fontSize ?? fallbackSize;
+      const fontSize = getDrawingTableTextFontSize(value, cellWidth, configuredFontSize);
+      const fitAttributes = fontSize < configuredFontSize
+        ? ` textLength="${Math.max(1, cellWidth - 8)}" lengthAdjust="spacingAndGlyphs"`
+        : '';
+      return `<text x="${x + offset.x}" y="${baseline + offset.y}" font-size="${fontSize}"${fitAttributes} fill="${object.style.color}" stroke="none">${escapeXml(value)}</text>`;
     };
-    const title = layout.showTitleRow ? text('title', object.title, 5, layout.titleRowHeight - 6, object.style.fontSize) : '';
+    const title = layout.showTitleRow ? text('title', object.title, 5, layout.titleRowHeight - 6, object.style.fontSize, object.width) : '';
     const cells = resolveDrawingTableCells(object).map((cell) => {
       const projection = object.projectionCellKey === cell.key
         ? `<g data-projection-symbol="true" fill="none"><path d="M ${cell.x + cell.width * 0.16} ${cell.y + cell.height * 0.3} L ${cell.x + cell.width * 0.4} ${cell.y + cell.height * 0.38} L ${cell.x + cell.width * 0.4} ${cell.y + cell.height * 0.62} L ${cell.x + cell.width * 0.16} ${cell.y + cell.height * 0.7} Z"/><circle cx="${cell.x + cell.width * 0.82}" cy="${cell.y + cell.height / 2}" r="${Math.min(cell.width, cell.height) * 0.14}"/></g>`
-        : text(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1));
+        : text(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width);
       return `<g data-table-cell="${cell.key}"><rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}"/>${projection}</g>`;
     }).join('');
     const titleSeparator = layout.showTitleRow ? `<line x1="0" y1="${layout.titleRowHeight}" x2="${object.width}" y2="${layout.titleRowHeight}"/>` : '';

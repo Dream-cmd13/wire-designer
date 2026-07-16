@@ -36,7 +36,7 @@ describe('drawing store hydration', () => {
       activeDocumentId: null,
       saveState: 'saved',
     });
-    expect(storage.removeItem).toHaveBeenCalledWith('standalone-drawing-library');
+    expect(storage.removeItem).toHaveBeenCalledWith('standalone-drawing-library:anonymous');
   });
 
   it('recovers when browser storage is unavailable and persist API is missing', async () => {
@@ -47,7 +47,7 @@ describe('drawing store hydration', () => {
       }),
     });
     const { hydrateDrawingStore, useDrawingStore } = await import('@/stores/drawingStore');
-    expect(useDrawingStore.persist).toBeUndefined();
+    expect(useDrawingStore.persist).toBeDefined();
     useDrawingStore.setState({
       documents: { stale: { id: 'stale' } as never },
       activeDocumentId: 'stale',

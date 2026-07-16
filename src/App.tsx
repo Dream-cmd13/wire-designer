@@ -18,6 +18,7 @@ import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { pdfDrawings, type PdfDrawing } from '@/lib/pdfDrawings';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { projectRepository } from '@/repositories/projectRepository';
+import { useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useProjectStore } from '@/stores/projectStore';
@@ -142,13 +143,16 @@ export default function App() {
   const [uploadedDrawings, setUploadedDrawings] = useState<PdfDrawing[]>([]);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
+  const previousAuthUserIdRef = useRef<string | null | undefined>(undefined);
 
   const currentUser = useUserStore((state) => state.currentUser);
+  const authReady = useUserStore((state) => state.authReady);
   const initializeAuth = useUserStore((state) => state.initialize);
   const { currentProject, saveCurrentConfig, setCurrentProject, updateProject } = useProjectStore();
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
   const canUndo = useHistoryStore((state) => state.past.length > 0);
   const canRedo = useHistoryStore((state) => state.future.length > 0);
+  const drawingSaveState = useDrawingStore((state) => state.saveState);
 
   useEffect(() => initializeAuth(), [initializeAuth]);
 
@@ -201,6 +205,65 @@ export default function App() {
       saveInFlightRef.current = null;
     }
   }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig]);
+
+  const prepareForUserSwitch = useCallback(async () => {
+    const hasUnsavedProject = Boolean(
+      currentProject && (saveState.status === 'dirty' || saveState.status === 'saving'),
+    );
+    const hasUnsavedDrawing = drawingSaveState === 'dirty';
+
+    if (!hasUnsavedProject && !hasUnsavedDrawing) return true;
+    if (hasUnsavedProject && saveBlocked) {
+      window.alert('当前项目无法保存，请先处理保存错误后再切换用户。');
+      return false;
+    }
+
+    const shouldSave = window.confirm('当前工作区有未保存修改。确定保存后切换用户吗？');
+    if (!shouldSave) return false;
+
+    if (hasUnsavedProject) {
+      await doSave();
+      if (useHarnessStore.getState().saveState.status === 'error') {
+        window.alert('项目保存失败，已取消用户切换。');
+        return false;
+      }
+    }
+
+    if (hasUnsavedDrawing) {
+      useDrawingStore.getState().markSaved();
+    }
+    return true;
+  }, [currentProject, doSave, drawingSaveState, saveBlocked, saveState.status]);
+
+  const resetWorkspaceForUser = useCallback(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    setWizardOpen(false);
+    setPdfPickerOpen(false);
+    setSelectedPdfIds([]);
+    setUploadedDrawings([]);
+    setLoadError(null);
+    setRecoveryRaw(null);
+    setSaveBlocked(false);
+    setCurrentProject(null);
+    replaceDocument(createDefaultConfig(), { markSaved: true });
+    useHistoryStore.getState().clear();
+    navigate(appRoutes.home.path);
+  }, [navigate, replaceDocument, setCurrentProject]);
+
+  useEffect(() => {
+    if (!authReady) return;
+
+    const nextUserId = currentUser?.id ?? null;
+    const previousUserId = previousAuthUserIdRef.current;
+    previousAuthUserIdRef.current = nextUserId;
+    if (previousUserId === undefined || previousUserId === nextUserId) return;
+
+    resetWorkspaceForUser();
+  }, [authReady, currentUser?.id, resetWorkspaceForUser]);
 
   useEffect(() => {
     if (saveState.status !== 'dirty' || !currentProject || saveBlocked) {
@@ -457,7 +520,13 @@ export default function App() {
         {renderContent()}
       </AdminShell>
 
-      {authOpen && <AuthModal isOpen onClose={() => setAuthOpen(false)} />}
+      {authOpen && (
+        <AuthModal
+          isOpen
+          onClose={() => setAuthOpen(false)}
+          onBeforeSignOut={prepareForUserSwitch}
+        />
+      )}
 
       {wizardOpen && (
         <ProjectWizard

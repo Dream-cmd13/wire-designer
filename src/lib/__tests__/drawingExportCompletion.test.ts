@@ -37,6 +37,13 @@ describe('completed drawing export', () => {
     expect(svg).toContain('<circle cx="24" cy="36" r="3" fill="#ff0000"');
   });
 
+  it('constrains exported table text to each cell width', () => {
+    const source = readFileSync(new URL('../drawingExport.ts', import.meta.url), 'utf8');
+    expect(source).toContain('getDrawingTableTextFontSize');
+    expect(source).toContain('textLength=');
+    expect(source).toContain('lengthAdjust="spacingAndGlyphs"');
+  });
+
   it('uses custom table columns and optional title rows in SVG exports', () => {
     const drawing = createBlankDrawingDocument('table export');
     const table: DrawingTableObject = {

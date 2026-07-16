@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createDrawingTableObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
-import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
+import { getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
 import { localToWorldPoint } from '@/lib/drawingTransform';
 import type { DrawingTableObject } from '@/types/drawing';
 
@@ -47,6 +47,12 @@ describe('drawing table layout', () => {
     expect(patch.columnWidths).toEqual([200, 200, 200]);
     expect(patch.style?.fontSize).toBe(table.style.fontSize * 2);
     expect(patch.textOffsets?.title).toEqual({ x: 8, y: 4 });
+  });
+
+  it('fits narrow default-table labels to their cell widths', () => {
+    expect(getDrawingTableTextFontSize('\u5de5\u7a0b\u56fe\u53f7', 48, 11)).toBeLessThan(11);
+    expect(getDrawingTableTextFontSize('none', 26, 11)).toBeLessThan(11);
+    expect(getDrawingTableTextFontSize('P1', 100, 12)).toBe(12);
   });
 
   it('scales the whole table from the right edge while keeping the left edge fixed', () => {

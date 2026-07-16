@@ -1,6 +1,6 @@
 import type { DrawingDocument, DrawingObject, DrawingPoint } from '@/types/drawing';
 import { containsDrawingPoint } from '@/lib/drawingTransform';
-import { resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getEditableDrawingTextRuns, type EditableDrawingTextField } from '@/lib/drawingTextLayout';
 
 function drawEditableText(
@@ -50,13 +50,14 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.rect(0, 0, object.width, object.height);
   context.clip();
   context.fillStyle = object.style.color;
-  const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, maxWidth?: number) => {
+  const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, cellWidth: number) => {
     const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
-    context.font = `${layout.textSizes[key]?.fontSize ?? fallbackSize}px Arial`;
-    context.fillText(text, x + offset.x, y + offset.y, maxWidth);
+    const fontSize = getDrawingTableTextFontSize(text, cellWidth, layout.textSizes[key]?.fontSize ?? fallbackSize);
+    context.font = `${fontSize}px Arial`;
+    context.fillText(text, x + offset.x, y + offset.y, Math.max(1, cellWidth - 8));
   };
   if (layout.showTitleRow) {
-    drawCellText('title', object.title, 6, layout.titleRowHeight - 6, object.style.fontSize, object.width - 12);
+    drawCellText('title', object.title, 6, layout.titleRowHeight - 6, object.style.fontSize, object.width);
     context.beginPath();
     context.moveTo(0, layout.titleRowHeight);
     context.lineTo(object.width, layout.titleRowHeight);
@@ -80,7 +81,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
       context.stroke();
       return;
     }
-    drawCellText(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width - 8);
+    drawCellText(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width);
   });
   context.restore();
 }

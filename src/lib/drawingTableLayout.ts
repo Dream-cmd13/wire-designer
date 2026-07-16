@@ -54,6 +54,22 @@ export function resolveDrawingTableLayout(table: DrawingTableObject): ResolvedDr
   };
 }
 
+function estimateDrawingTextUnits(value: string): number {
+  return Array.from(value).reduce((total, character) => total + (character.charCodeAt(0) <= 0xff ? 0.62 : 1), 0);
+}
+
+export function getDrawingTableTextFontSize(
+  value: string,
+  cellWidth: number,
+  fallbackSize: number,
+  horizontalPadding = 6,
+): number {
+  if (!value) return fallbackSize;
+  const availableWidth = Math.max(1, cellWidth - horizontalPadding);
+  const estimatedWidth = estimateDrawingTextUnits(value) * fallbackSize;
+  return Math.max(4, Math.min(fallbackSize, availableWidth / Math.max(1, estimatedWidth) * fallbackSize));
+}
+
 function normalizeMerge(merge: DrawingTableMerge, columnCount: number, rowCount: number): DrawingTableMerge | null {
   if (merge.rowIndex < -1 || merge.rowIndex >= rowCount || merge.columnIndex < 0 || merge.columnIndex >= columnCount) return null;
   const availableRows = rowCount - merge.rowIndex;

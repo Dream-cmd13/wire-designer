@@ -67,6 +67,9 @@ describe('standalone drawing table templates', () => {
     expect(source).toContain('hiddenObjectIds: tableObjectIds');
     expect(source).toContain('resolveDrawingTableCells');
     expect(source).toContain('data-table-cell={cell.key}');
+    expect(source).toContain('getDrawingTableTextFontSize');
+    expect(source).toContain('whitespace-normal');
+    expect(source).toContain('break-all');
   });
 
   it('opens the semantic BOM table before local cell editing', () => {

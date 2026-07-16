@@ -20,6 +20,7 @@ import { getDrawingTransformObject, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, scaleDra
 import { enterDrawingWorkbench } from '@/lib/drawingWorkbenchSession';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { hydrateDrawingStore, useDrawingStore } from '@/stores/drawingStore';
+import { useUserStore } from '@/stores/userStore';
 import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
 
 type DrawingContextState = {
@@ -66,6 +67,8 @@ function createPlacedResource(drawing: DrawingDocument, kind: DrawingResourceKin
 }
 
 export function DrawingWorkbenchPage() {
+  const currentUser = useUserStore((state) => state.currentUser);
+  const drawingOwnerId = currentUser?.id ?? null;
   const documents = useDrawingStore((state) => state.documents);
   const activeDocumentId = useDrawingStore((state) => state.activeDocumentId);
   const saveState = useDrawingStore((state) => state.saveState);
@@ -110,13 +113,26 @@ export function DrawingWorkbenchPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void hydrateDrawingStore()
+    entryHandledRef.current = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setDrawingStoreHydrated(false);
+      setEntryReady(false);
+      setSelectedObjectIds([]);
+      setPast([]);
+      setFuture([]);
+      setContextMenu(null);
+      setClipboard([]);
+      setLineEditorObjectId(null);
+      setMaterialTableObjectId(null);
+    });
+    void hydrateDrawingStore(drawingOwnerId)
       .catch(() => undefined)
       .finally(() => {
         if (!cancelled) setDrawingStoreHydrated(true);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [drawingOwnerId]);
   useEffect(() => {
     if (!drawingStoreHydrated || entryHandledRef.current) return;
     let cancelled = false;
