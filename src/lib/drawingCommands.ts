@@ -21,7 +21,11 @@ function defaultCanvasSignature(document: DrawingDocument) {
     titleBlock: document.titleBlock,
     revisionTable: document.revisionTable,
     techRequirements: document.techRequirements,
-    objects: document.objects.map(({ id: _id, ...object }) => object),
+    objects: document.objects.map((object) => {
+      const signatureObject = { ...object };
+      Reflect.deleteProperty(signatureObject, 'id');
+      return signatureObject;
+    }),
   });
 }
 
