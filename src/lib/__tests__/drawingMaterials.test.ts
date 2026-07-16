@@ -17,6 +17,19 @@ describe('drawing materials', () => {
     ]);
     expect(second.height).toBeGreaterThan(source.height);
     expect(second.rowHeights).toHaveLength(2);
+    expect(first.y + first.height).toBe(source.y + source.height);
+    expect(second.y + second.height).toBe(source.y + source.height);
+    expect(second.y + second.height).toBeLessThanOrEqual(780);
+  });
+
+  it('keeps a bottom-placed material table inside the page when rows grow', () => {
+    const drawing = createBlankDrawingDocument('BOM boundary test');
+    const source = drawing.objects.find((object): object is DrawingBomTableObject => object.kind === 'bom-table')!;
+    const nearBottom = { ...source, y: 770 };
+    const next = appendDrawingMaterial(nearBottom, { code: 'M-01', nameAndSpecification: 'UL1007', unit: 'M', quantity: '1', note: '' });
+
+    expect(next.y).toBe(738);
+    expect(next.y + next.height).toBe(780);
   });
 
   it('renumbers arbitrary material rows from one', () => {
