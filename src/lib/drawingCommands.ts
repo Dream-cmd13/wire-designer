@@ -29,8 +29,8 @@ function defaultCanvasSignature(document: DrawingDocument) {
   });
 }
 
-export function clearDrawingCanvas(document: DrawingDocument, date = new Date()): DrawingDocument {
-  const template = createBlankDrawingDocument(document.name, date);
+export function clearDrawingCanvas(document: DrawingDocument, date?: Date): DrawingDocument {
+  const template = createBlankDrawingDocument(document.name, date ?? new Date(document.createdAt));
   const replacement: DrawingDocument = {
     ...template,
     id: document.id,

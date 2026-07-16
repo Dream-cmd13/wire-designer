@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   clearDrawingCanvas, createDrawingLineObject, finalizeDrawingDraft, getObjectsInSelectionRect, moveDrawingLayers,
   patchDrawingObjects, placeDrawingCopiesAtPoint, snapOrthogonalPoint, splitDrawingObjects,
@@ -54,6 +54,16 @@ describe('drawing document commands', () => {
     const date = new Date(2026, 6, 16);
     const source = createBlankDrawingDocument('褰撳墠鍥剧焊', date);
     expect(clearDrawingCanvas(source, date)).toBe(source);
+  });
+
+  it('does not update a prior-day default canvas when cleared without an explicit date', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 15));
+    const source = createBlankDrawingDocument('current drawing', new Date());
+    vi.setSystemTime(new Date(2026, 6, 16));
+
+    expect(clearDrawingCanvas(source)).toBe(source);
+    vi.useRealTimers();
   });
 
   it('locks selections and moves unlocked objects to the front with normalized layers', () => {

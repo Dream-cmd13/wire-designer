@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const pageSource = readFileSync(new URL('../../pages/DrawingWorkbenchPage.tsx', import.meta.url), 'utf8');
+const drawingStoreSource = readFileSync(new URL('../../stores/drawingStore.ts', import.meta.url), 'utf8');
 const shellSource = readFileSync(new URL('../../components/layout/AdminShell.tsx', import.meta.url), 'utf8');
 const toolbarSource = readFileSync(new URL('../../components/drawings/standalone/DrawingWorkbenchToolbar.tsx', import.meta.url), 'utf8');
 const resourceSource = readFileSync(new URL('../../components/drawings/standalone/DrawingResourcePanel.tsx', import.meta.url), 'utf8');
@@ -19,9 +20,9 @@ describe('drawing workbench UI contract', () => {
   });
 
   it('waits for drawing hydration and offers refresh resume or replacement', () => {
-    expect(pageSource.match(/useDrawingStore\.persist\.hasHydrated\(\)/g)).toHaveLength(2);
-    expect(pageSource).toContain('useDrawingStore.persist.onFinishHydration');
-    expect(pageSource).toContain('const unsubscribe = useDrawingStore.persist.onFinishHydration');
+    expect(drawingStoreSource).toContain('skipHydration: true');
+    expect(pageSource).toContain('hydrateDrawingStore');
+    expect(pageSource).not.toContain('useDrawingStore.persist.onFinishHydration');
     expect(pageSource).toContain('enterDrawingWorkbench');
     expect(pageSource).toContain('replaceWithNewDocument');
     expect(pageSource).toContain('是否丢弃当前制作的图纸？');

@@ -19,7 +19,7 @@ import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTable
 import { getDrawingTransformObject, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
 import { enterDrawingWorkbench } from '@/lib/drawingWorkbenchSession';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
-import { useDrawingStore } from '@/stores/drawingStore';
+import { hydrateDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
 
 type DrawingContextState = {
@@ -93,7 +93,7 @@ export function DrawingWorkbenchPage() {
   const [clipboard, setClipboard] = useState<DrawingObject[]>([]);
   const [lineEditorObjectId, setLineEditorObjectId] = useState<string | null>(null);
   const [materialTableObjectId, setMaterialTableObjectId] = useState<string | null>(null);
-  const [drawingStoreHydrated, setDrawingStoreHydrated] = useState(useDrawingStore.persist.hasHydrated());
+  const [drawingStoreHydrated, setDrawingStoreHydrated] = useState(false);
   const [refreshDecisionOpen, setRefreshDecisionOpen] = useState(false);
   const [entryReady, setEntryReady] = useState(false);
   const entryHandledRef = useRef(false);
@@ -110,10 +110,10 @@ export function DrawingWorkbenchPage() {
 
   useEffect(() => {
     let cancelled = false;
-    const finishHydration = () => { if (!cancelled) setDrawingStoreHydrated(true); };
-    const unsubscribe = useDrawingStore.persist.onFinishHydration(finishHydration);
-    if (useDrawingStore.persist.hasHydrated()) queueMicrotask(finishHydration);
-    return () => { cancelled = true; unsubscribe(); };
+    void hydrateDrawingStore().then(() => {
+      if (!cancelled) setDrawingStoreHydrated(true);
+    });
+    return () => { cancelled = true; };
   }, []);
   useEffect(() => {
     if (!drawingStoreHydrated || entryHandledRef.current) return;

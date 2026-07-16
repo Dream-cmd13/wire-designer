@@ -4,6 +4,9 @@ import { createBlankDrawingDocument, patchDrawingObject } from '@/lib/drawingDoc
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
 type DrawingSaveState = 'saved' | 'dirty';
+export type DrawingHydrationResult = 'hydrated' | 'recovered';
+
+const hydrationErrorListeners = new Set<() => void>();
 
 interface DrawingStore {
   documents: Record<string, DrawingDocument>;
@@ -78,6 +81,10 @@ export const useDrawingStore = create<DrawingStore>()(
     }),
     {
       name: 'standalone-drawing-library',
+      skipHydration: true,
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) hydrationErrorListeners.forEach((listener) => listener());
+      },
       partialize: (state) => ({
         documents: state.documents,
         activeDocumentId: state.activeDocumentId,
@@ -85,3 +92,32 @@ export const useDrawingStore = create<DrawingStore>()(
     },
   ),
 );
+
+export function hydrateDrawingStore(): Promise<DrawingHydrationResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (result: DrawingHydrationResult) => {
+      if (settled) return;
+      settled = true;
+      unsubscribeSuccess();
+      hydrationErrorListeners.delete(recover);
+      resolve(result);
+    };
+    const recover = () => {
+      void (async () => {
+        try { await useDrawingStore.persist.clearStorage(); } catch { /* Ignore unavailable storage. */ }
+        try {
+          useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
+        } catch { /* The in-memory state is updated before a storage write can fail. */ }
+        settle('recovered');
+      })();
+    };
+    const unsubscribeSuccess = useDrawingStore.persist.onFinishHydration(() => settle('hydrated'));
+    hydrationErrorListeners.add(recover);
+    try {
+      void useDrawingStore.persist.rehydrate();
+    } catch {
+      recover();
+    }
+  });
+}
