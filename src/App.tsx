@@ -144,10 +144,13 @@ export default function App() {
   const saveInFlightRef = useRef<Promise<void> | null>(null);
 
   const currentUser = useUserStore((state) => state.currentUser);
+  const initializeAuth = useUserStore((state) => state.initialize);
   const { currentProject, saveCurrentConfig, setCurrentProject, updateProject } = useProjectStore();
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
   const canUndo = useHistoryStore((state) => state.past.length > 0);
   const canRedo = useHistoryStore((state) => state.future.length > 0);
+
+  useEffect(() => initializeAuth(), [initializeAuth]);
 
   const applyHistoryDocument = useCallback((nextConfig: typeof config | null) => {
     if (!nextConfig) return;

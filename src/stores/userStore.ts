@@ -1,105 +1,82 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import type { User as SupabaseAuthUser } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 import type { User } from '@/types/user';
 
-const generateId = (): string =>
-  Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-
 interface UserState {
-  users: User[];
   currentUser: User | null;
-
-  // --- Auth ---
-  login: (email: string, password: string) => User | null;
-  register: (name: string, email: string, password: string) => User | null;
-  logout: () => void;
-  switchUser: (userId: string) => void;
-
-  // --- User CRUD ---
-  addUser: (user: User) => void;
-  updateUser: (id: string, updates: Partial<User>) => void;
-  removeUser: (id: string) => void;
-
-  // --- Session ---
-  getCurrentUser: () => User | null;
+  authReady: boolean;
+  initialize: () => () => void;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
-// Simple password storage (demo only - not secure)
-const USER_PASSWORDS_KEY = 'harness-user-passwords';
+function toAppUser(user: SupabaseAuthUser): User {
+  const displayName = typeof user.user_metadata.display_name === 'string'
+    ? user.user_metadata.display_name.trim()
+    : '';
+  const email = user.email ?? '';
 
-function getPasswords(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem(USER_PASSWORDS_KEY) || '{}');
-  } catch {
-    return {};
-  }
+  return {
+    id: user.id,
+    name: displayName || email.split('@')[0] || '用户',
+    email,
+    createdAt: Date.parse(user.created_at) || Date.now(),
+  };
 }
 
-function setPasswords(pwds: Record<string, string>) {
-  localStorage.setItem(USER_PASSWORDS_KEY, JSON.stringify(pwds));
-}
+export const useUserStore = create<UserState>((set) => ({
+  currentUser: null,
+  authReady: false,
 
-export const useUserStore = create<UserState>()(
-  persist(
-    (set, get) => ({
-      users: [],
-      currentUser: null,
+  initialize: () => {
+    try {
+      localStorage.removeItem('harness-user-passwords');
+    } catch {
+      // Ignore unavailable browser storage.
+    }
 
-      login: (email, password) => {
-        const user = get().users.find((u) => u.email === email);
-        const passwords = getPasswords();
-        if (user && passwords[user.id] === password) {
-          set({ currentUser: user });
-          return user;
-        }
-        return null;
-      },
+    if (!supabase) {
+      set({ currentUser: null, authReady: true });
+      return () => {};
+    }
 
-      register: (name, email, password) => {
-        if (get().users.some((u) => u.email === email)) {
-          return null; // Email already exists
-        }
-        const newUser: User = {
-          id: generateId(),
-          name,
-          email,
-          createdAt: Date.now(),
-        };
-        const passwords = getPasswords();
-        passwords[newUser.id] = password;
-        setPasswords(passwords);
-        set((state) => ({
-          users: [...state.users, newUser],
-          currentUser: newUser,
-        }));
-        return newUser;
-      },
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      set({ currentUser: session?.user ? toAppUser(session.user) : null, authReady: true });
+    });
 
-      logout: () => set({ currentUser: null }),
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        set({ currentUser: null, authReady: true });
+        return;
+      }
 
-      switchUser: (userId) => {
-        const user = get().users.find((u) => u.id === userId);
-        if (user) set({ currentUser: user });
-      },
+      set({ currentUser: data.session?.user ? toAppUser(data.session.user) : null, authReady: true });
+    });
 
-      addUser: (user) =>
-        set((state) => ({
-          users: [...state.users, user],
-        })),
+    return () => subscription.unsubscribe();
+  },
 
-      updateUser: (id, updates) =>
-        set((state) => ({
-          users: state.users.map((u) => (u.id === id ? { ...u, ...updates } : u)),
-        })),
+  signIn: async (email, password) => {
+    if (!supabase) {
+      throw new Error('Supabase 尚未配置，无法登录。');
+    }
 
-      removeUser: (id) =>
-        set((state) => ({
-          users: state.users.filter((u) => u.id !== id),
-          currentUser: state.currentUser?.id === id ? null : state.currentUser,
-        })),
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
 
-      getCurrentUser: () => get().currentUser,
-    }),
-    { name: 'harness-users' }
-  )
-);
+    set({ currentUser: data.user ? toAppUser(data.user) : null, authReady: true });
+  },
+
+  signOut: async () => {
+    if (!supabase) {
+      set({ currentUser: null, authReady: true });
+      return;
+    }
+
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) throw error;
+
+    set({ currentUser: null, authReady: true });
+  },
+}));
