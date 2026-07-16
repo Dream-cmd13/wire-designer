@@ -13,7 +13,8 @@ insert into public.catalog_categories (id, parent_id, name, code, description, d
 on conflict do nothing;
 
 insert into public.wire_colors (code, display_name, hex_color, display_order) values
-  ('red', 'Red', '#DC2626', 10), ('black', 'Black', '#171717', 20), ('white', 'White', '#F5F5F5', 30)
+  ('red', 'Red', '#DC2626', 10), ('black', 'Black', '#171717', 20), ('white', 'White', '#F5F5F5', 30),
+  ('green', 'Green', '#16A34A', 40)
 on conflict do nothing;
 
 insert into public.wire_gauges (awg, conductor_diameter_mm, max_current_a, display_order) values

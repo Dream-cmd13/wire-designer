@@ -18,11 +18,48 @@ begin
     'profiles', 'projects', 'project_documents', 'project_assets',
     'catalog_categories', 'wire_colors', 'wire_gauges', 'wire_types',
     'catalog_items', 'catalog_item_images', 'connector_specs', 'connector_pins',
-    'wire_specs', 'wire_spec_cores', 'protective_sleeve_specs', 'overmold_specs',
-    'model_specs', 'accessory_specs', 'packaging_specs'
+    'wire_specs', 'wire_spec_cores', 'protective_sleeve_specs', 'overmold_specs'
   ] loop
     if not exists (select 1 from pg_trigger where tgname = table_name || '_set_audit_fields' and tgrelid = format('public.%I', table_name)::regclass) then
       execute format('create trigger %I before insert or update on public.%I for each row execute function public.set_audit_fields()', table_name || '_set_audit_fields', table_name);
+    end if;
+  end loop;
+end;
+$$;
+
+-- Remove the old generic audit triggers from timestamp-only tables when this
+-- file is rerun on a database created by an earlier schema version.
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array['model_specs', 'accessory_specs', 'packaging_specs'] loop
+    execute format('drop trigger if exists %I on public.%I', table_name || '_set_audit_fields', table_name);
+  end loop;
+end;
+$$;
+
+-- Some catalog/resource tables intentionally carry timestamps but not actor
+-- columns. Keep their timestamps consistent without assigning missing fields.
+create or replace function public.set_timestamp_fields()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    new.created_at := coalesce(new.created_at, now());
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array[
+    'model_specs', 'accessory_specs', 'packaging_specs',
+    'drawing_templates', 'drawing_common_phrases', 'drawing_icons'
+  ] loop
+    if not exists (select 1 from pg_trigger where tgname = table_name || '_set_timestamp_fields' and tgrelid = format('public.%I', table_name)::regclass) then
+      execute format('create trigger %I before insert or update on public.%I for each row execute function public.set_timestamp_fields()', table_name || '_set_timestamp_fields', table_name);
     end if;
   end loop;
 end;

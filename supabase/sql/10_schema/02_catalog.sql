@@ -5,6 +5,12 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
+-- Reset intentionally preserves enum types; reconcile older databases that
+-- were created before model/accessory/packaging were introduced.
+alter type public.catalog_item_type add value if not exists 'model';
+alter type public.catalog_item_type add value if not exists 'accessory';
+alter type public.catalog_item_type add value if not exists 'packaging';
+
 do $$ begin
   create type public.catalog_image_role as enum (
     'product',
