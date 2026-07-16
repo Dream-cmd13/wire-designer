@@ -42,9 +42,34 @@ insert into public.connector_pins (catalog_item_id, pin_number, pin_label, displ
   ('20000000-0000-4000-8000-000000007001', 4, '4', 40)
 on conflict do nothing;
 
-insert into public.wire_specs (catalog_item_id, core_count, jacket_material, jacket_color, cable_type, wire_gauge_awg, is_shielded, rated_voltage_v) values
-  ('20000000-0000-4000-8000-000000007002', 4, 'PVC', 'black', 'jacketed', 24, false, 300)
-on conflict do nothing;
+insert into public.wire_specs (
+  catalog_item_id, core_count, jacket_material, jacket_color, jacket_color_id,
+  cable_type, wire_type_id, wire_gauge_awg, wire_gauge_id, is_shielded, rated_voltage_v
+) values (
+  '20000000-0000-4000-8000-000000007002', 4, 'PVC', 'black',
+  (select id from public.wire_colors where code = 'black' and deleted_at is null),
+  'jacketed',
+  (select id from public.wire_types where code = 'ul2464' and deleted_at is null),
+  24,
+  (select id from public.wire_gauges where awg = 24 and deleted_at is null),
+  false, 300
+)
+on conflict (catalog_item_id) do update set
+  core_count = excluded.core_count, jacket_material = excluded.jacket_material,
+  jacket_color = excluded.jacket_color, jacket_color_id = excluded.jacket_color_id,
+  cable_type = excluded.cable_type, wire_type_id = excluded.wire_type_id,
+  wire_gauge_awg = excluded.wire_gauge_awg, wire_gauge_id = excluded.wire_gauge_id,
+  is_shielded = excluded.is_shielded, rated_voltage_v = excluded.rated_voltage_v, updated_at = now();
+
+insert into public.wire_spec_cores (catalog_item_id, core_index, color_id, display_order)
+select item.id, source.core_index, color.id, source.core_index * 10
+from (values
+  (1, 'red'), (2, 'black'), (3, 'white'), (4, 'green')
+) as source(core_index, color_code)
+join public.catalog_items item on item.id = '20000000-0000-4000-8000-000000007002'
+join public.wire_colors color on color.code = source.color_code and color.deleted_at is null
+on conflict (catalog_item_id, core_index) do update set
+  color_id = excluded.color_id, display_order = excluded.display_order, updated_at = now();
 
 insert into public.protective_sleeve_specs (catalog_item_id, material, color, sleeve_type, shrink_ratio, inner_diameter_as_supplied_mm, inner_diameter_recovered_mm) values
   ('20000000-0000-4000-8000-000000007003', 'polyolefin', 'black', 'heat-shrink', 2, 3, 1.5)

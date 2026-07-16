@@ -79,6 +79,7 @@ create table if not exists public.catalog_items (
   legacy_key text not null check (legacy_key ~ '^[a-z0-9][a-z0-9_-]{0,99}$'),
   resource_name text not null check (length(btrim(resource_name)) between 1 and 200),
   model text not null check (length(btrim(model)) between 1 and 200),
+  manufacturer_name text,
   manufacturer_part_number text,
   short_description text not null default '',
   detailed_description text not null default '',
@@ -161,6 +162,12 @@ create table if not exists public.wire_specs (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   spool_length_m numeric(18, 3) check (spool_length_m is null or spool_length_m > 0),
   core_count integer check (core_count is null or core_count > 0),
+  -- The *_id columns are canonical references; legacy text/numeric fields remain
+  -- temporarily for backwards-compatible reads and migration of old rows.
+  wire_type_id uuid references public.wire_types(id) on delete restrict,
+  wire_gauge_id uuid references public.wire_gauges(id) on delete restrict,
+  conductor_color_id uuid references public.wire_colors(id) on delete restrict,
+  jacket_color_id uuid references public.wire_colors(id) on delete restrict,
   jacket_material text,
   is_shielded boolean not null default false,
   conductor_color text,
@@ -181,6 +188,22 @@ create table if not exists public.wire_specs (
   created_by uuid references public.profiles(id) on delete set null,
   updated_by uuid references public.profiles(id) on delete set null,
   check (operating_temperature_max_c is null or operating_temperature_min_c is null or operating_temperature_max_c >= operating_temperature_min_c)
+);
+
+-- Per-core data for multicore cables. A wire catalog item may have zero or more
+-- rows here; core_index is stable within one wire specification.
+create table if not exists public.wire_spec_cores (
+  id uuid primary key default gen_random_uuid(),
+  catalog_item_id uuid not null references public.wire_specs(catalog_item_id) on delete cascade,
+  core_index integer not null check (core_index > 0),
+  color_id uuid not null references public.wire_colors(id) on delete restrict,
+  signal_name text,
+  display_order integer not null default 0 check (display_order >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  unique (catalog_item_id, core_index)
 );
 
 create table if not exists public.protective_sleeve_specs (

@@ -11,11 +11,13 @@ Run the files in this order in the Supabase SQL Editor:
 7. `30_security/01_rls.sql`
 8. `40_seed/01_example_catalog.sql`
 9. `40_seed/03_drawing_workbench_resources.sql`
-10. Upload images to the paths documented in `40_seed/02_image_manifest.sql`, then run that file.
+10. `40_seed/04_frontend_catalog.sql` (the catalog data migrated from `src/lib/data.ts`)
+11. Upload images to the paths documented in `40_seed/02_image_manifest.sql`, then run that file.
 
 For an existing database, run `50_upgrade/01_drawing_workbench_resources.sql`, then rerun
-`30_security/01_rls.sql` and `40_seed/03_drawing_workbench_resources.sql`. The upgrade is
-non-destructive and the drawing workbench seed is idempotent.
+`10_schema/03_integrity.sql`, `30_security/01_rls.sql`,
+`40_seed/03_drawing_workbench_resources.sql`, and `40_seed/04_frontend_catalog.sql`.
+The upgrade and both seeds are idempotent.
 
 `catalog-assets` is private. Upload transparent PNG or WebP files for images that need to be layered in the product-image view. JPEG files are supported for photographs but cannot be transparent.
 

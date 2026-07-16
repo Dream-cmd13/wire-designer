@@ -1,5 +1,7 @@
 -- Idempotent public mock data for the drawing wizard and workbench.
 
+begin;
+
 insert into public.catalog_categories (id, parent_id, name, code, description, display_order) values
   ('30000000-0000-4000-8000-000000000001', null, '绘图连接器', 'drawing-connectors', '公共绘图连接器', 100),
   ('30000000-0000-4000-8000-000000000002', null, '绘图线材', 'drawing-wires', '公共绘图线材', 110),
@@ -24,10 +26,32 @@ insert into public.connector_specs (catalog_item_id, series, connector_type, pin
   ('30000000-0000-4000-8000-000000001002', 'XH2.54', 'male', 4, 1, 2.54, '白色')
 on conflict (catalog_item_id) do update set series = excluded.series, connector_type = excluded.connector_type, pin_count = excluded.pin_count, row_count = excluded.row_count, pitch_mm = excluded.pitch_mm;
 
-insert into public.wire_specs (catalog_item_id, core_count, is_shielded, cable_type, wire_gauge_awg, insulation_material, rated_voltage_v) values
-  ('30000000-0000-4000-8000-000000001003', 1, false, 'electronic', 24, 'PVC', 300),
-  ('30000000-0000-4000-8000-000000001004', 4, true, 'shielded', 24, 'PVC', 300)
-on conflict (catalog_item_id) do update set core_count = excluded.core_count, is_shielded = excluded.is_shielded, cable_type = excluded.cable_type, wire_gauge_awg = excluded.wire_gauge_awg;
+insert into public.wire_specs (
+  catalog_item_id, core_count, is_shielded, cable_type, wire_type_id,
+  wire_gauge_awg, wire_gauge_id, insulation_material, rated_voltage_v
+) values
+  (
+    '30000000-0000-4000-8000-000000001003', 1, false, 'electronic',
+    (select id from public.wire_types where code = 'ul1007' and deleted_at is null),
+    24, (select id from public.wire_gauges where awg = 24 and deleted_at is null), 'PVC', 300
+  ),
+  (
+    '30000000-0000-4000-8000-000000001004', 4, true, 'shielded', null,
+    24, (select id from public.wire_gauges where awg = 24 and deleted_at is null), 'PVC', 300
+  )
+on conflict (catalog_item_id) do update set
+  core_count = excluded.core_count, is_shielded = excluded.is_shielded,
+  cable_type = excluded.cable_type, wire_type_id = excluded.wire_type_id,
+  wire_gauge_awg = excluded.wire_gauge_awg, wire_gauge_id = excluded.wire_gauge_id,
+  insulation_material = excluded.insulation_material, rated_voltage_v = excluded.rated_voltage_v,
+  updated_at = now();
+
+insert into public.wire_spec_cores (catalog_item_id, core_index, color_id, display_order)
+select '30000000-0000-4000-8000-000000001004', source.core_index, color.id, source.core_index * 10
+from (values (1, 'red'), (2, 'black'), (3, 'white'), (4, 'green')) as source(core_index, color_code)
+join public.wire_colors color on color.code = source.color_code and color.deleted_at is null
+on conflict (catalog_item_id, core_index) do update set
+  color_id = excluded.color_id, display_order = excluded.display_order, updated_at = now();
 
 insert into public.model_specs (catalog_item_id, model_kind, default_width_mm, default_height_mm, default_orientation, model_parameters) values
   ('30000000-0000-4000-8000-000000001005', 'overmold', 32, 14, 'right', '{"connector":"USB-A"}'::jsonb)
@@ -64,3 +88,5 @@ insert into public.drawing_icons (id, name, category, svg_path, default_width, d
   ('30000000-0000-4000-8000-000000005003', '上锡', '工艺', 'M4 12h16M8 8v8M16 8v8', 24, 24, 30),
   ('30000000-0000-4000-8000-000000005004', '屏蔽', '电气', 'M4 4h16v16H4zM8 8h8v8H8z', 24, 24, 40)
 on conflict (id) do update set name = excluded.name, category = excluded.category, svg_path = excluded.svg_path, default_width = excluded.default_width, default_height = excluded.default_height, display_order = excluded.display_order, updated_at = now();
+
+commit;

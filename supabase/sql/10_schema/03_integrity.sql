@@ -18,7 +18,8 @@ begin
     'profiles', 'projects', 'project_documents', 'project_assets',
     'catalog_categories', 'wire_colors', 'wire_gauges', 'wire_types',
     'catalog_items', 'catalog_item_images', 'connector_specs', 'connector_pins',
-    'wire_specs', 'protective_sleeve_specs', 'overmold_specs'
+    'wire_specs', 'wire_spec_cores', 'protective_sleeve_specs', 'overmold_specs',
+    'model_specs', 'accessory_specs', 'packaging_specs'
   ] loop
     if not exists (select 1 from pg_trigger where tgname = table_name || '_set_audit_fields' and tgrelid = format('public.%I', table_name)::regclass) then
       execute format('create trigger %I before insert or update on public.%I for each row execute function public.set_audit_fields()', table_name || '_set_audit_fields', table_name);
@@ -48,6 +49,9 @@ begin
   if not exists (select 1 from pg_trigger where tgname = 'wire_specs_match_type' and tgrelid = 'public.wire_specs'::regclass) then
     create trigger wire_specs_match_type before insert or update on public.wire_specs for each row execute function public.enforce_catalog_spec_item_type('wire');
   end if;
+  if not exists (select 1 from pg_trigger where tgname = 'wire_spec_cores_match_type' and tgrelid = 'public.wire_spec_cores'::regclass) then
+    create trigger wire_spec_cores_match_type before insert or update on public.wire_spec_cores for each row execute function public.enforce_catalog_spec_item_type('wire');
+  end if;
   if not exists (select 1 from pg_trigger where tgname = 'protective_sleeve_specs_match_type' and tgrelid = 'public.protective_sleeve_specs'::regclass) then
     create trigger protective_sleeve_specs_match_type before insert or update on public.protective_sleeve_specs for each row execute function public.enforce_catalog_spec_item_type('protective_sleeve');
   end if;
@@ -63,6 +67,47 @@ begin
   if not exists (select 1 from pg_trigger where tgname = 'packaging_specs_match_type' and tgrelid = 'public.packaging_specs'::regclass) then
     create trigger packaging_specs_match_type before insert or update on public.packaging_specs for each row execute function public.enforce_catalog_spec_item_type('packaging');
   end if;
+end;
+$$;
+
+-- Prevent an active catalog item from losing the specification required by its
+-- item_type. Archive the item first, then edit or delete its specification.
+create or replace function public.prevent_active_catalog_spec_delete()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if exists (
+    select 1
+    from public.catalog_items item
+    where item.id = old.catalog_item_id
+      and item.deleted_at is null
+      and item.lifecycle_status = 'active'
+  ) then
+    raise exception 'cannot delete % for active catalog item %; archive the item first', tg_table_name, old.catalog_item_id;
+  end if;
+  return old;
+end;
+$$;
+
+do $$
+declare table_name text;
+begin
+  foreach table_name in array array[
+    'connector_specs', 'connector_pins', 'wire_specs', 'wire_spec_cores',
+    'protective_sleeve_specs', 'overmold_specs', 'model_specs',
+    'accessory_specs', 'packaging_specs'
+  ] loop
+    if not exists (
+      select 1
+      from pg_trigger
+      where tgname = table_name || '_prevent_active_delete'
+        and tgrelid = format('public.%I', table_name)::regclass
+    ) then
+      execute format(
+        'create trigger %I before delete on public.%I for each row execute function public.prevent_active_catalog_spec_delete()',
+        table_name || '_prevent_active_delete', table_name
+      );
+    end if;
+  end loop;
 end;
 $$;
 
@@ -114,6 +159,7 @@ create index if not exists catalog_items_active_lookup_idx on public.catalog_ite
 create index if not exists catalog_items_active_search_idx on public.catalog_items using gin (to_tsvector('simple', resource_name || ' ' || model || ' ' || coalesce(manufacturer_part_number, ''))) where deleted_at is null and lifecycle_status = 'active';
 create index if not exists catalog_item_images_item_order_idx on public.catalog_item_images (item_id, is_primary desc, display_order, created_at desc) where deleted_at is null;
 create index if not exists connector_pins_lookup_idx on public.connector_pins (catalog_item_id, display_order);
+create index if not exists wire_spec_cores_lookup_idx on public.wire_spec_cores (catalog_item_id, display_order);
 
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$

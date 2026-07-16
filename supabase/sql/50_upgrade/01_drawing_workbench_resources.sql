@@ -4,6 +4,81 @@ alter type public.catalog_item_type add value if not exists 'model';
 alter type public.catalog_item_type add value if not exists 'accessory';
 alter type public.catalog_item_type add value if not exists 'packaging';
 
+-- Preserves the manufacturer field used by the original frontend catalog.
+alter table public.catalog_items add column if not exists manufacturer_name text;
+
+-- Canonical lookup references for existing wire specifications. The legacy
+-- text/numeric columns remain nullable so old catalog rows can be migrated
+-- incrementally without breaking this non-destructive upgrade.
+alter table public.wire_specs add column if not exists wire_type_id uuid;
+alter table public.wire_specs add column if not exists wire_gauge_id uuid;
+alter table public.wire_specs add column if not exists conductor_color_id uuid;
+alter table public.wire_specs add column if not exists jacket_color_id uuid;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'wire_specs_wire_type_id_fkey' and conrelid = 'public.wire_specs'::regclass) then
+    alter table public.wire_specs add constraint wire_specs_wire_type_id_fkey foreign key (wire_type_id) references public.wire_types(id) on delete restrict;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'wire_specs_wire_gauge_id_fkey' and conrelid = 'public.wire_specs'::regclass) then
+    alter table public.wire_specs add constraint wire_specs_wire_gauge_id_fkey foreign key (wire_gauge_id) references public.wire_gauges(id) on delete restrict;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'wire_specs_conductor_color_id_fkey' and conrelid = 'public.wire_specs'::regclass) then
+    alter table public.wire_specs add constraint wire_specs_conductor_color_id_fkey foreign key (conductor_color_id) references public.wire_colors(id) on delete restrict;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'wire_specs_jacket_color_id_fkey' and conrelid = 'public.wire_specs'::regclass) then
+    alter table public.wire_specs add constraint wire_specs_jacket_color_id_fkey foreign key (jacket_color_id) references public.wire_colors(id) on delete restrict;
+  end if;
+end $$;
+
+create table if not exists public.wire_spec_cores (
+  id uuid primary key default gen_random_uuid(),
+  catalog_item_id uuid not null references public.wire_specs(catalog_item_id) on delete cascade,
+  core_index integer not null check (core_index > 0),
+  color_id uuid not null references public.wire_colors(id) on delete restrict,
+  signal_name text,
+  display_order integer not null default 0 check (display_order >= 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  unique (catalog_item_id, core_index)
+);
+
+create index if not exists wire_spec_cores_lookup_idx on public.wire_spec_cores (catalog_item_id, display_order);
+
+-- Best-effort backfill for legacy values whose meaning is unambiguous.
+update public.wire_specs ws
+set wire_type_id = wt.id
+from public.wire_types wt
+where ws.wire_type_id is null
+  and ws.cable_type is not null
+  and lower(btrim(ws.cable_type)) = lower(wt.code)
+  and wt.deleted_at is null;
+
+update public.wire_specs ws
+set wire_gauge_id = wg.id
+from public.wire_gauges wg
+where ws.wire_gauge_id is null
+  and ws.wire_gauge_awg is not null
+  and ws.wire_gauge_awg = wg.awg
+  and wg.deleted_at is null;
+
+update public.wire_specs ws
+set conductor_color_id = wc.id
+from public.wire_colors wc
+where ws.conductor_color_id is null
+  and ws.conductor_color is not null
+  and lower(btrim(ws.conductor_color)) = lower(wc.code)
+  and wc.deleted_at is null;
+
+update public.wire_specs ws
+set jacket_color_id = wc.id
+from public.wire_colors wc
+where ws.jacket_color_id is null
+  and ws.jacket_color is not null
+  and lower(btrim(ws.jacket_color)) = lower(wc.code)
+  and wc.deleted_at is null;
+
 create table if not exists public.model_specs (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   model_kind text not null,
@@ -101,6 +176,7 @@ end $$;
 alter table public.model_specs enable row level security;
 alter table public.accessory_specs enable row level security;
 alter table public.packaging_specs enable row level security;
+alter table public.wire_spec_cores enable row level security;
 alter table public.drawing_templates enable row level security;
 alter table public.drawing_template_versions enable row level security;
 alter table public.drawing_common_phrases enable row level security;
@@ -108,7 +184,7 @@ alter table public.drawing_icons enable row level security;
 
 grant select on public.catalog_categories, public.wire_colors, public.wire_gauges, public.wire_types,
   public.catalog_items, public.catalog_item_images, public.connector_specs, public.connector_pins,
-  public.wire_specs, public.protective_sleeve_specs, public.overmold_specs, public.model_specs,
+  public.wire_specs, public.wire_spec_cores, public.protective_sleeve_specs, public.overmold_specs, public.model_specs,
   public.accessory_specs, public.packaging_specs, public.drawing_templates, public.drawing_template_versions,
   public.drawing_common_phrases, public.drawing_icons to anon, authenticated;
 
@@ -141,6 +217,7 @@ select pg_temp.create_public_read_policy('public catalog images read', 'catalog_
 select pg_temp.create_public_read_policy('public connector specs read', 'connector_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
 select pg_temp.create_public_read_policy('public connector pins read', 'connector_pins', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
 select pg_temp.create_public_read_policy('public wire specs read', 'wire_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
+select pg_temp.create_public_read_policy('public wire spec cores read', 'wire_spec_cores', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
 select pg_temp.create_public_read_policy('public sleeve specs read', 'protective_sleeve_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
 select pg_temp.create_public_read_policy('public overmold specs read', 'overmold_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
 select pg_temp.create_public_read_policy('public model specs read', 'model_specs', 'exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = ''active'')');
