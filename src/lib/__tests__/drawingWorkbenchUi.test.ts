@@ -12,6 +12,16 @@ const materialTableDialogSource = readFileSync(new URL('../../components/drawing
 const materialFormDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingMaterialFormDialog.tsx', import.meta.url), 'utf8');
 
 describe('drawing workbench UI contract', () => {
+  it('waits for drawing hydration and offers refresh resume or replacement', () => {
+    expect(pageSource).toContain('useDrawingStore.persist.hasHydrated()');
+    expect(pageSource).toContain('useDrawingStore.persist.onFinishHydration');
+    expect(pageSource).toContain('enterDrawingWorkbench');
+    expect(pageSource).toContain('replaceWithNewDocument');
+    expect(pageSource).toContain('是否丢弃当前制作的图纸？');
+    expect(pageSource).toContain('继续制作');
+    expect(pageSource).toContain('丢弃并新建');
+  });
+
   it('exposes the required editing commands and shortcuts', () => {
     ['清空画板', '图层操作', '上移', '下移', '锁定/解锁当前选择', '全局锁定', '正交', '自由画笔'].forEach((label) => expect(toolbarSource).toContain(label));
     expect(toolbarSource.match(/<Layers2/g)).toHaveLength(1);
