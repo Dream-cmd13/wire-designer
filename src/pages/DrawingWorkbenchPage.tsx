@@ -108,7 +108,13 @@ export function DrawingWorkbenchPage() {
     ? drawing?.objects.find((object): object is DrawingBomTableObject => object.id === materialTableObjectId && object.kind === 'bom-table')
     : undefined;
 
-  useEffect(() => useDrawingStore.persist.onFinishHydration(() => { setDrawingStoreHydrated(true); }), []);
+  useEffect(() => {
+    let cancelled = false;
+    const finishHydration = () => { if (!cancelled) setDrawingStoreHydrated(true); };
+    const unsubscribe = useDrawingStore.persist.onFinishHydration(finishHydration);
+    if (useDrawingStore.persist.hasHydrated()) queueMicrotask(finishHydration);
+    return () => { cancelled = true; unsubscribe(); };
+  }, []);
   useEffect(() => {
     if (!drawingStoreHydrated || entryHandledRef.current) return;
     let cancelled = false;
@@ -308,6 +314,7 @@ export function DrawingWorkbenchPage() {
   const addIcon = (icon: DrawingIconResource) => addObject({ id: createDrawingId('icon'), kind: 'icon', name: icon.name, svgPath: icon.svgPath, x: 440, y: 180, width: icon.defaultWidth * 2, height: icon.defaultHeight * 2, rotation: 0, zIndex: 1, locked: false, visible: true, style: { ...defaultDrawingObjectStyle } });
 
   useEffect(() => {
+    if (refreshDecisionOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!drawing || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
       const key = event.key.toLowerCase();

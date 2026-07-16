@@ -13,13 +13,18 @@ const materialFormDialogSource = readFileSync(new URL('../../components/drawings
 
 describe('drawing workbench UI contract', () => {
   it('waits for drawing hydration and offers refresh resume or replacement', () => {
-    expect(pageSource).toContain('useDrawingStore.persist.hasHydrated()');
+    expect(pageSource.match(/useDrawingStore\.persist\.hasHydrated\(\)/g)).toHaveLength(2);
     expect(pageSource).toContain('useDrawingStore.persist.onFinishHydration');
+    expect(pageSource).toContain('const unsubscribe = useDrawingStore.persist.onFinishHydration');
     expect(pageSource).toContain('enterDrawingWorkbench');
     expect(pageSource).toContain('replaceWithNewDocument');
     expect(pageSource).toContain('是否丢弃当前制作的图纸？');
     expect(pageSource).toContain('继续制作');
     expect(pageSource).toContain('丢弃并新建');
+  });
+
+  it('blocks global drawing shortcuts while the refresh decision is open', () => {
+    expect(pageSource).toContain('if (refreshDecisionOpen) return;');
   });
 
   it('exposes the required editing commands and shortcuts', () => {
