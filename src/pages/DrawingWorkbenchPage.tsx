@@ -110,9 +110,11 @@ export function DrawingWorkbenchPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void hydrateDrawingStore().then(() => {
-      if (!cancelled) setDrawingStoreHydrated(true);
-    });
+    void hydrateDrawingStore()
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setDrawingStoreHydrated(true);
+      });
     return () => { cancelled = true; };
   }, []);
   useEffect(() => {

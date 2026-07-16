@@ -93,29 +93,41 @@ export const useDrawingStore = create<DrawingStore>()(
   ),
 );
 
-export function hydrateDrawingStore(): Promise<DrawingHydrationResult> {
+function resetDrawingLibraryAfterHydrationFailure() {
+  try {
+    useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
+  } catch { /* The in-memory state is updated before a storage write can fail. */ }
+}
+
+export async function hydrateDrawingStore(): Promise<DrawingHydrationResult> {
+  let persistApi: typeof useDrawingStore.persist | undefined;
+  try { persistApi = useDrawingStore.persist; } catch { /* Treat inaccessible persistence as unavailable. */ }
+  if (!persistApi) {
+    resetDrawingLibraryAfterHydrationFailure();
+    return 'recovered';
+  }
+
   return new Promise((resolve) => {
     let settled = false;
+    let unsubscribeSuccess: (() => void) | undefined;
     const settle = (result: DrawingHydrationResult) => {
       if (settled) return;
       settled = true;
-      unsubscribeSuccess();
+      try { unsubscribeSuccess?.(); } catch { /* Settlement must not depend on persistence cleanup. */ }
       hydrationErrorListeners.delete(recover);
       resolve(result);
     };
     const recover = () => {
       void (async () => {
-        try { await useDrawingStore.persist.clearStorage(); } catch { /* Ignore unavailable storage. */ }
-        try {
-          useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
-        } catch { /* The in-memory state is updated before a storage write can fail. */ }
+        try { await persistApi.clearStorage(); } catch { /* Ignore unavailable storage. */ }
+        resetDrawingLibraryAfterHydrationFailure();
         settle('recovered');
       })();
     };
-    const unsubscribeSuccess = useDrawingStore.persist.onFinishHydration(() => settle('hydrated'));
     hydrationErrorListeners.add(recover);
     try {
-      void useDrawingStore.persist.rehydrate();
+      unsubscribeSuccess = persistApi.onFinishHydration(() => settle('hydrated'));
+      void Promise.resolve(persistApi.rehydrate()).catch(recover);
     } catch {
       recover();
     }

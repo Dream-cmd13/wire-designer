@@ -38,4 +38,27 @@ describe('drawing store hydration', () => {
     });
     expect(storage.removeItem).toHaveBeenCalledWith('standalone-drawing-library');
   });
+
+  it('recovers when browser storage is unavailable and persist API is missing', async () => {
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: Object.defineProperty({}, 'localStorage', {
+        get: () => { throw new Error('storage unavailable'); },
+      }),
+    });
+    const { hydrateDrawingStore, useDrawingStore } = await import('@/stores/drawingStore');
+    expect(useDrawingStore.persist).toBeUndefined();
+    useDrawingStore.setState({
+      documents: { stale: { id: 'stale' } as never },
+      activeDocumentId: 'stale',
+      saveState: 'saved',
+    });
+
+    await expect(hydrateDrawingStore()).resolves.toBe('recovered');
+    expect(useDrawingStore.getState()).toMatchObject({
+      documents: {},
+      activeDocumentId: null,
+      saveState: 'saved',
+    });
+  });
 });
