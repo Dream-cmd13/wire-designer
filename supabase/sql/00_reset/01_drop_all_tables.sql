@@ -23,4 +23,5 @@ drop table if exists public.wire_types cascade;
 drop table if exists public.project_assets cascade;
 drop table if exists public.project_documents cascade;
 drop table if exists public.projects cascade;
+drop table if exists public."user" cascade;
 drop table if exists public.profiles cascade;

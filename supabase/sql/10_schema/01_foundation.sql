@@ -12,29 +12,30 @@ do $$ begin
 exception when duplicate_object then null;
 end $$;
 
-create table if not exists public.profiles (
+-- "user" is a PostgreSQL keyword; keep it quoted in every SQL reference.
+create table if not exists public."user" (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null default '',
   avatar_path text,
   role public.app_role not null default 'user',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references public.profiles(id) on delete restrict,
+  owner_id uuid not null references public."user"(id) on delete restrict,
   name text not null check (length(btrim(name)) between 1 and 200),
   description text not null default '',
   status public.project_status not null default 'draft',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.project_documents (
@@ -44,8 +45,8 @@ create table if not exists public.project_documents (
   revision bigint not null default 1 check (revision > 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.project_assets (
@@ -58,8 +59,8 @@ create table if not exists public.project_assets (
   size_bytes bigint not null check (size_bytes >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );

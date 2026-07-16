@@ -39,8 +39,8 @@ create table if not exists public.wire_spec_cores (
   display_order integer not null default 0 check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   unique (catalog_item_id, core_index)
 );
 

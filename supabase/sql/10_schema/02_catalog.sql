@@ -30,10 +30,10 @@ create table if not exists public.catalog_categories (
   display_order integer not null default 0 check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.wire_colors (
@@ -44,10 +44,10 @@ create table if not exists public.wire_colors (
   display_order integer not null default 0 check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.wire_gauges (
@@ -58,10 +58,10 @@ create table if not exists public.wire_gauges (
   display_order integer not null default 0 check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.wire_types (
@@ -73,10 +73,10 @@ create table if not exists public.wire_types (
   display_order integer not null default 0 check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.catalog_items (
@@ -94,10 +94,10 @@ create table if not exists public.catalog_items (
   display_order integer not null default 0 check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.catalog_item_images (
@@ -116,10 +116,10 @@ create table if not exists public.catalog_item_images (
   captured_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   deleted_at timestamptz,
-  deleted_by uuid references public.profiles(id) on delete set null
+  deleted_by uuid references public."user"(id) on delete set null
 );
 
 create table if not exists public.connector_specs (
@@ -145,8 +145,8 @@ create table if not exists public.connector_specs (
   remark text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   check (operating_temperature_max_c is null or operating_temperature_min_c is null or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
@@ -158,8 +158,8 @@ create table if not exists public.connector_pins (
   display_order integer not null check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   unique (catalog_item_id, pin_number),
   unique (catalog_item_id, display_order)
 );
@@ -191,8 +191,8 @@ create table if not exists public.wire_specs (
   operating_temperature_max_c numeric(8, 2),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   check (operating_temperature_max_c is null or operating_temperature_min_c is null or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
@@ -207,8 +207,8 @@ create table if not exists public.wire_spec_cores (
   display_order integer not null default 0 check (display_order >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   unique (catalog_item_id, core_index)
 );
 
@@ -228,8 +228,8 @@ create table if not exists public.protective_sleeve_specs (
   shrink_temperature_c numeric(8, 2),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   check (operating_temperature_max_c is null or operating_temperature_min_c is null or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
@@ -251,8 +251,8 @@ create table if not exists public.overmold_specs (
   remark text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  created_by uuid references public.profiles(id) on delete set null,
-  updated_by uuid references public.profiles(id) on delete set null,
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null,
   check (compatible_wire_diameter_max_mm is null or compatible_wire_diameter_min_mm is null or compatible_wire_diameter_max_mm >= compatible_wire_diameter_min_mm)
 );
 

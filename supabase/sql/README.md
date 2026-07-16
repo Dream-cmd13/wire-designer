@@ -14,10 +14,17 @@ Run the files in this order in the Supabase SQL Editor:
 10. `40_seed/04_frontend_catalog.sql` (the catalog data migrated from `src/lib/data.ts`)
 11. Upload images to the paths documented in `40_seed/02_image_manifest.sql`, then run that file.
 
-For an existing database, run `50_upgrade/01_drawing_workbench_resources.sql`, then rerun
+The reset script drops both `public."user"` and the legacy `public.profiles` name so it is safe
+to run before or after the rename migration.
+
+For an existing database, run `50_upgrade/02_rename_profiles_to_user.sql` first when upgrading
+the application user table, then run `50_upgrade/01_drawing_workbench_resources.sql`, and rerun
 `10_schema/03_integrity.sql`, `30_security/01_rls.sql`,
 `40_seed/03_drawing_workbench_resources.sql`, and `40_seed/04_frontend_catalog.sql`.
 The upgrade and both seeds are idempotent.
+
+The application user table is named `public."user"`; because `user` is a PostgreSQL keyword,
+SQL references must quote it. Supabase Data API callers may still use the table name `user`.
 
 `catalog-assets` is private. Upload transparent PNG or WebP files for images that need to be layered in the product-image view. JPEG files are supported for photographs but cannot be transparent.
 

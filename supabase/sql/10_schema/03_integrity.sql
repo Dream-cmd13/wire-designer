@@ -15,7 +15,7 @@ do $$
 declare table_name text;
 begin
   foreach table_name in array array[
-    'profiles', 'projects', 'project_documents', 'project_assets',
+    'user', 'projects', 'project_documents', 'project_assets',
     'catalog_categories', 'wire_colors', 'wire_gauges', 'wire_types',
     'catalog_items', 'catalog_item_images', 'connector_specs', 'connector_pins',
     'wire_specs', 'wire_spec_cores', 'protective_sleeve_specs', 'overmold_specs'
@@ -201,7 +201,7 @@ create index if not exists wire_spec_cores_lookup_idx on public.wire_spec_cores 
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles (id, display_name) values (new.id, coalesce(new.raw_user_meta_data ->> 'display_name', '')) on conflict (id) do nothing;
+  insert into public."user" (id, display_name) values (new.id, coalesce(new.raw_user_meta_data ->> 'display_name', '')) on conflict (id) do nothing;
   return new;
 end;
 $$;

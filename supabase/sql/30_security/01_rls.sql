@@ -1,6 +1,6 @@
 create or replace function public.is_catalog_admin()
 returns boolean language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.profiles where id = auth.uid() and role = 'catalog_admin');
+  select exists (select 1 from public."user" where id = auth.uid() and role = 'catalog_admin');
 $$;
 
 revoke all on function public.is_catalog_admin() from public;
@@ -9,8 +9,8 @@ grant usage on schema public to authenticated;
 grant usage on schema public to anon;
 grant select, insert, update on all tables in schema public to authenticated;
 revoke delete on all tables in schema public from authenticated;
-revoke update on public.profiles from authenticated;
-grant update (display_name, avatar_path) on public.profiles to authenticated;
+revoke update on public."user" from authenticated;
+grant update (display_name, avatar_path) on public."user" to authenticated;
 
 create or replace function pg_temp.create_policy_if_missing(policy_name text, schema_name text, table_name text, policy_sql text)
 returns void language plpgsql as $$
@@ -21,9 +21,9 @@ begin
 end;
 $$;
 
-alter table public.profiles enable row level security;
-select pg_temp.create_policy_if_missing('profile owner read', 'public', 'profiles', $policy$create policy "profile owner read" on public.profiles for select to authenticated using (id = (select auth.uid()))$policy$);
-select pg_temp.create_policy_if_missing('profile owner update', 'public', 'profiles', $policy$create policy "profile owner update" on public.profiles for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()))$policy$);
+alter table public."user" enable row level security;
+select pg_temp.create_policy_if_missing('user owner read', 'public', 'user', $policy$create policy "user owner read" on public."user" for select to authenticated using (id = (select auth.uid()))$policy$);
+select pg_temp.create_policy_if_missing('user owner update', 'public', 'user', $policy$create policy "user owner update" on public."user" for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()))$policy$);
 
 alter table public.projects enable row level security;
 alter table public.project_documents enable row level security;

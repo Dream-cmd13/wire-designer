@@ -41,11 +41,11 @@ const supabase = createClient(url, secretKey, {
   auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 });
 
-const { error: profileCheckError } = await supabase.from('profiles').select('id').limit(1);
+const { error: userCheckError } = await supabase.from('user').select('id').limit(1);
 
-if (profileCheckError) {
+if (userCheckError) {
   console.error(
-    `User creation preflight failed: ${profileCheckError.message}. Run supabase/sql/10_schema/01_foundation.sql, then supabase/sql/10_schema/03_integrity.sql.`
+    `User creation preflight failed: ${userCheckError.message}. Run supabase/sql/10_schema/01_foundation.sql, then supabase/sql/10_schema/03_integrity.sql.`
   );
   process.exit(1);
 }
@@ -62,14 +62,14 @@ if (error || !data.user) {
   process.exit(1);
 }
 
-const { data: profile, error: profileError } = await supabase
-  .from('profiles')
+const { data: appUser, error: appUserError } = await supabase
+  .from('user')
   .select('id')
   .eq('id', data.user.id)
   .maybeSingle();
 
-if (profileError || !profile) {
-  console.warn('User created, but its profiles record was not confirmed. Run supabase/sql/10_schema/03_integrity.sql and check the on_auth_user_created trigger.');
+if (appUserError || !appUser) {
+  console.warn('User created, but its user record was not confirmed. Run supabase/sql/10_schema/03_integrity.sql and check the on_auth_user_created trigger.');
 }
 
 console.log(`Created user: ${data.user.email} (${data.user.id})`);
