@@ -1,4 +1,4 @@
-import { createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import type { DrawingDocument, DrawingLayerAction, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint } from '@/types/drawing';
 
 export type { DrawingLayerAction } from '@/types/drawing';
@@ -15,9 +15,29 @@ function normalizeLayers(objects: DrawingObject[]): DrawingObject[] {
   return objects.map((object) => normalized.get(object.id) ?? object) as DrawingObject[];
 }
 
-export function clearDrawingCanvas(document: DrawingDocument): DrawingDocument {
-  const objects = document.objects.filter((object) => object.kind === 'title-block');
-  return objects.length === document.objects.length ? document : updated(document, objects);
+function defaultCanvasSignature(document: DrawingDocument) {
+  return JSON.stringify({
+    page: document.page,
+    titleBlock: document.titleBlock,
+    revisionTable: document.revisionTable,
+    techRequirements: document.techRequirements,
+    objects: document.objects.map(({ id: _id, ...object }) => object),
+  });
+}
+
+export function clearDrawingCanvas(document: DrawingDocument, date = new Date()): DrawingDocument {
+  const template = createBlankDrawingDocument(document.name, date);
+  const replacement: DrawingDocument = {
+    ...template,
+    id: document.id,
+    name: document.name,
+    createdAt: document.createdAt,
+    page: { ...document.page },
+    updatedAt: Date.now(),
+  };
+  return defaultCanvasSignature(document) === defaultCanvasSignature(replacement)
+    ? document
+    : replacement;
 }
 
 export function toggleDrawingLocks(document: DrawingDocument, objectIds: string[]): DrawingDocument {

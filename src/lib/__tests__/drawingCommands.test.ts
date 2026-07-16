@@ -4,7 +4,7 @@ import {
   patchDrawingObjects, placeDrawingCopiesAtPoint, snapOrthogonalPoint, splitDrawingObjects,
   splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks,
 } from '@/lib/drawingCommands';
-import { defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import type { DrawingDocument, DrawingLineObject, DrawingObject } from '@/types/drawing';
 
 const base = (id: string, kind: DrawingObject['kind'], x: number, zIndex: number) => ({
@@ -24,8 +24,36 @@ const title = { ...base('title', 'title-block', 0, 0), kind: 'title-block' as co
 const line = (id: string, x: number, zIndex: number) => ({ ...base(id, 'line', x, zIndex), kind: 'line' as const, points: [{ x, y: 10 }, { x: x + 20, y: 10 }], orthogonal: false });
 
 describe('drawing document commands', () => {
-  it('clears editable objects while preserving the title block', () => {
-    expect(clearDrawingCanvas(documentWith([title, line('a', 10, 1)])).objects).toEqual([title]);
+  it('restores the three default tables and removes every added object', () => {
+    const date = new Date(2026, 6, 16);
+    const source = createBlankDrawingDocument('褰撳墠鍥剧焊', date);
+    const changed = {
+      ...source,
+      objects: [
+        ...source.objects.map((object) => 'tableRole' in object && object.tableRole === 'bom'
+          ? { ...object, x: 500, rows: [{ 搴忓彿: '1' }] }
+          : object),
+        line('extra', 10, 99),
+      ] as DrawingObject[],
+    };
+    const cleared = clearDrawingCanvas(changed, date);
+    const template = createBlankDrawingDocument('褰撳墠鍥剧焊', date);
+
+    expect(cleared.id).toBe(source.id);
+    expect(cleared.name).toBe(source.name);
+    expect(cleared.createdAt).toBe(source.createdAt);
+    expect(cleared.page).toEqual(source.page);
+    expect(cleared.objects.map((object) => 'tableRole' in object ? object.tableRole : undefined).filter(Boolean))
+      .toEqual(['bom', 'revision', 'title-block']);
+    expect(cleared.objects.some((object) => object.id === 'extra')).toBe(false);
+    expect(cleared.objects.find((object) => 'tableRole' in object && object.tableRole === 'bom'))
+      .toMatchObject({ x: template.objects.find((object) => 'tableRole' in object && object.tableRole === 'bom')!.x, rows: [] });
+  });
+
+  it('does not update an already-default canvas', () => {
+    const date = new Date(2026, 6, 16);
+    const source = createBlankDrawingDocument('褰撳墠鍥剧焊', date);
+    expect(clearDrawingCanvas(source, date)).toBe(source);
   });
 
   it('locks selections and moves unlocked objects to the front with normalized layers', () => {
