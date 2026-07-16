@@ -69,6 +69,23 @@ describe('completed drawing export', () => {
     expect(svg).not.toContain('2026.07.15(当天日期');
   });
 
+  it('keeps table text visible after it is dragged outside its cell', () => {
+    const drawing = createBlankDrawingDocument('moved table text');
+    const table: DrawingTableObject = {
+      id: 'moved-table', kind: 'table', x: 40, y: 50, width: 200, height: 54,
+      rotation: 0, zIndex: 20, locked: false, visible: true, style: { ...defaultDrawingObjectStyle },
+      title: 'table', columns: ['column'], rows: [{ column: 'moved text' }],
+      showTitleRow: false, columnWidths: [70], headerRowHeight: 20, rowHeights: [34],
+      textOffsets: { 'row-0-column-0': { x: 100, y: 0 } },
+    };
+    const svg = serializeDrawingSvg({ ...drawing, objects: [table] });
+
+    expect(svg).not.toContain('<clipPath');
+    expect(svg).toContain('fill="none"');
+    expect(svg).toContain('x="105"');
+    expect(svg).toContain('>moved text</text>');
+  });
+
   it('sanitizes a requested PDF filename and falls back to the drawing number', () => {
     const drawing = createBlankDrawingDocument('导出测试');
     const numbered = { ...drawing, titleBlock: { ...drawing.titleBlock, drawingNo: 'WH-001' } };

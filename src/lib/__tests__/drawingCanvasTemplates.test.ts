@@ -115,7 +115,9 @@ describe('standalone drawing table templates', () => {
 
     expect(canvasSource).toContain('onPointerMove={handleTablePointerMove}');
     expect(canvasSource).toContain('textOffsets');
+    expect(canvasSource).toContain('overflow-visible');
     expect(rendererSource).toContain('object.textOffsets?.[key]');
+    expect(rendererSource).not.toContain('context.clip()');
   });
 
   it('renders table text using the configured ink color instead of the white table fill', () => {

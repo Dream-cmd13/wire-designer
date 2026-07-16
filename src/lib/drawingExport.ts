@@ -8,10 +8,6 @@ function escapeXml(value: string) {
   }[character] ?? character));
 }
 
-function svgId(value: string) {
-  return value.replace(/[^a-zA-Z0-9_-]/g, '-');
-}
-
 function svgObject(object: DrawingObject): string {
   const common = `transform="translate(${object.x} ${object.y}) rotate(${object.rotation} ${object.width / 2} ${object.height / 2})"`;
   const style = `fill="${object.style.fill}" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"`;
@@ -58,7 +54,6 @@ function svgObject(object: DrawingObject): string {
   }
   if (object.kind === 'table' || object.kind === 'bom-table' || object.kind === 'wiring-table') {
     const layout = resolveDrawingTableLayout(object);
-    const clipId = `clip-${svgId(object.id)}`;
     const text = (key: string, value: string, x: number, baseline: number, fallbackSize: number, cellWidth: number) => {
       const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
       const configuredFontSize = layout.textSizes[key]?.fontSize ?? fallbackSize;
@@ -73,10 +68,10 @@ function svgObject(object: DrawingObject): string {
       const projection = object.projectionCellKey === cell.key
         ? `<g data-projection-symbol="true" fill="none"><path d="M ${cell.x + cell.width * 0.16} ${cell.y + cell.height * 0.3} L ${cell.x + cell.width * 0.4} ${cell.y + cell.height * 0.38} L ${cell.x + cell.width * 0.4} ${cell.y + cell.height * 0.62} L ${cell.x + cell.width * 0.16} ${cell.y + cell.height * 0.7} Z"/><circle cx="${cell.x + cell.width * 0.82}" cy="${cell.y + cell.height / 2}" r="${Math.min(cell.width, cell.height) * 0.14}"/></g>`
         : text(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width);
-      return `<g data-table-cell="${cell.key}"><rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}"/>${projection}</g>`;
+      return `<g data-table-cell="${cell.key}"><rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}" fill="none"/>${projection}</g>`;
     }).join('');
     const titleSeparator = layout.showTitleRow ? `<line x1="0" y1="${layout.titleRowHeight}" x2="${object.width}" y2="${layout.titleRowHeight}"/>` : '';
-    return `<g ${common} ${style}><defs><clipPath id="${clipId}"><rect width="${object.width}" height="${object.height}"/></clipPath></defs><g clip-path="url(#${clipId})"><rect width="${object.width}" height="${object.height}"/>${titleSeparator}${title}${cells}</g></g>`;
+    return `<g ${common} ${style}><rect width="${object.width}" height="${object.height}"/>${titleSeparator}${title}${cells}</g>`;
   }
   if (object.kind === 'group') {
     const children = object.children.filter((child) => child.visible).sort((left, right) => left.zIndex - right.zIndex).map(svgObject).join('');

@@ -45,10 +45,6 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.fillStyle = object.style.fill;
   context.fillRect(0, 0, object.width, object.height);
   context.strokeRect(0, 0, object.width, object.height);
-  context.save();
-  context.beginPath();
-  context.rect(0, 0, object.width, object.height);
-  context.clip();
   context.fillStyle = object.style.color;
   const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, cellWidth: number) => {
     const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
@@ -83,7 +79,6 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
     }
     drawCellText(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width);
   });
-  context.restore();
 }
 
 function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {

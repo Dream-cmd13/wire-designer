@@ -321,7 +321,7 @@ function DrawingTableLayer({
   return (
     <div
       ref={tableRef}
-      className="absolute z-10 box-border overflow-hidden border border-slate-900 bg-white text-slate-900"
+      className="absolute z-10 box-border overflow-visible border border-slate-900 bg-white text-slate-900"
       style={{
         left: object.x * zoom,
         top: object.y * zoom,
@@ -345,7 +345,7 @@ function DrawingTableLayer({
       onPointerMove={handleTablePointerMove}
       onPointerUp={endTableDrag}
     >
-      {layout.showTitleRow && <div className="box-border min-w-0 overflow-hidden border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
+      {layout.showTitleRow && <div className="box-border min-w-0 overflow-visible border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
         {renderEditableText(object.title, { key: 'title', type: 'title' }, '', { width: object.width, height: layout.titleRowHeight, fontSize: object.style.fontSize })}
       </div>}
       <div className="grid font-semibold" style={{
@@ -367,7 +367,7 @@ function DrawingTableLayer({
               lineHeight: `${cell.height * zoom}px`,
               minWidth: 0,
               minHeight: 0,
-              overflow: 'hidden',
+              overflow: 'visible',
             }}
           >
             {object.projectionCellKey === cell.key ? (
