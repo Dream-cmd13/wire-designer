@@ -1,12 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { createDrawingTableObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
-import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
+import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
+import { localToWorldPoint } from '@/lib/drawingTransform';
 import type { DrawingTableObject } from '@/types/drawing';
 
 const legacyTable: DrawingTableObject = {
   id: 'table-1', kind: 'table', x: 100, y: 80, width: 300, height: 120,
   rotation: 0, zIndex: 1, locked: false, visible: true, style: defaultDrawingObjectStyle,
   title: '表格', columns: ['A', 'B', 'C'], rows: [{ A: '', B: '', C: '' }, { A: '', B: '', C: '' }],
+};
+
+const scalableTable: DrawingTableObject = {
+  ...legacyTable,
+  x: 100,
+  y: 100,
+  width: 320,
+  height: 60,
+  columnWidths: [80, 120, 120],
+  titleRowHeight: 10,
+  headerRowHeight: 20,
+  rowHeights: [15, 15],
+  style: { ...defaultDrawingObjectStyle, fontSize: 10, strokeWidth: 2 },
+  textOffsets: { 'row-0-column-0': { x: 4, y: 2 } },
+  textSizes: { 'row-0-column-0': { width: 30, height: 12, fontSize: 8 } },
 };
 
 describe('drawing table layout', () => {
@@ -31,6 +47,53 @@ describe('drawing table layout', () => {
     expect(patch.columnWidths).toEqual([200, 200, 200]);
     expect(patch.style?.fontSize).toBe(table.style.fontSize * 2);
     expect(patch.textOffsets?.title).toEqual({ x: 8, y: 4 });
+  });
+
+  it('scales the whole table from the right edge while keeping the left edge fixed', () => {
+    const result = resizeDrawingTableFromHandle(scalableTable, 'e', { x: 580, y: 130 });
+    const next = { ...scalableTable, ...result.patch } as DrawingTableObject;
+
+    expect(next.x).toBeCloseTo(100);
+    expect(next.y).toBeCloseTo(85);
+    expect(next.width).toBeCloseTo(480);
+    expect(next.height).toBeCloseTo(90);
+    expect(next.columnWidths).toEqual([120, 180, 180]);
+    expect(next.rowHeights).toEqual([22.5, 22.5]);
+    expect(next.style.fontSize).toBeCloseTo(15);
+    expect(next.style.strokeWidth).toBeCloseTo(3);
+    expect(next.textOffsets?.['row-0-column-0']).toEqual({ x: 6, y: 3 });
+    expect(next.textSizes?.['row-0-column-0']).toEqual({ width: 45, height: 18, fontSize: 12 });
+  });
+
+  it('keeps the opposite edge fixed for left, top, and bottom handle scaling', () => {
+    const cases = [
+      { handle: 'w' as const, pointer: { x: 260, y: 130 }, fixedBefore: { x: 420, y: 130 }, fixedLocal: (table: DrawingTableObject) => ({ x: table.width, y: table.height / 2 }) },
+      { handle: 'n' as const, pointer: { x: 260, y: 70 }, fixedBefore: { x: 260, y: 160 }, fixedLocal: (table: DrawingTableObject) => ({ x: table.width / 2, y: table.height }) },
+      { handle: 's' as const, pointer: { x: 260, y: 190 }, fixedBefore: { x: 260, y: 100 }, fixedLocal: (table: DrawingTableObject) => ({ x: table.width / 2, y: 0 }) },
+    ];
+
+    cases.forEach(({ handle, pointer, fixedBefore, fixedLocal }) => {
+      const result = resizeDrawingTableFromHandle(scalableTable, handle, pointer);
+      const next = { ...scalableTable, ...result.patch } as DrawingTableObject;
+      const fixedAfter = localToWorldPoint(next, fixedLocal(next));
+      expect(fixedAfter.x).toBeCloseTo(fixedBefore.x);
+      expect(fixedAfter.y).toBeCloseTo(fixedBefore.y);
+      expect(next.width / scalableTable.width).toBeCloseTo(next.height / scalableTable.height);
+    });
+  });
+
+  it('keeps the opposite corner fixed while scaling a rotated table', () => {
+    const rotated = { ...scalableTable, rotation: 30 };
+    const fixedBefore = localToWorldPoint(rotated, { x: 0, y: 0 });
+    const pointer = localToWorldPoint(rotated, { x: 480, y: 90 });
+    const result = resizeDrawingTableFromHandle(rotated, 'se', pointer);
+    const next = { ...rotated, ...result.patch } as DrawingTableObject;
+    const fixedAfter = localToWorldPoint(next, { x: 0, y: 0 });
+
+    expect(fixedAfter.x).toBeCloseTo(fixedBefore.x);
+    expect(fixedAfter.y).toBeCloseTo(fixedBefore.y);
+    expect(next.width).toBeCloseTo(480);
+    expect(next.height).toBeCloseTo(90);
   });
 
   it('creates parameterized tables and resolves cell and text target bounds', () => {

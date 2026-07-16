@@ -91,4 +91,14 @@ describe('standalone drawing canvas interactions', () => {
     expect(pageSource).toContain('resizeDrawingTableCell');
     expect(pageSource).toContain('resizeDrawingTableText');
   });
+
+  it('routes whole-table resize handles through proportional table scaling', () => {
+    expect(canvasSource).toContain('resizeDrawingTableFromHandle');
+    expect(canvasSource).toContain("interaction.kind === 'resize'");
+    expect(canvasSource).toContain("interaction.object.kind === 'table'");
+    expect(canvasSource).toContain("interaction.object.kind === 'bom-table'");
+    expect(canvasSource).toContain("interaction.object.kind === 'wiring-table'");
+    expect(canvasSource).toContain('resizeDrawingTableCell');
+    expect(canvasSource).toContain('resizeDrawingTableText');
+  });
 });

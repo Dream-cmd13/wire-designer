@@ -1,4 +1,4 @@
-import { localToWorldPoint } from '@/lib/drawingTransform';
+import { MIN_OBJECT_SIZE, localToWorldPoint, resizeDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import type { DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingTableLayoutFields, DrawingTableLocalTarget, DrawingTableMerge, DrawingTableTextOffsets, DrawingTableTextSize } from '@/types/drawing';
 
 export type DrawingTableObject = Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>;
@@ -26,6 +26,10 @@ export type ResolvedDrawingTableCell = {
 export type DrawingTablePatch = Partial<Pick<DrawingTableObject, 'x' | 'y' | 'width' | 'height'>> & DrawingTableLayoutFields & {
   style?: DrawingObjectStyle;
   textOffsets?: DrawingTableTextOffsets;
+};
+export type DrawingTableResizeResult = {
+  patch: DrawingTablePatch;
+  activeHandle: ResizeHandle;
 };
 
 export const DEFAULT_TITLE_ROW_HEIGHT = 22;
@@ -197,12 +201,48 @@ export function scaleDrawingTable(table: DrawingTableObject, factor: number): Dr
     y: center.y - height / 2,
     width,
     height,
-    columnWidths: layout.columnWidths.map((value) => value * factor),
-    titleRowHeight: layout.titleRowHeight * factor,
-    headerRowHeight: layout.headerRowHeight * factor,
-    rowHeights: layout.rowHeights.map((value) => value * factor),
+    columnWidths: layout.columnWidths.map((value, index) => (table.columnWidths?.[index] ?? value) * factor),
+    titleRowHeight: (table.titleRowHeight ?? layout.titleRowHeight) * factor,
+    headerRowHeight: (table.headerRowHeight ?? layout.headerRowHeight) * factor,
+    rowHeights: layout.rowHeights.map((value, index) => (table.rowHeights?.[index] ?? value) * factor),
     textOffsets: scaleOffsets(table.textOffsets, factor),
     textSizes: Object.fromEntries(Object.entries(layout.textSizes).map(([key, size]) => [key, { width: size.width * factor, height: size.height * factor, fontSize: size.fontSize * factor }])),
     style: { ...table.style, strokeWidth: table.style.strokeWidth * factor, fontSize: table.style.fontSize * factor },
+  };
+}
+
+function getOppositeHandleAnchor(handle: ResizeHandle, width: number, height: number): DrawingPoint {
+  return {
+    x: handle.includes('w') ? width : handle.includes('e') ? 0 : width / 2,
+    y: handle.includes('n') ? height : handle.includes('s') ? 0 : height / 2,
+  };
+}
+
+export function resizeDrawingTableFromHandle(
+  table: DrawingTableObject,
+  handle: ResizeHandle,
+  pointer: DrawingPoint,
+): DrawingTableResizeResult {
+  const frame = resizeDrawingObject(table, handle, pointer, handle.length === 2);
+  const widthFactor = (frame.patch.width ?? table.width) / table.width;
+  const heightFactor = (frame.patch.height ?? table.height) / table.height;
+  const requestedFactor = handle === 'e' || handle === 'w'
+    ? widthFactor
+    : handle === 'n' || handle === 's'
+      ? heightFactor
+      : Math.max(widthFactor, heightFactor);
+  const factor = Math.max(requestedFactor, MIN_OBJECT_SIZE / table.width, MIN_OBJECT_SIZE / table.height);
+  const patch = scaleDrawingTable(table, factor);
+  const fixedBefore = localToWorldPoint(table, getOppositeHandleAnchor(handle, table.width, table.height));
+  const scaledTable = { ...table, ...patch } as DrawingTableObject;
+  const fixedAfter = localToWorldPoint(scaledTable, getOppositeHandleAnchor(frame.activeHandle, scaledTable.width, scaledTable.height));
+
+  return {
+    patch: {
+      ...patch,
+      x: (patch.x ?? table.x) + fixedBefore.x - fixedAfter.x,
+      y: (patch.y ?? table.y) + fixedBefore.y - fixedAfter.y,
+    },
+    activeHandle: frame.activeHandle,
   };
 }

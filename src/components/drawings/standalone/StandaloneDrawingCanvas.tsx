@@ -9,7 +9,7 @@ import {
 } from '@/lib/drawingCommands';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
-import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
@@ -603,6 +603,18 @@ export function StandaloneDrawingCanvas({
           width, height, fontSize: interaction.table.textSizes?.[interaction.target.key]?.fontSize ?? interaction.table.style.fontSize,
         });
       onUpdateObject(interaction.table.id, patch as Partial<DrawingObject>);
+      return;
+    }
+    if (
+      interaction.kind === 'resize'
+      && (
+        interaction.object.kind === 'table'
+        || interaction.object.kind === 'bom-table'
+        || interaction.object.kind === 'wiring-table'
+      )
+    ) {
+      const result = resizeDrawingTableFromHandle(interaction.object, interaction.handle, point);
+      onUpdateObject(interaction.object.id, result.patch as Partial<DrawingObject>);
       return;
     }
     const patch = interaction.kind === 'move'
