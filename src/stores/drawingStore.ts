@@ -10,6 +10,7 @@ interface DrawingStore {
   activeDocumentId: string | null;
   saveState: DrawingSaveState;
   createDocument: (name?: string) => DrawingDocument;
+  replaceWithNewDocument: (name?: string) => DrawingDocument;
   openDocument: (documentId: string) => void;
   updateDocument: (document: DrawingDocument) => void;
   updateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
@@ -31,6 +32,15 @@ export const useDrawingStore = create<DrawingStore>()(
           activeDocumentId: document.id,
           saveState: 'dirty',
         }));
+        return document;
+      },
+      replaceWithNewDocument: (name) => {
+        const document = createBlankDrawingDocument(name);
+        set({
+          documents: { [document.id]: document },
+          activeDocumentId: document.id,
+          saveState: 'dirty',
+        });
         return document;
       },
       openDocument: (documentId) => {
