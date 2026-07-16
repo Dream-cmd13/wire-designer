@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const pageSource = readFileSync(new URL('../../pages/DrawingWorkbenchPage.tsx', import.meta.url), 'utf8');
+const shellSource = readFileSync(new URL('../../components/layout/AdminShell.tsx', import.meta.url), 'utf8');
 const toolbarSource = readFileSync(new URL('../../components/drawings/standalone/DrawingWorkbenchToolbar.tsx', import.meta.url), 'utf8');
 const resourceSource = readFileSync(new URL('../../components/drawings/standalone/DrawingResourcePanel.tsx', import.meta.url), 'utf8');
 const inspectorSource = readFileSync(new URL('../../components/drawings/standalone/StandaloneDrawingInspector.tsx', import.meta.url), 'utf8');
@@ -12,6 +13,11 @@ const materialTableDialogSource = readFileSync(new URL('../../components/drawing
 const materialFormDialogSource = readFileSync(new URL('../../components/drawings/standalone/DrawingMaterialFormDialog.tsx', import.meta.url), 'utf8');
 
 describe('drawing workbench UI contract', () => {
+  it('shows independent drawing context instead of the active project', () => {
+    expect(shellSource).toContain("route.id === 'drawing-workbench'");
+    expect(shellSource).toContain('独立制图 · 新建后导出');
+  });
+
   it('waits for drawing hydration and offers refresh resume or replacement', () => {
     expect(pageSource.match(/useDrawingStore\.persist\.hasHydrated\(\)/g)).toHaveLength(2);
     expect(pageSource).toContain('useDrawingStore.persist.onFinishHydration');

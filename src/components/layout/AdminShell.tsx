@@ -96,6 +96,9 @@ export function AdminShell({
   onCloseProject,
 }: AdminShellProps) {
   const showDesignerActions = route.section === 'designer' && Boolean(currentProjectName);
+  const contextLabel = route.id === 'drawing-workbench'
+    ? '独立制图 · 新建后导出'
+    : currentProjectName || '选择项目后可进入完整设计流程';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
@@ -198,7 +201,7 @@ export function AdminShell({
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900">{route.title}</p>
               <p className="hidden text-xs text-slate-500 sm:block">
-                {currentProjectName ? currentProjectName : '选择项目后可进入完整设计流程'}
+                {contextLabel}
               </p>
             </div>
 
