@@ -4,6 +4,7 @@ import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/Drawi
 import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
 import { DrawingMaterialTableDialog } from '@/components/drawings/standalone/DrawingMaterialTableDialog';
 import { DrawingPdfExportDialog } from '@/components/drawings/standalone/DrawingPdfExportDialog';
+import { DrawingIconLibraryDialog } from '@/components/drawings/standalone/DrawingIconLibraryDialog';
 import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
 import { DrawingTableCreateDialog } from '@/components/drawings/standalone/DrawingTableCreateDialog';
 import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/StandaloneDrawingCanvas';
@@ -11,7 +12,7 @@ import { StandaloneDrawingInspector } from '@/components/drawings/standalone/Sta
 import { StandaloneDrawingWizard } from '@/components/drawings/standalone/StandaloneDrawingWizard';
 import { DrawingWorkbenchToolbar } from '@/components/drawings/standalone/DrawingWorkbenchToolbar';
 import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawingCopiesAtPoint, setDrawingLayer, splitDrawingObjects, splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks } from '@/lib/drawingCommands';
-import { createDrawingId, createDrawingResourceObject, createDrawingTableObject, defaultDrawingObjectStyle, type DrawingTableCreateInput } from '@/lib/drawingDocument';
+import { createDrawingId, createDrawingNumberTubeObject, createDrawingResourceObject, createDrawingTableObject, defaultDrawingObjectStyle, type DrawingTableCreateInput } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
 import { appendDrawingMaterial, type DrawingMaterialInput } from '@/lib/drawingMaterials';
@@ -66,6 +67,17 @@ function createPlacedResource(drawing: DrawingDocument, kind: DrawingResourceKin
   return { ...createDrawingResourceObject(kind, point), zIndex: topLayer(drawing) } as DrawingObject;
 }
 
+function createPlacedNumberTube(drawing: DrawingDocument): DrawingObject {
+  const base = { x: 420, y: 238 };
+  let point = { ...base };
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const candidate = createDrawingNumberTubeObject(point);
+    if (!drawing.objects.some((object) => object.visible && overlaps(candidate, object))) return { ...candidate, zIndex: topLayer(drawing) };
+    point = { x: base.x + ((attempt + 1) % 6) * 36, y: base.y + Math.floor((attempt + 1) / 6) * 42 };
+  }
+  return { ...createDrawingNumberTubeObject(point), zIndex: topLayer(drawing) };
+}
+
 export function DrawingWorkbenchPage() {
   const currentUser = useUserStore((state) => state.currentUser);
   const drawingOwnerId = currentUser?.id ?? null;
@@ -84,6 +96,7 @@ export function DrawingWorkbenchPage() {
   const [zoom, setZoom] = useState(0.72);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [iconLibraryOpen, setIconLibraryOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -161,6 +174,8 @@ export function DrawingWorkbenchPage() {
     apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
   };
   const addResource = (kind: DrawingResourceKind) => { if (!drawing) return; addObject(createPlacedResource(drawing, kind)); setResourcesOpen(false); };
+  const addNumberTube = () => { if (!drawing) return; addObject(createPlacedNumberTube(drawing)); setResourcesOpen(false); };
+  const openIconLibrary = () => { setResourcesOpen(false); setIconLibraryOpen(true); };
   const addTable = (input: DrawingTableCreateInput) => {
     if (!drawing) return;
     const base = resourceDefaultPoints.table;
@@ -258,6 +273,7 @@ export function DrawingWorkbenchPage() {
     setLineEditorObjectId(null);
     setMaterialTableObjectId(null);
     setResourcesOpen(false);
+    setIconLibraryOpen(false);
     setTableDialogOpen(false);
     setPdfDialogOpen(false);
     setWizardOpen(false);
@@ -329,10 +345,41 @@ export function DrawingWorkbenchPage() {
     setResourcesOpen(false);
   };
   const addPhrase = (phrase: DrawingCommonPhrase) => { if (!drawing) return; addObject({ ...createPlacedResource(drawing, 'text'), kind: 'text', text: phrase.phrase } as DrawingObject); };
-  const addIcon = (icon: DrawingIconResource) => addObject({ id: createDrawingId('icon'), kind: 'icon', name: icon.name, svgPath: icon.svgPath, x: 440, y: 180, width: icon.defaultWidth * 2, height: icon.defaultHeight * 2, rotation: 0, zIndex: 1, locked: false, visible: true, style: { ...defaultDrawingObjectStyle } });
+  const addIcon = (icon: DrawingIconResource) => {
+    if (!drawing) return;
+    const base = { x: 440, y: 180 };
+    let point = { ...base };
+    const createIcon = (nextPoint: DrawingPoint): DrawingObject => ({
+      id: createDrawingId('icon'),
+      kind: 'icon',
+      name: icon.name,
+      svgPath: icon.svgPath,
+      x: nextPoint.x,
+      y: nextPoint.y,
+      width: icon.defaultWidth * 2,
+      height: icon.defaultHeight * 2,
+      rotation: 0,
+      zIndex: topLayer(drawing),
+      locked: false,
+      visible: true,
+      style: { ...defaultDrawingObjectStyle },
+    });
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      const candidate = createIcon(point);
+      if (!drawing.objects.some((object) => object.visible && overlaps(candidate, object))) {
+        addObject(candidate);
+        setIconLibraryOpen(false);
+        return;
+      }
+      point = { x: base.x + ((attempt + 1) % 6) * 36, y: base.y + Math.floor((attempt + 1) / 6) * 42 };
+    }
+    addObject(createIcon(point));
+    setIconLibraryOpen(false);
+  };
 
   useEffect(() => {
     if (refreshDecisionOpen) return;
+    if (iconLibraryOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (!drawing || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
       const key = event.key.toLowerCase();
@@ -357,9 +404,10 @@ export function DrawingWorkbenchPage() {
 
   if (!drawingStoreHydrated || !entryReady || !drawing) return null;
   return <div className="flex h-full min-h-0 flex-col bg-slate-100">
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
+      <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>
       <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onCanvasZoom={setZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
     </div>

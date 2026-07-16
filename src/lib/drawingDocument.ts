@@ -229,7 +229,7 @@ export function createDrawingResourceObject(kind: DrawingResourceKind, point: Dr
     return { ...objectBase(kind, point, 110, 45), kind: 'accessory', label: '辅材', accessoryType: 'sleeve', style: { ...cloneStyle(), fill: '#e2e8f0' } };
   }
   if (kind === 'text' || kind === 'label') {
-    return { ...objectBase(kind, point, 180, 28), kind, text: kind === 'label' ? '①' : '自定义文字' };
+    return { ...objectBase(kind, point, 180, 28), kind, text: kind === 'label' ? '序号' : '自定义文字' };
   }
   if (kind === 'dimension') {
     return { ...objectBase(kind, point, 240, 45), kind: 'dimension', label: '±5mm', start: point, end: { x: point.x + 240, y: point.y } };
@@ -253,6 +253,16 @@ export function createDrawingResourceObject(kind: DrawingResourceKind, point: Dr
     return { ...base, kind: 'wiring-table', title, columns, rows };
   }
   return { ...objectBase(kind, point, 360, 120), kind: 'tech-requirements', requirements: ['请填写技术要求。'] };
+}
+
+export function createDrawingNumberTubeObject(point: DrawingPoint): DrawingObject {
+  return {
+    ...objectBase('accessory', point, 180, 36),
+    kind: 'accessory',
+    label: '号码管文字',
+    accessoryType: 'sleeve',
+    style: { ...cloneStyle(), fill: '#ffffff' },
+  };
 }
 
 export type DrawingTableCreateInput = { rowCount: number; columnCount: number; showTitleRow: boolean };

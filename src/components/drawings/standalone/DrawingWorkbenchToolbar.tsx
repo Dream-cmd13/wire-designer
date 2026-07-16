@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowUp, ArrowUpFromLine, Eraser, FileText, Layers2, LockKeyhole,
-  Menu, MousePointer2, PenLine, Pencil, Redo2, Save, Trash2, Undo2, Wand2,
+  Menu, MousePointer2, PenLine, Pencil, Redo2, Save, Shapes, SquareDashed, Trash2, Undo2, Wand2,
 } from 'lucide-react';
 import type { DrawingToolMode } from '@/types/drawing';
 
@@ -27,6 +27,8 @@ interface Props {
   onOrthogonal: () => void;
   onAddText: () => void;
   onAddLabel: () => void;
+  onOpenIconLibrary: () => void;
+  onAddNumberTube: () => void;
   onAddDimension: () => void;
   onAddTable: () => void;
   onSave: () => void;
@@ -91,7 +93,9 @@ export function DrawingWorkbenchToolbar(props: Props) {
     <Button title="曲线（Shift+R）" iconOnly active={props.toolMode === 'curve'} onClick={() => props.onToolMode('curve')}><span className="text-xs leading-none">⌒</span></Button>
     <Button title="自由画笔" iconOnly active={props.toolMode === 'freehand'} onClick={() => props.onToolMode('freehand')}><Pencil className="h-4 w-4"/></Button>
     <Button title="添加文字" iconOnly onClick={() => run(props.onAddText)}><PenLine className="h-4 w-4"/></Button>
-    <Button title="号码/标签" iconOnly onClick={() => run(props.onAddLabel)}><span className="text-xs leading-none">①</span></Button>
+    <Button title="序号" iconOnly onClick={() => run(props.onAddLabel)}><span className="text-xs font-semibold leading-none">序</span></Button>
+    <Button title="图标" iconOnly onClick={() => run(props.onOpenIconLibrary)}><Shapes className="h-4 w-4"/></Button>
+    <Button title="号码管" iconOnly onClick={() => run(props.onAddNumberTube)}><SquareDashed className="h-4 w-4"/></Button>
     <Button title="长度标注" iconOnly onClick={() => run(props.onAddDimension)}><span className="text-xs leading-none">↔</span></Button>
     <Button title="表格" iconOnly onClick={() => run(props.onAddTable)}><span className="text-xs leading-none">▦</span></Button>
     <span className="ml-auto"/>
