@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { createBlankDrawingDocument, patchDrawingObject } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, migrateLegacyDrawingTablePositions, patchDrawingObject } from '@/lib/drawingDocument';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
 type DrawingSaveState = 'saved' | 'dirty';
@@ -129,6 +129,21 @@ function resetDrawingLibraryAfterHydrationFailure() {
   } catch { /* The in-memory state is updated before a storage write can fail. */ }
 }
 
+function migrateHydratedDrawingTablePositions() {
+  const state = useDrawingStore.getState();
+  const documents = { ...state.documents };
+  let changed = false;
+
+  for (const [documentId, document] of Object.entries(state.documents)) {
+    const migrated = migrateLegacyDrawingTablePositions(document);
+    if (migrated === document) continue;
+    documents[documentId] = migrated;
+    changed = true;
+  }
+
+  if (changed) useDrawingStore.setState({ documents, saveState: 'dirty' });
+}
+
 export async function hydrateDrawingStore(ownerId?: string | null): Promise<DrawingHydrationResult> {
   activeDrawingOwner = ownerId || ANONYMOUS_DRAWING_OWNER;
   useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
@@ -158,7 +173,10 @@ export async function hydrateDrawingStore(ownerId?: string | null): Promise<Draw
     };
     hydrationErrorListeners.add(recover);
     try {
-      unsubscribeSuccess = persistApi.onFinishHydration(() => settle('hydrated'));
+      unsubscribeSuccess = persistApi.onFinishHydration(() => {
+        migrateHydratedDrawingTablePositions();
+        settle('hydrated');
+      });
       void Promise.resolve(persistApi.rehydrate()).catch(recover);
     } catch {
       recover();

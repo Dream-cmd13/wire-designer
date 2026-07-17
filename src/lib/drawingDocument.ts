@@ -4,6 +4,7 @@ import type {
   DrawingObjectStyle,
   DrawingPoint,
   DrawingResourceKind,
+  DrawingTableRole,
   DrawingTableObject,
   DrawingTitleBlockObject,
 } from '@/types/drawing';
@@ -16,6 +17,18 @@ export const DRAWING_PAGE = {
 };
 
 export const DRAWING_PAGE_INSET = 20 as const;
+
+export const DRAWING_DEFAULT_TABLE_POSITIONS: Record<DrawingTableRole, DrawingPoint> = {
+  bom: { x: DRAWING_PAGE_INSET, y: DRAWING_PAGE.height - DRAWING_PAGE_INSET - 24 },
+  revision: { x: DRAWING_PAGE.width - DRAWING_PAGE_INSET - 320, y: DRAWING_PAGE_INSET },
+  'title-block': { x: DRAWING_PAGE.width - DRAWING_PAGE_INSET - 360, y: DRAWING_PAGE.height - DRAWING_PAGE_INSET - 124 },
+};
+
+const LEGACY_DRAWING_DEFAULT_TABLE_POSITIONS: Record<DrawingTableRole, DrawingPoint> = {
+  bom: { x: 40, y: 740 },
+  revision: { x: 840, y: 48 },
+  'title-block': { x: 820, y: 640 },
+};
 
 export const defaultDrawingObjectStyle: DrawingObjectStyle = {
   fill: '#ffffff',
@@ -64,7 +77,7 @@ export function formatDrawingDate(date = new Date()): string {
 
 function createRevisionTable(date: Date): DrawingObject {
   return {
-    ...objectBase('table', { x: 840, y: 48 }, 320, 60),
+    ...objectBase('table', DRAWING_DEFAULT_TABLE_POSITIONS.revision, 320, 60),
     kind: 'table',
     title: '变更记录',
     columns: ['版本', '变更内容', '日期', '变更者'],
@@ -83,7 +96,7 @@ function createRevisionTable(date: Date): DrawingObject {
 function createTitleInformationTable(drawingNo: string, date: Date): DrawingObject {
   const columns = ['xxx公司', '', '', '', '', '品名', '', '', ''];
   return {
-    ...objectBase('table', { x: 820, y: 640 }, 360, 124),
+    ...objectBase('table', DRAWING_DEFAULT_TABLE_POSITIONS['title-block'], 360, 124),
     kind: 'table',
     title: '标题栏',
     columns,
@@ -122,9 +135,31 @@ export function createWiringTable(): DrawingObject {
   };
 }
 
+function getDrawingTableRole(object: DrawingObject): DrawingTableRole | undefined {
+  if (object.kind !== 'table' && object.kind !== 'bom-table' && object.kind !== 'wiring-table') return undefined;
+  return object.tableRole;
+}
+
+export function migrateLegacyDrawingTablePositions(document: DrawingDocument): DrawingDocument {
+  let changed = false;
+  const objects = document.objects.map((object) => {
+    const role = getDrawingTableRole(object);
+    if (!role) return object;
+
+    const legacyPosition = LEGACY_DRAWING_DEFAULT_TABLE_POSITIONS[role];
+    const defaultPosition = DRAWING_DEFAULT_TABLE_POSITIONS[role];
+    if (object.x !== legacyPosition.x || object.y !== legacyPosition.y) return object;
+
+    changed = true;
+    return { ...object, x: defaultPosition.x, y: defaultPosition.y };
+  });
+
+  return changed ? { ...document, objects, updatedAt: Date.now() } : document;
+}
+
 function createBomTable(): DrawingObject {
   return {
-    ...objectBase('bom-table', { x: 40, y: 740 }, 720, 24),
+    ...objectBase('bom-table', DRAWING_DEFAULT_TABLE_POSITIONS.bom, 720, 24),
     kind: 'bom-table',
     title: '物料表',
     columns: ['序号', '物料编码', '物料名称/规格', '单位', '用量', '备注'],
