@@ -164,7 +164,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
     if (object.kind !== 'table' || object.tableRole !== 'title-block') return object;
     return {
       ...object,
-      rows: object.rows.map((row) => row.C3 === '工程图号' ? { ...row, C4: draft.drawingNo || 'WH-NEW' } : row),
+      rows: object.rows.map((row) => row.C3 === '工程图号' ? { ...row, C4: draft.drawingNo || '' } : row),
     };
   });
   const objects: DrawingObject[] = [
@@ -232,7 +232,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
     ...base,
     name,
     objects,
-    titleBlock: { title: titleBlock?.kind === 'title-block' ? name : base.titleBlock.title, drawingNo: draft.drawingNo || 'WH-NEW', revision: 'A' },
+    titleBlock: { title: titleBlock?.kind === 'title-block' ? name : base.titleBlock.title, drawingNo: draft.drawingNo || '', revision: 'A' },
     techRequirements: ['连接器端子压接后不得有松脱、变形。', '成品须进行导通及短路测试。'],
     wizardSource: draft,
   };

@@ -15,6 +15,8 @@ export const DRAWING_PAGE = {
   height: 800 as const,
 };
 
+export const DRAWING_PAGE_INSET = 20 as const;
+
 export const defaultDrawingObjectStyle: DrawingObjectStyle = {
   fill: '#ffffff',
   stroke: '#111827',
@@ -145,7 +147,7 @@ export function createBlankDrawingDocument(name = '未命名线束图', date = n
     createdAt: now,
     updatedAt: now,
     page: { ...DRAWING_PAGE },
-    objects: [titleBlock, createBomTable(), createRevisionTable(date), createTitleInformationTable(titleBlock.drawingNo, date)],
+    objects: [titleBlock, createBomTable(), createRevisionTable(date), createTitleInformationTable('', date)],
     titleBlock: {
       title: titleBlock.title,
       drawingNo: titleBlock.drawingNo,
@@ -174,6 +176,20 @@ function syncDocumentFields(document: DrawingDocument, object: DrawingObject): D
   return document;
 }
 
+function constrainDrawingTablePatch(object: DrawingObject, patch: Partial<DrawingObject>): Partial<DrawingObject> {
+  if (object.kind !== 'table' && object.kind !== 'bom-table' && object.kind !== 'wiring-table') return patch;
+
+  const width = Math.min(Math.max(8, patch.width ?? object.width), DRAWING_PAGE.width - DRAWING_PAGE_INSET * 2);
+  const height = Math.min(Math.max(8, patch.height ?? object.height), DRAWING_PAGE.height - DRAWING_PAGE_INSET * 2);
+  return {
+    ...patch,
+    x: Math.min(DRAWING_PAGE.width - DRAWING_PAGE_INSET - width, Math.max(DRAWING_PAGE_INSET, patch.x ?? object.x)),
+    y: Math.min(DRAWING_PAGE.height - DRAWING_PAGE_INSET - height, Math.max(DRAWING_PAGE_INSET, patch.y ?? object.y)),
+    width,
+    height,
+  };
+}
+
 export function patchDrawingObject(
   document: DrawingDocument,
   objectId: string,
@@ -183,13 +199,14 @@ export function patchDrawingObject(
   if (!current) return document;
   if (current.locked && patch.locked !== false) return document;
 
+  const constrainedPatch = constrainDrawingTablePatch(current, patch);
   let updatedObject: DrawingObject | undefined;
   const objects = document.objects.map((object) => {
     if (object.id !== objectId) return object;
     updatedObject = {
       ...object,
-      ...patch,
-      style: patch.style ? { ...object.style, ...patch.style } : object.style,
+      ...constrainedPatch,
+      style: constrainedPatch.style ? { ...object.style, ...constrainedPatch.style } : object.style,
     } as DrawingObject;
     return updatedObject;
   });

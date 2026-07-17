@@ -40,6 +40,16 @@ describe('standalone drawing generator', () => {
     }
   });
 
+  it('leaves the title block drawing number blank when no drawing number is provided', () => {
+    const drawing = createDrawingFromWizard({ ...draft(), drawingNo: '' });
+    const title = drawing.objects.find((object) => object.kind === 'table' && object.tableRole === 'title-block')!;
+
+    expect(title.kind).toBe('table');
+    if (title.kind !== 'table') return;
+    expect(title.rows[3].C4).toBe('');
+    expect(drawing.titleBlock.drawingNo).toBe('');
+  });
+
   it('blocks missing wire resources, invalid core lengths, and out-of-range targets', () => {
     const invalid = draft();
     invalid.wireResource = undefined;

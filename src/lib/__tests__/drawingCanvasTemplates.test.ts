@@ -68,8 +68,11 @@ describe('standalone drawing table templates', () => {
     expect(source).toContain('resolveDrawingTableCells');
     expect(source).toContain('data-table-cell={cell.key}');
     expect(source).toContain('getDrawingTableTextFontSize');
-    expect(source).toContain('whitespace-normal');
-    expect(source).toContain('break-all');
+    expect(source).toContain('whitespace-nowrap');
+    expect(source).not.toContain('whitespace-normal break-all');
+    expect(source).toContain('justify-center text-center');
+    expect(source).toContain('border-0 bg-white text-slate-900');
+    expect(source).toContain('boxShadow: `inset 0 0 0 1px ${object.style.stroke}`');
   });
 
   it('opens the semantic BOM table before local cell editing', () => {
@@ -117,6 +120,8 @@ describe('standalone drawing table templates', () => {
     expect(canvasSource).toContain('textOffsets');
     expect(canvasSource).toContain('overflow-visible');
     expect(rendererSource).toContain('object.textOffsets?.[key]');
+    expect(rendererSource).toContain("context.textAlign = centered ? 'center' : 'left'");
+    expect(rendererSource).toContain('x + cellWidth / 2');
     expect(rendererSource).not.toContain('context.clip()');
   });
 

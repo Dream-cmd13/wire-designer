@@ -46,11 +46,13 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   context.fillRect(0, 0, object.width, object.height);
   context.strokeRect(0, 0, object.width, object.height);
   context.fillStyle = object.style.color;
-  const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, cellWidth: number) => {
+  const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, cellWidth: number, centered = false) => {
     const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
     const fontSize = getDrawingTableTextFontSize(text, cellWidth, layout.textSizes[key]?.fontSize ?? fallbackSize);
     context.font = `${fontSize}px Arial`;
-    context.fillText(text, x + offset.x, y + offset.y, Math.max(1, cellWidth - 8));
+    context.textAlign = centered ? 'center' : 'left';
+    context.fillText(text, (centered ? x + cellWidth / 2 : x) + offset.x, y + offset.y, Math.max(1, cellWidth - 8));
+    context.textAlign = 'left';
   };
   if (layout.showTitleRow) {
     drawCellText('title', object.title, 6, layout.titleRowHeight - 6, object.style.fontSize, object.width);
@@ -77,7 +79,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
       context.stroke();
       return;
     }
-    drawCellText(cell.key, cell.value, cell.x + 5, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width);
+    drawCellText(cell.key, cell.value, cell.x, cell.y + cell.height - 6, cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1), cell.width, true);
   });
 }
 

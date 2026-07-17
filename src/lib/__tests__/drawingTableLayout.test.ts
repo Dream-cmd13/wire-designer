@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDrawingTableObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, createDrawingTableObject, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
 import { localToWorldPoint } from '@/lib/drawingTransform';
 import type { DrawingTableObject } from '@/types/drawing';
@@ -53,6 +53,15 @@ describe('drawing table layout', () => {
     expect(getDrawingTableTextFontSize('\u5de5\u7a0b\u56fe\u53f7', 48, 11)).toBeLessThan(11);
     expect(getDrawingTableTextFontSize('none', 26, 11)).toBeLessThan(11);
     expect(getDrawingTableTextFontSize('P1', 100, 12)).toBe(12);
+  });
+
+  it('keeps minimum column widths inside the stored table frame', () => {
+    const table = createBlankDrawingDocument('title layout').objects.find((object) => object.kind === 'table' && object.tableRole === 'title-block') as DrawingTableObject;
+    const layout = resolveDrawingTableLayout(table);
+    const cells = resolveDrawingTableCells(table);
+
+    expect(layout.columnWidths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(table.width);
+    expect(Math.max(...cells.map((cell) => cell.x + cell.width))).toBeCloseTo(table.width);
   });
 
   it('scales the whole table from the right edge while keeping the left edge fixed', () => {

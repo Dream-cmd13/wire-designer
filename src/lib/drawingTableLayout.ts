@@ -42,11 +42,29 @@ function normalizedSizes(values: number[] | undefined, length: number, fallback:
   return Array.from({ length }, (_, index) => Math.max(minimum, values?.[index] ?? fallback));
 }
 
+function fittedColumnWidths(
+  values: number[] | undefined,
+  length: number,
+  fallback: number,
+  minimum: number,
+  totalWidth: number,
+): number[] {
+  const width = Math.max(1, totalWidth);
+  const minimumWidth = Math.min(minimum, width / length);
+  const sizes = normalizedSizes(values, length, fallback, minimumWidth);
+  const flexibleSizes = sizes.map((size) => Math.max(0, size - minimumWidth));
+  const flexibleTotal = flexibleSizes.reduce((sum, size) => sum + size, 0);
+  const flexibleWidth = Math.max(0, width - minimumWidth * length);
+
+  if (flexibleTotal === 0) return Array.from({ length }, () => width / length);
+  return flexibleSizes.map((size) => minimumWidth + (size / flexibleTotal) * flexibleWidth);
+}
+
 export function resolveDrawingTableLayout(table: DrawingTableObject): ResolvedDrawingTableLayout {
   const columnCount = Math.max(1, table.columns.length);
   return {
     showTitleRow: table.showTitleRow ?? true,
-    columnWidths: normalizedSizes(table.columnWidths, columnCount, table.width / columnCount, MIN_TABLE_COLUMN_WIDTH),
+    columnWidths: fittedColumnWidths(table.columnWidths, columnCount, table.width / columnCount, MIN_TABLE_COLUMN_WIDTH, table.width),
     titleRowHeight: Math.max(MIN_TABLE_ROW_HEIGHT, table.titleRowHeight ?? DEFAULT_TITLE_ROW_HEIGHT),
     headerRowHeight: Math.max(MIN_TABLE_ROW_HEIGHT, table.headerRowHeight ?? DEFAULT_TABLE_ROW_HEIGHT),
     rowHeights: normalizedSizes(table.rowHeights, table.rows.length, DEFAULT_TABLE_ROW_HEIGHT, MIN_TABLE_ROW_HEIGHT),

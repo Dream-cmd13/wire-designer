@@ -34,7 +34,7 @@ function resizeWires(draft: DrawingWizardDraft, count: number) {
 }
 
 function initialDraft(): DrawingWizardDraft {
-  return { topology: { drawingType: 'internal', topology: 'double-end', wireKind: 'shielded' }, drawingNo: 'WH-NEW', totalLengthMm: 320, toleranceMm: 5, hasMold: false, heatShrink: '', wires: [defaultWire(0, 320)] };
+  return { topology: { drawingType: 'internal', topology: 'double-end', wireKind: 'shielded' }, drawingNo: '', totalLengthMm: 320, toleranceMm: 5, hasMold: false, heatShrink: '', wires: [defaultWire(0, 320)] };
 }
 
 export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTemplate }: StandaloneDrawingWizardProps) {

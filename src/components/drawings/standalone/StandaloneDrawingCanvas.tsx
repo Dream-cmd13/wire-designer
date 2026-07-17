@@ -7,6 +7,7 @@ import {
   sampleFreehandPoint,
   snapOrthogonalPoint,
 } from '@/lib/drawingCommands';
+import { DRAWING_PAGE_INSET } from '@/lib/drawingDocument';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
 import { getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
@@ -287,7 +288,7 @@ function DrawingTableLayer({
           }
           if (event.key === 'Escape') event.currentTarget.blur();
         }}
-        className={`flex h-full min-w-0 ${textSize ? '' : 'flex-1'} items-center overflow-hidden whitespace-normal break-all px-[0.25em] outline-none ${isEditing ? 'bg-blue-50' : ''} ${className}`}
+        className={`flex h-full min-w-0 ${textSize ? '' : 'flex-1'} items-center overflow-hidden whitespace-nowrap px-[0.25em] outline-none ${isEditing ? 'bg-blue-50' : ''} ${className}`}
         style={{
           transform: `translate(${(object.textOffsets?.[target.key]?.x ?? 0) * zoom}px, ${(object.textOffsets?.[target.key]?.y ?? 0) * zoom}px)`,
           width: textSize ? textSize.width * zoom : undefined,
@@ -321,12 +322,13 @@ function DrawingTableLayer({
   return (
     <div
       ref={tableRef}
-      className="absolute z-10 box-border overflow-visible border border-slate-900 bg-white text-slate-900"
+      className="absolute z-10 box-border overflow-visible border-0 bg-white text-slate-900"
       style={{
         left: object.x * zoom,
         top: object.y * zoom,
         width: object.width * zoom,
         height: object.height * zoom,
+        boxShadow: `inset 0 0 0 1px ${object.style.stroke}`,
         fontFamily: 'Arial, sans-serif',
         fontSize: object.style.fontSize * zoom,
         lineHeight: `${rowHeight}px`,
@@ -379,7 +381,7 @@ function DrawingTableLayer({
             ) : renderEditableText(
               cell.value,
               { key: cell.key, type: 'table-cell', rowIndex: cell.rowIndex, columnIndex: cell.columnIndex },
-              '',
+              'justify-center text-center',
               { width: cell.width, height: cell.height, fontSize: cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1) },
             )}
           </div>
@@ -638,7 +640,7 @@ export function StandaloneDrawingCanvas({
       return;
     }
     const patch = interaction.kind === 'move'
-      ? moveDrawingObject(interaction.object, { x: point.x - interaction.startPointer.x, y: point.y - interaction.startPointer.y }, { width: drawing.page.width, height: drawing.page.height, inset: 20 })
+      ? moveDrawingObject(interaction.object, { x: point.x - interaction.startPointer.x, y: point.y - interaction.startPointer.y }, { width: drawing.page.width, height: drawing.page.height, inset: DRAWING_PAGE_INSET })
       : interaction.kind === 'resize'
         ? resizeDrawingObject(interaction.object, interaction.handle, point, shiftKey).patch
         : rotateDrawingObject(interaction.object, interaction.startPointer, point, shiftKey);

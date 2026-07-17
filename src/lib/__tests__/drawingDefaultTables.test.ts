@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBlankDrawingDocument, formatDrawingDate } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, DRAWING_PAGE, DRAWING_PAGE_INSET, formatDrawingDate } from '@/lib/drawingDocument';
 
 describe('drawing workbench default tables', () => {
   it('formats the local creation date without explanatory text', () => {
@@ -40,6 +40,9 @@ describe('drawing workbench default tables', () => {
       { rowIndex: 3, columnIndex: 6, rowSpan: 1, columnSpan: 3 },
     ]);
     expect(title.projectionCellKey).toBe('row-2-column-0');
+    expect(title.x + title.width).toBeLessThanOrEqual(DRAWING_PAGE.width - DRAWING_PAGE_INSET);
+    expect(title.y + title.height).toBeLessThanOrEqual(DRAWING_PAGE.height - DRAWING_PAGE_INSET);
+    expect(title.rows[3].C4).toBe('');
     expect(title.rows[3]).toMatchObject({ C3: '工程图号', C6: '页次', C7: '1 of 1' });
   });
 });

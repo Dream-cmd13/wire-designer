@@ -56,6 +56,8 @@ describe('completed drawing export', () => {
     expect(svg).not.toContain('隐藏表名');
     expect(svg).toContain('data-table-cell="column-0"');
     expect(svg).toContain('width="70" height="20"');
+    expect(svg).toContain('text-anchor="middle"');
+    expect(svg).toContain('x="35"');
     expect(svg).toContain('>甲</text>');
   });
 
@@ -82,7 +84,7 @@ describe('completed drawing export', () => {
 
     expect(svg).not.toContain('<clipPath');
     expect(svg).toContain('fill="none"');
-    expect(svg).toContain('x="105"');
+    expect(svg).toContain('x="200"');
     expect(svg).toContain('>moved text</text>');
   });
 

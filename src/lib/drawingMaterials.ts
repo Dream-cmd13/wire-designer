@@ -1,5 +1,5 @@
 import { DEFAULT_TABLE_ROW_HEIGHT, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
-import { DRAWING_PAGE } from '@/lib/drawingDocument';
+import { DRAWING_PAGE, DRAWING_PAGE_INSET } from '@/lib/drawingDocument';
 import type { DrawingBomTableObject, DrawingTableRow } from '@/types/drawing';
 
 export type DrawingMaterialInput = {
@@ -9,8 +9,6 @@ export type DrawingMaterialInput = {
   quantity: string;
   note: string;
 };
-
-const DRAWING_PAGE_INSET = 20;
 
 export function renumberDrawingMaterials(rows: DrawingTableRow[]): DrawingTableRow[] {
   return rows.map((row, index) => ({ ...row, 序号: String(index + 1) }));
