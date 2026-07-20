@@ -10,7 +10,7 @@ import {
 import { DRAWING_PAGE_INSET } from '@/lib/drawingDocument';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
-import { getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { DRAWING_TABLE_LINE_COLOR, getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
@@ -328,7 +328,7 @@ function DrawingTableLayer({
         top: object.y * zoom,
         width: object.width * zoom,
         height: object.height * zoom,
-        boxShadow: `inset 0 0 0 1px ${object.style.stroke}`,
+        boxShadow: `inset 0 0 0 1px ${DRAWING_TABLE_LINE_COLOR}`,
         fontFamily: 'Arial, sans-serif',
         fontSize: object.style.fontSize * zoom,
         lineHeight: `${rowHeight}px`,
@@ -347,7 +347,7 @@ function DrawingTableLayer({
       onPointerMove={handleTablePointerMove}
       onPointerUp={endTableDrag}
     >
-      {layout.showTitleRow && <div className="box-border min-w-0 overflow-visible border-b border-slate-900 font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px` }}>
+      {layout.showTitleRow && <div className="box-border min-w-0 overflow-visible border-b font-semibold" style={{ height: titleHeight, lineHeight: `${titleHeight}px`, borderColor: DRAWING_TABLE_LINE_COLOR }}>
         {renderEditableText(object.title, { key: 'title', type: 'title' }, '', { width: object.width, height: layout.titleRowHeight, fontSize: object.style.fontSize })}
       </div>}
       <div className="grid font-semibold" style={{
@@ -360,8 +360,9 @@ function DrawingTableLayer({
             data-table-cell={cell.key}
             onPointerDown={(event) => selectCell(event, cell.rowIndex, cell.columnIndex, cell.key)}
             onDoubleClick={(event) => selectCellOnDoubleClick(event, cell.rowIndex, cell.columnIndex, cell.key)}
-            className={`box-border border-b border-r ${cell.header ? 'border-slate-900' : 'border-slate-300'}`}
+            className="box-border border-b border-r"
             style={{
+              borderColor: DRAWING_TABLE_LINE_COLOR,
               gridColumn: `${cell.columnIndex + 1} / span ${cell.columnSpan}`,
               gridRow: `${cell.rowIndex + 2} / span ${cell.rowSpan}`,
               fontSize: (cell.header ? object.style.fontSize : Math.max(8, object.style.fontSize - 1)) * zoom,

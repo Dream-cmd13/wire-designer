@@ -40,15 +40,13 @@ alter table public.wire_gauges enable row level security;
 alter table public.wire_types enable row level security;
 alter table public.catalog_items enable row level security;
 alter table public.catalog_item_images enable row level security;
-alter table public.connector_specs enable row level security;
-alter table public.connector_pins enable row level security;
-alter table public.wire_specs enable row level security;
-alter table public.wire_spec_cores enable row level security;
-alter table public.protective_sleeve_specs enable row level security;
-alter table public.overmold_specs enable row level security;
-alter table public.model_specs enable row level security;
-alter table public.accessory_specs enable row level security;
-alter table public.packaging_specs enable row level security;
+alter table public.connectors enable row level security;
+alter table public.wires enable row level security;
+alter table public.protective_sleeves enable row level security;
+alter table public.overmolds enable row level security;
+alter table public.models enable row level security;
+alter table public.accessories enable row level security;
+alter table public.packagings enable row level security;
 alter table public.drawing_templates enable row level security;
 alter table public.drawing_template_versions enable row level security;
 alter table public.drawing_common_phrases enable row level security;
@@ -56,8 +54,8 @@ alter table public.drawing_icons enable row level security;
 
 grant select on public.catalog_categories, public.catalog_items, public.catalog_item_images,
   public.wire_colors, public.wire_gauges, public.wire_types,
-  public.connector_specs, public.connector_pins, public.wire_specs, public.wire_spec_cores, public.protective_sleeve_specs,
-  public.overmold_specs, public.model_specs, public.accessory_specs, public.packaging_specs,
+  public.connectors, public.wires, public.protective_sleeves, public.overmolds,
+  public.models, public.accessories, public.packagings,
   public.drawing_templates, public.drawing_template_versions, public.drawing_common_phrases,
   public.drawing_icons to anon, authenticated;
 
@@ -67,27 +65,27 @@ select pg_temp.create_policy_if_missing('active wire gauges read', 'public', 'wi
 select pg_temp.create_policy_if_missing('active wire types read', 'public', 'wire_types', $policy$create policy "active wire types read" on public.wire_types for select to authenticated using (deleted_at is null)$policy$);
 select pg_temp.create_policy_if_missing('active catalog items read', 'public', 'catalog_items', $policy$create policy "active catalog items read" on public.catalog_items for select to authenticated using (deleted_at is null and lifecycle_status = 'active')$policy$);
 select pg_temp.create_policy_if_missing('active catalog images read', 'public', 'catalog_item_images', $policy$create policy "active catalog images read" on public.catalog_item_images for select to authenticated using (deleted_at is null and exists (select 1 from public.catalog_items i where i.id = item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('active connector specs read', 'public', 'connector_specs', $policy$create policy "active connector specs read" on public.connector_specs for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('active connector pins read', 'public', 'connector_pins', $policy$create policy "active connector pins read" on public.connector_pins for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('active wire specs read', 'public', 'wire_specs', $policy$create policy "active wire specs read" on public.wire_specs for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('active wire spec cores read', 'public', 'wire_spec_cores', $policy$create policy "active wire spec cores read" on public.wire_spec_cores for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('active sleeve specs read', 'public', 'protective_sleeve_specs', $policy$create policy "active sleeve specs read" on public.protective_sleeve_specs for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('active overmold specs read', 'public', 'overmold_specs', $policy$create policy "active overmold specs read" on public.overmold_specs for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('active connectors read', 'public', 'connectors', $policy$create policy "active connectors read" on public.connectors for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('active wires read', 'public', 'wires', $policy$create policy "active wires read" on public.wires for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('active protective sleeves read', 'public', 'protective_sleeves', $policy$create policy "active protective sleeves read" on public.protective_sleeves for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('active overmolds read', 'public', 'overmolds', $policy$create policy "active overmolds read" on public.overmolds for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('active models read', 'public', 'models', $policy$create policy "active models read" on public.models for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('active accessories read', 'public', 'accessories', $policy$create policy "active accessories read" on public.accessories for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('active packagings read', 'public', 'packagings', $policy$create policy "active packagings read" on public.packagings for select to authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+
 select pg_temp.create_policy_if_missing('public categories read', 'public', 'catalog_categories', $policy$create policy "public categories read" on public.catalog_categories for select to anon, authenticated using (deleted_at is null)$policy$);
 select pg_temp.create_policy_if_missing('public wire colors read', 'public', 'wire_colors', $policy$create policy "public wire colors read" on public.wire_colors for select to anon, authenticated using (deleted_at is null)$policy$);
 select pg_temp.create_policy_if_missing('public wire gauges read', 'public', 'wire_gauges', $policy$create policy "public wire gauges read" on public.wire_gauges for select to anon, authenticated using (deleted_at is null)$policy$);
 select pg_temp.create_policy_if_missing('public wire types read', 'public', 'wire_types', $policy$create policy "public wire types read" on public.wire_types for select to anon, authenticated using (deleted_at is null)$policy$);
 select pg_temp.create_policy_if_missing('public catalog items read', 'public', 'catalog_items', $policy$create policy "public catalog items read" on public.catalog_items for select to anon, authenticated using (deleted_at is null and lifecycle_status = 'active')$policy$);
 select pg_temp.create_policy_if_missing('public catalog images read', 'public', 'catalog_item_images', $policy$create policy "public catalog images read" on public.catalog_item_images for select to anon, authenticated using (deleted_at is null and exists (select 1 from public.catalog_items i where i.id = item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public connector specs read', 'public', 'connector_specs', $policy$create policy "public connector specs read" on public.connector_specs for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public connector pins read', 'public', 'connector_pins', $policy$create policy "public connector pins read" on public.connector_pins for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public wire specs read', 'public', 'wire_specs', $policy$create policy "public wire specs read" on public.wire_specs for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public wire spec cores read', 'public', 'wire_spec_cores', $policy$create policy "public wire spec cores read" on public.wire_spec_cores for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public sleeve specs read', 'public', 'protective_sleeve_specs', $policy$create policy "public sleeve specs read" on public.protective_sleeve_specs for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public overmold specs read', 'public', 'overmold_specs', $policy$create policy "public overmold specs read" on public.overmold_specs for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public model specs read', 'public', 'model_specs', $policy$create policy "public model specs read" on public.model_specs for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public accessory specs read', 'public', 'accessory_specs', $policy$create policy "public accessory specs read" on public.accessory_specs for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
-select pg_temp.create_policy_if_missing('public packaging specs read', 'public', 'packaging_specs', $policy$create policy "public packaging specs read" on public.packaging_specs for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('public connectors read', 'public', 'connectors', $policy$create policy "public connectors read" on public.connectors for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('public wires read', 'public', 'wires', $policy$create policy "public wires read" on public.wires for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('public protective sleeves read', 'public', 'protective_sleeves', $policy$create policy "public protective sleeves read" on public.protective_sleeves for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('public overmolds read', 'public', 'overmolds', $policy$create policy "public overmolds read" on public.overmolds for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('public models read', 'public', 'models', $policy$create policy "public models read" on public.models for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('public accessories read', 'public', 'accessories', $policy$create policy "public accessories read" on public.accessories for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
+select pg_temp.create_policy_if_missing('public packagings read', 'public', 'packagings', $policy$create policy "public packagings read" on public.packagings for select to anon, authenticated using (exists (select 1 from public.catalog_items i where i.id = catalog_item_id and i.deleted_at is null and i.lifecycle_status = 'active'))$policy$);
 select pg_temp.create_policy_if_missing('public drawing templates read', 'public', 'drawing_templates', $policy$create policy "public drawing templates read" on public.drawing_templates for select to anon, authenticated using (deleted_at is null and status = 'active')$policy$);
 select pg_temp.create_policy_if_missing('public drawing template versions read', 'public', 'drawing_template_versions', $policy$create policy "public drawing template versions read" on public.drawing_template_versions for select to anon, authenticated using (exists (select 1 from public.drawing_templates t where t.id = template_id and t.deleted_at is null and t.status = 'active'))$policy$);
 select pg_temp.create_policy_if_missing('public drawing phrases read', 'public', 'drawing_common_phrases', $policy$create policy "public drawing phrases read" on public.drawing_common_phrases for select to anon, authenticated using (deleted_at is null and is_active)$policy$);
@@ -98,9 +96,9 @@ declare table_name text;
 begin
   foreach table_name in array array[
     'catalog_categories', 'wire_colors', 'wire_gauges', 'wire_types', 'catalog_items',
-    'catalog_item_images', 'connector_specs', 'connector_pins', 'wire_specs', 'wire_spec_cores',
-    'protective_sleeve_specs', 'overmold_specs', 'model_specs', 'accessory_specs', 'packaging_specs',
-    'drawing_templates', 'drawing_template_versions', 'drawing_common_phrases', 'drawing_icons'
+    'catalog_item_images', 'connectors', 'wires', 'protective_sleeves', 'overmolds',
+    'models', 'accessories', 'packagings', 'drawing_templates', 'drawing_template_versions',
+    'drawing_common_phrases', 'drawing_icons'
   ] loop
     perform pg_temp.create_policy_if_missing(table_name || ' catalog admin write', 'public', table_name,
       format('create policy %I on public.%I for all to authenticated using ((select public.is_catalog_admin())) with check ((select public.is_catalog_admin()))', table_name || ' catalog admin write', table_name));

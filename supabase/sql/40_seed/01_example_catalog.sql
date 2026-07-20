@@ -32,20 +32,16 @@ insert into public.catalog_items (id, item_type, legacy_key, resource_name, mode
   ('20000000-0000-4000-8000-000000007004', 'overmold', 'demo-pvc-overmold', 'PVC overmold', 'DEMO-PVC-OM', '20000000-0000-4000-8000-000000000008', 'Example overmold', 10)
 on conflict do nothing;
 
-insert into public.connector_specs (catalog_item_id, series, connector_type, pin_count, row_count, pitch_mm, housing_material, contact_material) values
-  ('20000000-0000-4000-8000-000000007001', 'M12 A-coded', 'male', 4, 1, 1.0, 'PA66+GF', 'Brass nickel plated')
-on conflict do nothing;
+insert into public.connectors (catalog_item_id, series, connector_type, pin_count, row_count, pitch_mm, housing_material, contact_material, pin_labels) values
+  ('20000000-0000-4000-8000-000000007001', 'M12 A-coded', 'male', 4, 1, 1.0, 'PA66+GF', 'Brass nickel plated', '["1","2","3","4"]'::jsonb)
+on conflict (catalog_item_id) do update set
+  series = excluded.series, connector_type = excluded.connector_type, pin_count = excluded.pin_count,
+  row_count = excluded.row_count, pitch_mm = excluded.pitch_mm, housing_material = excluded.housing_material,
+  contact_material = excluded.contact_material, pin_labels = excluded.pin_labels, updated_at = now();
 
-insert into public.connector_pins (catalog_item_id, pin_number, pin_label, display_order) values
-  ('20000000-0000-4000-8000-000000007001', 1, '1', 10),
-  ('20000000-0000-4000-8000-000000007001', 2, '2', 20),
-  ('20000000-0000-4000-8000-000000007001', 3, '3', 30),
-  ('20000000-0000-4000-8000-000000007001', 4, '4', 40)
-on conflict do nothing;
-
-insert into public.wire_specs (
+insert into public.wires (
   catalog_item_id, core_count, jacket_material, jacket_color, jacket_color_id,
-  cable_type, wire_type_id, wire_gauge_awg, wire_gauge_id, is_shielded, rated_voltage_v
+  cable_type, wire_type_id, wire_gauge_awg, wire_gauge_id, is_shielded, rated_voltage_v, core_specs
 ) values (
   '20000000-0000-4000-8000-000000007002', 4, 'PVC', 'black',
   (select id from public.wire_colors where code = 'black' and deleted_at is null),
@@ -53,30 +49,21 @@ insert into public.wire_specs (
   (select id from public.wire_types where code = 'ul2464' and deleted_at is null),
   24,
   (select id from public.wire_gauges where awg = 24 and deleted_at is null),
-  false, 300
+  false, 300, '[{"coreIndex":1,"color":"red","displayOrder":10},{"coreIndex":2,"color":"black","displayOrder":20},{"coreIndex":3,"color":"white","displayOrder":30},{"coreIndex":4,"color":"green","displayOrder":40}]'::jsonb
 )
 on conflict (catalog_item_id) do update set
   core_count = excluded.core_count, jacket_material = excluded.jacket_material,
   jacket_color = excluded.jacket_color, jacket_color_id = excluded.jacket_color_id,
   cable_type = excluded.cable_type, wire_type_id = excluded.wire_type_id,
   wire_gauge_awg = excluded.wire_gauge_awg, wire_gauge_id = excluded.wire_gauge_id,
-  is_shielded = excluded.is_shielded, rated_voltage_v = excluded.rated_voltage_v, updated_at = now();
+  is_shielded = excluded.is_shielded, rated_voltage_v = excluded.rated_voltage_v,
+  core_specs = excluded.core_specs, updated_at = now();
 
-insert into public.wire_spec_cores (catalog_item_id, core_index, color_id, display_order)
-select item.id, source.core_index, color.id, source.core_index * 10
-from (values
-  (1, 'red'), (2, 'black'), (3, 'white'), (4, 'green')
-) as source(core_index, color_code)
-join public.catalog_items item on item.id = '20000000-0000-4000-8000-000000007002'
-join public.wire_colors color on color.code = source.color_code and color.deleted_at is null
-on conflict (catalog_item_id, core_index) do update set
-  color_id = excluded.color_id, display_order = excluded.display_order, updated_at = now();
-
-insert into public.protective_sleeve_specs (catalog_item_id, material, color, sleeve_type, shrink_ratio, inner_diameter_as_supplied_mm, inner_diameter_recovered_mm) values
+insert into public.protective_sleeves (catalog_item_id, material, color, sleeve_type, shrink_ratio, inner_diameter_as_supplied_mm, inner_diameter_recovered_mm) values
   ('20000000-0000-4000-8000-000000007003', 'polyolefin', 'black', 'heat-shrink', 2, 3, 1.5)
 on conflict do nothing;
 
-insert into public.overmold_specs (catalog_item_id, outer_material, inner_material, inner_material_optional, color, outer_hardness_shore) values
+insert into public.overmolds (catalog_item_id, outer_material, inner_material, inner_material_optional, color, outer_hardness_shore) values
   ('20000000-0000-4000-8000-000000007004', 'PVC', 'PE', true, 'black', '45P')
 on conflict do nothing;
 

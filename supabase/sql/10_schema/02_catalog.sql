@@ -1,4 +1,4 @@
--- Catalog data for connectors, wires, protective sleeves, and overmolds.
+-- Shared catalog identity, resource main tables, and catalog images.
 
 do $$ begin
   create type public.catalog_item_type as enum ('connector', 'wire', 'protective_sleeve', 'overmold', 'model', 'accessory', 'packaging');
@@ -79,6 +79,8 @@ create table if not exists public.wire_types (
   deleted_by uuid references public."user"(id) on delete set null
 );
 
+-- Common resource identity. Type-specific values live in one main table per
+-- item_type below; images use this table as their stable parent.
 create table if not exists public.catalog_items (
   id uuid primary key default gen_random_uuid(),
   item_type public.catalog_item_type not null,
@@ -122,7 +124,9 @@ create table if not exists public.catalog_item_images (
   deleted_by uuid references public."user"(id) on delete set null
 );
 
-create table if not exists public.connector_specs (
+-- Connector main table. Pin labels remain inline until per-pin electrical or
+-- mating metadata makes a dedicated pin table necessary.
+create table if not exists public.connectors (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   series text,
   connector_type text,
@@ -138,6 +142,7 @@ create table if not exists public.connector_specs (
   housing_material text,
   contact_material text,
   nut_material text,
+  pin_labels jsonb not null default '[]'::jsonb check (jsonb_typeof(pin_labels) = 'array'),
   operating_temperature_min_c numeric(8, 2),
   operating_temperature_max_c numeric(8, 2),
   rohs_status text,
@@ -150,26 +155,12 @@ create table if not exists public.connector_specs (
   check (operating_temperature_max_c is null or operating_temperature_min_c is null or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
-create table if not exists public.connector_pins (
-  id uuid primary key default gen_random_uuid(),
-  catalog_item_id uuid not null references public.catalog_items(id) on delete cascade,
-  pin_number integer not null check (pin_number > 0),
-  pin_label text not null check (length(btrim(pin_label)) between 1 and 100),
-  display_order integer not null check (display_order >= 0),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  created_by uuid references public."user"(id) on delete set null,
-  updated_by uuid references public."user"(id) on delete set null,
-  unique (catalog_item_id, pin_number),
-  unique (catalog_item_id, display_order)
-);
-
-create table if not exists public.wire_specs (
+-- Wire main table. Core metadata is an ordered JSONB array so a multicore
+-- wire remains one row while preserving color/signal information.
+create table if not exists public.wires (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   spool_length_m numeric(18, 3) check (spool_length_m is null or spool_length_m > 0),
   core_count integer check (core_count is null or core_count > 0),
-  -- The *_id columns are canonical references; legacy text/numeric fields remain
-  -- temporarily for backwards-compatible reads and migration of old rows.
   wire_type_id uuid references public.wire_types(id) on delete restrict,
   wire_gauge_id uuid references public.wire_gauges(id) on delete restrict,
   conductor_color_id uuid references public.wire_colors(id) on delete restrict,
@@ -189,6 +180,7 @@ create table if not exists public.wire_specs (
   rated_voltage_v numeric(12, 2) check (rated_voltage_v is null or rated_voltage_v > 0),
   operating_temperature_min_c numeric(8, 2),
   operating_temperature_max_c numeric(8, 2),
+  core_specs jsonb not null default '[]'::jsonb check (jsonb_typeof(core_specs) = 'array'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   created_by uuid references public."user"(id) on delete set null,
@@ -196,23 +188,7 @@ create table if not exists public.wire_specs (
   check (operating_temperature_max_c is null or operating_temperature_min_c is null or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
--- Per-core data for multicore cables. A wire catalog item may have zero or more
--- rows here; core_index is stable within one wire specification.
-create table if not exists public.wire_spec_cores (
-  id uuid primary key default gen_random_uuid(),
-  catalog_item_id uuid not null references public.wire_specs(catalog_item_id) on delete cascade,
-  core_index integer not null check (core_index > 0),
-  color_id uuid not null references public.wire_colors(id) on delete restrict,
-  signal_name text,
-  display_order integer not null default 0 check (display_order >= 0),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  created_by uuid references public."user"(id) on delete set null,
-  updated_by uuid references public."user"(id) on delete set null,
-  unique (catalog_item_id, core_index)
-);
-
-create table if not exists public.protective_sleeve_specs (
+create table if not exists public.protective_sleeves (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   material text,
   color text,
@@ -233,7 +209,7 @@ create table if not exists public.protective_sleeve_specs (
   check (operating_temperature_max_c is null or operating_temperature_min_c is null or operating_temperature_max_c >= operating_temperature_min_c)
 );
 
-create table if not exists public.overmold_specs (
+create table if not exists public.overmolds (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   outer_material text,
   inner_material text,
@@ -256,18 +232,20 @@ create table if not exists public.overmold_specs (
   check (compatible_wire_diameter_max_mm is null or compatible_wire_diameter_min_mm is null or compatible_wire_diameter_max_mm >= compatible_wire_diameter_min_mm)
 );
 
-create table if not exists public.model_specs (
+create table if not exists public.models (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   model_kind text not null,
   default_width_mm numeric(12, 3) not null check (default_width_mm > 0),
   default_height_mm numeric(12, 3) not null check (default_height_mm > 0),
   default_orientation text not null default 'none',
-  model_parameters jsonb not null default '{}'::jsonb,
+  model_parameters jsonb not null default '{}'::jsonb check (jsonb_typeof(model_parameters) = 'object'),
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null
 );
 
-create table if not exists public.accessory_specs (
+create table if not exists public.accessories (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   accessory_kind text not null,
   specification text not null,
@@ -275,15 +253,19 @@ create table if not exists public.accessory_specs (
   color text,
   unit text not null default 'PCS',
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null
 );
 
-create table if not exists public.packaging_specs (
+create table if not exists public.packagings (
   catalog_item_id uuid primary key references public.catalog_items(id) on delete cascade,
   packaging_kind text not null,
   specification text not null,
   unit text not null default 'PCS',
   instructions text,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  created_by uuid references public."user"(id) on delete set null,
+  updated_by uuid references public."user"(id) on delete set null
 );

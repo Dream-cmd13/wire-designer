@@ -37,6 +37,7 @@ export const DEFAULT_TABLE_ROW_HEIGHT = 18;
 export const MIN_TABLE_COLUMN_WIDTH = 28;
 export const MIN_TABLE_ROW_HEIGHT = 16;
 export const MIN_TABLE_FONT_SIZE = 8;
+export const DRAWING_TABLE_LINE_COLOR = '#181818' as const;
 
 function normalizedSizes(values: number[] | undefined, length: number, fallback: number, minimum: number): number[] {
   return Array.from({ length }, (_, index) => Math.max(minimum, values?.[index] ?? fallback));

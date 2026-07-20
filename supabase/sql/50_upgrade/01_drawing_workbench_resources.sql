@@ -1,4 +1,6 @@
--- Non-destructive upgrade for public drawing workbench resources.
+-- Legacy non-destructive upgrade for public drawing workbench resources.
+-- For databases created with the old *_specs schema, run this file first and
+-- then run 03_catalog_resource_main_tables.sql to finish the table migration.
 
 alter type public.catalog_item_type add value if not exists 'model';
 alter type public.catalog_item_type add value if not exists 'accessory';

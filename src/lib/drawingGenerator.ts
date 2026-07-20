@@ -1,4 +1,5 @@
-import { createBlankDrawingDocument, createDrawingId, createWiringTable, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, createDrawingId, createWiringTable, defaultDrawingObjectStyle, DRAWING_PAGE_INSET } from '@/lib/drawingDocument';
+import { resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import type {
   DrawingDocument,
   DrawingConnectorResource,
@@ -159,7 +160,23 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       };
     }
     if (object.kind === 'bom-table') {
-      return { ...object, rows: drawingBomRows(draft, left, right) };
+      const rows = drawingBomRows(draft, left, right);
+      const tableWithRows = {
+        ...object,
+        rows,
+        rowHeights: rows.map(() => 18),
+      };
+      const layout = resolveDrawingTableLayout(tableWithRows);
+      const height = (layout.showTitleRow ? layout.titleRowHeight : 0)
+        + layout.headerRowHeight
+        + layout.rowHeights.reduce((sum, rowHeight) => sum + rowHeight, 0);
+
+      return {
+        ...tableWithRows,
+        rowHeights: layout.rowHeights,
+        height,
+        y: base.page.height - DRAWING_PAGE_INSET - height,
+      };
     }
     if (object.kind !== 'table' || object.tableRole !== 'title-block') return object;
     return {

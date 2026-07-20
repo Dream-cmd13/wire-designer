@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { DRAWING_PAGE_INSET } from '@/lib/drawingDocument';
 import {
   applyDrawingWireBatch, countDrawingMaterialKinds, createDrawingFromWizard,
   validateStandaloneDrawingWizard,
 } from '@/lib/drawingGenerator';
+import { resolveDrawingTableCells } from '@/lib/drawingTableLayout';
 import type { DrawingCatalogResource, DrawingConnectorResource, DrawingWizardDraft } from '@/types/drawing';
 
 const connector: DrawingConnectorResource = { id: 'xh-4', name: 'XH2.54-4P', gender: 'female', pinCount: 4, category: '连接器', series: 'XH2.54', rowCount: 1, pitchMm: 2.54, scope: 'public' };
@@ -38,6 +40,22 @@ describe('standalone drawing generator', () => {
       expect(bom.rows.find((row) => row['物料名称/规格'] === connector.name)?.用量).toBe('2');
       expect(bom.rows.find((row) => row['物料名称/规格'] === wireResource.name)).toMatchObject({ 单位: 'M', 用量: '1.28' });
     }
+  });
+
+  it('anchors generated BOM rows to the drawing frame bottom', () => {
+    const drawing = createDrawingFromWizard(draft());
+    const bom = drawing.objects.find((object) => object.kind === 'bom-table');
+
+    expect(bom?.kind).toBe('bom-table');
+    if (bom?.kind !== 'bom-table') return;
+
+    expect(bom.rows).toHaveLength(4);
+    expect(bom.rowHeights).toEqual([18, 18, 18, 18]);
+    expect(bom.height).toBe(96);
+    expect(bom.y + bom.height).toBe(drawing.page.height - DRAWING_PAGE_INSET);
+
+    const renderedBottom = Math.max(...resolveDrawingTableCells(bom).map((cell) => cell.y + cell.height));
+    expect(renderedBottom).toBe(bom.height);
   });
 
   it('leaves the title block drawing number blank when no drawing number is provided', () => {

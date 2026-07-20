@@ -21,48 +21,44 @@ insert into public.catalog_items (id, item_type, legacy_key, resource_name, mode
   ('30000000-0000-4000-8000-000000001008', 'packaging', 'coil-bag', '盘绕入袋', 'PKG-COIL-BAG', '30000000-0000-4000-8000-000000000005', '扎带固定后装PE袋', 170)
 on conflict (id) do update set resource_name = excluded.resource_name, model = excluded.model, short_description = excluded.short_description, display_order = excluded.display_order, updated_at = now();
 
-insert into public.connector_specs (catalog_item_id, series, connector_type, pin_count, row_count, pitch_mm, color) values
-  ('30000000-0000-4000-8000-000000001001', 'XH2.54', 'female', 4, 1, 2.54, '白色'),
-  ('30000000-0000-4000-8000-000000001002', 'XH2.54', 'male', 4, 1, 2.54, '白色')
-on conflict (catalog_item_id) do update set series = excluded.series, connector_type = excluded.connector_type, pin_count = excluded.pin_count, row_count = excluded.row_count, pitch_mm = excluded.pitch_mm;
+insert into public.connectors (catalog_item_id, series, connector_type, pin_count, row_count, pitch_mm, color, pin_labels) values
+  ('30000000-0000-4000-8000-000000001001', 'XH2.54', 'female', 4, 1, 2.54, '白色', '["1","2","3","4"]'::jsonb),
+  ('30000000-0000-4000-8000-000000001002', 'XH2.54', 'male', 4, 1, 2.54, '白色', '["1","2","3","4"]'::jsonb)
+on conflict (catalog_item_id) do update set series = excluded.series, connector_type = excluded.connector_type, pin_count = excluded.pin_count, row_count = excluded.row_count, pitch_mm = excluded.pitch_mm, color = excluded.color, pin_labels = excluded.pin_labels, updated_at = now();
 
-insert into public.wire_specs (
+insert into public.wires (
   catalog_item_id, core_count, is_shielded, cable_type, wire_type_id,
-  wire_gauge_awg, wire_gauge_id, insulation_material, rated_voltage_v
+  wire_gauge_awg, wire_gauge_id, insulation_material, rated_voltage_v, core_specs
 ) values
   (
     '30000000-0000-4000-8000-000000001003', 1, false, 'electronic',
     (select id from public.wire_types where code = 'ul1007' and deleted_at is null),
-    24, (select id from public.wire_gauges where awg = 24 and deleted_at is null), 'PVC', 300
+    24, (select id from public.wire_gauges where awg = 24 and deleted_at is null), 'PVC', 300,
+    '[{"coreIndex":1,"displayOrder":10}]'::jsonb
   ),
   (
     '30000000-0000-4000-8000-000000001004', 4, true, 'shielded', null,
-    24, (select id from public.wire_gauges where awg = 24 and deleted_at is null), 'PVC', 300
+    24, (select id from public.wire_gauges where awg = 24 and deleted_at is null), 'PVC', 300,
+    '[{"coreIndex":1,"color":"red","displayOrder":10},{"coreIndex":2,"color":"black","displayOrder":20},{"coreIndex":3,"color":"white","displayOrder":30},{"coreIndex":4,"color":"green","displayOrder":40}]'::jsonb
   )
 on conflict (catalog_item_id) do update set
   core_count = excluded.core_count, is_shielded = excluded.is_shielded,
   cable_type = excluded.cable_type, wire_type_id = excluded.wire_type_id,
   wire_gauge_awg = excluded.wire_gauge_awg, wire_gauge_id = excluded.wire_gauge_id,
   insulation_material = excluded.insulation_material, rated_voltage_v = excluded.rated_voltage_v,
+  core_specs = excluded.core_specs,
   updated_at = now();
 
-insert into public.wire_spec_cores (catalog_item_id, core_index, color_id, display_order)
-select '30000000-0000-4000-8000-000000001004', source.core_index, color.id, source.core_index * 10
-from (values (1, 'red'), (2, 'black'), (3, 'white'), (4, 'green')) as source(core_index, color_code)
-join public.wire_colors color on color.code = source.color_code and color.deleted_at is null
-on conflict (catalog_item_id, core_index) do update set
-  color_id = excluded.color_id, display_order = excluded.display_order, updated_at = now();
-
-insert into public.model_specs (catalog_item_id, model_kind, default_width_mm, default_height_mm, default_orientation, model_parameters) values
+insert into public.models (catalog_item_id, model_kind, default_width_mm, default_height_mm, default_orientation, model_parameters) values
   ('30000000-0000-4000-8000-000000001005', 'overmold', 32, 14, 'right', '{"connector":"USB-A"}'::jsonb)
 on conflict (catalog_item_id) do update set model_kind = excluded.model_kind, default_width_mm = excluded.default_width_mm, default_height_mm = excluded.default_height_mm, model_parameters = excluded.model_parameters;
 
-insert into public.accessory_specs (catalog_item_id, accessory_kind, specification, material, color, unit) values
+insert into public.accessories (catalog_item_id, accessory_kind, specification, material, color, unit) values
   ('30000000-0000-4000-8000-000000001006', 'heat-shrink', 'Φ6mm 2:1', 'PE', '黑色', 'M'),
   ('30000000-0000-4000-8000-000000001007', 'label', '20x8mm', 'PET', '白色', 'PCS')
 on conflict (catalog_item_id) do update set accessory_kind = excluded.accessory_kind, specification = excluded.specification, material = excluded.material, color = excluded.color, unit = excluded.unit;
 
-insert into public.packaging_specs (catalog_item_id, packaging_kind, specification, unit, instructions) values
+insert into public.packagings (catalog_item_id, packaging_kind, specification, unit, instructions) values
   ('30000000-0000-4000-8000-000000001008', 'bag', '300x200mm PE袋', 'PCS', '线束盘绕后用扎带固定并装袋')
 on conflict (catalog_item_id) do update set packaging_kind = excluded.packaging_kind, specification = excluded.specification, unit = excluded.unit, instructions = excluded.instructions;
 

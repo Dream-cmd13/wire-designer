@@ -88,7 +88,7 @@ on conflict (id) do update set
   model = excluded.model, manufacturer_name = excluded.manufacturer_name, category_id = excluded.category_id,
   short_description = excluded.short_description, display_order = excluded.display_order, updated_at = now();
 
-insert into public.connector_specs
+insert into public.connectors
   (catalog_item_id, series, connector_type, pin_count, row_count, pitch_mm, housing_material, contact_material, nut_material)
 select item.id, source.series, source.connector_type, source.pin_count, source.row_count, source.pitch_mm,
   source.housing_material, source.contact_material, source.nut_material
@@ -129,14 +129,15 @@ with pin_sets(legacy_key, labels) as (values
   ('m12-4', array['1','2','3','4']), ('m12-5', array['1','2','3','4','5']), ('m12a04-07-093', array['1','2','3','4']),
   ('deutsch-dt-2', array['A','B']), ('deutsch-dt-4', array['A','B','C','D']), ('deutsch-dt-6', array['A','B','C','D','E','F'])
 )
-insert into public.connector_pins (catalog_item_id, pin_number, pin_label, display_order)
-select item.id, pin.ordinality::integer, pin.label, (pin.ordinality * 10)::integer
+update public.connectors connector
+set pin_labels = to_jsonb(source.labels), updated_at = now()
 from pin_sets source
-join public.catalog_items item on item.item_type = 'connector' and item.legacy_key = source.legacy_key and item.deleted_at is null
-cross join lateral unnest(source.labels) with ordinality as pin(label, ordinality)
-on conflict (catalog_item_id, pin_number) do update set pin_label = excluded.pin_label, display_order = excluded.display_order, updated_at = now();
+join public.catalog_items item on item.id = connector.catalog_item_id
+where item.item_type = 'connector'
+  and item.legacy_key = source.legacy_key
+  and item.deleted_at is null;
 
-insert into public.overmold_specs (catalog_item_id, outer_material, inner_material, inner_material_optional, color, outer_hardness_shore)
+insert into public.overmolds (catalog_item_id, outer_material, inner_material, inner_material_optional, color, outer_hardness_shore)
 select id, '黑色PVC胶料', '低密度透明PE胶料', true, '黑色', '45P'
 from public.catalog_items where item_type = 'overmold' and legacy_key = 'pvc-45p-pe' and deleted_at is null
 on conflict (catalog_item_id) do update set

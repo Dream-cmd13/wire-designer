@@ -1,3 +1,4 @@
+import { DRAWING_TABLE_LINE_COLOR } from '@/lib/drawingTableLayout';
 import type { HarnessConfig, ProductionDrawingObject } from '@/types/harness';
 
 interface DrawingCanvasProps {
@@ -15,6 +16,8 @@ function styleFromObject(object: ProductionDrawingObject) {
     height: `${(object.height / 800) * 100}%`,
   };
 }
+
+const drawingTableLineStyle = { borderColor: DRAWING_TABLE_LINE_COLOR };
 
 function objectFrameClass(object: ProductionDrawingObject, selected: boolean, extra = '') {
   const editable = object.kind === 'wire-bundle' ? '' : 'cursor-pointer';
@@ -150,18 +153,18 @@ function DrawingObjectView({
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') onSelect();
         }}
-        className={objectFrameClass(object, selected, 'absolute border border-slate-900 bg-white text-[9px] text-slate-900')}
-        style={styleFromObject(object)}
+        className={objectFrameClass(object, selected, 'absolute border bg-white text-[9px] text-slate-900')}
+        style={{ ...styleFromObject(object), ...drawingTableLineStyle }}
       >
-        <div className="grid grid-cols-[38px_1fr_48px] border-b border-slate-900 font-semibold">
-          <span className="border-r border-slate-900 px-1 py-1">序号</span>
-          <span className="border-r border-slate-900 px-1 py-1">物料描述</span>
+        <div className="grid grid-cols-[38px_1fr_48px] border-b font-semibold" style={drawingTableLineStyle}>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>序号</span>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>物料描述</span>
           <span className="px-1 py-1">数量</span>
         </div>
         {object.rows.slice(0, 5).map((row) => (
-          <div key={row.item} className="grid grid-cols-[38px_1fr_48px] border-b border-slate-200">
-            <span className="border-r border-slate-200 px-1 py-1">{row.item}</span>
-            <span className="truncate border-r border-slate-200 px-1 py-1">{row.description}</span>
+          <div key={row.item} className="grid grid-cols-[38px_1fr_48px] border-b" style={drawingTableLineStyle}>
+            <span className="border-r px-1 py-1" style={drawingTableLineStyle}>{row.item}</span>
+            <span className="truncate border-r px-1 py-1" style={drawingTableLineStyle}>{row.description}</span>
             <span className="px-1 py-1">{row.quantity}</span>
           </div>
         ))}
@@ -181,29 +184,29 @@ function DrawingObjectView({
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') onSelect();
         }}
-        className={objectFrameClass(object, selected, 'absolute border border-slate-900 bg-white text-[8px] text-slate-900')}
-        style={styleFromObject(object)}
+        className={objectFrameClass(object, selected, 'absolute border bg-white text-[8px] text-slate-900')}
+        style={{ ...styleFromObject(object), ...drawingTableLineStyle }}
       >
-        <div className="grid grid-cols-[28px_52px_1fr_48px_44px_44px_52px] border-b border-slate-900 font-semibold">
-          <span className="border-r border-slate-900 px-1 py-1">No.</span>
-          <span className="border-r border-slate-900 px-1 py-1">颜色</span>
-          <span className="border-r border-slate-900 px-1 py-1">线号</span>
-          <span className="border-r border-slate-900 px-1 py-1">接线</span>
-          <span className="border-r border-slate-900 px-1 py-1">始端</span>
-          <span className="border-r border-slate-900 px-1 py-1">末端</span>
+        <div className="grid grid-cols-[28px_52px_1fr_48px_44px_44px_52px] border-b font-semibold" style={drawingTableLineStyle}>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>No.</span>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>颜色</span>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>线号</span>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>接线</span>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>始端</span>
+          <span className="border-r px-1 py-1" style={drawingTableLineStyle}>末端</span>
           <span className="px-1 py-1">长度</span>
         </div>
         {object.rows.slice(0, 4).map((row) => (
-          <div key={row.item} className="grid grid-cols-[28px_52px_1fr_48px_44px_44px_52px] border-b border-slate-200">
-            <span className="border-r border-slate-200 px-1 py-1">{row.item}</span>
-            <span className="flex min-w-0 items-center gap-1 border-r border-slate-200 px-1 py-1">
-              <span className="h-2 w-2 shrink-0 rounded-full border border-slate-300" style={{ backgroundColor: row.color }} />
+          <div key={row.item} className="grid grid-cols-[28px_52px_1fr_48px_44px_44px_52px] border-b" style={drawingTableLineStyle}>
+            <span className="border-r px-1 py-1" style={drawingTableLineStyle}>{row.item}</span>
+            <span className="flex min-w-0 items-center gap-1 border-r px-1 py-1" style={drawingTableLineStyle}>
+              <span className="h-2 w-2 shrink-0 rounded-full border" style={{ ...drawingTableLineStyle, backgroundColor: row.color }} />
               <span className="truncate">{row.color}</span>
             </span>
-            <span className="truncate border-r border-slate-200 px-1 py-1">{row.signalName}</span>
-            <span className="truncate border-r border-slate-200 px-1 py-1">{row.connectionNo}</span>
-            <span className="border-r border-slate-200 px-1 py-1">{row.startPin ?? '-'}</span>
-            <span className="border-r border-slate-200 px-1 py-1">{row.endPin ?? '-'}</span>
+            <span className="truncate border-r px-1 py-1" style={drawingTableLineStyle}>{row.signalName}</span>
+            <span className="truncate border-r px-1 py-1" style={drawingTableLineStyle}>{row.connectionNo}</span>
+            <span className="border-r px-1 py-1" style={drawingTableLineStyle}>{row.startPin ?? '-'}</span>
+            <span className="border-r px-1 py-1" style={drawingTableLineStyle}>{row.endPin ?? '-'}</span>
             <span className="px-1 py-1">{row.lengthMm ? `${row.lengthMm}mm` : '-'}</span>
           </div>
         ))}
@@ -223,10 +226,10 @@ function DrawingObjectView({
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') onSelect();
         }}
-        className={objectFrameClass(object, selected, 'absolute grid grid-cols-[1fr_80px] border border-slate-900 bg-white text-[10px] text-slate-900')}
-        style={styleFromObject(object)}
+        className={objectFrameClass(object, selected, 'absolute grid grid-cols-[1fr_80px] border bg-white text-[10px] text-slate-900')}
+        style={{ ...styleFromObject(object), ...drawingTableLineStyle }}
       >
-        <div className="border-r border-slate-900 p-2">
+        <div className="border-r p-2" style={drawingTableLineStyle}>
           <div className="font-semibold">{object.title}</div>
           <div className="mt-1">图号：{object.drawingNo}</div>
         </div>

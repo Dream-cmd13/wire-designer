@@ -1,6 +1,6 @@
 import type { DrawingDocument, DrawingObject, DrawingPoint } from '@/types/drawing';
 import { containsDrawingPoint } from '@/lib/drawingTransform';
-import { getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { DRAWING_TABLE_LINE_COLOR, getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getEditableDrawingTextRuns, type EditableDrawingTextField } from '@/lib/drawingTextLayout';
 
 function drawEditableText(
@@ -42,6 +42,7 @@ function drawPolyline(context: CanvasRenderingContext2D, points: DrawingPoint[],
 
 function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>) {
   const layout = resolveDrawingTableLayout(object);
+  context.strokeStyle = DRAWING_TABLE_LINE_COLOR;
   context.fillStyle = object.style.fill;
   context.fillRect(0, 0, object.width, object.height);
   context.strokeRect(0, 0, object.width, object.height);

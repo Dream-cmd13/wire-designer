@@ -72,7 +72,7 @@ describe('standalone drawing table templates', () => {
     expect(source).not.toContain('whitespace-normal break-all');
     expect(source).toContain('justify-center text-center');
     expect(source).toContain('border-0 bg-white text-slate-900');
-    expect(source).toContain('boxShadow: `inset 0 0 0 1px ${object.style.stroke}`');
+    expect(source).toContain('boxShadow: `inset 0 0 0 1px ${DRAWING_TABLE_LINE_COLOR}`');
   });
 
   it('opens the semantic BOM table before local cell editing', () => {
