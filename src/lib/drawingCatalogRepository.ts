@@ -52,26 +52,25 @@ function resourceType(value: unknown): DrawingCatalogResourceType | null {
 type CatalogResourceWithStoragePath = DrawingCatalogResource & { storagePath?: string };
 
 function mapCatalogRow(row: UnknownRow): CatalogResourceWithStoragePath | null {
-  const type = resourceType(row.item_type);
+  const type = resourceType(row.resource_type);
   if (!type) return null;
-  const connector = record(row.connector_specs);
-  const wire = record(row.wire_specs);
-  const model = record(row.model_specs);
-  const accessory = record(row.accessory_specs);
-  const packaging = record(row.packaging_specs);
-  const category = record(row.catalog_categories);
-  const images = Array.isArray(row.catalog_item_images) ? row.catalog_item_images.map(record) : [];
+  const connector = record(row.connectors);
+  const wire = record(row.wires);
+  const model = record(row.models);
+  const accessory = record(row.accessories);
+  const packaging = record(row.packagings);
+  const images = Array.isArray(row.resource_item_images) ? row.resource_item_images.map(record) : [];
   const primaryImage = images.sort((left, right) => Number(Boolean(right.is_primary)) - Number(Boolean(left.is_primary)))[0];
   const connectorType = text(connector.connector_type);
   const gender = connectorType === 'male' || connectorType === 'female' || connectorType === 'receptacle' ? connectorType : undefined;
-  const specification = text(accessory.specification) || text(packaging.specification) || text(wire.cable_type) || text(model.model_kind);
+  const specification = text(accessory.specification) || text(packaging.specification) || text(wire.wire_kind) || text(model.model_kind);
   return {
     id: text(row.legacy_key, text(row.id)),
-    catalogItemId: text(row.id),
+    resourceItemId: text(row.id),
     resourceType: type,
     name: text(row.resource_name),
     model: text(row.model),
-    category: text(category.name),
+    resourceGroup: text(row.resource_group),
     storagePath: text(primaryImage?.storage_path) || undefined,
     gender,
     series: text(connector.series) || undefined,
@@ -92,12 +91,12 @@ export function filterDrawingCatalogResources(resources: DrawingCatalogResource[
   return resources.filter((resource) => {
     if (filters.resourceType && resource.resourceType !== filters.resourceType) return false;
     if (filters.gender && resource.gender !== filters.gender) return false;
-    if (filters.category && resource.category !== filters.category) return false;
+    if (filters.resourceGroup && resource.resourceGroup !== filters.resourceGroup) return false;
     if (filters.series && resource.series !== filters.series) return false;
     if (filters.pinCount !== undefined && resource.pinCount !== filters.pinCount) return false;
     if (filters.rowCount !== undefined && resource.rowCount !== filters.rowCount) return false;
     if (filters.pitchMm !== undefined && resource.pitchMm !== filters.pitchMm) return false;
-    return !query || normalized(`${resource.name} ${resource.model} ${resource.series ?? ''} ${resource.category}`).includes(query);
+    return !query || normalized(`${resource.name} ${resource.model} ${resource.series ?? ''} ${resource.resourceGroup}`).includes(query);
   });
 }
 
@@ -177,7 +176,7 @@ export class DrawingCatalogRepository {
   }
 
   async listResources(filters: DrawingCatalogFilters = {}): Promise<DrawingCatalogResource[]> {
-    const rows = await this.rows('catalog_items', 'id,legacy_key,item_type,resource_name,model,short_description,display_order,lifecycle_status,deleted_at,catalog_categories(name),connector_specs(connector_type,series,pin_count,row_count,pitch_mm),wire_specs(cable_type),model_specs(model_kind),accessory_specs(specification,unit),packaging_specs(specification,unit),catalog_item_images(storage_path,is_primary,display_order)');
+    const rows = await this.rows('resource_items', 'id,legacy_key,resource_type,resource_group,resource_name,model,short_description,display_order,lifecycle_status,deleted_at,connectors(connector_type,series,pin_count,row_count,pitch_mm),wires(wire_kind),models(model_kind),accessories(specification,unit),packagings(specification,unit),resource_item_images(storage_path,is_primary,display_order)');
     const mapped = rows
       .filter((row) => row.lifecycle_status === 'active' && !row.deleted_at)
       .map(mapCatalogRow)

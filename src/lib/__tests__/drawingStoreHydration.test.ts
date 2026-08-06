@@ -1,28 +1,13 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { hydrateDrawingStore, useDrawingStore } from '@/stores/drawingStore';
+import { drawingDocumentRepository } from '@/repositories/drawingDocumentRepository';
 
 describe('drawing store hydration', () => {
-  afterEach(() => {
-    Reflect.deleteProperty(globalThis, 'localStorage');
-    Reflect.deleteProperty(globalThis, 'window');
-    vi.resetModules();
+  beforeEach(() => {
+    useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
   });
 
-  it('settles rejected hydration and recovers to an empty in-memory library', async () => {
-    const storage = {
-      getItem: vi.fn(() => Promise.reject(new Error('storage read failed'))),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    };
-    Object.defineProperty(globalThis, 'localStorage', {
-      configurable: true,
-      value: storage,
-    });
-    Object.defineProperty(globalThis, 'window', {
-      configurable: true,
-      value: { localStorage: storage },
-    });
-    const { hydrateDrawingStore, useDrawingStore } = await import('@/stores/drawingStore');
-    expect(useDrawingStore.persist).toBeDefined();
+  it('clears stale in-memory documents for anonymous sessions', async () => {
     useDrawingStore.setState({
       documents: { stale: { id: 'stale' } as never },
       activeDocumentId: 'stale',
@@ -30,31 +15,22 @@ describe('drawing store hydration', () => {
     });
 
     await expect(hydrateDrawingStore()).resolves.toBe('recovered');
-
     expect(useDrawingStore.getState()).toMatchObject({
       documents: {},
       activeDocumentId: null,
       saveState: 'saved',
     });
-    expect(storage.removeItem).toHaveBeenCalledWith('standalone-drawing-library:anonymous');
   });
 
-  it('recovers when browser storage is unavailable and persist API is missing', async () => {
-    Object.defineProperty(globalThis, 'window', {
-      configurable: true,
-      value: Object.defineProperty({}, 'localStorage', {
-        get: () => { throw new Error('storage unavailable'); },
-      }),
-    });
-    const { hydrateDrawingStore, useDrawingStore } = await import('@/stores/drawingStore');
-    expect(useDrawingStore.persist).toBeDefined();
+  it('recovers to an empty in-memory library when the database is unavailable', async () => {
+    vi.spyOn(drawingDocumentRepository, 'list').mockRejectedValue(new Error('database unavailable'));
     useDrawingStore.setState({
       documents: { stale: { id: 'stale' } as never },
       activeDocumentId: 'stale',
       saveState: 'saved',
     });
 
-    await expect(hydrateDrawingStore()).resolves.toBe('recovered');
+    await expect(hydrateDrawingStore('user-without-configured-db')).resolves.toBe('recovered');
     expect(useDrawingStore.getState()).toMatchObject({
       documents: {},
       activeDocumentId: null,

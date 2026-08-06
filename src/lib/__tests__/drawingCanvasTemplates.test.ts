@@ -215,7 +215,7 @@ describe('standalone drawing table templates', () => {
       topology: { drawingType: 'internal', topology: 'single-end', wireKind: 'electronic' },
       singleConnector: { id: 'c20', name: 'AC电源插座C20公座-1', gender: 'male', pinCount: 2, category: 'power', series: 'C20', rowCount: 1, scope: 'public' },
       drawingNo: 'WH-001', totalLengthMm: 2, toleranceMm: 0, hasMold: false,
-      wireResource: { id: 'ul1007', catalogItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007', category: '线材' },
+      wireResource: { id: 'ul1007', resourceItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007', resourceGroup: '线材' },
       wires: [{ pin: 1, color: '黑', lengthMm: 2, wireNo: '黑', connectionNo: '1', targetPin: 2 }],
     };
 

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Layers3, X } from 'lucide-react';
-import { CORRUGATED_MATERIAL_LABELS, PROTECTIVE_SLEEVE_LABELS } from '@/lib/canvasMaterials';
+import { CORRUGATED_MATERIAL_LABELS } from '@/lib/canvasMaterials';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogProtectionOptions } from '@/lib/catalogRuntime';
 import type { CorrugatedMaterial, ProtectiveSleeveType } from '@/types/harness';
 
 interface CorrugatedFixingValue {
@@ -31,7 +33,6 @@ interface ProtectiveSleeveDialogProps {
   ) => void;
 }
 
-const sleeveTypes = Object.keys(PROTECTIVE_SLEEVE_LABELS) as ProtectiveSleeveType[];
 const defaultFixing = (): CorrugatedFixingValue => ({
   startHeatShrink: false,
   endHeatShrink: false,
@@ -52,6 +53,12 @@ export function ProtectiveSleeveDialog({
   onCancel,
   onConfirm,
 }: ProtectiveSleeveDialogProps) {
+  const protectionOptions = useCatalogStore((state) => getCatalogProtectionOptions(state.snapshot));
+  const sleeveOptions = useMemo(() => protectionOptions, [protectionOptions]);
+  const corrugatedMaterials = useMemo(() => {
+    const option = sleeveOptions.find((item) => item.id === 'corrugated');
+    return Object.keys(option?.materialMultipliers ?? {}) as CorrugatedMaterial[];
+  }, [sleeveOptions]);
   const [type, setType] = useState<ProtectiveSleeveType>(initialType);
   const [lengthMm, setLengthMm] = useState(initialLengthMm);
   const [corrugatedMaterial, setCorrugatedMaterial] = useState<CorrugatedMaterial>(initialCorrugatedMaterial);
@@ -127,24 +134,25 @@ export function ProtectiveSleeveDialog({
           <div>
             <span className="mb-2 block text-xs font-medium text-slate-600">保护套类型</span>
             <div className="grid grid-cols-2 gap-2">
-              {sleeveTypes.map((item) => (
+              {sleeveOptions.map((option) => (
                 <button
-                  key={item}
+                  key={option.id}
                   type="button"
                   onClick={() => {
+                    const item = option.id as ProtectiveSleeveType;
                     setType(item);
                     if (item !== 'corrugated' && materialIds.length > 1) {
                       setMaterialIds(materialIds.slice(0, 1));
                     }
                   }}
                   className={`flex items-center justify-between rounded-xl border px-3 py-3 text-left text-sm transition ${
-                    type === item
+                    type === option.id
                       ? 'border-cyan-500 bg-cyan-50 font-medium text-cyan-800'
                       : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
-                  {PROTECTIVE_SLEEVE_LABELS[item]}
-                  {type === item && <Check className="h-4 w-4" />}
+                  {option.name}
+                  {type === option.id && <Check className="h-4 w-4" />}
                 </button>
               ))}
             </div>
@@ -155,7 +163,7 @@ export function ProtectiveSleeveDialog({
               <div>
                 <span className="mb-2 block text-xs font-medium text-slate-600">波纹管材质</span>
                 <div className="grid grid-cols-3 gap-2">
-                  {(Object.keys(CORRUGATED_MATERIAL_LABELS) as CorrugatedMaterial[]).map((mat) => (
+                  {corrugatedMaterials.map((mat) => (
                     <button
                       key={mat}
                       type="button"
@@ -166,7 +174,7 @@ export function ProtectiveSleeveDialog({
                           : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
                       }`}
                     >
-                      {CORRUGATED_MATERIAL_LABELS[mat]}
+                      {CORRUGATED_MATERIAL_LABELS[mat] ?? mat}
                       {corrugatedMaterial === mat && <Check className="h-4 w-4" />}
                     </button>
                   ))}

@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Wand2, X } from 'lucide-react';
 import { DrawingResourceSelect } from '@/components/drawings/standalone/DrawingResourceSelect';
 import { DrawingWireBatchEditor } from '@/components/drawings/standalone/DrawingWireBatchEditor';
-import { WIRE_COLORS } from '@/lib/data';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogWireColors } from '@/lib/catalogRuntime';
 import { drawingCatalogRepository, filterDrawingCatalogResources } from '@/lib/drawingCatalogRepository';
 import { applyDrawingWireBatch, countDrawingMaterialKinds, createDrawingFromWizard, validateStandaloneDrawingWizard } from '@/lib/drawingGenerator';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
@@ -20,26 +21,27 @@ const fieldClass = 'mt-1 w-full rounded border border-slate-300 bg-white px-2 py
 function connectorFromResource(resource: DrawingCatalogResource): DrawingConnectorResource {
   return {
     id: resource.id, name: resource.name, gender: resource.gender ?? 'receptacle', pinCount: resource.pinCount ?? 1,
-    category: resource.category, series: resource.series ?? resource.model, rowCount: resource.rowCount ?? 1,
+    category: resource.resourceGroup, series: resource.series ?? resource.model, rowCount: resource.rowCount ?? 1,
     pitchMm: resource.pitchMm, scope: 'public',
   };
 }
 
-function defaultWire(index: number, lengthMm: number) {
-  return { pin: index + 1, color: WIRE_COLORS[index % WIRE_COLORS.length]?.hex ?? '#111827', lengthMm, wireNo: `WIRE-${String(index + 1).padStart(2, '0')}`, connectionNo: String(index + 1), targetPin: index + 1 };
+function defaultWire(index: number, lengthMm: number, wireColors: Array<{ hex: string }>) {
+  return { pin: index + 1, color: wireColors[index % Math.max(wireColors.length, 1)]?.hex ?? '#111827', lengthMm, wireNo: `WIRE-${String(index + 1).padStart(2, '0')}`, connectionNo: String(index + 1), targetPin: index + 1 };
 }
 
-function resizeWires(draft: DrawingWizardDraft, count: number) {
-  return Array.from({ length: Math.min(40, Math.max(1, count)) }, (_, index) => draft.wires[index] ?? defaultWire(index, draft.totalLengthMm));
+function resizeWires(draft: DrawingWizardDraft, count: number, wireColors: Array<{ hex: string }>) {
+  return Array.from({ length: Math.min(40, Math.max(1, count)) }, (_, index) => draft.wires[index] ?? defaultWire(index, draft.totalLengthMm, wireColors));
 }
 
-function initialDraft(): DrawingWizardDraft {
-  return { topology: { drawingType: 'internal', topology: 'double-end', wireKind: 'shielded' }, drawingNo: '', totalLengthMm: 320, toleranceMm: 5, hasMold: false, heatShrink: '', wires: [defaultWire(0, 320)] };
+function initialDraft(wireColors: Array<{ hex: string }>): DrawingWizardDraft {
+  return { topology: { drawingType: 'internal', topology: 'double-end', wireKind: 'shielded' }, drawingNo: '', totalLengthMm: 320, toleranceMm: 5, hasMold: false, heatShrink: '', wires: [defaultWire(0, 320, wireColors)] };
 }
 
 export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTemplate }: StandaloneDrawingWizardProps) {
+  const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState<DrawingWizardDraft>(initialDraft);
+  const [draft, setDraft] = useState<DrawingWizardDraft>(() => initialDraft(wireColors));
   const [resources, setResources] = useState<DrawingCatalogResource[]>([]);
   const [templates, setTemplates] = useState<DrawingTemplateSummary[]>([]);
   const [filters, setFilters] = useState<DrawingCatalogFilters>({ resourceType: 'connector' });
@@ -62,7 +64,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
         const connector = connectors[0] ? connectorFromResource(connectors[0]) : undefined;
         const wireResource = catalog.find((resource) => resource.resourceType === 'wire');
         const next = { ...current, singleConnector: current.singleConnector ?? connector, leftConnector: current.leftConnector ?? connector, rightConnector: current.rightConnector ?? connector, wireResource: current.wireResource ?? wireResource };
-        return { ...next, wires: resizeWires(next, connector?.pinCount ?? 1) };
+        return { ...next, wires: resizeWires(next, connector?.pinCount ?? 1, wireColors) };
       });
     } catch (reason) { console.error('公共资源加载失败:', reason); setError(getUserErrorMessage(reason, '公共资源加载失败，请重试。')); }
     finally { setLoading(false); }
@@ -77,13 +79,13 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
     const topology = { ...current.topology, ...patch };
     const next = { ...current, topology, hasMold: patch.drawingType === 'external' ? true : current.hasMold };
     const pinCount = topology.topology === 'single-end' ? next.singleConnector?.pinCount : Math.min(next.leftConnector?.pinCount ?? 1, next.rightConnector?.pinCount ?? 1);
-    return { ...next, wires: resizeWires(next, pinCount ?? 1) };
+    return { ...next, wires: resizeWires(next, pinCount ?? 1, wireColors) };
   });
 
   const selectConnector = (key: 'singleConnector' | 'leftConnector' | 'rightConnector', resource: DrawingCatalogResource) => setDraft((current) => {
     const next = { ...current, [key]: connectorFromResource(resource), modelResource: resource.resourceType === 'model' ? resource : current.modelResource };
     const count = next.topology.topology === 'single-end' ? next.singleConnector?.pinCount : Math.min(next.leftConnector?.pinCount ?? 1, next.rightConnector?.pinCount ?? 1);
-    return { ...next, wires: resizeWires(next, count ?? 1) };
+    return { ...next, wires: resizeWires(next, count ?? 1, wireColors) };
   });
 
   const loadTemplate = async () => {
@@ -112,7 +114,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
           {!isSingle && <DrawingResourceSelect title="右连接器/模型" resources={filtered} filters={filters} selectedId={draft.rightConnector?.id} loading={loading} error={error} onFiltersChange={setFilters} onSelect={(resource) => selectConnector('rightConnector', resource)} onRetry={() => void loadResources()} />}
         </div>}
         {step === 2 && <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-5"><label className="text-sm">图号<input className={fieldClass} value={draft.drawingNo} onChange={(event) => setDraft({ ...draft, drawingNo: event.target.value })}/></label><label className="text-sm">线材规格<select className={fieldClass} value={draft.wireResource?.catalogItemId ?? ''} onChange={(event) => setDraft({ ...draft, wireResource: wireResources.find((resource) => resource.catalogItemId === event.target.value) })}><option value="">请选择</option>{wireResources.map((resource) => <option key={resource.catalogItemId} value={resource.catalogItemId}>{resource.name}</option>)}</select></label><label className="text-sm">总长度(mm)<input className={fieldClass} type="number" value={draft.totalLengthMm} onChange={(event) => setDraft({ ...draft, totalLengthMm: Number(event.target.value) })}/></label><label className="text-sm">公差(mm)<input className={fieldClass} type="number" value={draft.toleranceMm} onChange={(event) => setDraft({ ...draft, toleranceMm: Number(event.target.value) })}/></label><label className="text-sm">物料种类<input className={fieldClass} readOnly value={countDrawingMaterialKinds(draft)}/></label></div>
+          <div className="grid gap-3 md:grid-cols-5"><label className="text-sm">图号<input className={fieldClass} value={draft.drawingNo} onChange={(event) => setDraft({ ...draft, drawingNo: event.target.value })}/></label><label className="text-sm">线材规格<select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => setDraft({ ...draft, wireResource: wireResources.find((resource) => resource.resourceItemId === event.target.value) })}><option value="">请选择</option>{wireResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resource.name}</option>)}</select></label><label className="text-sm">总长度(mm)<input className={fieldClass} type="number" value={draft.totalLengthMm} onChange={(event) => setDraft({ ...draft, totalLengthMm: Number(event.target.value) })}/></label><label className="text-sm">公差(mm)<input className={fieldClass} type="number" value={draft.toleranceMm} onChange={(event) => setDraft({ ...draft, toleranceMm: Number(event.target.value) })}/></label><label className="text-sm">物料种类<input className={fieldClass} readOnly value={countDrawingMaterialKinds(draft)}/></label></div>
           <div className="flex gap-4"><label className="text-sm"><input type="checkbox" checked={draft.hasMold} onChange={(event) => setDraft({ ...draft, hasMold: event.target.checked })}/> 模具有/无</label><label className="text-sm">热缩套管<input className="ml-2 rounded border px-2 py-1" value={draft.heatShrink ?? ''} onChange={(event) => setDraft({ ...draft, heatShrink: event.target.value })}/></label></div>
           <DrawingWireBatchEditor onApply={(batch) => setDraft({ ...draft, wires: applyDrawingWireBatch(draft.wires, batch) })}/>
           <div className="overflow-auto rounded border"><table className="w-full text-xs"><thead><tr>{['PIN', '颜色', '长度', '线号', '接线号', '目标 PIN'].map((label) => <th key={label} className="p-2 text-left">{label}</th>)}</tr></thead><tbody>{draft.wires.map((wire, index) => <tr key={wire.pin} className="border-t"><td className="p-2">{wire.pin}</td><td><input type="color" value={wire.color} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, i) => i === index ? { ...item, color: event.target.value } : item) })}/></td><td><input className="w-20 border" type="number" value={wire.lengthMm} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, i) => i === index ? { ...item, lengthMm: Number(event.target.value) } : item) })}/></td><td><input className="w-24 border" value={wire.wireNo} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, i) => i === index ? { ...item, wireNo: event.target.value } : item) })}/></td><td>{wire.connectionNo}</td><td><input className="w-16 border" type="number" value={wire.targetPin ?? ''} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, i) => i === index ? { ...item, targetPin: Number(event.target.value) } : item) })}/></td></tr>)}</tbody></table></div>

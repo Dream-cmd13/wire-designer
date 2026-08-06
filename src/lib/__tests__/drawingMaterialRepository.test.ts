@@ -7,8 +7,8 @@ function fakeGateway() {
     async listActive() {
       calls.push('list');
       return [
-        { id: '1', model: 'M-01', resource_name: '插座', short_description: '主件', lifecycle_status: 'active', deleted_at: null, accessory_specs: { specification: 'C20', unit: 'PCS' } },
-        { id: '2', model: 'OLD', resource_name: '旧物料', short_description: '', lifecycle_status: 'inactive', deleted_at: null, accessory_specs: { specification: '旧规格', unit: 'PCS' } },
+        { id: '1', model: 'M-01', resource_name: '插座', short_description: '主件', lifecycle_status: 'active', deleted_at: null, accessories: { specification: 'C20', unit: 'PCS' } },
+        { id: '2', model: 'OLD', resource_name: '旧物料', short_description: '', lifecycle_status: 'inactive', deleted_at: null, accessories: { specification: '旧规格', unit: 'PCS' } },
       ];
     },
     async insertDraft(input) { calls.push(`draft:${input.model}:${input.resourceName}:${input.note}`); return 'new-id'; },

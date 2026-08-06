@@ -4,14 +4,15 @@
 // ============================================================
 
 import type { HarnessConfig, ValidationIssue } from '@/types/harness';
-import { CONNECTORS } from '@/lib/data';
+import { getCatalogSnapshot } from '@/lib/catalogRuntime';
+import type { CatalogSnapshot } from '@/types/catalog';
 import { getActiveConnectorSide } from '@/lib/commands';
 import { JACKET_UL_NUMBERS } from '@/lib/canvasMaterials';
 
-export function validateHarness(config: HarnessConfig): ValidationIssue[] {
+export function validateHarness(config: HarnessConfig, catalog: CatalogSnapshot | null = getCatalogSnapshot()): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
 
-  validateConnectors(config, issues);
+  validateConnectors(config, issues, catalog);
   validateMaterialCircuits(config, issues);
   validateJumpers(config, issues);
   validateProtectiveSleeves(config, issues);
@@ -24,7 +25,7 @@ export function validateHarness(config: HarnessConfig): ValidationIssue[] {
   }));
 }
 
-function validateConnectors(config: HarnessConfig, issues: ValidationIssue[]): void {
+function validateConnectors(config: HarnessConfig, issues: ValidationIssue[], catalog: CatalogSnapshot | null): void {
   if (config.connectors.length === 0) {
     issues.push({
       id: '',
@@ -62,8 +63,8 @@ function validateConnectors(config: HarnessConfig, issues: ValidationIssue[]): v
       });
     }
 
-    const catalogEntry = CONNECTORS.find((c) => c.id === connector.id);
-    if (!catalogEntry) {
+    const catalogEntry = catalog?.connectors.find((c) => c.id === connector.id);
+    if (catalog && !catalogEntry) {
       issues.push({
         id: '',
         severity: 'warning',

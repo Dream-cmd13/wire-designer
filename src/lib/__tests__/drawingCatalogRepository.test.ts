@@ -12,37 +12,52 @@ function fakeClient(tables: Record<string, unknown[]>, errors: Record<string, st
 }
 
 const connectorRow = {
-  id: 'catalog-1', legacy_key: 'xh254-4p-f', item_type: 'connector', resource_name: 'XH2.54-4P', model: 'XH2.54-4P-F',
+  id: 'catalog-1', legacy_key: 'xh254-4p-f', resource_type: 'connector', resource_name: 'XH2.54-4P', model: 'XH2.54-4P-F',
   short_description: '4PIN单排母头', display_order: 1, lifecycle_status: 'active', deleted_at: null,
-  catalog_categories: { name: '线对板连接器' },
-  connector_specs: { connector_type: 'female', series: 'XH2.54', pin_count: 4, row_count: 1, pitch_mm: 2.54 },
-  catalog_item_images: [],
+  resource_group: '线对板连接器',
+  connectors: { connector_type: 'female', series: 'XH2.54', pin_count: 4, row_count: 1, pitch_mm: 2.54 },
+  resource_item_images: [],
 };
 
 describe('DrawingCatalogRepository', () => {
   it('maps and applies all connector filters', async () => {
-    const repository = new DrawingCatalogRepository(fakeClient({ catalog_items: [connectorRow] }));
+    const repository = new DrawingCatalogRepository(fakeClient({ resource_items: [connectorRow] }));
     const rows = await repository.listResources({
       resourceType: 'connector', query: 'xh2.54', gender: 'female', pinCount: 4,
-      rowCount: 1, pitchMm: 2.54, category: '线对板连接器', series: 'XH2.54',
+      rowCount: 1, pitchMm: 2.54, resourceGroup: '线对板连接器', series: 'XH2.54',
     });
     expect(rows).toEqual([expect.objectContaining({
-      id: 'xh254-4p-f', catalogItemId: 'catalog-1', name: 'XH2.54-4P',
+      id: 'xh254-4p-f', resourceItemId: 'catalog-1', name: 'XH2.54-4P',
       resourceType: 'connector', gender: 'female', pinCount: 4, rowCount: 1, pitchMm: 2.54,
     })]);
   });
 
+  it('maps wire_kind as the drawing resource specification', async () => {
+    const repository = new DrawingCatalogRepository(fakeClient({
+      resource_items: [{
+        id: 'wire-1', legacy_key: 'shielded-4c', resource_type: 'wire',
+        resource_name: '4芯屏蔽线', model: 'SHIELD-4C', resource_group: '绘图线材',
+        short_description: '', display_order: 1, lifecycle_status: 'active', deleted_at: null,
+        wires: { wire_kind: 'jacketed' }, resource_item_images: [],
+      }],
+    }));
+
+    await expect(repository.listResources({ resourceType: 'wire' })).resolves.toEqual([
+      expect.objectContaining({ resourceType: 'wire', specification: 'jacketed' }),
+    ]);
+  });
+
   it('throws a stable catalog error when Supabase fails', async () => {
-    const repository = new DrawingCatalogRepository(fakeClient({}, { catalog_items: 'network unavailable' }));
+    const repository = new DrawingCatalogRepository(fakeClient({}, { resource_items: 'network unavailable' }));
     await expect(repository.listResources({})).rejects.toEqual(expect.objectContaining<Partial<DrawingCatalogError>>({ message: 'network unavailable' }));
   });
 
   it('signs catalog image storage paths without blocking resource data', async () => {
     const repository = new DrawingCatalogRepository({
       ...fakeClient({
-        catalog_items: [{
+        resource_items: [{
           ...connectorRow,
-          catalog_item_images: [{ storage_path: 'connectors/xh254.png', is_primary: true }],
+          resource_item_images: [{ storage_path: 'connectors/xh254.png', is_primary: true }],
         }],
       }),
       storage: {
@@ -60,7 +75,7 @@ describe('DrawingCatalogRepository', () => {
     ]);
 
     const failedSigning = new DrawingCatalogRepository({
-      ...fakeClient({ catalog_items: [{ ...connectorRow, catalog_item_images: [{ storage_path: 'connectors/xh254.png', is_primary: true }] }] }),
+      ...fakeClient({ resource_items: [{ ...connectorRow, resource_item_images: [{ storage_path: 'connectors/xh254.png', is_primary: true }] }] }),
       storage: { from: () => ({ createSignedUrl: async () => ({ data: null, error: { message: 'image unavailable' } }) }) },
     });
     await expect(failedSigning.listResources()).resolves.toEqual([
@@ -69,7 +84,7 @@ describe('DrawingCatalogRepository', () => {
   });
 
   it('returns empty results and validates template schema version', async () => {
-    const empty = new DrawingCatalogRepository(fakeClient({ catalog_items: [] }));
+    const empty = new DrawingCatalogRepository(fakeClient({ resource_items: [] }));
     await expect(empty.listResources({})).resolves.toEqual([]);
 
     const invalid = new DrawingCatalogRepository(fakeClient({ drawing_template_versions: [{ template_id: 't1', version_no: 1, schema_version: 2, drawing_json: {} }] }));

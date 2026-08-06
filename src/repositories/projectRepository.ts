@@ -1,11 +1,8 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
 import type { HarnessConfig } from '@/types/harness';
-
-const PROJECT_CONFIG_PREFIX = 'harness-project-config-';
-const RECOVERY_PREFIX = 'harness-project-recovery-';
-const SNAPSHOT_PREFIX = 'harness-project-snapshot-';
-const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
-const MAX_SNAPSHOTS = 3;
+import type { Project } from '@/types/user';
+import { supabase } from '@/lib/supabaseClient';
 
 export type ProjectLoadResult =
   | { status: 'ok'; config: HarnessConfig }
@@ -20,6 +17,9 @@ export interface ProjectRecoveryPoint {
 
 export interface ProjectRepository {
   list(): Promise<string[]>;
+  listProjects(userId: string): Promise<Project[]>;
+  createProject(project: Project, config: HarnessConfig): Promise<void>;
+  updateProject(projectId: string, updates: Partial<Project>): Promise<void>;
   load(projectId: string): Promise<ProjectLoadResult>;
   listRecoveryPoints(projectId: string): Promise<ProjectRecoveryPoint[]>;
   save(projectId: string, config: HarnessConfig): Promise<void>;
@@ -27,128 +27,152 @@ export interface ProjectRepository {
   emergencySave(projectId: string, config: HarnessConfig): void;
 }
 
-function configKey(projectId: string) {
-  return `${PROJECT_CONFIG_PREFIX}${projectId}`;
-}
+export class SupabaseProjectRepository implements ProjectRepository {
+  private readonly client: SupabaseClient;
 
-function snapshotPrefix(projectId: string) {
-  return `${SNAPSHOT_PREFIX}${projectId}-`;
-}
-
-function describeStorageError(error: unknown): Error {
-  if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-    return new Error('浏览器本地存储空间不足，请先导出项目备份再清理空间。');
+  constructor(client: SupabaseClient) {
+    this.client = client;
   }
-  return error instanceof Error ? error : new Error('本地项目保存失败');
-}
 
-export class LocalProjectRepository implements ProjectRepository {
+  private parseError(error: unknown): Error {
+    return error instanceof Error ? error : new Error('Supabase operation failed.');
+  }
+
+  private toProject(row: Record<string, unknown>): Project {
+    return {
+      id: String(row.id),
+      userId: String(row.owner_id),
+      name: String(row.name ?? ''),
+      description: String(row.description ?? ''),
+      harnessConfigId: String(row.id),
+      createdAt: Date.parse(String(row.created_at ?? '')) || Date.now(),
+      updatedAt: Date.parse(String(row.updated_at ?? '')) || Date.now(),
+      status: row.status === 'in_progress' || row.status === 'completed' || row.status === 'archived' ? row.status : 'draft',
+    };
+  }
+
   async list(): Promise<string[]> {
-    const projectIds: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key?.startsWith(PROJECT_CONFIG_PREFIX)) {
-        projectIds.push(key.slice(PROJECT_CONFIG_PREFIX.length));
-      }
-    }
-    return projectIds;
+    const { data: user } = await this.client.auth.getUser();
+    if (!user.user) return [];
+    return (await this.listProjects(user.user.id)).map((project) => project.id);
+  }
+
+  async listProjects(userId: string): Promise<Project[]> {
+    const { data, error } = await this.client.from('projects')
+      .select('id,owner_id,name,description,status,created_at,updated_at')
+      .eq('owner_id', userId).is('deleted_at', null)
+      .order('updated_at', { ascending: false });
+    if (error) throw this.parseError(error);
+    return (data ?? []).map((value) => this.toProject(value as Record<string, unknown>));
+  }
+
+  async createProject(project: Project, config: HarnessConfig): Promise<void> {
+    const { error: projectError } = await this.client.from('projects').insert({
+      id: project.id,
+      owner_id: project.userId,
+      name: project.name,
+      description: project.description,
+      status: project.status,
+    });
+    if (projectError) throw this.parseError(projectError);
+    await this.save(project.id, config);
+  }
+
+  async updateProject(projectId: string, updates: Partial<Project>): Promise<void> {
+    const payload: Record<string, unknown> = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (Object.keys(payload).length === 0) return;
+    payload.updated_at = new Date().toISOString();
+    const { error } = await this.client.from('projects').update(payload).eq('id', projectId);
+    if (error) throw this.parseError(error);
   }
 
   async load(projectId: string): Promise<ProjectLoadResult> {
-    const raw = localStorage.getItem(configKey(projectId));
-    if (raw === null) return { status: 'missing' };
-
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      const result = parseHarnessConfig(parsed);
-      if (result.success) return { status: 'ok', config: result.data };
-      return this.preserveInvalid(projectId, raw, result.issues);
-    } catch {
-      return this.preserveInvalid(projectId, raw, ['文件不是有效的 JSON']);
-    }
+    const { data, error } = await this.client.from('project_documents')
+      .select('document').eq('project_id', projectId).maybeSingle();
+    if (error) throw this.parseError(error);
+    if (!data?.document) return { status: 'missing' };
+    const raw = JSON.stringify(data.document);
+    const result = parseHarnessConfig(data.document);
+    if (result.success) return { status: 'ok', config: result.data };
+    return { status: 'invalid', raw, backupKey: `supabase-project-recovery-${projectId}`, issues: result.issues };
   }
 
   async save(projectId: string, config: HarnessConfig): Promise<void> {
-    await this.captureSnapshot(projectId);
-    this.write(projectId, config);
+    const result = parseHarnessConfig(config);
+    if (!result.success) throw new Error(`Invalid project document: ${result.issues.slice(0, 3).join('; ')}`);
+
+    const { data: current, error: readError } = await this.client.from('project_documents')
+      .select('revision').eq('project_id', projectId).maybeSingle();
+    if (readError) throw this.parseError(readError);
+    const revision = Number(current?.revision ?? 0) + 1;
+    const document = result.data;
+    const { error } = await this.client.from('project_documents').upsert({
+      project_id: projectId,
+      document,
+      schema_version: document.schemaVersion,
+      revision,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw this.parseError(error);
+    const { error: versionError } = await this.client.from('project_document_versions').insert({
+      project_id: projectId,
+      revision,
+      document,
+      schema_version: document.schemaVersion,
+    });
+    if (versionError) throw this.parseError(versionError);
+    await this.updateProject(projectId, { name: document.name });
   }
 
   async remove(projectId: string): Promise<void> {
-    localStorage.removeItem(configKey(projectId));
-    const relatedKeys: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (
-        key?.startsWith(snapshotPrefix(projectId))
-        || key?.startsWith(`${RECOVERY_PREFIX}${projectId}-`)
-      ) relatedKeys.push(key);
-    }
-    relatedKeys.forEach((key) => localStorage.removeItem(key));
+    const { error } = await this.client.from('projects').update({
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', projectId);
+    if (error) throw this.parseError(error);
   }
 
   async listRecoveryPoints(projectId: string): Promise<ProjectRecoveryPoint[]> {
+    const { data, error } = await this.client.from('project_document_versions')
+      .select('revision,created_at,document').eq('project_id', projectId).order('revision', { ascending: false });
+    if (error) throw this.parseError(error);
     const points: ProjectRecoveryPoint[] = [];
-    const prefix = snapshotPrefix(projectId);
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (!key?.startsWith(prefix)) continue;
-      const createdAt = Number(key.slice(prefix.length));
-      const raw = localStorage.getItem(key);
-      if (!Number.isFinite(createdAt) || raw === null) continue;
-      try {
-        const result = parseHarnessConfig(JSON.parse(raw) as unknown);
-        if (result.success) points.push({ key, createdAt, config: result.data });
-      } catch {
-        // Ignore an invalid snapshot; it is never used to overwrite live data.
-      }
+    for (const value of data ?? []) {
+      const row = value as Record<string, unknown>;
+      const result = parseHarnessConfig(row.document);
+      if (!result.success) continue;
+      points.push({
+        key: `${projectId}:${String(row.revision)}`,
+        createdAt: Date.parse(String(row.created_at ?? '')) || Date.now(),
+        config: result.data,
+      });
     }
-    return points.sort((a, b) => b.createdAt - a.createdAt);
+    return points;
   }
 
   emergencySave(projectId: string, config: HarnessConfig): void {
-    this.write(projectId, config);
-  }
-
-  private write(projectId: string, config: HarnessConfig): void {
-    const result = parseHarnessConfig(config);
-    if (!result.success) {
-      throw new Error(`项目结构校验失败：${result.issues.slice(0, 3).join('；')}`);
-    }
-    try {
-      localStorage.setItem(configKey(projectId), JSON.stringify(result.data));
-    } catch (error) {
-      throw describeStorageError(error);
-    }
-  }
-
-  private preserveInvalid(projectId: string, raw: string, issues: string[]): ProjectLoadResult {
-    const backupKey = `${RECOVERY_PREFIX}${projectId}-${Date.now()}`;
-    try {
-      localStorage.setItem(backupKey, raw);
-    } catch {
-      // Keep returning the raw payload so the UI can still offer a download.
-    }
-    return { status: 'invalid', raw, backupKey, issues };
-  }
-
-  private async captureSnapshot(projectId: string): Promise<void> {
-    const previousRaw = localStorage.getItem(configKey(projectId));
-    if (previousRaw === null) return;
-    try {
-      const previous = parseHarnessConfig(JSON.parse(previousRaw) as unknown);
-      if (!previous.success) return;
-      const points = await this.listRecoveryPoints(projectId);
-      const now = Date.now();
-      if (points[0] && now - points[0].createdAt < SNAPSHOT_INTERVAL_MS) return;
-      localStorage.setItem(`${snapshotPrefix(projectId)}${now}`, JSON.stringify(previous.data));
-      const refreshed = await this.listRecoveryPoints(projectId);
-      for (const point of refreshed.slice(MAX_SNAPSHOTS)) {
-        localStorage.removeItem(point.key);
-      }
-    } catch {
-      // A recovery snapshot is best effort and must never block the primary save.
-    }
+    void this.save(projectId, config).catch((error) => console.error('Supabase emergency save failed', error));
   }
 }
 
-export const projectRepository: ProjectRepository = new LocalProjectRepository();
+class MissingProjectRepository implements ProjectRepository {
+  private unavailable(): Error {
+    return new Error('Supabase 尚未配置，无法访问项目数据库。');
+  }
+  list(): Promise<string[]> { return Promise.reject(this.unavailable()); }
+  listProjects(): Promise<Project[]> { return Promise.reject(this.unavailable()); }
+  createProject(): Promise<void> { return Promise.reject(this.unavailable()); }
+  updateProject(): Promise<void> { return Promise.reject(this.unavailable()); }
+  load(): Promise<ProjectLoadResult> { return Promise.reject(this.unavailable()); }
+  listRecoveryPoints(): Promise<ProjectRecoveryPoint[]> { return Promise.reject(this.unavailable()); }
+  save(): Promise<void> { return Promise.reject(this.unavailable()); }
+  remove(): Promise<void> { return Promise.reject(this.unavailable()); }
+  emergencySave(): void { /* no local fallback */ }
+}
+
+export const projectRepository: ProjectRepository = supabase
+  ? new SupabaseProjectRepository(supabase)
+  : new MissingProjectRepository();

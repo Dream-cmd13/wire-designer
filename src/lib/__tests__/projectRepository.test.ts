@@ -1,77 +1,112 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
-import { LocalProjectRepository } from '@/repositories/projectRepository';
+import { SupabaseProjectRepository } from '@/repositories/projectRepository';
+import type { Project } from '@/types/user';
 
-class MemoryStorage implements Storage {
-  private data = new Map<string, string>();
-  get length() { return this.data.size; }
-  clear() { this.data.clear(); }
-  getItem(key: string) { return this.data.get(key) ?? null; }
-  key(index: number) { return [...this.data.keys()][index] ?? null; }
-  removeItem(key: string) { this.data.delete(key); }
-  setItem(key: string, value: string) { this.data.set(key, String(value)); }
+type Row = Record<string, unknown>;
+
+function fakeClient() {
+  const projects = new Map<string, Row>();
+  const documents = new Map<string, Row>();
+  const versions: Row[] = [];
+
+  const result = (table: string, filters: Row): Row[] => {
+    const rows = table === 'projects'
+      ? [...projects.values()]
+      : table === 'project_documents'
+        ? [...documents.values()]
+        : [...versions];
+    return rows.filter((row) => Object.entries(filters).every(([key, value]) => row[key] === value));
+  };
+
+  const client = {
+    from(table: string) {
+      const filters: Row = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const builder: any = {
+        select: () => builder,
+        eq: (key: string, value: unknown) => { filters[key] = value; return builder; },
+        is: (key: string, value: unknown) => { filters[key] = value; return builder; },
+        order: async () => ({ data: result(table, filters), error: null }),
+        maybeSingle: async () => ({ data: result(table, filters)[0] ?? null, error: null }),
+        insert: async (payload: Row) => {
+          if (table === 'projects') projects.set(String(payload.id), { ...payload, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), deleted_at: null });
+          if (table === 'project_document_versions') versions.push({ ...payload, created_at: new Date().toISOString() });
+          return { data: null, error: null };
+        },
+        upsert: async (payload: Row) => {
+          if (table === 'project_documents') documents.set(String(payload.project_id), { ...payload });
+          return { data: null, error: null };
+        },
+        update: (payload: Row) => {
+          builder.updatePayload = payload;
+          return builder;
+        },
+        then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => {
+          try {
+            for (const row of result(table, filters)) Object.assign(row, builder.updatePayload ?? {});
+            return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+          } catch (error) {
+            return Promise.reject(error).then(resolve, reject);
+          }
+        },
+      };
+      return builder;
+    },
+    auth: { getUser: async () => ({ data: { user: null } }) },
+  } as unknown as SupabaseClient;
+
+  return { client, projects, documents, versions };
 }
 
-describe('LocalProjectRepository', () => {
-  beforeEach(() => {
-    Object.defineProperty(globalThis, 'localStorage', {
-      value: new MemoryStorage(),
-      configurable: true,
-    });
-  });
+function makeProject(): Project {
+  return {
+    id: 'project-1',
+    userId: 'user-1',
+    name: 'Test project',
+    description: 'Repository test',
+    harnessConfigId: 'project-1',
+    createdAt: 1,
+    updatedAt: 1,
+    status: 'draft',
+  };
+}
 
-  it('saves and loads only deeply valid project documents', async () => {
-    const repository = new LocalProjectRepository();
+describe('SupabaseProjectRepository', () => {
+  it('creates, lists, saves, and loads project documents through Supabase tables', async () => {
+    const { client } = fakeClient();
+    const repository = new SupabaseProjectRepository(client);
     const config = { ...createFallbackConfig(), id: 'config-1' };
-    await repository.save('project-1', config);
 
-    const result = await repository.load('project-1');
-    expect(result).toEqual({ status: 'ok', config });
-    expect(await repository.list()).toEqual(['project-1']);
+    await repository.createProject(makeProject(), config);
+
+    await expect(repository.listProjects('user-1')).resolves.toEqual([
+      expect.objectContaining({ id: 'project-1', userId: 'user-1' }),
+    ]);
+    await expect(repository.load('project-1')).resolves.toEqual({ status: 'ok', config });
   });
 
-  it('preserves invalid raw data under a recovery key', async () => {
-    const repository = new LocalProjectRepository();
-    const raw = JSON.stringify({
-      ...createFallbackConfig(),
-      materials: [{ id: 'broken', name: 'broken', circuits: [] }],
-    });
-    localStorage.setItem('harness-project-config-project-2', raw);
+  it('rejects invalid documents before writing them', async () => {
+    const { client } = fakeClient();
+    const repository = new SupabaseProjectRepository(client);
+    const config = { ...createFallbackConfig(), id: 'config-2' };
 
-    const result = await repository.load('project-2');
-    expect(result.status).toBe('invalid');
-    if (result.status === 'invalid') {
-      expect(result.raw).toBe(raw);
-      expect(localStorage.getItem(result.backupKey)).toBe(raw);
-    }
+    await expect(repository.save('project-2', { ...config, materials: [{ id: 'broken' }] } as typeof config))
+      .rejects.toThrow('Invalid project document');
   });
 
-  it('never overwrites a valid project with an invalid document', async () => {
-    const repository = new LocalProjectRepository();
-    const config = { ...createFallbackConfig(), id: 'config-3' };
-    await repository.save('project-3', config);
+  it('stores immutable recovery versions and soft-deletes projects', async () => {
+    const { client, versions } = fakeClient();
+    const repository = new SupabaseProjectRepository(client);
+    const original = { ...createFallbackConfig(), id: 'config-3', name: 'Original' };
+    await repository.createProject(makeProject(), original);
+    await repository.save('project-1', { ...original, name: 'Current', updatedAt: Date.now() + 1 });
 
-    await expect(repository.save('project-3', {
-      ...config,
-      materials: [{ id: 'broken' }],
-    } as typeof config)).rejects.toThrow('项目结构校验失败');
-
-    const result = await repository.load('project-3');
-    expect(result.status).toBe('ok');
-  });
-
-  it('keeps the previous valid document as a non-destructive recovery point', async () => {
-    const repository = new LocalProjectRepository();
-    const original = { ...createFallbackConfig(), id: 'config-4', name: '原始版本' };
-    await repository.save('project-4', original);
-    await repository.save('project-4', { ...original, name: '当前版本', updatedAt: Date.now() + 1 });
-
-    const points = await repository.listRecoveryPoints('project-4');
-    expect(points).toHaveLength(1);
-    expect(points[0].config.name).toBe('原始版本');
-
-    const current = await repository.load('project-4');
-    expect(current.status).toBe('ok');
-    if (current.status === 'ok') expect(current.config.name).toBe('当前版本');
+    const points = await repository.listRecoveryPoints('project-1');
+    expect(points).toHaveLength(2);
+    expect(versions).toHaveLength(2);
+    await repository.remove('project-1');
+    await expect(repository.listProjects('user-1')).resolves.toEqual([]);
   });
 });

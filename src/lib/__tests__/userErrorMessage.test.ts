@@ -4,7 +4,7 @@ import { getUserErrorMessage } from '@/lib/userErrorMessage';
 
 describe('getUserErrorMessage', () => {
   it('names known missing drawing tables in Chinese', () => {
-    expect(getUserErrorMessage(new Error("Could not find the table 'public.catalog_items' in the schema cache")))
+    expect(getUserErrorMessage(new Error("Could not find the table 'public.resource_items' in the schema cache")))
       .toBe('公共资源数据表不存在或尚未初始化，请联系管理员完成数据库配置。');
     expect(getUserErrorMessage(new Error("Could not find the table 'public.drawing_icons' in the schema cache")))
       .toBe('绘图图标数据表不存在或尚未初始化，请联系管理员完成数据库配置。');

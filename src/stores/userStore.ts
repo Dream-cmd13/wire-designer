@@ -30,12 +30,6 @@ export const useUserStore = create<UserState>((set) => ({
   authReady: false,
 
   initialize: () => {
-    try {
-      localStorage.removeItem('harness-user-passwords');
-    } catch {
-      // Ignore unavailable browser storage.
-    }
-
     if (!supabase) {
       set({ currentUser: null, authReady: true });
       return () => {};

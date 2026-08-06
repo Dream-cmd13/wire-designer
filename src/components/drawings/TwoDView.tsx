@@ -6,7 +6,7 @@ import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage, CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
 import { imageAssets } from '@/lib/imageAssets';
-import { WIRE_COLORS, OVERMOLDS } from '@/lib/data';
+import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import { generateBOM } from '@/lib/bom';
 import {
   resolveColor,
@@ -58,7 +58,7 @@ function useElementLabel(
 }
 
 function resolveChineseColorName(value: string): string {
-  const byId = WIRE_COLORS.find((c) => c.id === value);
+  const byId = getCatalogSnapshot()?.wireColors.find((c) => c.id === value);
   if (byId) return byId.name;
   return value || '灰';
 }
@@ -315,7 +315,7 @@ function BOMTable({ config, layout }: { config: HarnessConfig; layout: Productio
       modelCounts[specId] = (modelCounts[specId] || 0) + 1;
     });
     Object.entries(modelCounts).forEach(([specId, count]) => {
-      const spec = OVERMOLDS.find(s => s.id === specId);
+      const spec = getCatalogSnapshot()?.overmolds.find(s => s.id === specId);
       const specText = spec ? `${spec.outerHardness} ${spec.outerMaterial}` : '45P 黑色 PVC胶料';
       rows.push({
         itemNo: 3,

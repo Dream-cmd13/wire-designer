@@ -6,7 +6,8 @@ import {
   validateDrawingWizardDraft,
 } from '@/lib/drawingWizard';
 import { CORE_COLOR_OPTIONS, resolveColor } from '@/lib/canvasMaterials';
-import { WIRE_COLORS } from '@/lib/data';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogConnectors, getCatalogWireColors } from '@/lib/catalogRuntime';
 import type {
   DrawingConnectorResource,
   DrawingWireRowDraft,
@@ -22,8 +23,6 @@ interface DrawingWizardDialogProps {
 
 const inputClass =
   'w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
-
-const electronicColors = WIRE_COLORS.map((color) => color.id);
 
 function resourceSummary(resource: DrawingConnectorResource | undefined) {
   if (!resource) return '未选择';
@@ -118,9 +117,12 @@ function updateRows(
 }
 
 export function DrawingWizardDialog({ open, onClose, onGenerate }: DrawingWizardDialogProps) {
-  const singleResources = useMemo(() => createDrawingConnectorResources('none'), []);
-  const leftResources = useMemo(() => createDrawingConnectorResources('left'), []);
-  const rightResources = useMemo(() => createDrawingConnectorResources('right'), []);
+  const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
+  const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
+  const electronicColors = useMemo(() => wireColors.map((color) => color.id), [wireColors]);
+  const singleResources = useMemo(() => createDrawingConnectorResources('none', connectors), [connectors]);
+  const leftResources = useMemo(() => createDrawingConnectorResources('left', connectors), [connectors]);
+  const rightResources = useMemo(() => createDrawingConnectorResources('right', connectors), [connectors]);
   const defaultResource = singleResources.find((resource) => resource.id === 'a1008h-2x20p') ?? singleResources[0];
   const [step, setStep] = useState(0);
   const [singleQuery, setSingleQuery] = useState('A1008H');
@@ -141,7 +143,7 @@ export function DrawingWizardDialog({ open, onClose, onGenerate }: DrawingWizard
       lengthToleranceMm: 10,
       heatShrinkId: 'HS-01',
     },
-    wires: createDefaultDrawingWireRows(defaultResource.pinCount, 320),
+    wires: createDefaultDrawingWireRows(defaultResource?.pinCount ?? 1, 320),
   }));
 
   if (!open) return null;

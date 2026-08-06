@@ -87,7 +87,7 @@ export function DrawingWorkbenchPage() {
   const replaceWithNewDocument = useDrawingStore((state) => state.replaceWithNewDocument);
   const updateDocument = useDrawingStore((state) => state.updateDocument);
   const updateObject = useDrawingStore((state) => state.updateObject);
-  const markSaved = useDrawingStore((state) => state.markSaved);
+  const saveActiveDocument = useDrawingStore((state) => state.saveActiveDocument);
   const drawing = activeDocumentId ? documents[activeDocumentId] : undefined;
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
   const [toolMode, setToolMode] = useState<DrawingToolMode>('select');
@@ -161,7 +161,13 @@ export function DrawingWorkbenchPage() {
     });
     return () => { cancelled = true; };
   }, [drawingStoreHydrated, replaceWithNewDocument]);
-  useEffect(() => { if (saveState !== 'dirty') return; const timer = window.setTimeout(markSaved, 500); return () => window.clearTimeout(timer); }, [markSaved, saveState]);
+  useEffect(() => {
+    if (saveState !== 'dirty') return;
+    const timer = window.setTimeout(() => {
+      void saveActiveDocument().catch((error) => console.error('图纸保存失败:', error));
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [saveActiveDocument, saveState]);
   useEffect(() => { if (!selectionWarning) return; const timer = window.setTimeout(() => setSelectionWarning(false), 2200); return () => window.clearTimeout(timer); }, [selectionWarning]);
   useEffect(() => () => { if (wheelGestureRef.current) window.clearTimeout(wheelGestureRef.current.timeoutId); }, []);
 
@@ -404,7 +410,7 @@ export function DrawingWorkbenchPage() {
 
   if (!drawingStoreHydrated || !entryReady || !drawing) return null;
   return <div className="flex h-full min-h-0 flex-col bg-slate-100">
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} onSave={markSaved} onPdf={requestPdfExport} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} onSave={() => void saveActiveDocument()} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
       <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>

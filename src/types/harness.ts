@@ -14,8 +14,8 @@
 /** Connector catalog entry (part definition) */
 export interface Connector {
   id: string;
-  /** Stable UUID of the catalog_items record when loaded from Supabase. */
-  catalogItemId?: string;
+  /** Stable UUID of the resource_items record when loaded from Supabase. */
+  resourceItemId?: string;
   name: string;
   manufacturer: string;
   pinCount: number;
@@ -178,9 +178,9 @@ export interface ConnectorInstance {
 /** A physical wire/cable placed on the canvas. */
 export interface CanvasWireMaterial {
   id: string;
-  /** Optional catalog selection; the canvas instance still has its own id. */
-  catalogItemId?: string;
-  catalogImageUrl?: string;
+  /** Optional resource selection; the canvas instance still has its own id. */
+  resourceItemId?: string;
+  resourceImageUrl?: string;
   name: string;
   position: { x: number; y: number };
   width: number;
@@ -245,7 +245,7 @@ export interface ProtectiveSleeve {
 
 export interface OvermoldSpec {
   id: string;
-  catalogItemId?: string;
+  resourceItemId?: string;
   name: string;
   image?: string;
   outerMaterial: string;
@@ -267,10 +267,10 @@ export interface CanvasModel {
   position: { x: number; y: number };
   width: number;
   height: number;
-  /** Reference to OvermoldSpec catalog entry */
+/** Reference to an OvermoldSpec resource entry */
   overmoldSpecId?: string;
-  catalogItemId?: string;
-  catalogImageUrl?: string;
+  resourceItemId?: string;
+  resourceImageUrl?: string;
 }
 
 // ============================================================

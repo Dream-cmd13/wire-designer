@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Heart, Keyboard, Search, Star, X } from 'lucide-react';
-import { DRAWING_ICON_CATEGORIES, LOCAL_DRAWING_ICONS } from '@/lib/drawingIconLibrary';
+import { drawingCatalogRepository } from '@/lib/drawingCatalogRepository';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { DrawingIconResource } from '@/types/drawing';
 
 type IconLibraryView = 'all' | 'recent' | 'favorites';
@@ -36,9 +37,28 @@ export function DrawingIconLibraryDialog({ open, onClose, onAddIcon }: Props) {
   const [view, setView] = useState<IconLibraryView>('all');
   const [category, setCategory] = useState<string>('全部');
   const [query, setQuery] = useState('');
+  const [icons, setIcons] = useState<DrawingIconResource[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
   const [favorites, setFavorites] = useState<string[]>(() => typeof window === 'undefined' ? [] : readStoredIds(FAVORITES_STORAGE_KEY));
   const [recent, setRecent] = useState<string[]>(() => typeof window === 'undefined' ? [] : readStoredIds(RECENT_STORAGE_KEY));
   const [activeIndex, setActiveIndex] = useState(0);
+
+  const loadIcons = useCallback(async () => {
+    if (!drawingCatalogRepository) {
+      setCatalogError('Supabase 尚未配置。');
+      return;
+    }
+    setLoading(true);
+    setCatalogError('');
+    try {
+      setIcons(await drawingCatalogRepository.listIcons());
+    } catch (reason) {
+      setCatalogError(getUserErrorMessage(reason, '图标目录加载失败，请重试。'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -46,19 +66,29 @@ export function DrawingIconLibraryDialog({ open, onClose, onAddIcon }: Props) {
     return () => window.clearTimeout(focusTimer);
   }, [open]);
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (open) void loadIcons();
+  }, [loadIcons, open]);
+
+  const iconCategories = useMemo(
+    () => ['全部', ...new Set(icons.map((item) => item.category))],
+    [icons],
+  );
+
   const visibleIcons = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const favoriteSet = new Set(favorites);
     const source = view === 'recent'
-      ? recent.map((id) => LOCAL_DRAWING_ICONS.find((item) => item.id === id)).filter((item): item is DrawingIconResource => Boolean(item))
+      ? recent.map((id) => icons.find((item) => item.id === id)).filter((item): item is DrawingIconResource => Boolean(item))
       : view === 'favorites'
-        ? LOCAL_DRAWING_ICONS.filter((item) => favoriteSet.has(item.id))
-        : LOCAL_DRAWING_ICONS;
+        ? icons.filter((item) => favoriteSet.has(item.id))
+        : icons;
     return source.filter((item) => {
       if (category !== '全部' && item.category !== category) return false;
       return !normalizedQuery || `${item.name} ${item.category}`.toLocaleLowerCase().includes(normalizedQuery);
     });
-  }, [category, favorites, query, recent, view]);
+  }, [category, favorites, icons, query, recent, view]);
 
   const selectedIndex = Math.min(activeIndex, Math.max(visibleIcons.length - 1, 0));
 
@@ -168,7 +198,7 @@ export function DrawingIconLibraryDialog({ open, onClose, onAddIcon }: Props) {
           <aside className="shrink-0 border-b border-slate-200 bg-slate-50/70 p-3 md:w-44 md:border-b-0 md:border-r">
             <p className="px-2 pb-2 text-xs font-semibold text-slate-500">分类</p>
             <div className="flex gap-1.5 overflow-x-auto md:flex-col md:overflow-visible">
-              {['全部', ...DRAWING_ICON_CATEGORIES].map((item) => (
+              {iconCategories.map((item) => (
                 <button
                   type="button"
                   key={item}
@@ -193,6 +223,13 @@ export function DrawingIconLibraryDialog({ open, onClose, onAddIcon }: Props) {
                 className="min-w-0 flex-1 py-2.5 text-sm outline-none"
               />
             </label>
+
+            {loading && <p className="mt-3 text-xs text-slate-500">正在读取图标目录…</p>}
+            {catalogError && (
+              <button type="button" onClick={() => void loadIcons()} className="mt-3 w-full rounded-lg bg-red-50 px-3 py-2 text-left text-xs text-red-700">
+                {catalogError} 点击重试
+              </button>
+            )}
 
             <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
               <span>共 {visibleIcons.length} 个符号</span>

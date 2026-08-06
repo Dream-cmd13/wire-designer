@@ -8,7 +8,7 @@ import { resolveDrawingTableCells } from '@/lib/drawingTableLayout';
 import type { DrawingCatalogResource, DrawingConnectorResource, DrawingWizardDraft } from '@/types/drawing';
 
 const connector: DrawingConnectorResource = { id: 'xh-4', name: 'XH2.54-4P', gender: 'female', pinCount: 4, category: '连接器', series: 'XH2.54', rowCount: 1, pitchMm: 2.54, scope: 'public' };
-const wireResource: DrawingCatalogResource = { id: 'ul1007', catalogItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007-24AWG', category: '线材' };
+const wireResource: DrawingCatalogResource = { id: 'ul1007', resourceItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007-24AWG', resourceGroup: '线材' };
 
 const wires = Array.from({ length: 4 }, (_, index) => ({ pin: index + 1, color: '#111827', lengthMm: 320, wireNo: `W-${index + 1}`, connectionNo: String(index + 1), targetPin: index + 1 }));
 

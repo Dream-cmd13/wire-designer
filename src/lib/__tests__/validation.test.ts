@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { validateHarness } from '@/lib/validation';
 import type { HarnessConfig, CanvasWireMaterial, ConnectorInstance, MaterialCircuit } from '@/types/harness';
-import { CONNECTORS } from '@/lib/data';
+import { TEST_CONNECTORS } from './fixtures/catalogFixture';
 
 function makeBaseConfig(): HarnessConfig {
   const connA: ConnectorInstance = {
     id: 'conn-a',
     position: { x: 0, y: 0 },
-    connector: { ...CONNECTORS[0] },
+    connector: { ...TEST_CONNECTORS[0] },
     label: 'A',
     jumpers: [],
   };
@@ -99,7 +99,7 @@ describe('validateHarness unique IDs', () => {
   it('detects duplicate jumper IDs within a connector', () => {
     const config = makeBaseConfig();
     // Use a 4-pin connector so jumpers are valid.
-    config.connectors[0].connector = { ...CONNECTORS[2] }; // JST XH 4P
+    config.connectors[0].connector = { ...TEST_CONNECTORS[2] };
     config.connectors[0].jumpers = [
       { id: 'dup-jumper', side: 'right', pins: [1, 2] },
       { id: 'dup-jumper', side: 'right', pins: [3, 4] },
@@ -115,12 +115,12 @@ describe('validateHarness unique IDs', () => {
     const connB: ConnectorInstance = {
       id: 'conn-b',
       position: { x: 200, y: 0 },
-      connector: { ...CONNECTORS[2] },
+      connector: { ...TEST_CONNECTORS[2] },
       label: 'B',
       jumpers: [],
     };
     config.connectors = [config.connectors[0], connB];
-    config.connectors[0].connector = { ...CONNECTORS[2] };
+    config.connectors[0].connector = { ...TEST_CONNECTORS[2] };
     config.connectors[0].jumpers = [{ id: 'shared-jumper', side: 'right', pins: [1, 2] }];
     config.connectors[1].jumpers = [{ id: 'shared-jumper', side: 'right', pins: [3, 4] }];
 

@@ -38,9 +38,9 @@ export function HarnessLibraryPage({ onOpenProject, onNavigateHome }: HarnessLib
       <div className="flex h-full items-center justify-center bg-slate-100 p-4">
         <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
           <FolderOpen className="mx-auto h-10 w-10 text-slate-300" />
-          <h2 className="mt-4 text-base font-semibold text-slate-900">尚未登录本地身份</h2>
+          <h2 className="mt-4 text-base font-semibold text-slate-900">尚未登录</h2>
           <p className="mt-2 text-sm text-slate-500">
-            线束库按当前本地用户展示项目，请先在首页创建或登录身份。
+            线束库按当前登录用户展示项目，请先登录后再查看。
           </p>
           <button
             type="button"
@@ -65,7 +65,7 @@ export function HarnessLibraryPage({ onOpenProject, onNavigateHome }: HarnessLib
                 <h2 className="text-lg font-semibold text-slate-900">线束库</h2>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                当前为本地项目目录，后续可升级为正式线束模板库。
+                当前为数据库项目目录，项目数据会随账号保存。
               </p>
             </div>
             <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">

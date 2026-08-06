@@ -3,12 +3,14 @@ import { ChevronRight, ChevronLeft, Check, Cable, Settings, Layers, Sparkles } f
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import { useHarnessStore } from '@/stores/harnessStore';
-import { CONNECTORS } from '@/lib/data';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogConnectors, requireCatalogSnapshot } from '@/lib/catalogRuntime';
 import { generateId } from '@/lib/commands';
 import { createDefaultWireEndTreatment, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
 import type {
   CanvasWireMaterial,
+  Connector,
   ConnectorInstance,
   HarnessConfig,
   MaterialCircuit,
@@ -54,8 +56,10 @@ function makeConnector(
   connectorId: string,
   position: { x: number; y: number },
   label: string,
+  connectors: Connector[] = requireCatalogSnapshot().connectors,
 ): ConnectorInstance {
-  const conn = CONNECTORS.find((c) => c.id === connectorId) || CONNECTORS[0];
+  const conn = connectors.find((c) => c.id === connectorId);
+  if (!conn) throw new Error(`Connector part not found: ${connectorId}`);
   return {
     id: generateId(),
     position,
@@ -244,12 +248,13 @@ function createConfigFromTemplate(
 }
 
 export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
+  const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
   const [step, setStep] = useState<WizardStep>(1);
   const [projectName, setProjectName] = useState('');
   const [projectDesc, setProjectDesc] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('blank');
-  const [connectorA, setConnectorA] = useState(CONNECTORS[0].id);
-  const [connectorB, setConnectorB] = useState(CONNECTORS[4].id);
+  const [connectorA, setConnectorA] = useState(connectors[0]?.id ?? '');
+  const [connectorB, setConnectorB] = useState(connectors[4]?.id ?? connectors[1]?.id ?? '');
   const [pinCount, setPinCount] = useState(2);
 
   const { currentUser } = useUserStore();
@@ -364,7 +369,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   onChange={(e) => setConnectorA(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {CONNECTORS.map((c) => (
+                  {connectors.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} ({c.pinCount}P) - {c.manufacturer}
                     </option>
@@ -378,7 +383,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   onChange={(e) => setConnectorB(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {CONNECTORS.map((c) => (
+                  {connectors.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name} ({c.pinCount}P) - {c.manufacturer}
                     </option>
@@ -393,8 +398,8 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   type="range"
                   min={1}
                   max={Math.min(
-                    CONNECTORS.find((c) => c.id === connectorA)?.pinCount || 2,
-                    CONNECTORS.find((c) => c.id === connectorB)?.pinCount || 2,
+                    connectors.find((c) => c.id === connectorA)?.pinCount || 2,
+                    connectors.find((c) => c.id === connectorB)?.pinCount || 2,
                   )}
                   value={pinCount}
                   onChange={(e) => setPinCount(Number(e.target.value))}
@@ -404,8 +409,8 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   <span>1</span>
                   <span>
                     {Math.min(
-                      CONNECTORS.find((c) => c.id === connectorA)?.pinCount || 2,
-                      CONNECTORS.find((c) => c.id === connectorB)?.pinCount || 2,
+                      connectors.find((c) => c.id === connectorA)?.pinCount || 2,
+                      connectors.find((c) => c.id === connectorB)?.pinCount || 2,
                     )}
                   </span>
                 </div>
@@ -443,13 +448,13 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                     <div className="flex justify-between">
                       <span className="text-sm text-slate-500">起始连接器</span>
                       <span className="text-sm text-slate-800">
-                        {CONNECTORS.find((c) => c.id === connectorA)?.name}
+                        {connectors.find((c) => c.id === connectorA)?.name}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm text-slate-500">目标连接器</span>
                       <span className="text-sm text-slate-800">
-                        {CONNECTORS.find((c) => c.id === connectorB)?.name}
+                        {connectors.find((c) => c.id === connectorB)?.name}
                       </span>
                     </div>
                     <div className="flex justify-between">

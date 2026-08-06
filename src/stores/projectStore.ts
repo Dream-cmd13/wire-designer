@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { Project } from '@/types/user';
 import type { HarnessConfig } from '@/types/harness';
 import {
@@ -19,6 +18,7 @@ interface ProjectState {
   currentProject: Project | null;
 
   // --- Project CRUD ---
+  loadProjects: (userId: string) => Promise<void>;
   createProject: (
     userId: string,
     name: string,
@@ -37,32 +37,14 @@ interface ProjectState {
   getUserProjects: (userId: string) => Project[];
 }
 
-type PersistedProjectState = Pick<ProjectState, 'projects' | 'currentProject'>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-export function mergePersistedProjectState(
-  persisted: unknown,
-  current: PersistedProjectState,
-): PersistedProjectState {
-  if (!isRecord(persisted) || !Array.isArray(persisted.projects)) {
-    return { ...current, currentProject: null };
-  }
-
-  return {
-    ...current,
-    projects: persisted.projects as Project[],
-    currentProject: null,
-  };
-}
-
-export const useProjectStore = create<ProjectState>()(
-  persist(
-    (set, get) => ({
+export const useProjectStore = create<ProjectState>()((set, get) => ({
       projects: [],
       currentProject: null,
+
+      loadProjects: async (userId) => {
+        const projects = await projectRepository.listProjects(userId);
+        set({ projects });
+      },
 
       createProject: async (userId, name, description, initialConfig) => {
         const projectId = generateId();
@@ -78,7 +60,7 @@ export const useProjectStore = create<ProjectState>()(
           status: 'draft',
         };
         const configToSave = { ...initialConfig, id: configId };
-        await projectRepository.save(projectId, configToSave);
+        await projectRepository.createProject(newProject, configToSave);
         set((state) => ({
           projects: [...state.projects, newProject],
           currentProject: newProject,
@@ -87,6 +69,7 @@ export const useProjectStore = create<ProjectState>()(
       },
 
       updateProject: async (id, updates) => {
+        await projectRepository.updateProject(id, updates);
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id ? { ...p, ...updates, updatedAt: Date.now() } : p
@@ -125,14 +108,4 @@ export const useProjectStore = create<ProjectState>()(
         get().projects
           .filter((p) => p.userId === userId)
           .sort((a, b) => b.updatedAt - a.updatedAt),
-    }),
-    {
-      name: 'harness-projects',
-      partialize: (state) => ({ projects: state.projects }),
-      merge: (persisted, current) => ({
-        ...current,
-        ...mergePersistedProjectState(persisted, current),
-      }),
-    }
-  )
-);
+    }));

@@ -1,8 +1,8 @@
 -- Run after the image files have been uploaded to the listed Storage paths.
 -- The primary image is the only image automatically displayed in the product-image view.
 
-insert into public.catalog_item_images (
-  id, item_id, storage_path, file_name, mime_type, size_bytes, image_role, is_primary, display_order
+insert into public.resource_item_images (
+  id, resource_item_id, storage_path, file_name, mime_type, size_bytes, image_role, is_primary, display_order
 ) values
   ('20000000-0000-4000-8000-000000008001', '20000000-0000-4000-8000-000000007001', 'catalog/connector/20000000-0000-4000-8000-000000007001/connector_before_left/connector-before-left.png', 'connector-before-left.png', 'image/png', 0, 'connector_before_left', true, 10),
   ('20000000-0000-4000-8000-000000008002', '20000000-0000-4000-8000-000000007001', 'catalog/connector/20000000-0000-4000-8000-000000007001/connector_before_top/connector-before-top.png', 'connector-before-top.png', 'image/png', 0, 'connector_before_top', false, 20),

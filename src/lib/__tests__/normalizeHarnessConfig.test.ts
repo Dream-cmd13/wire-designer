@@ -137,6 +137,38 @@ describe('normalizeHarnessConfig', () => {
     expect(result.protectiveSleeves[0].height).toBe(36);
   });
 
+  it('preserves resource references and signed image URLs in valid v3 documents', () => {
+    const input = {
+      schemaVersion: 3,
+      id: 'resource-links',
+      name: '资源关联',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [{
+        id: 'connector-instance', position: { x: 0, y: 0 }, label: 'J1', jumpers: [],
+        connector: { id: 'jst-xh-2', resourceItemId: 'connector-resource', name: 'JST XH 2P', manufacturer: 'JST', pinCount: 2, type: 'female', pinLabels: ['1', '2'] },
+      }],
+      materials: [{
+        id: 'material-1', resourceItemId: 'wire-resource', resourceImageUrl: 'https://example.test/wire.png', name: 'W1', position: { x: 0, y: 0 }, width: 100,
+        spec: { kind: 'electronic', color: 'red', lengthMm: 100, awg: 26, ulNumber: '1007', endTreatment: { start: { stripped: false, termination: 'none' }, end: { stripped: false, termination: 'none' } } },
+        circuits: [],
+      }],
+      protectiveSleeves: [],
+      models: [{ id: 'model-1', kind: 'outer-box', resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png', position: { x: 0, y: 0 }, width: 100, height: 80 }],
+      quantity: 1,
+      leadTime: 'standard',
+    };
+
+    const result = parseHarnessConfig(input);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.connectors[0].connector.resourceItemId).toBe('connector-resource');
+      expect(result.data.materials[0]).toMatchObject({ resourceItemId: 'wire-resource', resourceImageUrl: 'https://example.test/wire.png' });
+      expect(result.data.models[0]).toMatchObject({ resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png' });
+    }
+  });
+
   it('rejects nested material data with a missing spec', () => {
     const input = {
       schemaVersion: 3,

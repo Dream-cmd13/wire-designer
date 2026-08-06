@@ -248,7 +248,7 @@ export type DrawingCatalogFilters = {
   resourceType?: DrawingCatalogResourceType;
   query?: string;
   gender?: DrawingConnectorResource['gender'];
-  category?: string;
+  resourceGroup?: string;
   series?: string;
   pinCount?: number;
   rowCount?: number;
@@ -257,11 +257,11 @@ export type DrawingCatalogFilters = {
 
 export type DrawingCatalogResource = {
   id: string;
-  catalogItemId: string;
+  resourceItemId: string;
   resourceType: DrawingCatalogResourceType;
   name: string;
   model: string;
-  category: string;
+  resourceGroup: string;
   imageUrl?: string;
   imageError?: string;
   gender?: DrawingConnectorResource['gender'];

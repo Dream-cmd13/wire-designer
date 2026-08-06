@@ -118,7 +118,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
   };
 
   const handleImport = async (preview: DesignFilePreview) => {
-    if (!currentUser) throw new Error('请先创建本地身份');
+    if (!currentUser) throw new Error('请先登录');
     const project = await createProject(
       currentUser.id,
       preview.name,
@@ -137,14 +137,14 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     const points = await projectRepository.listRecoveryPoints(project.id);
     const latest = points[0];
     if (!latest) {
-      setNotice('该项目尚无可用恢复点；继续编辑并保存后会自动轮换保留最近 3 个。');
+      setNotice('该项目尚无可用恢复点；继续编辑并保存后会生成新的数据库恢复版本。');
       return;
     }
     const recoveredName = `${project.name}（恢复 ${formatDateTime(latest.createdAt)}）`;
     await createProject(
       currentUser.id,
       recoveredName,
-      `从“${project.name}”的本地恢复点创建，不覆盖原项目`,
+      `从“${project.name}”的数据库恢复点创建，不覆盖原项目`,
       {
         ...latest.config,
         name: recoveredName,
@@ -171,7 +171,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">项目管理</h1>
             <p className="mt-1 text-sm text-slate-500">
-              {currentUser ? `欢迎，${currentUser.name}` : '请先创建本地身份'}
+              {currentUser ? `欢迎，${currentUser.name}` : '请先登录'}
             </p>
           </div>
           <div className="flex items-center gap-2">

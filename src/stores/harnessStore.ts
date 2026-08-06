@@ -9,8 +9,7 @@ import type {
   Selection,
   TwoDImage,
 } from '@/types/harness';
-import { CONNECTORS } from '@/lib/data';
-import { lengthMmToCanvasWidth, alignHarnessConfig } from '@/lib/canvasMaterials';
+import { alignHarnessConfig } from '@/lib/canvasMaterials';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
 import {
   generateId,
@@ -21,70 +20,16 @@ import {
 } from '@/lib/commands';
 
 export function createDefaultConfig(): HarnessConfig {
-  const m12Connector = CONNECTORS.find((c) => c.id === 'm12a04-07-093')!;
-
-  const connectorId = 'mock-connector-m12';
-  const materialId = 'mock-material-jacketed';
-  const modelId = 'mock-model-overmold';
-
-  const jacketedSpec = {
-    kind: 'jacketed' as const,
-    jacketMaterial: 'PVC' as const,
-    jacketColor: 'black' as const,
-    awg: 22,
-    coreCount: 4 as const,
-    shielded: false,
-    odMm: 4.50,
-    coreColors: ['棕色', '白色', '蓝色', '黑色'],
-    endTreatment: {
-      start: { stripped: false, termination: 'none' as const },
-      end: { stripped: false, termination: 'none' as const },
-    },
-    lengthMm: 300,
-  };
-
-  const material: CanvasWireMaterial = {
-    id: materialId,
-    name: 'W1 护套线',
-    position: { x: 280, y: 200 },
-    width: lengthMmToCanvasWidth(jacketedSpec.lengthMm),
-    spec: jacketedSpec,
-    circuits: [
-      { id: generateId(), color: '棕色', signalName: 'Pin1', coreIndex: 0 },
-      { id: generateId(), color: '白色', signalName: 'Pin2', coreIndex: 1 },
-      { id: generateId(), color: '蓝色', signalName: 'Pin3', coreIndex: 2 },
-      { id: generateId(), color: '黑色', signalName: 'Pin4', coreIndex: 3 },
-    ],
-    expandedByDefault: true,
-  };
-
-  const connectorInstance: ConnectorInstance = {
-    id: connectorId,
-    position: { x: 80, y: 180 },
-    connector: { ...m12Connector },
-    label: 'M12端',
-    jumpers: [],
-  };
-
-  const overmoldModel: CanvasModel = {
-    id: modelId,
-    kind: 'outer-box',
-    position: { x: 160, y: 160 },
-    width: 80,
-    height: 80,
-    overmoldSpecId: 'pvc-45p-pe',
-  };
-
   const config: HarnessConfig = {
     schemaVersion: 3,
     id: generateId(),
-    name: 'M12防水线束示例',
+    name: '新建线束',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    connectors: [connectorInstance],
-    materials: [material],
+    connectors: [],
+    materials: [],
     protectiveSleeves: [],
-    models: [overmoldModel],
+    models: [],
     quantity: 1,
     leadTime: 'standard',
     twoDImages: [],

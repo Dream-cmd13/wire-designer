@@ -6,7 +6,6 @@ import type {
   JacketCoreCount,
   JacketUlNumber,
   ProtectiveSleeve,
-  ProtectiveSleeveType,
   WireEndProcessing,
   WireEndTreatment,
   ConnectorInstance,
@@ -15,6 +14,7 @@ import type {
   HarnessConfig,
   Selection,
 } from '@/types/harness';
+import type { CatalogSnapshot } from '@/types/catalog';
 
 export const JACKET_CORE_COUNTS: JacketCoreCount[] = [
   1, 2, 3, 4, 5, 6, 8, 12, 17, 20, 24, 30, 32, 40, 50,
@@ -48,12 +48,8 @@ export const CORE_COLOR_OPTIONS = [
 
 const CORE_COLOR_SEQUENCE = [...CORE_COLOR_OPTIONS];
 
-import { WIRE_COLORS } from './data';
+import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 
-// Map Chinese core color names (used in jacketed coreColors) → WIRE_COLORS entry.
-const CHINESE_NAME_TO_WIRE_COLOR = new Map(
-  WIRE_COLORS.map((c) => [c.name, c]),
-);
 // Additional Chinese names not in WIRE_COLORS that appear in CORE_COLOR_OPTIONS.
 const EXTRA_CORE_COLOR_HEX: Record<string, string> = {
   '金色': '#D4AF37',
@@ -74,11 +70,12 @@ const EXTRA_CORE_COLOR_HEX: Record<string, string> = {
  * Returns { hex, name } for display.
  */
 export function resolveColor(value: string): { hex: string; name: string } {
+  const wireColors = getCatalogSnapshot()?.wireColors ?? [];
   // Try English ID first (electronic wires)
-  const byId = WIRE_COLORS.find((c) => c.id === value);
+  const byId = wireColors.find((c) => c.id === value);
   if (byId) return { hex: byId.hex, name: byId.name };
   // Try Chinese name (jacketed core colors)
-  const byName = CHINESE_NAME_TO_WIRE_COLOR.get(value);
+  const byName = wireColors.find((color) => color.name === value);
   if (byName) return { hex: byName.hex, name: byName.name };
   // Extra names not in WIRE_COLORS
   const extraHex = EXTRA_CORE_COLOR_HEX[value];
@@ -86,22 +83,6 @@ export function resolveColor(value: string): { hex: string; name: string } {
   // Fallback
   return { hex: '#6B7280', name: value || '灰色' };
 }
-
-export const PROTECTIVE_SLEEVE_LABELS: Record<ProtectiveSleeveType, string> = {
-  'acetate-cloth': '醋酸布',
-  fleece: '绒布',
-  'heat-shrink': '热缩管',
-  braided: '编织网管',
-  corrugated: '波纹管',
-};
-
-export const PROTECTIVE_SLEEVE_PRICE_PER_METER: Record<ProtectiveSleeveType, number> = {
-  'acetate-cloth': 2.2,
-  fleece: 2.8,
-  'heat-shrink': 1.67,
-  braided: 3.33,
-  corrugated: 4.0,
-};
 
 export const CORRUGATED_MATERIAL_LABELS: Record<CorrugatedMaterial, string> = {
   PP: 'PP（聚丙烯）',
@@ -115,25 +96,19 @@ export const CORRUGATED_MATERIAL_SHORT_LABELS: Record<CorrugatedMaterial, string
   'stainless-steel': '不锈钢',
 };
 
-export const CORRUGATED_MATERIAL_PRICE_MULTIPLIER: Record<CorrugatedMaterial, number> = {
-  PP: 1.0,
-  PA: 1.4,
-  'stainless-steel': 3.2,
-};
-
 /**
  * Unified display name for a protective sleeve.
  * Corrugated sleeves include their material (e.g. "PA波纹管").
  * All UI surfaces (canvas, BOM, quote) should use this function.
  */
 export function getProtectiveSleeveDisplayName(sleeve: ProtectiveSleeve): string {
-  if (sleeve.type !== 'corrugated') {
-    return PROTECTIVE_SLEEVE_LABELS[sleeve.type];
-  }
+  const option = getCatalogSnapshot()?.protectionOptions.find((item) => item.id === sleeve.type);
+  const baseName = option?.name ?? sleeve.type;
+  if (sleeve.type !== 'corrugated') return baseName;
   const materialLabel = sleeve.corrugatedMaterial
     ? CORRUGATED_MATERIAL_SHORT_LABELS[sleeve.corrugatedMaterial]
-    : '未指定材质';
-  return `${materialLabel}波纹管`;
+    : undefined;
+  return materialLabel ? `${materialLabel} ${baseName}` : baseName;
 }
 
 export const CANVAS_MATERIAL_HEIGHT = 22;
@@ -223,11 +198,12 @@ export function sleeveLengthToCanvasWidth(lengthMm: number): number {
   return lengthMmToCanvasWidth(lengthMm);
 }
 
-export function calculateProtectiveSleevePrice(sleeve: ProtectiveSleeve): number {
-  const pricePerMeter = PROTECTIVE_SLEEVE_PRICE_PER_METER[sleeve.type] ?? 0;
+export function calculateProtectiveSleevePrice(sleeve: ProtectiveSleeve, catalog: CatalogSnapshot | null = getCatalogSnapshot()): number {
+  const option = catalog?.protectionOptions.find((item) => item.id === sleeve.type);
+  const pricePerMeter = option?.price ?? 0;
   const materialMultiplier =
     sleeve.type === 'corrugated' && sleeve.corrugatedMaterial
-      ? (CORRUGATED_MATERIAL_PRICE_MULTIPLIER[sleeve.corrugatedMaterial] ?? 1)
+      ? (option?.materialMultipliers[sleeve.corrugatedMaterial] ?? 1)
       : 1;
   return pricePerMeter * materialMultiplier * (sleeve.lengthMm / 1000);
 }

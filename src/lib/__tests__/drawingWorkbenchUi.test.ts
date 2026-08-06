@@ -20,7 +20,8 @@ describe('drawing workbench UI contract', () => {
   });
 
   it('waits for drawing hydration and offers refresh resume or replacement', () => {
-    expect(drawingStoreSource).toContain('skipHydration: true');
+    expect(drawingStoreSource).toContain('drawingDocumentRepository');
+    expect(drawingStoreSource).not.toContain('localStorage');
     expect(pageSource).toContain('hydrateDrawingStore');
     expect(pageSource).not.toContain('useDrawingStore.persist.onFinishHydration');
     expect(pageSource).toContain('.catch(() => undefined)');

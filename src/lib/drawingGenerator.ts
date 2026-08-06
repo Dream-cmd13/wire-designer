@@ -39,8 +39,8 @@ export function countDrawingMaterialKinds(draft: DrawingWizardDraft): number {
   for (const connector of [draft.singleConnector, draft.leftConnector, draft.rightConnector]) {
     if (connector) ids.add(`connector:${connector.id}`);
   }
-  if (draft.wireResource) ids.add(`wire:${draft.wireResource.catalogItemId}`);
-  if (draft.hasMold) ids.add(`mold:${draft.modelResource?.catalogItemId ?? 'configured'}`);
+  if (draft.wireResource) ids.add(`wire:${draft.wireResource.resourceItemId}`);
+  if (draft.hasMold) ids.add(`mold:${draft.modelResource?.resourceItemId ?? 'configured'}`);
   if (draft.heatShrink?.trim()) ids.add(`accessory:${draft.heatShrink.trim()}`);
   return ids.size;
 }
@@ -134,8 +134,8 @@ function drawingBomRows(draft: DrawingWizardDraft, left?: DrawingConnectorResour
   add(`connector:${left?.id}`, left?.name, 'PCS', 1);
   add(`connector:${right?.id}`, right?.name, 'PCS', 1);
   const wireLengthM = draft.wires.reduce((total, wire) => total + wire.lengthMm, 0) / 1000;
-  add(`wire:${draft.wireResource?.catalogItemId}`, draft.wireResource?.name, 'M', wireLengthM);
-  if (draft.hasMold) add(`model:${draft.modelResource?.catalogItemId ?? 'generic'}`, draft.modelResource?.name ?? '外线模具', 'PCS', 1);
+  add(`wire:${draft.wireResource?.resourceItemId}`, draft.wireResource?.name, 'M', wireLengthM);
+  if (draft.hasMold) add(`model:${draft.modelResource?.resourceItemId ?? 'generic'}`, draft.modelResource?.name ?? '外线模具', 'PCS', 1);
   add(`accessory:${draft.heatShrink}`, draft.heatShrink, 'PCS', 1);
   return [...materials.values()].map((material, index) => ({
     序号: String(index + 1), 物料编码: '', '物料名称/规格': material.name, 单位: material.unit,

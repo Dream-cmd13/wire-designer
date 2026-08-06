@@ -20,6 +20,7 @@ import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
+import { useCatalogStore } from '@/stores/catalogStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
@@ -148,13 +149,30 @@ export default function App() {
   const currentUser = useUserStore((state) => state.currentUser);
   const authReady = useUserStore((state) => state.authReady);
   const initializeAuth = useUserStore((state) => state.initialize);
-  const { currentProject, saveCurrentConfig, setCurrentProject, updateProject } = useProjectStore();
+  const initializeCatalog = useCatalogStore((state) => state.initialize);
+  const catalogStatus = useCatalogStore((state) => state.status);
+  const catalogError = useCatalogStore((state) => state.error);
+  const { currentProject, saveCurrentConfig, setCurrentProject, updateProject, loadProjects } = useProjectStore();
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
   const canUndo = useHistoryStore((state) => state.past.length > 0);
   const canRedo = useHistoryStore((state) => state.future.length > 0);
   const drawingSaveState = useDrawingStore((state) => state.saveState);
+  const saveActiveDrawing = useDrawingStore((state) => state.saveActiveDocument);
 
   useEffect(() => initializeAuth(), [initializeAuth]);
+
+  useEffect(() => {
+    if (!authReady || !currentUser) return;
+    void loadProjects(currentUser.id).catch((error) => {
+      console.error('项目列表加载失败:', error);
+    });
+  }, [authReady, currentUser, loadProjects]);
+
+  useEffect(() => {
+    void initializeCatalog().catch(() => {
+      // The catalog store exposes the error state to the shell; no mock fallback is used.
+    });
+  }, [initializeCatalog]);
 
   const applyHistoryDocument = useCallback((nextConfig: typeof config | null) => {
     if (!nextConfig) return;
@@ -230,10 +248,16 @@ export default function App() {
     }
 
     if (hasUnsavedDrawing) {
-      useDrawingStore.getState().markSaved();
+      try {
+        await saveActiveDrawing();
+      } catch (error) {
+        console.error('图纸保存失败:', error);
+        window.alert('图纸保存失败，已取消用户切换。');
+        return false;
+      }
     }
     return true;
-  }, [currentProject, doSave, drawingSaveState, saveBlocked, saveState.status]);
+  }, [currentProject, doSave, drawingSaveState, saveActiveDrawing, saveBlocked, saveState.status]);
 
   const resetWorkspaceForUser = useCallback(() => {
     if (saveTimerRef.current) {
@@ -372,7 +396,7 @@ export default function App() {
         );
         setRecoveryRaw(result.raw);
       } else {
-        setLoadError(`无法加载项目“${project.name}”的配置数据，已回退为默认示例。`);
+        setLoadError(`无法加载项目“${project.name}”的配置数据，已打开空白工作区。`);
         setRecoveryRaw(null);
       }
       setSaveBlocked(true);
@@ -517,6 +541,11 @@ export default function App() {
         onOpenAuth={() => setAuthOpen(true)}
         onCloseProject={handleCloseProject}
       >
+        {catalogStatus === 'error' && (
+          <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+            目录数据暂时不可用：{catalogError ?? '请检查 Supabase 配置后重试。'}
+          </div>
+        )}
         {renderContent()}
       </AdminShell>
 

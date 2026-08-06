@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { createDesignFile, parseDesignFile } from '@/lib/designFile';
 import {
   createDefaultDrawingWireRows,
@@ -7,8 +7,13 @@ import {
 } from '@/lib/drawingWizard';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import type { Project } from '@/types/user';
+import { clearCatalogSnapshot, setCatalogSnapshot } from '@/lib/catalogRuntime';
+import { TEST_CATALOG_SNAPSHOT } from './fixtures/catalogFixture';
 
 describe('design file import/export', () => {
+  beforeEach(() => setCatalogSnapshot(TEST_CATALOG_SNAPSHOT));
+  afterAll(() => clearCatalogSnapshot());
+
   it('round-trips a complete design envelope', () => {
     const config = { ...createFallbackConfig(), id: 'config-1', name: '测试线束' };
     const project: Project = {

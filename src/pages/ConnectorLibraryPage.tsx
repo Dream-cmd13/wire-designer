@@ -1,19 +1,20 @@
 import { useMemo, useState } from 'react';
 import { Database, Search } from 'lucide-react';
-import { CONNECTORS } from '@/lib/data';
-
-const allManufacturers = Array.from(new Set(CONNECTORS.map((connector) => connector.manufacturer))).sort();
-const allTypes = Array.from(new Set(CONNECTORS.map((connector) => connector.type))).sort();
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogConnectors } from '@/lib/catalogRuntime';
 
 export function ConnectorLibraryPage() {
+  const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
   const [query, setQuery] = useState('');
   const [manufacturer, setManufacturer] = useState('all');
   const [type, setType] = useState('all');
   const [pinCount, setPinCount] = useState('all');
+  const allManufacturers = useMemo(() => Array.from(new Set(connectors.map((connector) => connector.manufacturer))).sort(), [connectors]);
+  const allTypes = useMemo(() => Array.from(new Set(connectors.map((connector) => connector.type))).sort(), [connectors]);
 
   const filteredConnectors = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return CONNECTORS.filter((connector) => {
+    return connectors.filter((connector) => {
       const matchesQuery =
         !normalizedQuery ||
         connector.name.toLowerCase().includes(normalizedQuery) ||
@@ -24,9 +25,9 @@ export function ConnectorLibraryPage() {
       const matchesPinCount = pinCount === 'all' || connector.pinCount === Number(pinCount);
       return matchesQuery && matchesManufacturer && matchesType && matchesPinCount;
     });
-  }, [manufacturer, pinCount, query, type]);
+  }, [connectors, manufacturer, pinCount, query, type]);
 
-  const pinCounts = Array.from(new Set(CONNECTORS.map((connector) => connector.pinCount))).sort((a, b) => a - b);
+  const pinCounts = Array.from(new Set(connectors.map((connector) => connector.pinCount))).sort((a, b) => a - b);
 
   return (
     <div className="h-full overflow-y-auto bg-slate-100">
@@ -39,11 +40,11 @@ export function ConnectorLibraryPage() {
                 <h2 className="text-lg font-semibold text-slate-900">数据库连接器</h2>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                第一版读取本地连接器目录，后续可替换为数据库来源。
+                连接器数据来自 Supabase 目录表。
               </p>
             </div>
             <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
-              共 {filteredConnectors.length} / {CONNECTORS.length} 项
+              共 {filteredConnectors.length} / {connectors.length} 项
             </div>
           </div>
 

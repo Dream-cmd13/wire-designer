@@ -12,7 +12,7 @@ export function getUserErrorMessage(error: unknown, fallback = '操作失败，�
   const normalized = getErrorMessage(error).toLowerCase();
 
   if (/schema cache|could not find the table/.test(normalized)) {
-    if (normalized.includes('catalog_items')) return '公共资源数据表不存在或尚未初始化，请联系管理员完成数据库配置。';
+    if (normalized.includes('resource_items')) return '公共资源数据表不存在或尚未初始化，请联系管理员完成数据库配置。';
     if (normalized.includes('drawing_icons')) return '绘图图标数据表不存在或尚未初始化，请联系管理员完成数据库配置。';
     return '所需数据表不存在或尚未初始化，请联系管理员完成数据库配置。';
   }

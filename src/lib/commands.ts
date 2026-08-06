@@ -18,7 +18,7 @@ import type {
   MaterialEndpoint,
   ProtectiveSleeve,
 } from '@/types/harness';
-import { CONNECTORS } from '@/lib/data';
+import { findRuntimeConnector } from '@/lib/catalogRuntime';
 import {
   createDefaultWireSpec,
   lengthMmToCanvasWidth,
@@ -105,8 +105,8 @@ export function addConnector(
 ): HarnessConfig {
   const connector = input.connector
     ?? (input.connectorId
-    ? CONNECTORS.find((c) => c.id === input.connectorId) || CONNECTORS[0]
-    : CONNECTORS[0]);
+    ? findRuntimeConnector(input.connectorId)
+    : undefined);
 
   if (!connector) {
     throw new Error('No connector available in catalog');
@@ -159,7 +159,7 @@ export function changeConnectorPart(
   }
 
   const newConnector = typeof nextConnector === 'string'
-    ? CONNECTORS.find((connector) => connector.id === nextConnector)
+    ? findRuntimeConnector(nextConnector)
     : nextConnector;
   if (!newConnector) throw new Error(`Connector part not found: ${nextConnector}`);
 

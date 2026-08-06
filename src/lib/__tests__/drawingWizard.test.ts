@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createDefaultDrawingWireRows,
   createDrawingConnectorResources,
@@ -12,6 +12,8 @@ import {
 } from '@/lib/productionDrawingExport';
 import { updateProductionDrawingObject } from '@/lib/productionDrawingGenerator';
 import type { DrawingWizardDraft, HarnessConfig } from '@/types/harness';
+import { clearCatalogSnapshot, setCatalogSnapshot } from '@/lib/catalogRuntime';
+import { TEST_CATALOG_SNAPSHOT } from './fixtures/catalogFixture';
 
 function makeBaseConfig(): HarnessConfig {
   return {
@@ -30,6 +32,9 @@ function makeBaseConfig(): HarnessConfig {
 }
 
 describe('drawing wizard generator', () => {
+  beforeEach(() => setCatalogSnapshot(TEST_CATALOG_SNAPSHOT));
+  afterAll(() => clearCatalogSnapshot());
+
   it('generates a double-end 40PIN jacketed harness with drawing objects', () => {
     const left = createDrawingConnectorResources('left').find((item) => item.id === 'a1008h-2x20p');
     const right = createDrawingConnectorResources('right').find((item) => item.id === 'a1008h-2x20p');

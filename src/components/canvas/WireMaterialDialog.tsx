@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Cable, Check, X, Search } from 'lucide-react';
-import { WIRE_COLORS } from '@/lib/data';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogWireColors } from '@/lib/catalogRuntime';
 import {
   calculateCableOd,
   createDefaultWireEndTreatment,
@@ -21,11 +22,12 @@ import type {
 } from '@/types/harness';
 import { parseQuickInput } from '@/lib/wireParser';
 import { catalogRepository, type CatalogWire } from '@/lib/catalogRepository';
+import { applyCatalogWireSpec } from '@/lib/wireCatalog';
 
 interface WireMaterialDialogProps {
   material: CanvasWireMaterial | null;
   onCancel: () => void;
-  onConfirm: (updates: Pick<CanvasWireMaterial, 'spec' | 'width' | 'name' | 'catalogItemId' | 'catalogImageUrl'>) => void;
+  onConfirm: (updates: Pick<CanvasWireMaterial, 'spec' | 'width' | 'name' | 'resourceItemId' | 'resourceImageUrl'>) => void;
 }
 
 const fieldClass =
@@ -72,12 +74,13 @@ function validateSpec(spec: CanvasWireSpec): string | null {
 }
 
 export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMaterialDialogProps) {
+  const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
   const [spec, setSpec] = useState<CanvasWireSpec>(material?.spec ?? createDefaultWireSpec());
   const [error, setError] = useState<string | null>(null);
   const [electronicQuery, setElectronicQuery] = useState('');
   const [jacketedQuery, setJacketedQuery] = useState('');
   const [catalogWires, setCatalogWires] = useState<CatalogWire[]>([]);
-  const [selectedCatalogWireId, setSelectedCatalogWireId] = useState(material?.catalogItemId ?? '');
+  const [selectedCatalogWireId, setSelectedCatalogWireId] = useState(material?.resourceItemId ?? '');
 
   useEffect(() => {
     let cancelled = false;
@@ -86,6 +89,12 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
       .catch(() => { if (!cancelled) setCatalogWires([]); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const selected = catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId);
+    if (!selected) return;
+    setSpec((current) => applyCatalogWireSpec(current, selected.spec));
+  }, [catalogWires, selectedCatalogWireId]);
 
   const handleQuickParse = (kind: 'electronic' | 'jacketed', query: string) => {
     if (!query.trim()) return;
@@ -150,7 +159,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
       setError(validationError);
       return;
     }
-    const selectedCatalogWire = catalogWires.find((item) => item.catalogItemId === selectedCatalogWireId);
+    const selectedCatalogWire = catalogWires.find((item) => item.resourceItemId === selectedCatalogWireId);
     if (!selectedCatalogWire) {
       setError('请选择线材库中的物料');
       return;
@@ -159,8 +168,8 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
       spec,
       width: lengthMmToCanvasWidth(spec.lengthMm),
       name: selectedCatalogWire.name,
-      catalogItemId: selectedCatalogWire.catalogItemId,
-      catalogImageUrl: selectedCatalogWire.image,
+      resourceItemId: selectedCatalogWire.resourceItemId,
+      resourceImageUrl: selectedCatalogWire.image,
     });
   };
 
@@ -192,12 +201,12 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
             >
               <option value="">请选择 Supabase 线材物料</option>
               {catalogWires.map((wire) => (
-                <option key={wire.catalogItemId} value={wire.catalogItemId}>{wire.name}</option>
+                <option key={wire.resourceItemId} value={wire.resourceItemId}>{wire.name}</option>
               ))}
             </select>
-            {catalogWires.find((wire) => wire.catalogItemId === selectedCatalogWireId)?.image && (
+            {catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image && (
               <img
-                src={catalogWires.find((wire) => wire.catalogItemId === selectedCatalogWireId)?.image}
+                src={catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image}
                 alt="所选线材"
                 className="mt-3 h-20 w-full rounded-lg border border-slate-200 bg-white object-contain"
               />
@@ -252,7 +261,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   onChange={(event) => setSpec({ ...spec, color: event.target.value })}
                   className={fieldClass}
                 >
-                  {WIRE_COLORS.map((color) => (
+                  {wireColors.map((color) => (
                     <option key={color.id} value={color.id}>{color.name}</option>
                   ))}
                 </select>

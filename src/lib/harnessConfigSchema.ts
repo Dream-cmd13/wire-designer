@@ -177,6 +177,7 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
     || !pinLabels
     || (value.pitch !== undefined && !isPositiveNumber(value.pitch))
     || (value.image !== undefined && !isString(value.image))
+    || (value.resourceItemId !== undefined && !isString(value.resourceItemId))
   ) {
     issues.push(`${path} is not a valid connector`);
     return null;
@@ -191,6 +192,7 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
     pinLabels,
     ...(value.pitch === undefined ? {} : { pitch: value.pitch }),
     ...(value.image === undefined ? {} : { image: value.image }),
+    ...(value.resourceItemId === undefined ? {} : { resourceItemId: value.resourceItemId }),
   };
 }
 
@@ -434,6 +436,8 @@ function readMaterial(value: unknown, path: string, issues: string[]): CanvasWir
     || !isPositiveNumber(value.width)
     || !Array.isArray(value.circuits)
     || (value.expandedByDefault !== undefined && typeof value.expandedByDefault !== 'boolean')
+    || (value.resourceItemId !== undefined && !isString(value.resourceItemId))
+    || (value.resourceImageUrl !== undefined && !isString(value.resourceImageUrl))
   ) {
     issues.push(`${path} is not a valid material`);
     return null;
@@ -474,6 +478,8 @@ function readMaterial(value: unknown, path: string, issues: string[]): CanvasWir
     circuits: circuits as MaterialCircuit[],
     labels: labels as WireLabel[],
     numberTubes: numberTubes as WireNumberTube[],
+    ...(value.resourceItemId === undefined ? {} : { resourceItemId: value.resourceItemId }),
+    ...(value.resourceImageUrl === undefined ? {} : { resourceImageUrl: value.resourceImageUrl }),
     ...(value.expandedByDefault === undefined ? {} : { expandedByDefault: value.expandedByDefault }),
   };
 }
@@ -548,6 +554,8 @@ function readModel(value: unknown, path: string, issues: string[]): CanvasModel 
     || !isPositiveNumber(value.width)
     || !isPositiveNumber(value.height)
     || (value.overmoldSpecId !== undefined && !isString(value.overmoldSpecId))
+    || (value.resourceItemId !== undefined && !isString(value.resourceItemId))
+    || (value.resourceImageUrl !== undefined && !isString(value.resourceImageUrl))
   ) {
     issues.push(`${path} is not a valid canvas model`);
     return null;
@@ -563,6 +571,8 @@ function readModel(value: unknown, path: string, issues: string[]): CanvasModel 
     width: value.width,
     height: value.height,
     ...(value.overmoldSpecId === undefined ? {} : { overmoldSpecId: value.overmoldSpecId }),
+    ...(value.resourceItemId === undefined ? {} : { resourceItemId: value.resourceItemId }),
+    ...(value.resourceImageUrl === undefined ? {} : { resourceImageUrl: value.resourceImageUrl }),
   };
 }
 

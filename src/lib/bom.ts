@@ -4,7 +4,16 @@ import {
   getProtectiveSleeveDisplayName,
   getWireEndTreatmentSummary,
 } from './canvasMaterials';
-import { BASE_PRICES } from './data';
+import { getCatalogSnapshot } from '@/lib/catalogRuntime';
+import type { CatalogSnapshot } from '@/types/catalog';
+
+function ruleValue(catalog: CatalogSnapshot | null, ruleCode: string, ruleKey: string, fallback = 0): number {
+  return catalog?.pricingRules.find((rule) => rule.ruleCode === ruleCode && rule.ruleKey === ruleKey)?.numericValue ?? fallback;
+}
+
+function wirePerMeter(catalog: CatalogSnapshot | null, awg: number): number {
+  return ruleValue(catalog, 'wire_per_meter', `awg_${awg}`) * ruleValue(catalog, 'wire_type_multiplier', 'ul1007', 1);
+}
 
 function getMaterialDescription(material: CanvasWireMaterial): string {
   const spec = material.spec;
@@ -38,16 +47,16 @@ function getMaterialGroupKey(material: CanvasWireMaterial): string {
   return `jack|${spec.jacketMaterial}|${spec.jacketColor}|${spec.awg}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${getEndTreatmentKey(material)}`;
 }
 
-function getMaterialUnitPrice(material: CanvasWireMaterial): number {
+function getMaterialUnitPrice(material: CanvasWireMaterial, catalog: CatalogSnapshot | null): number {
   const spec = material.spec;
   const lengthM = spec.lengthMm / 1000;
   if (spec.kind === 'electronic') {
-    return BASE_PRICES.wirePerMeter(spec.awg, 'ul1007') * lengthM;
+    return wirePerMeter(catalog, spec.awg) * lengthM;
   }
-  return BASE_PRICES.wirePerMeter(spec.awg, 'ul1007') * lengthM * spec.coreCount * 0.6;
+  return wirePerMeter(catalog, spec.awg) * lengthM * spec.coreCount * ruleValue(catalog, 'jacketed', 'core_factor');
 }
 
-export function generateBOM(config: HarnessConfig): BOMItem[] {
+export function generateBOM(config: HarnessConfig, catalog: CatalogSnapshot | null = getCatalogSnapshot()): BOMItem[] {
   const items: BOMItem[] = [];
 
   const connectorMap = new Map<string, { count: number; manufacturer: string; description: string; pinCount: number }>();
@@ -69,7 +78,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
   }
 
   for (const [connectorId, info] of connectorMap) {
-    const unitPrice = BASE_PRICES.connector(info.pinCount);
+    const unitPrice = ruleValue(catalog, 'connector', 'base') + info.pinCount * ruleValue(catalog, 'connector', 'per_pin');
     items.push({
       type: 'connector',
       partNumber: connectorId,
@@ -85,7 +94,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
   for (const material of config.materials) {
     const key = getMaterialGroupKey(material);
     const existing = materialMap.get(key);
-    const unitPrice = getMaterialUnitPrice(material);
+    const unitPrice = getMaterialUnitPrice(material, catalog);
     if (existing) {
       existing.count += 1;
     } else {
@@ -126,7 +135,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
       continue;
     }
 
-    const unitPrice = calculateProtectiveSleevePrice(sleeve);
+    const unitPrice = calculateProtectiveSleevePrice(sleeve, catalog);
     sleeveMap.set(key, {
       count: 1,
       description: `${getProtectiveSleeveDisplayName(sleeve)} ${sleeve.lengthMm}mm${sleeve.remark ? ` (${sleeve.remark})` : ''}`,

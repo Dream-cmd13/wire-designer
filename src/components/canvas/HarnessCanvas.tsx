@@ -1727,8 +1727,8 @@ function HarnessCanvasInner() {
               width: CANVAS_MODEL_SIZE,
               height: connectorHeight,
               overmoldSpecId: overmold.id,
-              catalogItemId: overmold.catalogItemId,
-              catalogImageUrl: overmold.image,
+              resourceItemId: overmold.resourceItemId,
+              resourceImageUrl: overmold.image,
             };
             state.addModel(model);
             setSelection({ kind: 'model', id: model.id });

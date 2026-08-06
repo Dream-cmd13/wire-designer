@@ -1,9 +1,11 @@
 import { useRef, useMemo } from 'react';
 import { useHarnessStore } from '@/stores/harnessStore';
-import { WIRE_COLORS } from '@/lib/data';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogWireColors } from '@/lib/catalogRuntime';
 
 export function Preview3D() {
   const { config } = useHarnessStore();
+  const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
   const svgRef = useRef<SVGSVGElement>(null);
 
   const iso = (x: number, y: number, z: number) => {
@@ -82,13 +84,13 @@ export function Preview3D() {
         const mid = { x: (f.x + t.x) / 2, y: (f.y + t.y) / 2 - arcH };
 
         const path = `M ${f.x.toFixed(2)} ${f.y.toFixed(2)} Q ${mid.x.toFixed(2)} ${mid.y.toFixed(2)} ${t.x.toFixed(2)} ${t.y.toFixed(2)}`;
-        const color = WIRE_COLORS.find((c) => c.id === circuit.color)?.hex || '#6B7280';
+        const color = wireColors.find((c) => c.id === circuit.color)?.hex || '#6B7280';
 
         paths.push({ key: circuit.id, path, color, gauge: awg });
       }
     }
     return paths;
-  }, [materials, connector3DPositions]);
+  }, [materials, connector3DPositions, wireColors]);
 
   const getNodeFaces = (x: number, y: number, z: number) => {
     const hw = 14;
@@ -214,7 +216,7 @@ export function Preview3D() {
           <div className="absolute bottom-1.5 left-1.5 flex flex-wrap gap-x-2 gap-y-0.5 bg-white/80 rounded px-1.5 py-0.5">
             {materials.slice(0, 4).map((m) => {
               const colorId = m.spec.kind === 'electronic' ? m.spec.color : (m.spec.coreColors[0] ?? 'red');
-              const color = WIRE_COLORS.find((c) => c.id === colorId)?.hex || '#6B7280';
+              const color = wireColors.find((c) => c.id === colorId)?.hex || '#6B7280';
               return (
                 <div key={m.id} className="flex items-center gap-1">
                   <div className="w-2.5 h-1 rounded-full" style={{ backgroundColor: color }} />

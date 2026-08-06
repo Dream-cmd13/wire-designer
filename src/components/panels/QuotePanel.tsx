@@ -1,12 +1,14 @@
 import { Calculator, Download } from 'lucide-react';
 import { getProtectiveSleeveDisplayName } from '@/lib/canvasMaterials';
-import { LEAD_TIME_OPTIONS } from '@/lib/data';
 import { calculatePrice } from '@/lib/pricing';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { useCatalogStore } from '@/stores/catalogStore';
 
 export function QuotePanel() {
   const { config, setConfig } = useHarnessStore();
-  const price = calculatePrice(config);
+  const catalog = useCatalogStore((state) => state.snapshot);
+  const leadTimeOptions = catalog?.leadTimeOptions ?? [];
+  const price = calculatePrice(config, catalog);
   const sleeveSummary = config.protectiveSleeves.map((sleeve) => ({
     name: getProtectiveSleeveDisplayName(sleeve),
     lengthMm: sleeve.lengthMm,
@@ -17,7 +19,7 @@ export function QuotePanel() {
     const data = {
       projectName: config.name,
       quantity: config.quantity,
-      leadTime: LEAD_TIME_OPTIONS.find((option) => option.id === config.leadTime)?.name || config.leadTime,
+      leadTime: leadTimeOptions.find((option) => option.id === config.leadTime)?.name || config.leadTime,
       protectiveSleeves: sleeveSummary,
       priceBreakdown: price,
       date: new Date().toISOString(),
@@ -55,7 +57,7 @@ export function QuotePanel() {
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-600">生产交期</label>
         <div className="space-y-1">
-          {LEAD_TIME_OPTIONS.map((option) => (
+          {leadTimeOptions.map((option) => (
             <label
               key={option.id}
               className={`flex cursor-pointer items-center justify-between rounded border p-2 transition-colors ${
@@ -69,7 +71,7 @@ export function QuotePanel() {
                   type="radio"
                   name="leadTime"
                   checked={config.leadTime === option.id}
-                  onChange={() => setConfig({ leadTime: option.id })}
+                  onChange={() => setConfig({ leadTime: option.id as typeof config.leadTime })}
                   className="text-blue-500"
                 />
                 <span className="text-sm">{option.name}</span>

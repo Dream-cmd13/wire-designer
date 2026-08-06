@@ -1,6 +1,6 @@
 import { calculateCableOd, getCoreColors, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import { generateId } from '@/lib/commands';
-import { CONNECTORS } from '@/lib/data';
+import { requireCatalogSnapshot } from '@/lib/catalogRuntime';
 import { generateProductionDrawing } from '@/lib/productionDrawingGenerator';
 import type {
   CanvasWireMaterial,
@@ -20,8 +20,9 @@ export interface DrawingWizardValidation {
 
 export function createDrawingConnectorResources(
   side: DrawingConnectorResource['side'],
+  connectors: Connector[] = requireCatalogSnapshot().connectors,
 ): DrawingConnectorResource[] {
-  return CONNECTORS.map((connector) => ({
+  return connectors.map((connector) => ({
     id: connector.id,
     name: connector.name,
     view: 'front',
@@ -103,8 +104,10 @@ function createConnectorInstance(
   resource: DrawingConnectorResource,
   x: number,
   label: string,
+  connectors: Connector[] = requireCatalogSnapshot().connectors,
 ): ConnectorInstance {
-  const fallback = CONNECTORS.find((connector) => connector.id === resource.id) ?? CONNECTORS[0];
+  const fallback = connectors.find((connector) => connector.id === resource.id);
+  if (!fallback) throw new Error(`Connector part not found: ${resource.id}`);
   return {
     id: generateId(),
     position: { x, y: 220 },

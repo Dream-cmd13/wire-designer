@@ -11,7 +11,7 @@ drop table if exists public.drawing_icons cascade;
 drop table if exists public.packagings cascade;
 drop table if exists public.accessories cascade;
 drop table if exists public.models cascade;
-drop table if exists public.catalog_item_images cascade;
+drop table if exists public.resource_item_images cascade;
 drop table if exists public.protective_sleeves cascade;
 drop table if exists public.overmolds cascade;
 drop table if exists public.wires cascade;
@@ -27,6 +27,10 @@ drop table if exists public.overmold_specs cascade;
 drop table if exists public.model_specs cascade;
 drop table if exists public.accessory_specs cascade;
 drop table if exists public.packaging_specs cascade;
+drop table if exists public.resource_items cascade;
+-- Retired catalog names are removed too, so a previous test database can be
+-- reset before the resource-master schema is applied.
+drop table if exists public.catalog_item_images cascade;
 drop table if exists public.catalog_items cascade;
 drop table if exists public.catalog_categories cascade;
 drop table if exists public.quantity_discount_rules cascade;

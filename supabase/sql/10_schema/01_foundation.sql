@@ -24,6 +24,37 @@ create table if not exists public."user" (
   updated_by uuid references public."user"(id) on delete set null
 );
 
+create or replace function public.handle_new_auth_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public."user" (id, display_name)
+  values (
+    new.id,
+    coalesce(nullif(btrim(new.raw_user_meta_data ->> 'display_name'), ''), split_part(coalesce(new.email, ''), '@', 1), '用户')
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_auth_user();
+
+-- A development reset keeps auth.users but recreates public."user".
+-- Backfill existing authenticated users before project foreign keys are used.
+insert into public."user" (id, display_name)
+select
+  id,
+  coalesce(nullif(btrim(raw_user_meta_data ->> 'display_name'), ''), split_part(coalesce(email, ''), '@', 1), '用户')
+from auth.users
+on conflict (id) do nothing;
+
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null references public."user"(id) on delete restrict,

@@ -17,7 +17,7 @@ export type DrawingMaterialCatalogRow = {
   short_description: string | null;
   lifecycle_status: string;
   deleted_at: string | null;
-  accessory_specs: { specification?: string; unit?: string } | Array<{ specification?: string; unit?: string }> | null;
+  accessories: { specification?: string; unit?: string } | Array<{ specification?: string; unit?: string }> | null;
 };
 
 export type DrawingMaterialCatalogGateway = {
@@ -34,12 +34,12 @@ export class DrawingMaterialError extends Error {
   }
 }
 
-function firstSpecification(value: DrawingMaterialCatalogRow['accessory_specs']) {
+function firstSpecification(value: DrawingMaterialCatalogRow['accessories']) {
   return Array.isArray(value) ? value[0] ?? {} : value ?? {};
 }
 
 function mapRow(row: DrawingMaterialCatalogRow): CompanyMaterial {
-  const specification = firstSpecification(row.accessory_specs);
+  const specification = firstSpecification(row.accessories);
   const name = row.resource_name.trim();
   const detail = specification.specification?.trim();
   return {
@@ -90,34 +90,34 @@ export class DrawingMaterialRepository {
   }
 }
 
-const DRAWING_ACCESSORY_CATEGORY_ID = '30000000-0000-4000-8000-000000000004';
+const DRAWING_ACCESSORY_RESOURCE_GROUP = '绘图辅材';
 
 function createSupabaseGateway(client: NonNullable<typeof supabase>): DrawingMaterialCatalogGateway {
   return {
   async listActive() {
-    const { data, error } = await client.from('catalog_items')
-      .select('id,model,resource_name,short_description,lifecycle_status,deleted_at,accessory_specs(specification,unit)')
-      .eq('item_type', 'accessory').eq('lifecycle_status', 'active').is('deleted_at', null)
+    const { data, error } = await client.from('resource_items')
+      .select('id,model,resource_name,short_description,lifecycle_status,deleted_at,accessories(specification,unit)')
+      .eq('resource_type', 'accessory').eq('lifecycle_status', 'active').is('deleted_at', null)
       .order('display_order').order('updated_at', { ascending: false });
     if (error) throw new DrawingMaterialError(error.message);
     return (data ?? []) as unknown as DrawingMaterialCatalogRow[];
   },
   async insertDraft(input) {
-    const { data, error } = await client.from('catalog_items').insert({
-      item_type: 'accessory',
+    const { data, error } = await client.from('resource_items').insert({
+      resource_type: 'accessory',
       legacy_key: input.legacyKey,
       resource_name: input.resourceName,
       model: input.model,
       short_description: input.note,
-      category_id: DRAWING_ACCESSORY_CATEGORY_ID,
+      resource_group: DRAWING_ACCESSORY_RESOURCE_GROUP,
       lifecycle_status: 'draft',
     }).select('id').single();
     if (error || !data?.id) throw new DrawingMaterialError(error?.message || '公司物料创建失败。');
     return String(data.id);
   },
   async insertSpecification(id, input) {
-    const { error } = await client.from('accessory_specs').insert({
-      catalog_item_id: id,
+    const { error } = await client.from('accessories').insert({
+      resource_item_id: id,
       accessory_kind: 'drawing-material',
       specification: input.specification,
       unit: input.unit,
@@ -125,7 +125,7 @@ function createSupabaseGateway(client: NonNullable<typeof supabase>): DrawingMat
     if (error) throw new DrawingMaterialError(error.message);
   },
   async activate(id) {
-    const { error } = await client.from('catalog_items').update({ lifecycle_status: 'active' }).eq('id', id);
+    const { error } = await client.from('resource_items').update({ lifecycle_status: 'active' }).eq('id', id);
     if (error) throw new DrawingMaterialError(error.message);
   },
   };

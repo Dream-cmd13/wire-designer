@@ -10,13 +10,13 @@ import {
   updateMaterialCircuit,
   type AttachEndpointInput,
 } from '@/lib/commands';
-import { CONNECTORS } from '@/lib/data';
+import { TEST_CONNECTORS } from './fixtures/catalogFixture';
 import type { HarnessConfig, ConnectorInstance, CanvasWireMaterial } from '@/types/harness';
 
 /** Build a minimal v3 config with two connectors and one empty material. */
 function makeTestConfig(): HarnessConfig {
-  const connA = CONNECTORS[0]; // JST XH 2P
-  const connB = CONNECTORS[2] ?? CONNECTORS[0]; // JST XH 4P (or fallback)
+  const connA = TEST_CONNECTORS[0];
+  const connB = TEST_CONNECTORS[2];
 
   const connectorA: ConnectorInstance = {
     id: 'conn-a',
@@ -242,10 +242,10 @@ describe('changeConnectorPart', () => {
     expect(config.materials[0].circuits.length).toBe(1);
 
     // Change to a 2-pin connector.
-    const twoPin = CONNECTORS.find((c) => c.pinCount === 2);
+    const twoPin = TEST_CONNECTORS.find((c) => c.pinCount === 2);
     if (!twoPin) return;
 
-    const result = changeConnectorPart(config, 'conn-b', twoPin.id);
+    const result = changeConnectorPart(config, 'conn-b', twoPin);
     // Circuit referencing pin 4 should have its endpoint cleared.
     expect(result.config.materials[0].circuits[0]?.start).toBeUndefined();
     expect(result.warnings.length).toBeGreaterThan(0);
