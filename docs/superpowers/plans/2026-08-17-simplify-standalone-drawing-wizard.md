@@ -1,5 +1,7 @@
 # Simplify Standalone Drawing Wizard Implementation Plan
 
+> **Superseded compatibility note:** 旧字段兼容步骤已由 `2026-08-17-remove-standalone-drawing-wizard-compatibility.md` 取代；当前实现不保留 `DrawingTopology`、`heatShrink` 或 `heatShrinkResource`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 将独立制作图纸向导简化为三步，并让新图纸的热缩套管完全由有效的 `protective_sleeves` 公共资源驱动，同时兼容旧 `heatShrink` 字符串。

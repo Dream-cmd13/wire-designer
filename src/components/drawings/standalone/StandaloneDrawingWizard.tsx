@@ -12,6 +12,7 @@ import type {
   DrawingCatalogResource,
   DrawingConnectorResource,
   DrawingDocument,
+  DrawingEndpointForm,
   DrawingTemplateSummary,
   DrawingWizardDraft,
 } from '@/types/drawing';
@@ -62,7 +63,7 @@ function resizeWires(draft: DrawingWizardDraft, count: number, wireColors: Array
 
 function initialDraft(wireColors: Array<{ hex: string }>): DrawingWizardDraft {
   return {
-    topology: { drawingType: 'internal', topology: 'double-end', wireKind: 'electronic' },
+    endpointForm: 'double-end',
     drawingNo: '',
     totalLengthMm: 320,
     toleranceMm: 5,
@@ -89,10 +90,10 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
   const [notice, setNotice] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
 
-  const isSingle = draft.topology.topology === 'single-end';
+  const isSingle = draft.endpointForm === 'single-end';
   const filtered = useMemo(() => filterDrawingCatalogResources(resources, filters), [filters, resources]);
   const wireResources = resources.filter((resource) => resource.resourceType === 'wire');
-  const heatShrinkResources = resources.filter((resource) => resource.resourceType === 'protective_sleeve');
+  const protectiveSleeveResources = resources.filter((resource) => resource.resourceType === 'protective_sleeve');
   const validation = validateStandaloneDrawingWizard(draft);
 
   const loadResources = async () => {
@@ -101,7 +102,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
       return;
     }
 
-    const selectedHeatShrinkId = draft.heatShrinkResource?.resourceItemId;
+    const selectedProtectiveSleeveId = draft.protectiveSleeveResource?.resourceItemId;
     setLoading(true);
     setError('');
     setNotice('');
@@ -116,20 +117,20 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
         const connectors = catalog.filter((resource) => resource.resourceType === 'connector');
         const connector = connectors[0] ? connectorFromResource(connectors[0]) : undefined;
         const wireResource = catalog.find((resource) => resource.resourceType === 'wire');
-        const heatShrinkResource = selectedHeatShrinkId
-          ? catalog.find((resource) => resource.resourceType === 'protective_sleeve' && resource.resourceItemId === selectedHeatShrinkId)
-          : current.heatShrinkResource;
+        const protectiveSleeveResource = selectedProtectiveSleeveId
+          ? catalog.find((resource) => resource.resourceType === 'protective_sleeve' && resource.resourceItemId === selectedProtectiveSleeveId)
+          : current.protectiveSleeveResource;
         const next = {
           ...current,
           singleConnector: current.singleConnector ?? connector,
           leftConnector: current.leftConnector ?? connector,
           rightConnector: current.rightConnector ?? connector,
           wireResource: current.wireResource ?? wireResource,
-          heatShrinkResource,
+          protectiveSleeveResource,
         };
         return { ...next, wires: resizeWires(next, connector?.pinCount ?? 1, wireColors) };
       });
-      if (selectedHeatShrinkId && !catalog.some((resource) => resource.resourceItemId === selectedHeatShrinkId && resource.resourceType === 'protective_sleeve')) {
+      if (selectedProtectiveSleeveId && !catalog.some((resource) => resource.resourceItemId === selectedProtectiveSleeveId && resource.resourceType === 'protective_sleeve')) {
         setNotice('已选热缩套管已失效，请重新选择。');
       }
     } catch (reason) {
@@ -146,9 +147,9 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
 
   if (!open) return null;
 
-  const selectEndpointForm = (topology: 'single-end' | 'double-end') => setDraft((current) => {
-    const next = { ...current, topology: { ...current.topology, topology } };
-    const pinCount = topology === 'single-end'
+  const selectEndpointForm = (endpointForm: DrawingEndpointForm) => setDraft((current) => {
+    const next = { ...current, endpointForm };
+    const pinCount = endpointForm === 'single-end'
       ? next.singleConnector?.pinCount
       : Math.min(next.leftConnector?.pinCount ?? 1, next.rightConnector?.pinCount ?? 1);
     return { ...next, wires: resizeWires(next, pinCount ?? 1, wireColors) };
@@ -160,15 +161,15 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
       [key]: connectorFromResource(resource),
       modelResource: resource.resourceType === 'model' ? resource : current.modelResource,
     };
-    const count = next.topology.topology === 'single-end'
+    const count = next.endpointForm === 'single-end'
       ? next.singleConnector?.pinCount
       : Math.min(next.leftConnector?.pinCount ?? 1, next.rightConnector?.pinCount ?? 1);
     return { ...next, wires: resizeWires(next, count ?? 1, wireColors) };
   });
 
-  const selectHeatShrink = (resourceItemId: string) => {
-    const heatShrinkResource = heatShrinkResources.find((resource) => resource.resourceItemId === resourceItemId);
-    setDraft((current) => ({ ...current, heatShrink: undefined, heatShrinkResource }));
+  const selectProtectiveSleeve = (resourceItemId: string) => {
+    const protectiveSleeveResource = protectiveSleeveResources.find((resource) => resource.resourceItemId === resourceItemId);
+    setDraft((current) => ({ ...current, protectiveSleeveResource }));
     setNotice('');
   };
 
@@ -260,9 +261,9 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
               ] as const).map(([value, label]) => <button
                 type="button"
                 key={value}
-                aria-pressed={draft.topology.topology === value}
+                aria-pressed={draft.endpointForm === value}
                 onClick={() => selectEndpointForm(value)}
-                className={`min-w-20 rounded px-3 py-1.5 text-sm ${draft.topology.topology === value ? 'bg-blue-600 text-white' : 'text-slate-700'}`}
+                className={`min-w-20 rounded px-3 py-1.5 text-sm ${draft.endpointForm === value ? 'bg-blue-600 text-white' : 'text-slate-700'}`}
               >
                 {label}
               </button>)}
@@ -308,9 +309,9 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
               </select>
             </label>
             <label className="text-sm">热缩套管
-              <select className={fieldClass} value={draft.heatShrinkResource?.resourceItemId ?? ''} onChange={(event) => selectHeatShrink(event.target.value)}>
+              <select className={fieldClass} value={draft.protectiveSleeveResource?.resourceItemId ?? ''} onChange={(event) => selectProtectiveSleeve(event.target.value)}>
                 <option value="">不使用</option>
-                {heatShrinkResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
+                {protectiveSleeveResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
               </select>
             </label>
             <label className="text-sm">总长度(mm)
@@ -323,8 +324,8 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
               <input className={fieldClass} readOnly value={countDrawingMaterialKinds(draft)} />
             </label>
           </div>
-          {!loading && !error && heatShrinkResources.length === 0 && <p className="text-sm text-slate-500">暂无可用热缩套管。</p>}
-          {draft.heatShrinkResource && <p className="text-xs text-slate-500">已选：{resourceSummary(draft.heatShrinkResource)}</p>}
+          {!loading && !error && protectiveSleeveResources.length === 0 && <p className="text-sm text-slate-500">暂无可用热缩套管。</p>}
+          {draft.protectiveSleeveResource && <p className="text-xs text-slate-500">已选：{resourceSummary(draft.protectiveSleeveResource)}</p>}
           <label className="inline-flex items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.hasMold} onChange={(event) => setDraft({ ...draft, hasMold: event.target.checked })} />
             使用模具
@@ -351,7 +352,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
             <div><dt className="text-slate-500">端头形式</dt><dd>{isSingle ? '单头' : '双头'}</dd></div>
             <div><dt className="text-slate-500">连接器/模型</dt><dd>{isSingle ? draft.singleConnector?.name ?? '未选择' : `${draft.leftConnector?.name ?? '未选择'} → ${draft.rightConnector?.name ?? '未选择'}`}</dd></div>
             <div><dt className="text-slate-500">线材</dt><dd>{resourceSummary(draft.wireResource)}</dd></div>
-            <div><dt className="text-slate-500">热缩套管</dt><dd>{resourceSummary(draft.heatShrinkResource)}</dd></div>
+            <div><dt className="text-slate-500">热缩套管</dt><dd>{resourceSummary(draft.protectiveSleeveResource)}</dd></div>
             <div><dt className="text-slate-500">芯数</dt><dd>{draft.wires.length}</dd></div>
             <div><dt className="text-slate-500">长度与公差</dt><dd>{draft.totalLengthMm}±{draft.toleranceMm}mm</dd></div>
             <div><dt className="text-slate-500">物料种类</dt><dd>{countDrawingMaterialKinds(draft)}</dd></div>

@@ -2,7 +2,7 @@
 
 ## 状态
 
-已获得用户对推荐方向的口头确认，等待书面规格复核后进入实施计划。
+已按确认方案实施：独立向导只使用 `endpointForm` 和 `protectiveSleeveResource`，不保留旧字段或迁移回退。
 
 ## 背景
 
@@ -22,7 +22,7 @@
 - 移除无效或容易误导的“类型”和手工“线材类型”选择。
 - 将图库模板改为独立入口。
 - 将热缩套管由自由文本改为 Supabase 资源选择。
-- 保持已保存独立图纸和旧 `wizardSource` JSON 的兼容性。
+- 删除独立向导中过渡保留的旧字段、默认占位字段和回退逻辑，只保留未来使用的规范模型。
 
 ## 非目标
 
@@ -31,6 +31,8 @@
 - 不实现普通线、绞线、排线、并线、屏蔽线的不同渲染算法。
 - 不在实施过程中自动修改远程数据库；远程 SQL 执行需要单独确认。
 - 不重构与该向导无关的项目设计器或报价流程。
+- 不清理另一个仍在使用 `wireKind` 和 `heatShrinkId` 的线束配置向导；这些字段在该模块中仍有业务含义。
+- 不为测试阶段保存的旧独立向导草稿或旧 `wizardSource` 增加迁移器。
 
 ## 用户流程
 
@@ -86,13 +88,16 @@
 
 - `DrawingCatalogResourceType` 增加 `protective_sleeve`，不再把该类型折叠成通用 `accessory`。
 - `DrawingCatalogResource` 为套管提供可展示的规格摘要。
-- `DrawingWizardDraft` 新增可选 `heatShrinkResource`，保存选中资源的稳定 ID 和显示快照。
-- 旧字段 `heatShrink?: string` 暂时保留为只读兼容回退，新向导不再写入该字段。
+- 删除只为兼容保留的 `DrawingTopology`。
+- `DrawingWizardDraft` 使用直接字段 `endpointForm: 'single-end' | 'double-end'` 表达端头形式，不再保存 `drawingType`、嵌套 `topology` 或 `wireKind`。
+- `DrawingWizardDraft` 使用可选 `protectiveSleeveResource` 保存选中资源的稳定 ID 和显示快照。
+- 删除 `heatShrink?: string` 和 `heatShrinkResource`，不提供别名、双写或读取回退。
 
 ### 生成结果
 
 - 未选择热缩套管时，不生成套管图形和 BOM 行。
 - 选择后，图纸标签使用资源名称，BOM 物料编码使用资源型号，物料去重使用 `resource_item_id`。
+- 生成的 `wizardSource` 保留连接器、线材、长度等现有规范字段；端头与套管部分只使用 `endpointForm` 和 `protectiveSleeveResource`，不再携带任何旧字段。
 - 本次保持现有“一件套管”的用量语义，不新增裁切长度输入。
 
 ## 种子数据与升级策略
@@ -103,12 +108,12 @@
 - 对已经存在的 accessory 版本只提供升级 SQL：先创建规范套管资源，再将旧资源设为 inactive 或软删除。
 - 升级 SQL 不由前端执行，也不在未获得明确授权时自动执行到远程数据库。
 
-## 兼容策略
+## 规范模型与旧测试数据处理
 
-- `DrawingTopology.drawingType` 和 `wireKind` 暂时保留在内部数据结构中，并为新草稿写入稳定默认值，避免扩大 JSON 迁移范围。
-- 新界面不展示这两个字段，生成逻辑也不依赖它们。
-- 已保存图纸中只有 `heatShrink` 字符串时，仍按旧标签生成；重新选择后改用 `heatShrinkResource`。
-- `wizardSource` 仍可被旧图纸读取，不提升 `DrawingDocument.schemaVersion`。
+- 不读取、不迁移、不回退处理包含 `drawingType`、`wireKind`、旧嵌套 `topology`、`heatShrink` 或 `heatShrinkResource` 的独立向导草稿。
+- 测试阶段已有的旧草稿和旧 `wizardSource` 可直接清理并重新生成，不把一次性测试数据变成长期维护成本。
+- `DrawingDocument.schemaVersion` 保持为 1，因为本次不改变页面、对象、标题栏、修订表或技术要求等可渲染图纸结构；`wizardSource` 只是可选的生成来源快照，当前没有读取型业务消费者。
+- 后续新增独立向导字段时，只修改规范模型和明确的 schema 校验，不增加旧字段别名或双写。
 
 ## 错误处理
 
@@ -125,7 +130,8 @@
 - “从模板创建”仍能读取 `drawing_templates` 和 `drawing_template_versions`。
 - 热缩套管选择正确影响物料种类、图纸对象和 BOM 行。
 - 不选择热缩套管时不生成相关对象。
-- 旧 `heatShrink` 字符串仍能生成旧图纸。
+- 生成结果的 `wizardSource` 使用 `endpointForm` 和 `protectiveSleeveResource`，且不存在 `topology`、`drawingType`、`wireKind`、`heatShrink` 或 `heatShrinkResource`。
+- TypeScript 编译和源码搜索确认独立向导生产代码不再引用已删除字段。
 - 运行相关 Vitest、TypeScript 构建和 ESLint 检查。
 
 ## 验收标准
@@ -134,6 +140,8 @@
 - 单头/双头功能无回归。
 - 图库模板有独立入口且功能无回归。
 - 线材类型不再由用户手工选择。
-- 热缩套管完全由有效 `protective_sleeves` 资源驱动，新图纸不再写自由文本。
+- 独立向导数据模型只保留 `endpointForm`，不再隐藏保存无效类型字段。
+- 热缩套管完全由有效 `protective_sleeves` 资源驱动，不接受旧自由文本或旧字段名。
+- 新生成图纸的 `wizardSource` 只包含当前规范字段，不包含兼容过渡数据。
 - 标准种子 SQL 能幂等创建绘图热缩套管资源。
 - 不执行未经授权的远程数据库写入。

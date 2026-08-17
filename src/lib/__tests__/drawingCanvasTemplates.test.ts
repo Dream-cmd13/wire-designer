@@ -212,7 +212,7 @@ describe('standalone drawing table templates', () => {
 
   it('creates the requested revision, title, wiring, and BOM table defaults', () => {
     const draft: DrawingWizardDraft = {
-      topology: { drawingType: 'internal', topology: 'single-end', wireKind: 'electronic' },
+      endpointForm: 'single-end',
       singleConnector: { id: 'c20', name: 'AC电源插座C20公座-1', gender: 'male', pinCount: 2, category: 'power', series: 'C20', rowCount: 1, scope: 'public' },
       drawingNo: 'WH-001', totalLengthMm: 2, toleranceMm: 0, hasMold: false,
       wireResource: { id: 'ul1007', resourceItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007', resourceGroup: '线材' },

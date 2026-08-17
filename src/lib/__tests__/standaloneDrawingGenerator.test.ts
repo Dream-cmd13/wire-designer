@@ -9,7 +9,7 @@ import type { DrawingCatalogResource, DrawingConnectorResource, DrawingWizardDra
 
 const connector: DrawingConnectorResource = { id: 'xh-4', name: 'XH2.54-4P', gender: 'female', pinCount: 4, category: '连接器', series: 'XH2.54', rowCount: 1, pitchMm: 2.54, scope: 'public' };
 const wireResource: DrawingCatalogResource = { id: 'ul1007', resourceItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007-24AWG', resourceGroup: '线材' };
-const heatShrinkResource: DrawingCatalogResource = {
+const protectiveSleeveResource: DrawingCatalogResource = {
   id: 'heat-shrink-6', resourceItemId: 'sleeve-1', resourceType: 'protective_sleeve',
   name: 'Φ6热缩套管', model: 'HS-6MM', resourceGroup: '绘图辅材',
   specification: 'Φ6mm · 2:1 · polyolefin · black', unit: 'PCS',
@@ -19,9 +19,9 @@ const wires = Array.from({ length: 4 }, (_, index) => ({ pin: index + 1, color: 
 
 function draft(): DrawingWizardDraft {
   return {
-    topology: { drawingType: 'internal', topology: 'double-end', wireKind: 'shielded' },
+    endpointForm: 'double-end',
     leftConnector: connector, rightConnector: connector, drawingNo: 'WH-4P', totalLengthMm: 320,
-    toleranceMm: 5, hasMold: true, heatShrink: 'Φ6热缩套管', wires, wireResource,
+    toleranceMm: 5, hasMold: true, protectiveSleeveResource, wires, wireResource,
   };
 }
 
@@ -48,7 +48,7 @@ describe('standalone drawing generator', () => {
   });
 
   it('uses the selected protective sleeve for material count, drawing label, and BOM code', () => {
-    const drawingDraft = { ...draft(), heatShrink: undefined, heatShrinkResource };
+    const drawingDraft = draft();
 
     expect(countDrawingMaterialKinds(drawingDraft)).toBe(4);
 
@@ -66,7 +66,7 @@ describe('standalone drawing generator', () => {
   });
 
   it('omits sleeve objects and BOM rows when no sleeve is selected', () => {
-    const drawingDraft = { ...draft(), heatShrink: undefined, heatShrinkResource: undefined };
+    const drawingDraft = { ...draft(), protectiveSleeveResource: undefined };
 
     expect(countDrawingMaterialKinds(drawingDraft)).toBe(3);
 
@@ -79,17 +79,18 @@ describe('standalone drawing generator', () => {
     }
   });
 
-  it('keeps legacy heatShrink text readable without inventing a resource code', () => {
-    const drawing = createDrawingFromWizard({ ...draft(), heatShrinkResource: undefined, heatShrink: '旧热缩套管' });
-    const bom = drawing.objects.find((object) => object.kind === 'bom-table');
+  it('persists only canonical endpoint and protective sleeve fields', () => {
+    const drawing = createDrawingFromWizard(draft());
 
-    expect(drawing.objects).toContainEqual(expect.objectContaining({
-      kind: 'accessory', accessoryType: 'sleeve', label: '旧热缩套管',
-    }));
-    expect(bom?.kind).toBe('bom-table');
-    if (bom?.kind === 'bom-table') {
-      expect(bom.rows.find((row) => row['物料名称/规格'] === '旧热缩套管')).toMatchObject({ 物料编码: '' });
-    }
+    expect(drawing.wizardSource).toMatchObject({
+      endpointForm: 'double-end',
+      protectiveSleeveResource,
+    });
+    expect(drawing.wizardSource).not.toHaveProperty('topology');
+    expect(drawing.wizardSource).not.toHaveProperty('drawingType');
+    expect(drawing.wizardSource).not.toHaveProperty('wireKind');
+    expect(drawing.wizardSource).not.toHaveProperty('heatShrink');
+    expect(drawing.wizardSource).not.toHaveProperty('heatShrinkResource');
   });
 
   it('anchors generated BOM rows to the drawing frame bottom', () => {

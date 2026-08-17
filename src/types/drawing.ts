@@ -199,11 +199,7 @@ export type DrawingDocument = {
   wizardSource?: DrawingWizardDraft;
 };
 
-export type DrawingTopology = {
-  drawingType: 'internal' | 'external' | 'gallery';
-  topology: 'single-end' | 'double-end';
-  wireKind: 'electronic' | 'twisted' | 'ribbon' | 'parallel' | 'shielded';
-};
+export type DrawingEndpointForm = 'single-end' | 'double-end';
 
 export type DrawingConnectorResource = {
   id: string;
@@ -227,7 +223,7 @@ export type DrawingWireDraft = {
 };
 
 export type DrawingWizardDraft = {
-  topology: DrawingTopology;
+  endpointForm: DrawingEndpointForm;
   leftConnector?: DrawingConnectorResource;
   rightConnector?: DrawingConnectorResource;
   singleConnector?: DrawingConnectorResource;
@@ -235,8 +231,7 @@ export type DrawingWizardDraft = {
   totalLengthMm: number;
   toleranceMm: number;
   hasMold: boolean;
-  heatShrink?: string;
-  heatShrinkResource?: DrawingCatalogResource;
+  protectiveSleeveResource?: DrawingCatalogResource;
   wires: DrawingWireDraft[];
   wireResource?: DrawingCatalogResource;
   modelResource?: DrawingCatalogResource;

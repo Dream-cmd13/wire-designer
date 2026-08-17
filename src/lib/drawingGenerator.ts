@@ -34,18 +34,15 @@ export function applyDrawingWireBatch(wires: DrawingWireDraft[], batch: DrawingW
   }));
 }
 
-function resolveHeatShrinkMaterial(draft: DrawingWizardDraft) {
-  if (draft.heatShrinkResource) {
-    return {
-      key: `protective_sleeve:${draft.heatShrinkResource.resourceItemId}`,
-      name: draft.heatShrinkResource.name,
-      code: draft.heatShrinkResource.model,
-      unit: draft.heatShrinkResource.unit ?? 'PCS',
-    };
-  }
-  const legacyName = draft.heatShrink?.trim();
-  if (!legacyName) return undefined;
-  return { key: `legacy-heat-shrink:${legacyName}`, name: legacyName, code: '', unit: 'PCS' };
+function resolveProtectiveSleeveMaterial(draft: DrawingWizardDraft) {
+  const resource = draft.protectiveSleeveResource;
+  if (!resource) return undefined;
+  return {
+    key: `protective_sleeve:${resource.resourceItemId}`,
+    name: resource.name,
+    code: resource.model,
+    unit: resource.unit ?? 'PCS',
+  };
 }
 
 export function countDrawingMaterialKinds(draft: DrawingWizardDraft): number {
@@ -55,8 +52,8 @@ export function countDrawingMaterialKinds(draft: DrawingWizardDraft): number {
   }
   if (draft.wireResource) ids.add(`wire:${draft.wireResource.resourceItemId}`);
   if (draft.hasMold) ids.add(`mold:${draft.modelResource?.resourceItemId ?? 'configured'}`);
-  const heatShrink = resolveHeatShrinkMaterial(draft);
-  if (heatShrink) ids.add(heatShrink.key);
+  const protectiveSleeve = resolveProtectiveSleeveMaterial(draft);
+  if (protectiveSleeve) ids.add(protectiveSleeve.key);
   return ids.size;
 }
 
@@ -67,7 +64,7 @@ function style(patch: Partial<DrawingObjectStyle> = {}): DrawingObjectStyle {
 export function validateStandaloneDrawingWizard(draft: DrawingWizardDraft): DrawingWizardValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const isSingle = draft.topology.topology === 'single-end';
+  const isSingle = draft.endpointForm === 'single-end';
 
   if (isSingle && !draft.singleConnector) errors.push('请选择连接器/模型。');
   if (!isSingle && (!draft.leftConnector || !draft.rightConnector)) errors.push('请选择左、右连接器/模型。');
@@ -151,8 +148,8 @@ function drawingBomRows(draft: DrawingWizardDraft, left?: DrawingConnectorResour
   const wireLengthM = draft.wires.reduce((total, wire) => total + wire.lengthMm, 0) / 1000;
   add(`wire:${draft.wireResource?.resourceItemId}`, draft.wireResource?.name, 'M', wireLengthM);
   if (draft.hasMold) add(`model:${draft.modelResource?.resourceItemId ?? 'generic'}`, draft.modelResource?.name ?? '外线模具', 'PCS', 1);
-  const heatShrink = resolveHeatShrinkMaterial(draft);
-  if (heatShrink) add(heatShrink.key, heatShrink.name, heatShrink.unit, 1, heatShrink.code);
+  const protectiveSleeve = resolveProtectiveSleeveMaterial(draft);
+  if (protectiveSleeve) add(protectiveSleeve.key, protectiveSleeve.name, protectiveSleeve.unit, 1, protectiveSleeve.code);
   return [...materials.values()].map((material, index) => ({
     序号: String(index + 1), 物料编码: material.code, '物料名称/规格': material.name, 单位: material.unit,
     用量: String(Number(material.quantity.toFixed(3))), 备注: '',
@@ -165,10 +162,10 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
 
   const name = draft.drawingNo.trim() || '未命名线束图';
   const base = createBlankDrawingDocument(name);
-  const isSingle = draft.topology.topology === 'single-end';
+  const isSingle = draft.endpointForm === 'single-end';
   const left = isSingle ? draft.singleConnector : draft.leftConnector;
   const right = isSingle ? undefined : draft.rightConnector;
-  const heatShrink = resolveHeatShrinkMaterial(draft);
+  const protectiveSleeve = resolveProtectiveSleeveMaterial(draft);
   const frameObjects = [...base.objects, createWiringTable()].map((object) => {
     if (object.kind === 'wiring-table') {
       return {
@@ -242,7 +239,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
     ...frameObjects,
   ];
 
-  if (heatShrink) {
+  if (protectiveSleeve) {
     objects.push({
       id: createDrawingId('accessory'),
       kind: 'accessory',
@@ -255,7 +252,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       locked: false,
       visible: true,
       style: style({ fill: '#e2e8f0' }),
-      label: heatShrink.name,
+      label: protectiveSleeve.name,
       accessoryType: 'sleeve',
     });
   }
