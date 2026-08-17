@@ -4,6 +4,7 @@ import { AuthModal } from '@/components/auth/AuthModal';
 import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
 import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { PdfDrawingPickerDialog } from '@/components/drawings/PdfDrawingPickerDialog';
 import { ProductionDrawingView } from '@/components/drawings/ProductionDrawingView';
 import { TwoDView } from '@/components/drawings/TwoDView';
@@ -16,6 +17,8 @@ import { useAppRoute } from '@/hooks/useAppRoute';
 import { appRoutes } from '@/lib/appRoute';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { pdfDrawings, type PdfDrawing } from '@/lib/pdfDrawings';
+import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
+import { supabase } from '@/lib/supabaseClient';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useDrawingStore } from '@/stores/drawingStore';
@@ -142,6 +145,10 @@ export default function App() {
   const [selectedPdfIds, setSelectedPdfIds] = useState<string[]>([]);
   const [pdfPickerOpen, setPdfPickerOpen] = useState(false);
   const [uploadedDrawings, setUploadedDrawings] = useState<PdfDrawing[]>([]);
+  const [storageBootstrapState, setStorageBootstrapState] = useState<StorageBootstrapState>({
+    status: 'unconfigured',
+  });
+  const [storageChecking, setStorageChecking] = useState(() => Boolean(supabase));
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
   const previousAuthUserIdRef = useRef<string | null | undefined>(undefined);
@@ -159,7 +166,28 @@ export default function App() {
   const drawingSaveState = useDrawingStore((state) => state.saveState);
   const saveActiveDrawing = useDrawingStore((state) => state.saveActiveDocument);
 
+  const refreshStorageBootstrap = useCallback(async () => {
+    setStorageChecking(true);
+    try {
+      setStorageBootstrapState(await checkStorageBootstrap(supabase));
+    } finally {
+      setStorageChecking(false);
+    }
+  }, []);
+
   useEffect(() => initializeAuth(), [initializeAuth]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void checkStorageBootstrap(supabase).then((state) => {
+      if (cancelled) return;
+      setStorageBootstrapState(state);
+      setStorageChecking(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!authReady || !currentUser) return;
@@ -541,6 +569,11 @@ export default function App() {
         onOpenAuth={() => setAuthOpen(true)}
         onCloseProject={handleCloseProject}
       >
+        <StorageSetupBanner
+          state={storageBootstrapState}
+          checking={storageChecking}
+          onRetry={() => void refreshStorageBootstrap()}
+        />
         {catalogStatus === 'error' && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
             目录数据暂时不可用：{catalogError ?? '请检查 Supabase 配置后重试。'}

@@ -17,6 +17,23 @@ Run the files in this order in the Supabase SQL Editor:
 13. `40_seed/05_business_options.sql` (quotation, lead-time, protection, and discount rules)
 14. Upload images to the paths documented in `40_seed/02_image_manifest.sql`, then run that file.
 
+After the SQL deployment, run the idempotent Storage bootstrap from CI, the deployment server,
+or an administrator workstation:
+
+```powershell
+npm run supabase:bootstrap-storage
+```
+
+The command requires `SUPABASE_URL` (or `VITE_SUPABASE_URL`) and the server-only
+`SUPABASE_SECRET_KEY` (legacy `SUPABASE_SERVICE_ROLE_KEY` is also accepted). It creates missing
+`catalog-assets` and `project-assets` buckets, keeps existing private buckets unchanged, and repairs
+either bucket if it was made public. Any management API failure returns a non-zero exit code.
+
+The bootstrap command manages buckets only. It does not replace `30_security/01_rls.sql` or any
+other database SQL. `20_storage/01_buckets.sql` also installs the restricted
+`public.get_storage_bootstrap_status()` function used by the frontend's read-only health check.
+Never expose the secret key through a `VITE_` variable or browser code.
+
 The reset script drops both `public."user"` and the legacy `public.profiles` name so it is safe
 to run before or after the rename migration.
 

@@ -83,6 +83,23 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 当前代码仍可在没有这些变量的情况下本地运行；它们主要用于后续切换到
 Supabase 直连时复用。
 
+### 初始化 Supabase Storage
+
+远程环境完成数据库 SQL 部署后，在 CI、部署服务器或管理员本机配置
+server-only 的 `SUPABASE_SECRET_KEY`，然后运行：
+
+```powershell
+npm run supabase:bootstrap-storage
+```
+
+命令使用 `SUPABASE_URL`，未配置时兼容读取 `VITE_SUPABASE_URL`；密钥也兼容旧的
+`SUPABASE_SERVICE_ROLE_KEY` 名称。脚本会幂等创建 `catalog-assets` 与
+`project-assets`，并将误设为公开的桶恢复为私有。任何检查或修改失败都会返回非零退出码。
+
+`SUPABASE_SECRET_KEY` 只能存在于服务端环境，不得添加 `VITE_` 前缀。该命令只管理
+Storage bucket，不会安装 RLS 策略；仍需按
+`supabase/sql/README.md` 的顺序执行 SQL。前端仅调用只读状态函数，发现缺桶或公开桶时显示提示。
+
 ## 数据模型 (schemaVersion 3)
 
 系统收敛为三类业务对象：
