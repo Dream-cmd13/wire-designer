@@ -9,6 +9,11 @@ import type { DrawingCatalogResource, DrawingConnectorResource, DrawingWizardDra
 
 const connector: DrawingConnectorResource = { id: 'xh-4', name: 'XH2.54-4P', gender: 'female', pinCount: 4, category: '连接器', series: 'XH2.54', rowCount: 1, pitchMm: 2.54, scope: 'public' };
 const wireResource: DrawingCatalogResource = { id: 'ul1007', resourceItemId: 'wire-1', resourceType: 'wire', name: 'UL1007', model: 'UL1007-24AWG', resourceGroup: '线材' };
+const heatShrinkResource: DrawingCatalogResource = {
+  id: 'heat-shrink-6', resourceItemId: 'sleeve-1', resourceType: 'protective_sleeve',
+  name: 'Φ6热缩套管', model: 'HS-6MM', resourceGroup: '绘图辅材',
+  specification: 'Φ6mm · 2:1 · polyolefin · black', unit: 'PCS',
+};
 
 const wires = Array.from({ length: 4 }, (_, index) => ({ pin: index + 1, color: '#111827', lengthMm: 320, wireNo: `W-${index + 1}`, connectionNo: String(index + 1), targetPin: index + 1 }));
 
@@ -39,6 +44,51 @@ describe('standalone drawing generator', () => {
     if (bom?.kind === 'bom-table') {
       expect(bom.rows.find((row) => row['物料名称/规格'] === connector.name)?.用量).toBe('2');
       expect(bom.rows.find((row) => row['物料名称/规格'] === wireResource.name)).toMatchObject({ 单位: 'M', 用量: '1.28' });
+    }
+  });
+
+  it('uses the selected protective sleeve for material count, drawing label, and BOM code', () => {
+    const drawingDraft = { ...draft(), heatShrink: undefined, heatShrinkResource };
+
+    expect(countDrawingMaterialKinds(drawingDraft)).toBe(4);
+
+    const drawing = createDrawingFromWizard(drawingDraft);
+    expect(drawing.objects).toContainEqual(expect.objectContaining({
+      kind: 'accessory', accessoryType: 'sleeve', label: 'Φ6热缩套管',
+    }));
+    const bom = drawing.objects.find((object) => object.kind === 'bom-table');
+    expect(bom?.kind).toBe('bom-table');
+    if (bom?.kind === 'bom-table') {
+      expect(bom.rows.find((row) => row['物料名称/规格'] === 'Φ6热缩套管')).toMatchObject({
+        物料编码: 'HS-6MM', 单位: 'PCS', 用量: '1',
+      });
+    }
+  });
+
+  it('omits sleeve objects and BOM rows when no sleeve is selected', () => {
+    const drawingDraft = { ...draft(), heatShrink: undefined, heatShrinkResource: undefined };
+
+    expect(countDrawingMaterialKinds(drawingDraft)).toBe(3);
+
+    const drawing = createDrawingFromWizard(drawingDraft);
+    expect(drawing.objects.some((object) => object.kind === 'accessory' && object.accessoryType === 'sleeve')).toBe(false);
+    const bom = drawing.objects.find((object) => object.kind === 'bom-table');
+    expect(bom?.kind).toBe('bom-table');
+    if (bom?.kind === 'bom-table') {
+      expect(bom.rows.some((row) => row['物料名称/规格'] === 'Φ6热缩套管')).toBe(false);
+    }
+  });
+
+  it('keeps legacy heatShrink text readable without inventing a resource code', () => {
+    const drawing = createDrawingFromWizard({ ...draft(), heatShrinkResource: undefined, heatShrink: '旧热缩套管' });
+    const bom = drawing.objects.find((object) => object.kind === 'bom-table');
+
+    expect(drawing.objects).toContainEqual(expect.objectContaining({
+      kind: 'accessory', accessoryType: 'sleeve', label: '旧热缩套管',
+    }));
+    expect(bom?.kind).toBe('bom-table');
+    if (bom?.kind === 'bom-table') {
+      expect(bom.rows.find((row) => row['物料名称/规格'] === '旧热缩套管')).toMatchObject({ 物料编码: '' });
     }
   });
 

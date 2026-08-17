@@ -43,9 +43,8 @@ function numberValue(value: unknown): number | undefined {
 }
 
 function resourceType(value: unknown): DrawingCatalogResourceType | null {
-  if (value === 'connector' || value === 'wire' || value === 'model' || value === 'accessory' || value === 'packaging') return value;
+  if (value === 'connector' || value === 'wire' || value === 'protective_sleeve' || value === 'model' || value === 'accessory' || value === 'packaging') return value;
   if (value === 'overmold') return 'model';
-  if (value === 'protective_sleeve') return 'accessory';
   return null;
 }
 
@@ -56,6 +55,7 @@ function mapCatalogRow(row: UnknownRow): CatalogResourceWithStoragePath | null {
   if (!type) return null;
   const connector = record(row.connectors);
   const wire = record(row.wires);
+  const protectiveSleeve = record(row.protective_sleeves);
   const model = record(row.models);
   const accessory = record(row.accessories);
   const packaging = record(row.packagings);
@@ -63,7 +63,16 @@ function mapCatalogRow(row: UnknownRow): CatalogResourceWithStoragePath | null {
   const primaryImage = images.sort((left, right) => Number(Boolean(right.is_primary)) - Number(Boolean(left.is_primary)))[0];
   const connectorType = text(connector.connector_type);
   const gender = connectorType === 'male' || connectorType === 'female' || connectorType === 'receptacle' ? connectorType : undefined;
-  const specification = text(accessory.specification) || text(packaging.specification) || text(wire.wire_kind) || text(model.model_kind);
+  if (type === 'protective_sleeve' && text(protectiveSleeve.sleeve_type) !== 'heat-shrink') return null;
+  const sleeveDiameter = numberValue(protectiveSleeve.inner_diameter_as_supplied_mm);
+  const sleeveRatio = numberValue(protectiveSleeve.shrink_ratio);
+  const sleeveSpecification = [
+    sleeveDiameter === undefined ? '' : `Φ${sleeveDiameter}mm`,
+    sleeveRatio === undefined ? '' : `${sleeveRatio}:1`,
+    text(protectiveSleeve.material),
+    text(protectiveSleeve.color),
+  ].filter(Boolean).join(' · ');
+  const specification = sleeveSpecification || text(accessory.specification) || text(packaging.specification) || text(wire.wire_kind) || text(model.model_kind);
   return {
     id: text(row.legacy_key, text(row.id)),
     resourceItemId: text(row.id),
@@ -78,7 +87,7 @@ function mapCatalogRow(row: UnknownRow): CatalogResourceWithStoragePath | null {
     rowCount: numberValue(connector.row_count),
     pitchMm: numberValue(connector.pitch_mm),
     specification: specification || undefined,
-    unit: text(accessory.unit) || text(packaging.unit) || undefined,
+    unit: type === 'protective_sleeve' ? 'PCS' : text(accessory.unit) || text(packaging.unit) || undefined,
   };
 }
 
@@ -176,7 +185,7 @@ export class DrawingCatalogRepository {
   }
 
   async listResources(filters: DrawingCatalogFilters = {}): Promise<DrawingCatalogResource[]> {
-    const rows = await this.rows('resource_items', 'id,legacy_key,resource_type,resource_group,resource_name,model,short_description,display_order,lifecycle_status,deleted_at,connectors(connector_type,series,pin_count,row_count,pitch_mm),wires(wire_kind),models(model_kind),accessories(specification,unit),packagings(specification,unit),resource_item_images(storage_path,is_primary,display_order)');
+    const rows = await this.rows('resource_items', 'id,legacy_key,resource_type,resource_group,resource_name,model,short_description,display_order,lifecycle_status,deleted_at,connectors(connector_type,series,pin_count,row_count,pitch_mm),wires(wire_kind),protective_sleeves(material,color,sleeve_type,shrink_ratio,nominal_length_m,inner_diameter_as_supplied_mm,inner_diameter_recovered_mm,recovered_wall_thickness_mm),models(model_kind),accessories(specification,unit),packagings(specification,unit),resource_item_images(storage_path,is_primary,display_order)');
     const mapped = rows
       .filter((row) => row.lifecycle_status === 'active' && !row.deleted_at)
       .map(mapCatalogRow)

@@ -34,6 +34,20 @@ export function applyDrawingWireBatch(wires: DrawingWireDraft[], batch: DrawingW
   }));
 }
 
+function resolveHeatShrinkMaterial(draft: DrawingWizardDraft) {
+  if (draft.heatShrinkResource) {
+    return {
+      key: `protective_sleeve:${draft.heatShrinkResource.resourceItemId}`,
+      name: draft.heatShrinkResource.name,
+      code: draft.heatShrinkResource.model,
+      unit: draft.heatShrinkResource.unit ?? 'PCS',
+    };
+  }
+  const legacyName = draft.heatShrink?.trim();
+  if (!legacyName) return undefined;
+  return { key: `legacy-heat-shrink:${legacyName}`, name: legacyName, code: '', unit: 'PCS' };
+}
+
 export function countDrawingMaterialKinds(draft: DrawingWizardDraft): number {
   const ids = new Set<string>();
   for (const connector of [draft.singleConnector, draft.leftConnector, draft.rightConnector]) {
@@ -41,7 +55,8 @@ export function countDrawingMaterialKinds(draft: DrawingWizardDraft): number {
   }
   if (draft.wireResource) ids.add(`wire:${draft.wireResource.resourceItemId}`);
   if (draft.hasMold) ids.add(`mold:${draft.modelResource?.resourceItemId ?? 'configured'}`);
-  if (draft.heatShrink?.trim()) ids.add(`accessory:${draft.heatShrink.trim()}`);
+  const heatShrink = resolveHeatShrinkMaterial(draft);
+  if (heatShrink) ids.add(heatShrink.key);
   return ids.size;
 }
 
@@ -125,20 +140,21 @@ function connectorObject(
 }
 
 function drawingBomRows(draft: DrawingWizardDraft, left?: DrawingConnectorResource, right?: DrawingConnectorResource) {
-  const materials = new Map<string, { name: string; unit: string; quantity: number }>();
-  const add = (key: string, name: string | undefined, unit: string, quantity: number) => {
+  const materials = new Map<string, { code: string; name: string; unit: string; quantity: number }>();
+  const add = (key: string, name: string | undefined, unit: string, quantity: number, code = '') => {
     if (!name) return;
     const current = materials.get(key);
-    materials.set(key, { name, unit, quantity: (current?.quantity ?? 0) + quantity });
+    materials.set(key, { code, name, unit, quantity: (current?.quantity ?? 0) + quantity });
   };
   add(`connector:${left?.id}`, left?.name, 'PCS', 1);
   add(`connector:${right?.id}`, right?.name, 'PCS', 1);
   const wireLengthM = draft.wires.reduce((total, wire) => total + wire.lengthMm, 0) / 1000;
   add(`wire:${draft.wireResource?.resourceItemId}`, draft.wireResource?.name, 'M', wireLengthM);
   if (draft.hasMold) add(`model:${draft.modelResource?.resourceItemId ?? 'generic'}`, draft.modelResource?.name ?? '外线模具', 'PCS', 1);
-  add(`accessory:${draft.heatShrink}`, draft.heatShrink, 'PCS', 1);
+  const heatShrink = resolveHeatShrinkMaterial(draft);
+  if (heatShrink) add(heatShrink.key, heatShrink.name, heatShrink.unit, 1, heatShrink.code);
   return [...materials.values()].map((material, index) => ({
-    序号: String(index + 1), 物料编码: '', '物料名称/规格': material.name, 单位: material.unit,
+    序号: String(index + 1), 物料编码: material.code, '物料名称/规格': material.name, 单位: material.unit,
     用量: String(Number(material.quantity.toFixed(3))), 备注: '',
   }));
 }
@@ -152,6 +168,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
   const isSingle = draft.topology.topology === 'single-end';
   const left = isSingle ? draft.singleConnector : draft.leftConnector;
   const right = isSingle ? undefined : draft.rightConnector;
+  const heatShrink = resolveHeatShrinkMaterial(draft);
   const frameObjects = [...base.objects, createWiringTable()].map((object) => {
     if (object.kind === 'wiring-table') {
       return {
@@ -225,7 +242,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
     ...frameObjects,
   ];
 
-  if (draft.heatShrink) {
+  if (heatShrink) {
     objects.push({
       id: createDrawingId('accessory'),
       kind: 'accessory',
@@ -238,7 +255,7 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       locked: false,
       visible: true,
       style: style({ fill: '#e2e8f0' }),
-      label: draft.heatShrink,
+      label: heatShrink.name,
       accessoryType: 'sleeve',
     });
   }

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(path, 'utf8');
@@ -16,6 +16,8 @@ describe('drawing workbench SQL resources', () => {
     const upgrade = read('supabase/sql/50_upgrade/03_catalog_resource_main_tables.sql');
     const businessUpgrade = read('supabase/sql/50_upgrade/04_frontend_business_data.sql');
     const resourceRenameUpgrade = read('supabase/sql/50_upgrade/05_resource_master_rename.sql');
+    const sleeveUpgradePath = 'supabase/sql/50_upgrade/06_normalize_drawing_heat_shrink.sql';
+    const sleeveUpgrade = existsSync(sleeveUpgradePath) ? read(sleeveUpgradePath) : '';
     const seed = read('supabase/sql/40_seed/03_drawing_workbench_resources.sql');
     const exampleSeed = read('supabase/sql/40_seed/01_example_catalog.sql');
     const businessSeed = read('supabase/sql/40_seed/05_business_options.sql');
@@ -88,6 +90,9 @@ describe('drawing workbench SQL resources', () => {
     expect(seed).toContain("'UL20276'");
     expect(exampleSeed).toContain("'UL2464'");
     expect(seed).toContain('XH2.54');
+    expect(seed).toContain("'protective_sleeve', 'heat-shrink-6'");
+    expect(seed).toContain('insert into public.protective_sleeves');
+    expect(seed).not.toContain("'heat-shrink', 'Φ6mm 2:1'");
     expect(businessSeed).toContain('lead_time_options');
     expect(businessSeed).toContain('pricing_rules');
     expect(businessSeed).toContain('quantity_discount_rules');
@@ -104,6 +109,13 @@ describe('drawing workbench SQL resources', () => {
     expect(upgradeSql).toContain('to anon, authenticated');
     expect(upgrade).toContain('drop table public.connector_pins cascade');
     expect(upgrade).toContain('drop table public.wire_spec_cores cascade');
+    expect(existsSync(sleeveUpgradePath)).toBe(true);
+    expect(sleeveUpgrade).toContain("legacy_key = 'heat-shrink-6'");
+    expect(sleeveUpgrade).toContain('delete from public.accessories');
+    expect(sleeveUpgrade).toContain("resource_type = 'protective_sleeve'");
+    expect(sleeveUpgrade).toContain('insert into public.protective_sleeves');
+    expect(sleeveUpgrade).toContain('begin;');
+    expect(sleeveUpgrade).toContain('commit;');
     for (const value of ['model', 'accessory', 'packaging']) {
       expect(integrity).toContain(`enforce_resource_spec_item_type('${value}')`);
       expect(`${integrity}\n${upgradeSql}`).toContain(`when '${value}' then exists`);

@@ -47,6 +47,49 @@ describe('DrawingCatalogRepository', () => {
     ]);
   });
 
+  it('maps only active heat-shrink protective sleeves', async () => {
+    const repository = new DrawingCatalogRepository(fakeClient({
+      resource_items: [
+        {
+          id: 'sleeve-1', legacy_key: 'heat-shrink-6', resource_type: 'protective_sleeve',
+          resource_name: 'Φ6热缩套管', model: 'HS-6MM', resource_group: '绘图辅材',
+          lifecycle_status: 'active', deleted_at: null,
+          protective_sleeves: {
+            material: 'polyolefin', color: 'black', sleeve_type: 'heat-shrink', shrink_ratio: 2,
+            nominal_length_m: 1, inner_diameter_as_supplied_mm: 6,
+            inner_diameter_recovered_mm: 3, recovered_wall_thickness_mm: 0.55,
+          },
+          resource_item_images: [],
+        },
+        {
+          id: 'sleeve-2', legacy_key: 'braided-6', resource_type: 'protective_sleeve',
+          resource_name: '编织套管', model: 'BRAID-6', resource_group: '绘图辅材',
+          lifecycle_status: 'active', deleted_at: null,
+          protective_sleeves: { sleeve_type: 'braided' }, resource_item_images: [],
+        },
+        {
+          id: 'sleeve-3', legacy_key: 'inactive-6', resource_type: 'protective_sleeve',
+          resource_name: '停用热缩套管', model: 'HS-INACTIVE', resource_group: '绘图辅材',
+          lifecycle_status: 'inactive', deleted_at: null,
+          protective_sleeves: { sleeve_type: 'heat-shrink' }, resource_item_images: [],
+        },
+        {
+          id: 'sleeve-4', legacy_key: 'deleted-6', resource_type: 'protective_sleeve',
+          resource_name: '已删除热缩套管', model: 'HS-DELETED', resource_group: '绘图辅材',
+          lifecycle_status: 'active', deleted_at: '2026-08-17T00:00:00Z',
+          protective_sleeves: { sleeve_type: 'heat-shrink' }, resource_item_images: [],
+        },
+      ],
+    }));
+
+    await expect(repository.listResources({ resourceType: 'protective_sleeve' })).resolves.toEqual([
+      expect.objectContaining({
+        resourceItemId: 'sleeve-1', resourceType: 'protective_sleeve', model: 'HS-6MM',
+        specification: 'Φ6mm · 2:1 · polyolefin · black', unit: 'PCS',
+      }),
+    ]);
+  });
+
   it('throws a stable catalog error when Supabase fails', async () => {
     const repository = new DrawingCatalogRepository(fakeClient({}, { resource_items: 'network unavailable' }));
     await expect(repository.listResources({})).rejects.toEqual(expect.objectContaining<Partial<DrawingCatalogError>>({ message: 'network unavailable' }));

@@ -8,7 +8,7 @@ insert into public.resource_items (id, resource_type, legacy_key, resource_name,
   ('30000000-0000-4000-8000-000000001003', 'wire', 'ul1007-24awg', 'UL1007 24AWG电子线', 'UL1007-24AWG', '绘图线材', '300V普通电子线', 120),
   ('30000000-0000-4000-8000-000000001004', 'wire', 'shielded-4c', '4芯屏蔽线', 'SHIELD-4C', '绘图线材', '4芯编织屏蔽线', 130),
   ('30000000-0000-4000-8000-000000001005', 'model', 'usb-a-mold', 'USB-A外模模型', 'USB-A-MOLD', '绘图模型', 'USB-A外线模型', 140),
-  ('30000000-0000-4000-8000-000000001006', 'accessory', 'heat-shrink-6', 'Φ6热缩套管', 'HS-6MM', '绘图辅材', '黑色热缩套管', 150),
+  ('30000000-0000-4000-8000-000000001006', 'protective_sleeve', 'heat-shrink-6', 'Φ6热缩套管', 'HS-6MM', '绘图辅材', '黑色热缩套管', 150),
   ('30000000-0000-4000-8000-000000001007', 'accessory', 'wire-label', '线号标签', 'LABEL-20X8', '绘图辅材', '20x8mm线号标签', 160),
   ('30000000-0000-4000-8000-000000001008', 'packaging', 'coil-bag', '盘绕入袋', 'PKG-COIL-BAG', '包装方式', '扎带固定后装PE袋', 170)
 on conflict (id) do update set resource_name = excluded.resource_name, model = excluded.model, resource_group = excluded.resource_group, short_description = excluded.short_description, display_order = excluded.display_order, updated_at = now();
@@ -37,12 +37,30 @@ on conflict (resource_item_id) do update set
   is_shielded = excluded.is_shielded, core_colors = excluded.core_colors,
   updated_at = now();
 
+insert into public.protective_sleeves (
+  resource_item_id, material, color, sleeve_type, shrink_ratio,
+  nominal_length_m, inner_diameter_as_supplied_mm,
+  inner_diameter_recovered_mm, recovered_wall_thickness_mm
+) values (
+  '30000000-0000-4000-8000-000000001006', 'polyolefin', 'black',
+  'heat-shrink', 2, 1, 6, 3, 0.55
+)
+on conflict (resource_item_id) do update set
+  material = excluded.material,
+  color = excluded.color,
+  sleeve_type = excluded.sleeve_type,
+  shrink_ratio = excluded.shrink_ratio,
+  nominal_length_m = excluded.nominal_length_m,
+  inner_diameter_as_supplied_mm = excluded.inner_diameter_as_supplied_mm,
+  inner_diameter_recovered_mm = excluded.inner_diameter_recovered_mm,
+  recovered_wall_thickness_mm = excluded.recovered_wall_thickness_mm,
+  updated_at = now();
+
 insert into public.models (resource_item_id, model_kind, default_width_mm, default_height_mm, default_orientation, model_parameters) values
   ('30000000-0000-4000-8000-000000001005', 'overmold', 32, 14, 'right', '{"connector":"USB-A"}'::jsonb)
 on conflict (resource_item_id) do update set model_kind = excluded.model_kind, default_width_mm = excluded.default_width_mm, default_height_mm = excluded.default_height_mm, model_parameters = excluded.model_parameters;
 
 insert into public.accessories (resource_item_id, accessory_kind, specification, material, color, unit) values
-  ('30000000-0000-4000-8000-000000001006', 'heat-shrink', 'Φ6mm 2:1', 'PE', '黑色', 'M'),
   ('30000000-0000-4000-8000-000000001007', 'label', '20x8mm', 'PET', '白色', 'PCS')
 on conflict (resource_item_id) do update set accessory_kind = excluded.accessory_kind, specification = excluded.specification, material = excluded.material, color = excluded.color, unit = excluded.unit;
 

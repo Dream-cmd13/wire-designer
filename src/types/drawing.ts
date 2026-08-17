@@ -236,13 +236,14 @@ export type DrawingWizardDraft = {
   toleranceMm: number;
   hasMold: boolean;
   heatShrink?: string;
+  heatShrinkResource?: DrawingCatalogResource;
   wires: DrawingWireDraft[];
   wireResource?: DrawingCatalogResource;
   modelResource?: DrawingCatalogResource;
   templateId?: string;
 };
 
-export type DrawingCatalogResourceType = 'connector' | 'model' | 'wire' | 'accessory' | 'packaging';
+export type DrawingCatalogResourceType = 'connector' | 'model' | 'wire' | 'protective_sleeve' | 'accessory' | 'packaging';
 
 export type DrawingCatalogFilters = {
   resourceType?: DrawingCatalogResourceType;

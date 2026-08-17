@@ -40,11 +40,17 @@ to run before or after the rename migration.
 For an existing development database, run 50_upgrade/02_rename_profiles_to_user.sql first when upgrading
 the application user table, then run 50_upgrade/01_drawing_workbench_resources.sql followed by
 50_upgrade/03_catalog_resource_main_tables.sql, 50_upgrade/04_frontend_business_data.sql, and
-50_upgrade/05_resource_master_rename.sql. Rerun
+50_upgrade/05_resource_master_rename.sql. If the existing drawing seed still models
+`heat-shrink-6` as an accessory, run `50_upgrade/06_normalize_drawing_heat_shrink.sql`
+next. Rerun
 10_schema/03_integrity.sql, 30_security/01_rls.sql, `40_seed/03_drawing_workbench_resources.sql`,
 `40_seed/04_frontend_catalog.sql`, and `40_seed/05_business_options.sql` afterward.
 The upgrades and seeds are idempotent. For a clean test environment, prefer
 00_reset/01_drop_all_tables.sql followed by the normal execution order above.
+
+`50_upgrade/06_normalize_drawing_heat_shrink.sql` is an administrator-run database
+migration. The frontend and the Storage bootstrap command never execute it or perform
+any equivalent remote database write.
 
 The resource master schema keeps resource_items as the shared resource master and
 resource_item_images as the image table. resource_group is an optional flat display
