@@ -11,6 +11,23 @@ begin
 end;
 $$;
 
+create or replace function public.set_project_delete_audit()
+returns trigger language plpgsql security invoker set search_path = public as $$
+begin
+  if old.deleted_at is null and new.deleted_at is not null then
+    new.deleted_by := auth.uid();
+  elsif old.deleted_at is not null and new.deleted_at is null then
+    new.deleted_by := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists projects_set_delete_audit on public.projects;
+create trigger projects_set_delete_audit
+before update on public.projects
+for each row execute function public.set_project_delete_audit();
+
 do $$
 declare table_name text;
 begin

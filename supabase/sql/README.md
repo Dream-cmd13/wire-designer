@@ -42,7 +42,8 @@ the application user table, then run 50_upgrade/01_drawing_workbench_resources.s
 50_upgrade/03_catalog_resource_main_tables.sql, 50_upgrade/04_frontend_business_data.sql, and
 50_upgrade/05_resource_master_rename.sql. If the existing drawing seed still models
 `heat-shrink-6` as an accessory, run `50_upgrade/06_normalize_drawing_heat_shrink.sql`
-next. Rerun
+next, then run `50_upgrade/07_project_soft_delete_rls.sql` to repair project soft-delete
+RLS and audit permissions. Rerun
 10_schema/03_integrity.sql, 30_security/01_rls.sql, `40_seed/03_drawing_workbench_resources.sql`,
 `40_seed/04_frontend_catalog.sql`, and `40_seed/05_business_options.sql` afterward.
 The upgrades and seeds are idempotent. For a clean test environment, prefer
