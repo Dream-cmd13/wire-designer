@@ -7,8 +7,15 @@ interface UserState {
   currentUser: User | null;
   authReady: boolean;
   initialize: () => () => void;
-  signIn: (email: string, password: string) => Promise<void>;
+  signIn: (emailOrUsername: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+}
+
+const LOCAL_EMAIL_DOMAIN = '@local.app';
+
+function normalizeLoginEmail(emailOrUsername: string): string {
+  const identifier = emailOrUsername.trim();
+  return identifier.includes('@') ? identifier : `${identifier}${LOCAL_EMAIL_DOMAIN}`;
 }
 
 function toAppUser(user: SupabaseAuthUser): User {
@@ -51,12 +58,15 @@ export const useUserStore = create<UserState>((set) => ({
     return () => subscription.unsubscribe();
   },
 
-  signIn: async (email, password) => {
+  signIn: async (emailOrUsername, password) => {
     if (!supabase) {
       throw new Error('Supabase 尚未配置，无法登录。');
     }
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizeLoginEmail(emailOrUsername),
+      password,
+    });
     if (error) throw error;
 
     set({ currentUser: data.user ? toAppUser(data.user) : null, authReady: true });

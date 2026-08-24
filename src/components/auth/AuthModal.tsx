@@ -87,15 +87,15 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
               </p>
               <form className="space-y-4" onSubmit={(event) => void handleLogin(event)}>
                 <div>
-                  <label htmlFor="auth-email" className="mb-1 block text-sm font-medium text-slate-700">邮箱</label>
+                  <label htmlFor="auth-email" className="mb-1 block text-sm font-medium text-slate-700">账号</label>
                   <input
                     id="auth-email"
-                    type="email"
+                    type="text"
                     autoComplete="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    placeholder="name@example.com"
+                    placeholder="用户名或 name@example.com"
                     required
                     disabled={submitting}
                   />
