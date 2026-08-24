@@ -271,7 +271,7 @@ export interface TwoDImage {
   id: string;
   name: string;
   dataUrl: string;
-  source: 'upload' | 'asset';
+  source: 'catalog';
   assetPath?: string;
   elementKind?: 'connector' | 'material' | 'sleeve' | 'model';
   elementId?: string;

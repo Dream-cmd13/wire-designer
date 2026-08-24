@@ -4,7 +4,7 @@ import { Download, ExternalLink, FileText, Image, X } from 'lucide-react';
 export interface AssociatedFile {
   name: string;
   url: string;
-  type: 'image' | 'pdf';
+  type: 'image';
 }
 
 interface BomPreviewModalProps {
@@ -90,11 +90,7 @@ export function BomPreviewModal({ isOpen, onClose, itemName, files }: BomPreview
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border-l-2 border-transparent'
                       }`}
                     >
-                      {file.type === 'pdf' ? (
-                        <FileText className={`h-4 w-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-400'}`} />
-                      ) : (
-                        <Image className={`h-4 w-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-400'}`} />
-                      )}
+                      <Image className={`h-4 w-4 shrink-0 ${isSelected ? 'text-blue-500' : 'text-slate-400'}`} />
                       <span className="truncate flex-1" title={file.name}>
                         {file.name}
                       </span>
@@ -137,26 +133,18 @@ export function BomPreviewModal({ isOpen, onClose, itemName, files }: BomPreview
 
                 {/* Preview Frame */}
                 <div className="flex-1 overflow-hidden p-6 flex items-center justify-center">
-                  {currentFile.type === 'pdf' ? (
-                    <iframe
+                  <div className="max-w-full max-h-full overflow-auto flex items-center justify-center p-2 rounded-lg bg-white shadow border border-slate-200">
+                    <img
                       src={currentFile.url}
-                      className="w-full h-full rounded-lg border border-slate-200 shadow bg-white"
-                      title={currentFile.name}
+                      alt={currentFile.name}
+                      className="max-w-full max-h-[60vh] object-contain select-none"
                     />
-                  ) : (
-                    <div className="max-w-full max-h-full overflow-auto flex items-center justify-center p-2 rounded-lg bg-white shadow border border-slate-200">
-                      <img
-                        src={currentFile.url}
-                        alt={currentFile.name}
-                        className="max-w-full max-h-[60vh] object-contain select-none"
-                      />
-                    </div>
-                  )}
+                  </div>
                 </div>
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                <FileText className="h-12 w-12 text-slate-300 mb-3" />
+                <Image className="h-12 w-12 text-slate-300 mb-3" />
                 <p className="text-sm font-medium text-slate-600">暂无关联文件</p>
                 <p className="text-xs text-slate-400 mt-1">未找到此物料相关的图纸或图片。</p>
               </div>

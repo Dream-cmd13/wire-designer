@@ -5,22 +5,44 @@
  */
 import type { CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig, JacketedWireSpec, TwoDImage } from '@/types/harness';
 import { generateId } from '@/lib/commands';
+import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 
-function resourceImage(name: string, dataUrl: string, elementKind: TwoDImage['elementKind'], elementId: string): TwoDImage {
-  return { id: generateId(), name, dataUrl, source: 'asset', elementKind, elementId };
+function resourceImage(
+  name: string,
+  dataUrl: string,
+  elementKind: TwoDImage['elementKind'],
+  elementId: string,
+  previous: TwoDImage | undefined,
+): TwoDImage {
+  return {
+    id: previous?.id ?? generateId(),
+    name,
+    dataUrl,
+    source: 'catalog',
+    elementKind,
+    elementId,
+    ...(previous?.rotation === undefined ? {} : { rotation: previous.rotation }),
+    ...(previous?.flipX === undefined ? {} : { flipX: previous.flipX }),
+    ...(previous?.pos === undefined ? {} : { pos: previous.pos }),
+  };
 }
 
-function connectorImages(connector: ConnectorInstance): TwoDImage[] {
-  const image = connector.connector.image;
-  return image ? [resourceImage(connector.connector.name, image, 'connector', connector.id)] : [];
+function catalogConnectorImage(connector: ConnectorInstance): string | undefined {
+  const snapshot = getCatalogSnapshot();
+  return snapshot?.connectors.find((item) => item.resourceItemId === connector.connector.resourceItemId)?.image
+    ?? connector.connector.image;
 }
 
-function wireImage(material: CanvasWireMaterial): TwoDImage[] {
-  return material.resourceImageUrl ? [resourceImage(material.name, material.resourceImageUrl, 'material', material.id)] : [];
+function catalogWireImage(material: CanvasWireMaterial): string | undefined {
+  const snapshot = getCatalogSnapshot();
+  return snapshot?.wires.find((item) => item.resourceItemId === material.resourceItemId)?.image
+    ?? material.resourceImageUrl;
 }
 
-function overmoldImage(model: CanvasModel): TwoDImage[] {
-  return model.resourceImageUrl ? [resourceImage('Overmold', model.resourceImageUrl, 'model', model.id)] : [];
+function catalogOvermoldImage(model: CanvasModel): string | undefined {
+  const snapshot = getCatalogSnapshot();
+  return snapshot?.overmolds.find((item) => item.resourceItemId === model.resourceItemId)?.image
+    ?? model.resourceImageUrl;
 }
 
 /** Retained for existing validation/tests; image choice itself is catalog-driven. */
@@ -29,14 +51,29 @@ export function isProductImageEligibleJacketedWire(spec: JacketedWireSpec): bool
 }
 
 export function autoAssociateTwoDImages(config: HarnessConfig): TwoDImage[] {
+  const previousByElement = new Map(
+    (config.twoDImages ?? [])
+      .filter((image) => image.elementKind && image.elementId)
+      .map((image) => [`${image.elementKind}:${image.elementId}`, image]),
+  );
+  const previous = (kind: TwoDImage['elementKind'], id: string) => previousByElement.get(`${kind}:${id}`);
+
   return [
-    ...config.connectors.flatMap(connectorImages),
-    ...config.materials.flatMap(wireImage),
-    ...config.models.flatMap(overmoldImage),
+    ...config.connectors.flatMap((connector) => {
+      const image = catalogConnectorImage(connector);
+      return image ? [resourceImage(connector.connector.name, image, 'connector', connector.id, previous('connector', connector.id))] : [];
+    }),
+    ...config.materials.flatMap((material) => {
+      const image = catalogWireImage(material);
+      return image ? [resourceImage(material.name, image, 'material', material.id, previous('material', material.id))] : [];
+    }),
+    ...config.models.flatMap((model) => {
+      const image = catalogOvermoldImage(model);
+      return image ? [resourceImage('Overmold', image, 'model', model.id, previous('model', model.id))] : [];
+    }),
   ];
 }
 
 export function syncTwoDImages(config: HarnessConfig): TwoDImage[] {
-  const manualImages = (config.twoDImages ?? []).filter((image) => image.source === 'upload');
-  return [...manualImages, ...autoAssociateTwoDImages(config)];
+  return autoAssociateTwoDImages(config);
 }

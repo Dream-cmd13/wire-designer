@@ -3,7 +3,6 @@ import {
   Cable,
   Database,
   FileImage,
-  FileText,
   FolderOpen,
   Home,
   LayoutDashboard,
@@ -37,7 +36,6 @@ const sidebarItems: SidebarItem[] = [
     icon: Cable,
     children: [
       { label: '设计图', path: appRoutes['designer-design'].path, icon: PenTool },
-      { label: 'PDF', path: appRoutes['designer-pdf'].path, icon: FileText },
       { label: '成品图', path: appRoutes['designer-product-image'].path, icon: FileImage },
     ],
   },

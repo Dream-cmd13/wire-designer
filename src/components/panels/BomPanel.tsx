@@ -2,10 +2,8 @@ import { useMemo, useState } from 'react';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { generateBOM } from '@/lib/bom';
 import { ClipboardList, Plug, Cable, Shield, Download, FileSpreadsheet, Eye, EyeOff } from 'lucide-react';
-import { pdfDrawings } from '@/lib/pdfDrawings';
-import { imageAssets } from '@/lib/imageAssets';
 import { BomPreviewModal, type AssociatedFile } from './BomPreviewModal';
-import type { BOMItem, HarnessConfig } from '@/types/harness';
+import type { BOMItem, HarnessConfig, TwoDImage } from '@/types/harness';
 
 /**
  * Helper to check associated files for a BOM item.
@@ -13,121 +11,31 @@ import type { BOMItem, HarnessConfig } from '@/types/harness';
 function getAssociatedFiles(item: BOMItem, config: HarnessConfig): AssociatedFile[] {
   const files: AssociatedFile[] = [];
 
-  const sanitize = (name: string) => name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+  const addImages = (elementKind: NonNullable<TwoDImage['elementKind']>, elementIds: string[]) => {
+    for (const image of config.twoDImages ?? []) {
+      if (image.elementKind === elementKind && image.elementId && elementIds.includes(image.elementId)) {
+        files.push({ name: `${image.name}.png`, url: image.dataUrl, type: 'image' });
+      }
+    }
+  };
 
   if (item.type === 'connector') {
     const partNum = item.partNumber || '';
-    const cleanPartNum = sanitize(partNum);
 
-    // 1. Match from pdfDrawings by partNumber
-    if (partNum) {
-      for (const pdf of pdfDrawings) {
-        if (sanitize(pdf.name).includes(cleanPartNum) || cleanPartNum.includes(sanitize(pdf.name))) {
-          files.push({ name: pdf.name + '.pdf', url: pdf.url, type: 'pdf' });
-        }
-      }
-      for (const img of imageAssets) {
-        if (sanitize(img.name).includes(cleanPartNum) || cleanPartNum.includes(sanitize(img.name))) {
-          files.push({ name: img.name + (img.url.endsWith('.png') ? '.png' : '.jpg'), url: img.url, type: 'image' });
-        }
-      }
-    }
-
-    // 2. Fallback/include generic "连接器" drawings/images if they exist
-    for (const pdf of pdfDrawings) {
-      if (pdf.name.includes('连接器') && !files.some(f => f.url === pdf.url)) {
-        files.push({ name: pdf.name + '.pdf', url: pdf.url, type: 'pdf' });
-      }
-    }
-    for (const img of imageAssets) {
-      if (img.name.includes('连接器') && !files.some(f => f.url === img.url)) {
-        files.push({ name: img.name + (img.url.endsWith('.png') ? '.png' : '.jpg'), url: img.url, type: 'image' });
-      }
-    }
-
-    // 3. Match instance-specific images from config.twoDImages
-    if (partNum && config.twoDImages) {
-      const matchingInstanceIds = config.connectors
-        .filter((connector) => connector.connector?.id === partNum)
-        .map((connector) => connector.id);
-      
-      for (const img of config.twoDImages) {
-        if (img.elementKind === 'connector' && img.elementId && matchingInstanceIds.includes(img.elementId)) {
-          if (!files.some(f => f.url === img.dataUrl)) {
-            files.push({ name: img.name + ' (画布渲染图).png', url: img.dataUrl, type: 'image' });
-          }
-        }
-      }
-    }
+    const matchingInstanceIds = config.connectors
+      .filter((connector) => connector.connector?.id === partNum)
+      .map((connector) => connector.id);
+    addImages('connector', matchingInstanceIds);
   } else if (item.type === 'wire') {
-    const isJacketed = item.description.includes('护套线') || item.description.includes('jacket');
-    const isElectronic = item.description.includes('电子线') || item.description.includes('electronic');
-
-    // 1. Match from config.twoDImages if wire images exist
-    if (config.materials && config.twoDImages) {
-      const matchingMaterialIds = config.materials
-        .filter((material) => {
-          const description = material.spec.kind === 'electronic'
-            ? `${material.spec.awg}AWG 电子线`
-            : '护套线';
-          return item.description.includes(description);
-        })
-        .map((material) => material.id);
-
-      for (const img of config.twoDImages) {
-        if (img.elementKind === 'material' && img.elementId && matchingMaterialIds.includes(img.elementId)) {
-          if (!files.some(f => f.url === img.dataUrl)) {
-            files.push({ name: img.name + ' (画布渲染图).png', url: img.dataUrl, type: 'image' });
-          }
-        }
-      }
-    }
-
-    // 2. Match from catalog files by keywords
-    if (isJacketed) {
-      for (const pdf of pdfDrawings) {
-        if (pdf.name.includes('护套线') && !files.some(f => f.url === pdf.url)) {
-          files.push({ name: pdf.name + '.pdf', url: pdf.url, type: 'pdf' });
-        }
-      }
-      for (const img of imageAssets) {
-        if (img.name.includes('护套线') && !files.some(f => f.url === img.url)) {
-          files.push({ name: img.name + (img.url.endsWith('.png') ? '.png' : '.jpg'), url: img.url, type: 'image' });
-        }
-      }
-    } else if (isElectronic) {
-      for (const pdf of pdfDrawings) {
-        if (pdf.name.includes('电子线') && !files.some(f => f.url === pdf.url)) {
-          files.push({ name: pdf.name + '.pdf', url: pdf.url, type: 'pdf' });
-        }
-      }
-      for (const img of imageAssets) {
-        if (img.name.includes('电子线') && !files.some(f => f.url === img.url)) {
-          files.push({ name: img.name + (img.url.endsWith('.png') ? '.png' : '.jpg'), url: img.url, type: 'image' });
-        }
-      }
-    }
-  } else if (item.type === 'accessory') {
-    const desc = item.description.toLowerCase();
-    let keyword = '';
-    if (desc.includes('波纹') || desc.includes('corrugated')) keyword = '波纹';
-    else if (desc.includes('热缩') || desc.includes('heat-shrink') || desc.includes('heat shrink')) keyword = '热缩';
-    else if (desc.includes('醋酸') || desc.includes('acetate')) keyword = '醋酸';
-    else if (desc.includes('绒布') || desc.includes('fleece')) keyword = '绒布';
-    else if (desc.includes('编织') || desc.includes('braided')) keyword = '编织';
-
-    if (keyword) {
-      for (const pdf of pdfDrawings) {
-        if (pdf.name.includes(keyword) && !files.some(f => f.url === pdf.url)) {
-          files.push({ name: pdf.name + '.pdf', url: pdf.url, type: 'pdf' });
-        }
-      }
-      for (const img of imageAssets) {
-        if (img.name.includes(keyword) && !files.some(f => f.url === img.url)) {
-          files.push({ name: img.name + (img.url.endsWith('.png') ? '.png' : '.jpg'), url: img.url, type: 'image' });
-        }
-      }
-    }
+    const matchingMaterialIds = config.materials
+      .filter((material) => {
+        const description = material.spec.kind === 'electronic'
+          ? `${material.spec.awg}AWG 电子线`
+          : '护套线';
+        return item.description.includes(description);
+      })
+      .map((material) => material.id);
+    addImages('material', matchingMaterialIds);
   }
 
   // Deduplicate files by url

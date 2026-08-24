@@ -25,7 +25,6 @@ describe('getUserErrorMessage', () => {
       'src/App.tsx',
       'src/components/project/ProjectList.tsx',
       'src/components/project/ImportProjectDialog.tsx',
-      'src/components/drawings/PdfCropViewer.tsx',
       'src/components/drawings/standalone/DrawingResourcePanel.tsx',
       'src/components/drawings/standalone/StandaloneDrawingWizard.tsx',
       'src/pages/DrawingWorkbenchPage.tsx',

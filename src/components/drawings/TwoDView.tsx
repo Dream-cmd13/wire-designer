@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Minus, Plus, RotateCw, Upload } from 'lucide-react';
-import { generateId, getJumperNetwork } from '@/lib/commands';
+import { Minus, Plus, RotateCw } from 'lucide-react';
+import { getJumperNetwork } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage, CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
@@ -484,13 +484,11 @@ export function TwoDView() {
   const sleeves = useHarnessStore((s) => s.config.protectiveSleeves);
   const models = useHarnessStore((s) => s.config.models);
   const selection = useHarnessStore((s) => s.selection);
-  const addTwoDImage = useHarnessStore((s) => s.addTwoDImage);
   const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
   const patchDocument = useHarnessStore((s) => s.patchDocument);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isFitted, setIsFitted] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -791,23 +789,6 @@ export function TwoDView() {
     setDragOffset({ x: 0, y: 0 });
   }
 
-  // ── upload ────────────────────────────────────────────────────────────────────
-  function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      addTwoDImage({
-        id: generateId(),
-        name: file.name.replace(/\.[^.]+$/, ''),
-        dataUrl: ev.target?.result as string,
-        source: 'upload',
-      });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
-  }
-
   // ── render ────────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-col bg-white">
@@ -849,21 +830,6 @@ export function TwoDView() {
           {twoDImages.length > 0 && (
             <span className="text-xs text-slate-400">{twoDImages.length} 张图片</span>
           )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleUpload}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-600"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            添加图片
-          </button>
         </div>
       </div>
 
@@ -895,7 +861,7 @@ export function TwoDView() {
             </div>
             <p className="text-sm font-medium text-slate-500">暂无 2D 图片</p>
             <p className="text-xs text-slate-400">
-              点击「添加图片」上传，或在设计图中右键元素选择「关联 2D 图」
+              请先在目录中为连接器、线材或外模配置图片。
             </p>
           </div>
         ) : (

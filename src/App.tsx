@@ -5,8 +5,6 @@ import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
 import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
-import { PdfDrawingPickerDialog } from '@/components/drawings/PdfDrawingPickerDialog';
-import { ProductionDrawingView } from '@/components/drawings/ProductionDrawingView';
 import { TwoDView } from '@/components/drawings/TwoDView';
 import { BomPanel } from '@/components/panels/BomPanel';
 import { ConfigPanel } from '@/components/panels/ConfigPanel';
@@ -16,7 +14,6 @@ import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { appRoutes } from '@/lib/appRoute';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
-import { pdfDrawings, type PdfDrawing } from '@/lib/pdfDrawings';
 import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
 import { supabase } from '@/lib/supabaseClient';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
@@ -142,9 +139,6 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recoveryRaw, setRecoveryRaw] = useState<string | null>(null);
   const [saveBlocked, setSaveBlocked] = useState(false);
-  const [selectedPdfIds, setSelectedPdfIds] = useState<string[]>([]);
-  const [pdfPickerOpen, setPdfPickerOpen] = useState(false);
-  const [uploadedDrawings, setUploadedDrawings] = useState<PdfDrawing[]>([]);
   const [storageBootstrapState, setStorageBootstrapState] = useState<StorageBootstrapState>({
     status: 'unconfigured',
   });
@@ -161,10 +155,15 @@ export default function App() {
   const catalogError = useCatalogStore((state) => state.error);
   const { currentProject, saveCurrentConfig, setCurrentProject, updateProject, loadProjects } = useProjectStore();
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
+  const configRef = useRef(config);
   const canUndo = useHistoryStore((state) => state.past.length > 0);
   const canRedo = useHistoryStore((state) => state.future.length > 0);
   const drawingSaveState = useDrawingStore((state) => state.saveState);
   const saveActiveDrawing = useDrawingStore((state) => state.saveActiveDocument);
+
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
 
   const refreshStorageBootstrap = useCallback(async () => {
     setStorageChecking(true);
@@ -201,6 +200,11 @@ export default function App() {
       // The catalog store exposes the error state to the shell; no mock fallback is used.
     });
   }, [initializeCatalog]);
+
+  useEffect(() => {
+    if (catalogStatus !== 'ready' || !currentProject || configRef.current.id !== currentProject.id) return;
+    replaceDocument(configRef.current, { markSaved: saveState.status === 'saved' });
+  }, [catalogStatus, currentProject, config.id, replaceDocument, saveState.status]);
 
   const applyHistoryDocument = useCallback((nextConfig: typeof config | null) => {
     if (!nextConfig) return;
@@ -294,9 +298,6 @@ export default function App() {
     }
 
     setWizardOpen(false);
-    setPdfPickerOpen(false);
-    setSelectedPdfIds([]);
-    setUploadedDrawings([]);
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
@@ -401,7 +402,6 @@ export default function App() {
 
   const handleOpenProject = async (project: Project) => {
     setCurrentProject(project);
-    setPdfPickerOpen(false);
     const history = useHistoryStore.getState();
     history.clear();
     history.pause();
@@ -440,7 +440,6 @@ export default function App() {
     setSaveBlocked(false);
     setWizardOpen(false);
     useHistoryStore.getState().clear();
-    setPdfPickerOpen(false);
     navigate(appRoutes['designer-design'].path);
   };
 
@@ -461,7 +460,6 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
-    setPdfPickerOpen(false);
     useHistoryStore.getState().clear();
     navigate(appRoutes.home.path);
   };
@@ -490,16 +488,6 @@ export default function App() {
     }
 
     const content = (() => {
-      if (route.id === 'designer-pdf') {
-        return (
-          <ProductionDrawingView
-            drawings={[...pdfDrawings, ...uploadedDrawings]}
-            selectedIds={selectedPdfIds}
-            onChooseDrawings={() => setPdfPickerOpen(true)}
-          />
-        );
-      }
-
       if (route.id === 'designer-product-image') {
         return <TwoDView />;
       }
@@ -597,24 +585,6 @@ export default function App() {
         />
       )}
 
-      {pdfPickerOpen && (
-        <PdfDrawingPickerDialog
-          drawings={[...pdfDrawings, ...uploadedDrawings]}
-          initialSelection={selectedPdfIds}
-          onClose={() => setPdfPickerOpen(false)}
-          onUpload={(newDrawings) => {
-            setUploadedDrawings((prev) => {
-              const existingIds = new Set(prev.map((drawing) => drawing.id));
-              return [...prev, ...newDrawings.filter((drawing) => !existingIds.has(drawing.id))];
-            });
-          }}
-          onConfirm={(drawingIds) => {
-            setSelectedPdfIds(drawingIds);
-            setPdfPickerOpen(false);
-            navigate(appRoutes['designer-pdf'].path);
-          }}
-        />
-      )}
     </>
   );
 }

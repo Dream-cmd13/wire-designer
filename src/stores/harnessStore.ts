@@ -7,7 +7,6 @@ import type {
   ProtectiveSleeve,
   SaveState,
   Selection,
-  TwoDImage,
 } from '@/types/harness';
 import { alignHarnessConfig } from '@/lib/canvasMaterials';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
@@ -79,15 +78,6 @@ interface HarnessState {
   setSelection: (selection: Selection) => void;
   resetConfig: () => void;
 
-  // 2D image actions
-  addTwoDImage: (image: TwoDImage) => void;
-  removeTwoDImage: (id: string) => void;
-  updateTwoDImageAssociation: (
-    id: string,
-    elementKind: TwoDImage['elementKind'],
-    elementId: string,
-  ) => void;
-  clearTwoDImageAssociation: (id: string) => void;
   rotateTwoDImage: (id: string) => void;
   reorderTwoDImages: (fromIndex: number, toIndex: number) => void;
   moveTwoDImage: (id: string, x: number, y: number) => void;
@@ -125,9 +115,7 @@ export const useHarnessStore = create<HarnessState>()(
       replaceDocument: (fullConfig, options) => {
         const aligned = alignHarnessConfig(fullConfig);
         set({
-          config: options?.markSaved
-            ? aligned
-            : { ...aligned, twoDImages: syncTwoDImages(aligned) },
+          config: { ...aligned, twoDImages: syncTwoDImages(aligned) },
           selection: { kind: 'none' },
           saveState: options?.markSaved ? { status: 'saved', savedAt: Date.now() } : dirtyState(),
         });
@@ -298,52 +286,6 @@ export const useHarnessStore = create<HarnessState>()(
           selection: { kind: 'none' },
           saveState: dirtyState(),
         }),
-
-      addTwoDImage: (image) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            twoDImages: [...(state.config.twoDImages ?? []), image],
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      removeTwoDImage: (id) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            twoDImages: (state.config.twoDImages ?? []).filter((img) => img.id !== id),
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      updateTwoDImageAssociation: (id, elementKind, elementId) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            twoDImages: (state.config.twoDImages ?? []).map((img) =>
-              img.id === id ? { ...img, elementKind, elementId } : img,
-            ),
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
-
-      clearTwoDImageAssociation: (id) =>
-        set((state) => ({
-          config: {
-            ...state.config,
-            twoDImages: (state.config.twoDImages ?? []).map((img) =>
-              img.id === id
-                ? { ...img, elementKind: undefined, elementId: undefined }
-                : img,
-            ),
-            updatedAt: Date.now(),
-          },
-          saveState: dirtyState(),
-        })),
 
       rotateTwoDImage: (id) =>
         set((state) => ({

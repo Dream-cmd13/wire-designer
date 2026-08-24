@@ -11,7 +11,6 @@ export default defineConfig({
     include: [
       '@xyflow/react',
       'lucide-react',
-      'pdfjs-dist',
       'react',
       'react-dom',
       'react/jsx-runtime',

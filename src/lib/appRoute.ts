@@ -1,7 +1,6 @@
 export type AppRouteId =
   | 'home'
   | 'designer-design'
-  | 'designer-pdf'
   | 'designer-product-image'
   | 'drawing-workbench'
   | 'library-connectors'
@@ -25,12 +24,6 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     id: 'designer-design',
     path: '/designer/design',
     title: '设计图',
-    section: 'designer',
-  },
-  'designer-pdf': {
-    id: 'designer-pdf',
-    path: '/designer/pdf',
-    title: 'PDF',
     section: 'designer',
   },
   'designer-product-image': {
