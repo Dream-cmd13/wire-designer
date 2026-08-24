@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ensureStorageBuckets, runStorageBootstrap } from './storageBootstrap.mjs';
+import {
+  ensureStorageBuckets,
+  removeStorageBucket,
+  runStorageBootstrap,
+} from './storageBootstrap.mjs';
 
 function makeBucket(bucket) {
   return {
@@ -62,6 +66,27 @@ function createFakeStorage(initialBuckets = [], options = {}) {
       return { data: { message: 'Successfully updated' }, error: null };
     },
 
+    async emptyBucket(id) {
+      if (options.emptyErrorFor === id) {
+        return { data: null, error: new Error('Empty denied') };
+      }
+      if (!buckets.has(id)) {
+        return { data: null, error: new Error('Bucket not found') };
+      }
+      return { data: { message: 'Successfully emptied' }, error: null };
+    },
+
+    async deleteBucket(id) {
+      if (options.deleteErrorFor === id) {
+        return { data: null, error: new Error('Delete denied') };
+      }
+      if (!buckets.has(id)) {
+        return { data: null, error: new Error('Bucket not found') };
+      }
+      buckets.delete(id);
+      return { data: { message: 'Successfully deleted' }, error: null };
+    },
+
     snapshot() {
       return [...buckets.values()].sort((left, right) => left.id.localeCompare(right.id));
     },
@@ -74,11 +99,9 @@ describe('ensureStorageBuckets', () => {
 
     await expect(ensureStorageBuckets(storage)).resolves.toEqual([
       { id: 'catalog-assets', action: 'created' },
-      { id: 'project-assets', action: 'created' },
     ]);
     expect(storage.snapshot()).toEqual([
       expect.objectContaining({ id: 'catalog-assets', public: false }),
-      expect.objectContaining({ id: 'project-assets', public: false }),
     ]);
   });
 
@@ -90,12 +113,10 @@ describe('ensureStorageBuckets', () => {
         file_size_limit: 4096,
         allowed_mime_types: ['image/png'],
       },
-      { id: 'project-assets', public: false },
     ]);
 
     await expect(ensureStorageBuckets(storage)).resolves.toEqual([
       { id: 'catalog-assets', action: 'updated' },
-      { id: 'project-assets', action: 'unchanged' },
     ]);
     expect(storage.snapshot()).toContainEqual(expect.objectContaining({
       id: 'catalog-assets',
@@ -108,24 +129,18 @@ describe('ensureStorageBuckets', () => {
   it('does not modify buckets that are already private', async () => {
     const storage = createFakeStorage([
       { id: 'catalog-assets', public: false },
-      { id: 'project-assets', public: false },
     ]);
 
     await expect(ensureStorageBuckets(storage)).resolves.toEqual([
       { id: 'catalog-assets', action: 'unchanged' },
-      { id: 'project-assets', action: 'unchanged' },
     ]);
   });
 
   it('treats a concurrent successful creation as an idempotent result', async () => {
-    const storage = createFakeStorage(
-      [{ id: 'project-assets', public: false }],
-      { createRaceFor: 'catalog-assets' },
-    );
+    const storage = createFakeStorage([], { createRaceFor: 'catalog-assets' });
 
     await expect(ensureStorageBuckets(storage)).resolves.toEqual([
       { id: 'catalog-assets', action: 'unchanged' },
-      { id: 'project-assets', action: 'unchanged' },
     ]);
     expect(storage.snapshot()).toContainEqual(expect.objectContaining({
       id: 'catalog-assets',
@@ -153,13 +168,55 @@ describe('ensureStorageBuckets', () => {
     const storage = createFakeStorage(
       [
         { id: 'catalog-assets', public: true },
-        { id: 'project-assets', public: false },
       ],
       { updateErrorFor: 'catalog-assets' },
     );
 
     await expect(ensureStorageBuckets(storage)).rejects.toThrow(
       'Failed to make Storage bucket catalog-assets private: Update denied',
+    );
+  });
+});
+
+describe('removeStorageBucket', () => {
+  it('empties and deletes the requested bucket through the Storage API', async () => {
+    const storage = createFakeStorage([
+      { id: 'catalog-assets', public: false },
+      { id: 'project-assets', public: false },
+    ]);
+
+    await expect(removeStorageBucket(storage, 'project-assets')).resolves.toBe('deleted');
+    expect(storage.snapshot()).toEqual([
+      expect.objectContaining({ id: 'catalog-assets', public: false }),
+    ]);
+  });
+
+  it('is idempotent when the obsolete bucket does not exist', async () => {
+    const storage = createFakeStorage([{ id: 'catalog-assets', public: false }]);
+
+    await expect(removeStorageBucket(storage, 'project-assets')).resolves.toBe('absent');
+  });
+
+  it('stops before deletion when emptying the bucket fails', async () => {
+    const storage = createFakeStorage(
+      [{ id: 'project-assets', public: false }],
+      { emptyErrorFor: 'project-assets' },
+    );
+
+    await expect(removeStorageBucket(storage, 'project-assets')).rejects.toThrow(
+      'Failed to empty Storage bucket project-assets: Empty denied',
+    );
+    expect(storage.snapshot()).toHaveLength(1);
+  });
+
+  it('reports a failed bucket deletion', async () => {
+    const storage = createFakeStorage(
+      [{ id: 'project-assets', public: false }],
+      { deleteErrorFor: 'project-assets' },
+    );
+
+    await expect(removeStorageBucket(storage, 'project-assets')).rejects.toThrow(
+      'Failed to delete Storage bucket project-assets: Delete denied',
     );
   });
 });
@@ -185,7 +242,7 @@ describe('runStorageBootstrap', () => {
 
   it('reports each idempotent action and returns success', async () => {
     const output = [];
-    const storage = createFakeStorage([{ id: 'project-assets', public: false }]);
+    const storage = createFakeStorage();
 
     const exitCode = await runStorageBootstrap({
       env: {
@@ -200,7 +257,6 @@ describe('runStorageBootstrap', () => {
     expect(exitCode).toBe(0);
     expect(output).toEqual([
       'catalog-assets: created',
-      'project-assets: unchanged',
       'Storage bootstrap completed.',
     ]);
   });

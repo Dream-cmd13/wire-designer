@@ -52,9 +52,7 @@ export const TEST_DRAWING_CONNECTORS: Connector[] = [
 export const TEST_CATALOG_SNAPSHOT: CatalogSnapshot = {
   connectors: [...TEST_CONNECTORS, ...TEST_DRAWING_CONNECTORS],
   wires: [],
-  wireTypes: [],
   wireColors: [],
-  wireGauges: [],
   overmolds: [],
   leadTimeOptions: [],
   protectionOptions: [],

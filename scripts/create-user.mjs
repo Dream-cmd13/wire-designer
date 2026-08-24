@@ -41,15 +41,6 @@ const supabase = createClient(url, secretKey, {
   auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 });
 
-const { error: userCheckError } = await supabase.from('user').select('id').limit(1);
-
-if (userCheckError) {
-  console.error(
-    `User creation preflight failed: ${userCheckError.message}. Run supabase/sql/10_schema/01_foundation.sql, then supabase/sql/10_schema/03_integrity.sql.`
-  );
-  process.exit(1);
-}
-
 const { data, error } = await supabase.auth.admin.createUser({
   email,
   password,
@@ -60,16 +51,6 @@ const { data, error } = await supabase.auth.admin.createUser({
 if (error || !data.user) {
   console.error(`User creation failed: ${error?.message ?? 'No user returned.'}`);
   process.exit(1);
-}
-
-const { data: appUser, error: appUserError } = await supabase
-  .from('user')
-  .select('id')
-  .eq('id', data.user.id)
-  .maybeSingle();
-
-if (appUserError || !appUser) {
-  console.warn('User created, but its user record was not confirmed. Run supabase/sql/10_schema/03_integrity.sql and check the on_auth_user_created trigger.');
 }
 
 console.log(`Created user: ${data.user.email} (${data.user.id})`);

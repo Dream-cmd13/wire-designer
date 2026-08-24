@@ -1,44 +1,90 @@
 import { describe, expect, it } from 'vitest';
-import { DrawingMaterialRepository, type DrawingMaterialCatalogGateway } from '@/lib/drawingMaterialRepository';
+import {
+  DrawingMaterialRepository,
+  type DrawingMaterialCatalogGateway,
+} from '@/lib/drawingMaterialRepository';
+import type { CatalogItemInsert, CatalogItemRow } from '@/lib/catalogItem';
+
+function accessory(overrides: Partial<Extract<CatalogItemRow, { kind: 'accessory' }>> = {}) {
+  return {
+    id: '1',
+    kind: 'accessory',
+    code: 'm-01',
+    name: '插座',
+    model: 'M-01',
+    manufacturer: '',
+    resource_group: '绘图辅材',
+    description: '主件',
+    image_path: null,
+    sort_order: 10,
+    spec: { specification: 'C20', unit: 'PCS' },
+    ...overrides,
+  } satisfies Extract<CatalogItemRow, { kind: 'accessory' }>;
+}
 
 function fakeGateway() {
-  const calls: string[] = [];
+  const inserted: CatalogItemInsert[] = [];
   const gateway: DrawingMaterialCatalogGateway = {
-    async listActive() {
-      calls.push('list');
-      return [
-        { id: '1', model: 'M-01', resource_name: '插座', short_description: '主件', lifecycle_status: 'active', deleted_at: null, accessories: { specification: 'C20', unit: 'PCS' } },
-        { id: '2', model: 'OLD', resource_name: '旧物料', short_description: '', lifecycle_status: 'inactive', deleted_at: null, accessories: { specification: '旧规格', unit: 'PCS' } },
-      ];
+    async list() {
+      return [accessory()];
     },
-    async insertDraft(input) { calls.push(`draft:${input.model}:${input.resourceName}:${input.note}`); return 'new-id'; },
-    async insertSpecification(id, input) { calls.push(`spec:${id}:${input.specification}:${input.unit}`); },
-    async activate(id) { calls.push(`active:${id}`); },
+    async insert(input) {
+      inserted.push(input);
+      return accessory({
+        id: 'new-id',
+        code: input.code,
+        name: input.name,
+        model: input.model,
+        description: input.description,
+        spec: input.spec as { specification: string; unit: string },
+      });
+    },
   };
-  return { calls, gateway };
+  return { inserted, gateway };
 }
 
 describe('drawing material repository', () => {
-  it('lists active company materials and searches all visible fields', async () => {
+  it('lists company materials and searches all visible fields', async () => {
     const { gateway } = fakeGateway();
     const repository = new DrawingMaterialRepository(gateway);
 
-    expect(await repository.list('C20')).toEqual([{ id: '1', code: 'M-01', nameAndSpecification: '插座 / C20', unit: 'PCS', note: '主件' }]);
+    expect(await repository.list('C20')).toEqual([{
+      id: '1',
+      code: 'M-01',
+      nameAndSpecification: '插座 / C20',
+      unit: 'PCS',
+      note: '主件',
+    }]);
     expect(await repository.list('主件')).toHaveLength(1);
-    expect(await repository.list('OLD')).toEqual([]);
+    expect(await repository.list('missing')).toEqual([]);
   });
 
-  it('creates a draft, its specification, then activates the company material', async () => {
-    const { calls, gateway } = fakeGateway();
+  it('creates a company material with one atomic catalog insert', async () => {
+    const { inserted, gateway } = fakeGateway();
     const repository = new DrawingMaterialRepository(gateway);
 
-    const created = await repository.create({ code: 'M-02', nameAndSpecification: '端子 2.8', unit: 'PCS', note: '压接件' });
+    const created = await repository.create({
+      code: 'M-02',
+      nameAndSpecification: '端子 2.8',
+      unit: 'PCS',
+      note: '压接件',
+    });
 
-    expect(created).toMatchObject({ id: 'new-id', code: 'M-02', nameAndSpecification: '端子 2.8', unit: 'PCS', note: '压接件' });
-    expect(calls).toEqual([
-      'draft:M-02:端子 2.8:压接件',
-      'spec:new-id:端子 2.8:PCS',
-      'active:new-id',
-    ]);
+    expect(created).toMatchObject({
+      id: 'new-id',
+      code: 'M-02',
+      nameAndSpecification: '端子 2.8',
+      unit: 'PCS',
+      note: '压接件',
+    });
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toEqual(expect.objectContaining({
+      kind: 'accessory',
+      name: '端子 2.8',
+      model: 'M-02',
+      resource_group: '绘图辅材',
+      description: '压接件',
+      spec: { specification: '端子 2.8', unit: 'PCS' },
+    }));
   });
 });

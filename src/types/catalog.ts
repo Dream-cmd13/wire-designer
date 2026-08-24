@@ -4,8 +4,6 @@ import type {
   JacketedWireSpec,
   OvermoldSpec,
   WireColor,
-  WireGauge,
-  WireType,
 } from '@/types/harness';
 
 export type CatalogWireSpec =
@@ -48,9 +46,7 @@ export interface QuantityDiscountRule {
 export interface CatalogSnapshot {
   connectors: Connector[];
   wires: CatalogWire[];
-  wireTypes: WireType[];
   wireColors: WireColor[];
-  wireGauges: WireGauge[];
   overmolds: OvermoldSpec[];
   leadTimeOptions: LeadTimeOption[];
   protectionOptions: ProtectionOption[];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Download, Edit3, FolderOpen, HardDrive, History, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, Edit3, FolderOpen, HardDrive, Plus, Trash2, Upload } from 'lucide-react';
 import { createDesignFile, downloadTextFile, safeFilename, type DesignFilePreview } from '@/lib/designFile';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { ActionToast } from '@/components/shared/ActionToast';
@@ -132,36 +132,9 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     setNotice(`已从设计文件创建项目“${project.name}”`);
   };
 
-  const handleRestoreLatest = async (project: Project) => {
-    if (!currentUser) return;
-    const points = await projectRepository.listRecoveryPoints(project.id);
-    const latest = points[0];
-    if (!latest) {
-      setNotice('该项目尚无可用恢复点；继续编辑并保存后会生成新的数据库恢复版本。');
-      return;
-    }
-    const recoveredName = `${project.name}（恢复 ${formatDateTime(latest.createdAt)}）`;
-    await createProject(
-      currentUser.id,
-      recoveredName,
-      `从“${project.name}”的数据库恢复点创建，不覆盖原项目`,
-      {
-        ...latest.config,
-        name: recoveredName,
-        updatedAt: latest.createdAt,
-      },
-    );
-    setNotice(`已从最新恢复点创建项目“${recoveredName}”`);
-  };
-
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  };
-
-  const formatDateTime = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return `${formatDate(timestamp)} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   };
 
   return (
@@ -278,15 +251,6 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
                     aria-label={`导出项目 ${project.name}`}
                   >
                     <Download className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleRestoreLatest(project)}
-                    className="cursor-pointer rounded-lg p-2 text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600"
-                    title="从最新恢复点另存项目"
-                    aria-label={`恢复项目 ${project.name}`}
-                  >
-                    <History className="h-4 w-4" />
                   </button>
                   <button
                     type="button"

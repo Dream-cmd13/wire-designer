@@ -97,22 +97,15 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
   const validation = validateStandaloneDrawingWizard(draft);
 
   const loadResources = async () => {
-    if (!drawingCatalogRepository) {
-      setError('Supabase 尚未配置，无法读取公共资源。');
-      return;
-    }
-
     const selectedProtectiveSleeveId = draft.protectiveSleeveResource?.resourceItemId;
     setLoading(true);
     setError('');
     setNotice('');
     try {
-      const [catalog, gallery] = await Promise.all([
-        drawingCatalogRepository.listResources({}),
-        drawingCatalogRepository.listTemplates(),
-      ]);
-      setResources(catalog);
+      const gallery = await drawingCatalogRepository.listTemplates();
       setTemplates(gallery);
+      const catalog = await drawingCatalogRepository.listResources({});
+      setResources(catalog);
       setDraft((current) => {
         const connectors = catalog.filter((resource) => resource.resourceType === 'connector');
         const connector = connectors[0] ? connectorFromResource(connectors[0]) : undefined;
@@ -174,7 +167,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
   };
 
   const loadTemplate = async () => {
-    if (!drawingCatalogRepository || !selectedTemplateId) return;
+    if (!selectedTemplateId) return;
     try {
       (onLoadTemplate ?? onGenerate)(await drawingCatalogRepository.loadTemplate(selectedTemplateId));
     } catch (reason) {
@@ -195,7 +188,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
           <Wand2 className="h-5 w-5 text-blue-600" />
           <div>
             <h2 className="font-semibold">线图配置向导</h2>
-            <p className="text-xs text-slate-500">公共资源统一读取 Supabase</p>
+            <p className="text-xs text-slate-500">公共目录 + 内置模板</p>
           </div>
         </div>
         <button type="button" onClick={onClose} aria-label="关闭"><X className="h-4 w-4" /></button>
@@ -233,10 +226,7 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
         {mode === 'template' && <section className="space-y-3">
           <h3 className="font-semibold">图库模板</h3>
           {loading && <p className="text-sm text-slate-500">模板加载中…</p>}
-          {error && <div className="rounded bg-red-50 p-3 text-sm text-red-700">
-            {error}<button type="button" className="ml-2 underline" onClick={() => void loadResources()}>重试</button>
-          </div>}
-          {!loading && !error && templates.length === 0 && <p className="rounded bg-slate-50 p-3 text-sm text-slate-500">暂无可用图库模板。</p>}
+          {!loading && templates.length === 0 && <p className="rounded bg-slate-50 p-3 text-sm text-slate-500">暂无可用图库模板。</p>}
           <div className="grid gap-2 md:grid-cols-2">
             {templates.map((template) => <button
               type="button"

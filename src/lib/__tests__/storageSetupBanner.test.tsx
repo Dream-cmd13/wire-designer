@@ -9,7 +9,7 @@ describe('StorageSetupBanner', () => {
         state={{
           status: 'issue',
           missingBuckets: ['catalog-assets'],
-          publicBuckets: ['project-assets'],
+          publicBuckets: ['catalog-assets'],
         }}
         checking={false}
         onRetry={() => undefined}
@@ -19,7 +19,7 @@ describe('StorageSetupBanner', () => {
     expect(html).toContain('缺少存储桶');
     expect(html).toContain('catalog-assets');
     expect(html).toContain('不是私有桶');
-    expect(html).toContain('project-assets');
+    expect(html).not.toContain('project-assets');
     expect(html).toContain('npm run supabase:bootstrap-storage');
     expect(html).toContain('aria-label="重新检测存储状态"');
   });

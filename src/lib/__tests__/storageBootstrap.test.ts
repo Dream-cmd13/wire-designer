@@ -17,7 +17,8 @@ function fakeClient(data: unknown, error: unknown = null) {
 describe('storage bootstrap SQL', () => {
   it('exposes only the fixed read-only bucket status through a restricted RPC', () => {
     expect(storageSql).toContain('create or replace function public.get_storage_bootstrap_status()');
-    expect(storageSql).toContain("values ('catalog-assets'::text), ('project-assets'::text)");
+    expect(storageSql).toContain("values ('catalog-assets'::text)");
+    expect(storageSql).not.toContain('project-assets');
     expect(storageSql).toContain('security definer');
     expect(storageSql).toContain("set search_path = ''");
     expect(storageSql).toContain(
@@ -37,7 +38,6 @@ describe('checkStorageBootstrap', () => {
   it('reports ready when every required bucket exists and is private', async () => {
     const client = fakeClient([
       { bucket_id: 'catalog-assets', is_present: true, is_public: false },
-      { bucket_id: 'project-assets', is_present: true, is_public: false },
     ]);
 
     await expect(checkStorageBootstrap(client)).resolves.toEqual({ status: 'ready' });
@@ -46,13 +46,12 @@ describe('checkStorageBootstrap', () => {
   it('reports missing and public buckets separately', async () => {
     const client = fakeClient([
       { bucket_id: 'catalog-assets', is_present: false, is_public: false },
-      { bucket_id: 'project-assets', is_present: true, is_public: true },
     ]);
 
     await expect(checkStorageBootstrap(client)).resolves.toEqual({
       status: 'issue',
       missingBuckets: ['catalog-assets'],
-      publicBuckets: ['project-assets'],
+      publicBuckets: [],
     });
   });
 
@@ -81,10 +80,8 @@ describe('checkStorageBootstrap', () => {
   it.each([
     null,
     {},
-    [{ bucket_id: 'catalog-assets', is_present: true, is_public: false }],
     [
       { bucket_id: 'catalog-assets', is_present: 'yes', is_public: false },
-      { bucket_id: 'project-assets', is_present: true, is_public: false },
     ],
   ])('rejects malformed or incomplete RPC data %#', async (data) => {
     await expect(checkStorageBootstrap(fakeClient(data))).resolves.toEqual({

@@ -114,9 +114,6 @@ export function HarnessLibraryPage({ onOpenProject, onNavigateHome }: HarnessLib
                       {project.description || '暂无描述'}
                     </p>
                   </div>
-                  <span className="shrink-0 rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
-                    {project.status}
-                  </span>
                 </div>
 
                 <dl className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-500">

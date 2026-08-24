@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "supabase:bootstrap-storage": "node scripts/bootstrap-storage.mjs",
+    "supabase:reset-project-assets": "node scripts/reset-project-assets.mjs",
     "user:create": "node scripts/create-user.mjs",
     "test": "vitest run",
     "test:watch": "vitest"

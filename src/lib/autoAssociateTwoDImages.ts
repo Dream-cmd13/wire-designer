@@ -1,7 +1,7 @@
 /**
  * Adds each selected resource item's primary image to the product-image view.
- * Image choice is made in the resource master (`resource_item_images.is_primary`), not
- * from the canvas position or a hard-coded local filename.
+ * Image choice comes from the catalog item's `image_path`, not from the canvas
+ * position or a hard-coded local filename.
  */
 import type { CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig, JacketedWireSpec, TwoDImage } from '@/types/harness';
 import { generateId } from '@/lib/commands';

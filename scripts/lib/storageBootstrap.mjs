@@ -1,6 +1,5 @@
 export const REQUIRED_STORAGE_BUCKETS = Object.freeze([
   Object.freeze({ id: 'catalog-assets', public: false }),
-  Object.freeze({ id: 'project-assets', public: false }),
 ]);
 
 function errorMessage(error) {
@@ -57,6 +56,23 @@ export async function ensureStorageBuckets(storage, specs = REQUIRED_STORAGE_BUC
   }
 
   return actions;
+}
+
+export async function removeStorageBucket(storage, id) {
+  const bucket = await findBucket(storage, id);
+  if (!bucket) return 'absent';
+
+  const { error: emptyError } = await storage.emptyBucket(id);
+  if (emptyError) {
+    throw new Error(`Failed to empty Storage bucket ${id}: ${errorMessage(emptyError)}`);
+  }
+
+  const { error: deleteError } = await storage.deleteBucket(id);
+  if (deleteError) {
+    throw new Error(`Failed to delete Storage bucket ${id}: ${errorMessage(deleteError)}`);
+  }
+
+  return 'deleted';
 }
 
 export async function runStorageBootstrap({

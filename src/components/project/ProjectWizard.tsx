@@ -267,7 +267,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
     if (!currentUser) return;
     const config = createConfigFromTemplate(selectedTemplate, projectName, connectorA, connectorB, pinCount);
     const project = await createProject(currentUser.id, projectName, projectDesc, config);
-    replaceDocument({ ...config, id: project.harnessConfigId }, { markSaved: true });
+    replaceDocument({ ...config, id: project.id, name: project.name }, { markSaved: true });
     onComplete();
   };
 

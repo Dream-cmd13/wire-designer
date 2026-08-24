@@ -45,10 +45,6 @@ export function DrawingIconLibraryDialog({ open, onClose, onAddIcon }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
 
   const loadIcons = useCallback(async () => {
-    if (!drawingCatalogRepository) {
-      setCatalogError('Supabase 尚未配置。');
-      return;
-    }
     setLoading(true);
     setCatalogError('');
     try {

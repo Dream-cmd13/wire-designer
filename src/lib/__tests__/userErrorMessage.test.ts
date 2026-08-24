@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 
 describe('getUserErrorMessage', () => {
-  it('names known missing drawing tables in Chinese', () => {
-    expect(getUserErrorMessage(new Error("Could not find the table 'public.resource_items' in the schema cache")))
+  it('names the current catalog table and treats removed tables generically', () => {
+    expect(getUserErrorMessage(new Error("Could not find the table 'public.catalog_items' in the schema cache")))
       .toBe('公共资源数据表不存在或尚未初始化，请联系管理员完成数据库配置。');
-    expect(getUserErrorMessage(new Error("Could not find the table 'public.drawing_icons' in the schema cache")))
-      .toBe('绘图图标数据表不存在或尚未初始化，请联系管理员完成数据库配置。');
+    expect(getUserErrorMessage(new Error("Could not find the table 'public.resource_items' in the schema cache")))
+      .toBe('所需数据表不存在或尚未初始化，请联系管理员完成数据库配置。');
   });
 
   it('translates generic database, network, permission, conflict, and unknown errors', () => {

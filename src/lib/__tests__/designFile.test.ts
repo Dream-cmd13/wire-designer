@@ -21,10 +21,8 @@ describe('design file import/export', () => {
       userId: 'user-1',
       name: '测试项目',
       description: '导入导出测试',
-      harnessConfigId: config.id,
       createdAt: 1,
       updatedAt: 2,
-      status: 'draft',
     };
 
     const result = parseDesignFile(createDesignFile(project, config));
@@ -75,10 +73,8 @@ describe('design file import/export', () => {
       userId: 'user-1',
       name: 'Production Drawing Project',
       description: 'production drawing persistence',
-      harnessConfigId: config.id,
       createdAt: 1,
       updatedAt: 2,
-      status: 'draft',
     };
 
     const result = parseDesignFile(createDesignFile(project, config));

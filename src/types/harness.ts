@@ -14,7 +14,7 @@
 /** Connector catalog entry (part definition) */
 export interface Connector {
   id: string;
-  /** Stable UUID of the resource_items record when loaded from Supabase. */
+  /** Stable UUID of the catalog_items row when loaded from Supabase. */
   resourceItemId?: string;
   name: string;
   manufacturer: string;
@@ -29,26 +29,11 @@ export interface Connector {
   nutMaterial?: string;
 }
 
-/** Wire type catalog entry */
-export interface WireType {
-  id: string;
-  name: string;
-  description: string;
-  temperatureRating: string;
-}
-
 /** Wire color catalog entry */
 export interface WireColor {
   id: string;
   name: string;
   hex: string;
-}
-
-/** Wire gauge catalog entry */
-export interface WireGauge {
-  awg: number;
-  diameterMm: number;
-  maxCurrent: number;
 }
 
 // ============================================================

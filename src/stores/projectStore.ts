@@ -48,18 +48,15 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 
       createProject: async (userId, name, description, initialConfig) => {
         const projectId = generateId();
-        const configId = generateId();
         const newProject: Project = {
           id: projectId,
           userId,
           name,
           description,
-          harnessConfigId: configId,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          status: 'draft',
         };
-        const configToSave = { ...initialConfig, id: configId };
+        const configToSave = { ...initialConfig, id: projectId, name };
         await projectRepository.createProject(newProject, configToSave);
         set((state) => ({
           projects: [...state.projects, newProject],

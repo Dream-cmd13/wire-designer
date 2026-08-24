@@ -15,11 +15,8 @@ export interface Project {
   userId: string;
   name: string;
   description: string;
-  harnessConfigId: string;
   createdAt: number;
   updatedAt: number;
-  thumbnail?: string;
-  status: 'draft' | 'in_progress' | 'completed' | 'archived';
 }
 
 export interface AppState {

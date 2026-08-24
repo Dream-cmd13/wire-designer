@@ -1,76 +1,31 @@
-# Supabase SQL execution order
+# Supabase SQL 执行顺序
 
-Run the files in this order in the Supabase SQL Editor:
+当前项目处于测试阶段，只维护一条空库重建路径，不维护旧结构升级链。
 
-1. `00_reset/01_drop_all_tables.sql` only when a development reset is intended.
-2. `10_schema/01_foundation.sql`
-3. `10_schema/02_catalog.sql` (resource master schema)
-4. `10_schema/04_drawing_resources.sql`
-5. `10_schema/05_business_options.sql`
-6. `10_schema/06_document_persistence.sql`
-7. `10_schema/03_integrity.sql` (runs after every table it audits exists)
-8. `20_storage/01_buckets.sql`
-9. `30_security/01_rls.sql`
-10. `40_seed/01_example_catalog.sql`
-11. `40_seed/03_drawing_workbench_resources.sql`
-12. `40_seed/04_frontend_catalog.sql` (baseline connector, wire, and overmold resource rows)
-13. `40_seed/05_business_options.sql` (quotation, lead-time, protection, and discount rules)
-14. Upload images to the paths documented in `40_seed/02_image_manifest.sql`, then run that file.
+## 开发环境重建
 
-After the SQL deployment, run the idempotent Storage bootstrap from CI, the deployment server,
-or an administrator workstation:
+确认目标 Supabase 项目和测试数据可删除后，在 SQL Editor 中按顺序执行：
+
+1. `npm run supabase:reset-project-assets`：通过 Storage API 清空并删除旧 `project-assets` 桶；仅在明确授权的开发重置时执行。
+2. `00_reset/01_drop_all_tables.sql`：删除业务测试数据和旧数据库对象。
+3. `10_schema/01_core.sql`：创建 `projects`、`drawings`。
+4. `10_schema/02_catalog.sql`：创建 `catalog_items`。
+5. `20_storage/01_buckets.sql`：确保私有 `catalog-assets` 桶存在，并安装只读状态 RPC。
+6. `30_security/01_rls.sql`：安装三张表与目录图片读取策略。
+7. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
+
+完成 SQL 后，可在 CI、部署服务器或管理员工作站运行：
 
 ```powershell
 npm run supabase:bootstrap-storage
 ```
 
-The command requires `SUPABASE_URL` (or `VITE_SUPABASE_URL`) and the server-only
-`SUPABASE_SECRET_KEY` (legacy `SUPABASE_SERVICE_ROLE_KEY` is also accepted). It creates missing
-`catalog-assets` and `project-assets` buckets, keeps existing private buckets unchanged, and repairs
-either bucket if it was made public. Any management API failure returns a non-zero exit code.
+该命令只幂等创建或修复私有 `catalog-assets` 桶，不安装数据库结构或 RLS。它需要 `SUPABASE_URL`（兼容 `VITE_SUPABASE_URL`）和服务端专用的 `SUPABASE_SECRET_KEY`（兼容旧名 `SUPABASE_SERVICE_ROLE_KEY`）。服务端密钥不得使用 `VITE_` 前缀，也不得进入浏览器代码。
 
-The bootstrap command manages buckets only. It does not replace `30_security/01_rls.sql` or any
-other database SQL. `20_storage/01_buckets.sql` also installs the restricted
-`public.get_storage_bootstrap_status()` function used by the frontend's read-only health check.
-Never expose the secret key through a `VITE_` variable or browser code.
+## 当前数据约定
 
-The reset script drops both `public."user"` and the legacy `public.profiles` name so it is safe
-to run before or after the rename migration.
-
-For an existing development database, run 50_upgrade/02_rename_profiles_to_user.sql first when upgrading
-the application user table, then run 50_upgrade/01_drawing_workbench_resources.sql followed by
-50_upgrade/03_catalog_resource_main_tables.sql, 50_upgrade/04_frontend_business_data.sql, and
-50_upgrade/05_resource_master_rename.sql. If the existing drawing seed still models
-`heat-shrink-6` as an accessory, run `50_upgrade/06_normalize_drawing_heat_shrink.sql`
-next, then run `50_upgrade/07_project_soft_delete_rls.sql` to repair project soft-delete
-RLS and audit permissions. Rerun
-10_schema/03_integrity.sql, 30_security/01_rls.sql, `40_seed/03_drawing_workbench_resources.sql`,
-`40_seed/04_frontend_catalog.sql`, and `40_seed/05_business_options.sql` afterward.
-The upgrades and seeds are idempotent. For a clean test environment, prefer
-00_reset/01_drop_all_tables.sql followed by the normal execution order above.
-
-`50_upgrade/06_normalize_drawing_heat_shrink.sql` is an administrator-run database
-migration. The frontend and the Storage bootstrap command never execute it or perform
-any equivalent remote database write.
-
-The resource master schema keeps resource_items as the shared resource master and
-resource_item_images as the image table. resource_group is an optional flat display
-group stored on each resource; catalog_categories has been removed. Resource-specific data is stored in
-one main table per type: connectors, wires, protective_sleeves,
-overmolds, models, accessories, and packagings. The legacy
-connector_pins and wire_spec_cores detail tables are folded into
-connectors.pin_labels and wires.core_specs JSONB arrays.
-
-Quotation options and document recovery are database-owned as well:
-lead_time_options, protection_options, pricing_rules, quantity_discount_rules,
-project_document_versions, drawing_documents, and drawing_document_versions.
-The version tables are append-only; the active document rows are the current
-snapshot used by the frontend.
-
-The application user table is named `public."user"`; because `user` is a PostgreSQL keyword,
-SQL references must quote it. Supabase Data API callers may still use the table name `user`.
-
-`catalog-assets` is private. Upload transparent PNG or WebP files for images that need to be layered in the product-image view. JPEG files are supported for photographs but cannot be transparent.
-
-Supplier, order, and BOM tables are intentionally absent from this version.
-Quotation behavior is represented by the database-owned pricing and lead-time rules above.
+- 项目和制作图纸直接保存完整 JSON 文档；数据库不保留版本历史。
+- 目录公共字段和按 `kind` 区分的 `spec` 存在 `catalog_items`。
+- 业务选项、图纸模板、常用语和图标随前端代码发布。
+- 项目和图纸使用硬删除；重复保存采用最后一次成功写入覆盖。
+- 浏览器只能读取被 `catalog_items.image_path` 引用的私有目录图片；上传由受信任的服务端或 Supabase 管理界面完成。

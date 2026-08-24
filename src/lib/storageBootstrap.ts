@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const REQUIRED_STORAGE_BUCKETS = ['catalog-assets', 'project-assets'] as const;
+const REQUIRED_STORAGE_BUCKETS = ['catalog-assets'] as const;
 const STORAGE_STATUS_ERROR_MESSAGE =
   '无法确认远程存储状态，请检查网络、Supabase 配置和 Storage SQL 初始化。';
 
