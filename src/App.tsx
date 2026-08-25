@@ -12,7 +12,7 @@ import { QuotePanel } from '@/components/panels/QuotePanel';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { useAppRoute } from '@/hooks/useAppRoute';
-import { appRoutes } from '@/lib/appRoute';
+import { appRoutes, getRouteByPath } from '@/lib/appRoute';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
 import { supabase } from '@/lib/supabaseClient';
@@ -133,7 +133,7 @@ function LoadErrorBanner({ message, recoveryRaw, projectName, onClose }: LoadErr
 }
 
 export default function App() {
-  const { route, navigate } = useAppRoute();
+  const { route, projectId, navigate } = useAppRoute();
   const [authOpen, setAuthOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -146,14 +146,28 @@ export default function App() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
   const previousAuthUserIdRef = useRef<string | null | undefined>(undefined);
+  const restoreProjectAttemptRef = useRef<string | null>(null);
+  const projectsLoadRequestRef = useRef(0);
+  const [projectsReady, setProjectsReady] = useState<{
+    userId: string;
+    requestId: number;
+  } | null>(null);
 
   const currentUser = useUserStore((state) => state.currentUser);
+  const currentUserId = currentUser?.id;
   const authReady = useUserStore((state) => state.authReady);
   const initializeAuth = useUserStore((state) => state.initialize);
   const initializeCatalog = useCatalogStore((state) => state.initialize);
   const catalogStatus = useCatalogStore((state) => state.status);
   const catalogError = useCatalogStore((state) => state.error);
-  const { currentProject, saveCurrentConfig, setCurrentProject, updateProject, loadProjects } = useProjectStore();
+  const {
+    currentProject,
+    projects,
+    saveCurrentConfig,
+    setCurrentProject,
+    updateProject,
+    loadProjects,
+  } = useProjectStore();
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
   const configRef = useRef(config);
   const canUndo = useHistoryStore((state) => state.past.length > 0);
@@ -189,11 +203,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!authReady || !currentUser) return;
-    void loadProjects(currentUser.id).catch((error) => {
-      console.error('项目列表加载失败:', error);
-    });
-  }, [authReady, currentUser, loadProjects]);
+    const requestId = ++projectsLoadRequestRef.current;
+    if (!authReady || !currentUserId) {
+      return;
+    }
+
+    let cancelled = false;
+    void loadProjects(currentUserId)
+      .then(() => {
+        if (!cancelled && requestId === projectsLoadRequestRef.current) {
+          setProjectsReady({ userId: currentUserId, requestId });
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('项目列表加载失败:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, currentUserId, loadProjects]);
 
   useEffect(() => {
     void initializeCatalog().catch(() => {
@@ -291,7 +321,7 @@ export default function App() {
     return true;
   }, [currentProject, doSave, drawingSaveState, saveActiveDrawing, saveBlocked, saveState.status]);
 
-  const resetWorkspaceForUser = useCallback(() => {
+  const resetWorkspaceForUser = useCallback((destinationPath = appRoutes.home.path) => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
@@ -304,7 +334,7 @@ export default function App() {
     setCurrentProject(null);
     replaceDocument(createDefaultConfig(), { markSaved: true });
     useHistoryStore.getState().clear();
-    navigate(appRoutes.home.path);
+    navigate(destinationPath);
   }, [navigate, replaceDocument, setCurrentProject]);
 
   useEffect(() => {
@@ -315,8 +345,13 @@ export default function App() {
     previousAuthUserIdRef.current = nextUserId;
     if (previousUserId === undefined || previousUserId === nextUserId) return;
 
-    resetWorkspaceForUser();
-  }, [authReady, currentUser?.id, resetWorkspaceForUser]);
+    const keepRequestedProject = previousUserId === null
+      && Boolean(projectId)
+      && route.section === 'designer';
+    resetWorkspaceForUser(
+      keepRequestedProject ? route.path : appRoutes.home.path,
+    );
+  }, [authReady, currentUser?.id, projectId, resetWorkspaceForUser, route.path, route.section]);
 
   useEffect(() => {
     if (saveState.status !== 'dirty' || !currentProject || saveBlocked) {
@@ -400,39 +435,122 @@ export default function App() {
     setWizardOpen(true);
   };
 
-  const handleOpenProject = async (project: Project) => {
+  const handleNavigate = useCallback((path: string) => {
+    const nextRoute = getRouteByPath(path);
+    const activeProjectId = currentProject?.id;
+    if (nextRoute.section === 'designer' && activeProjectId) {
+      navigate(path, { projectId: activeProjectId });
+      return;
+    }
+
+    navigate(path);
+  }, [currentProject, navigate]);
+
+  const handleOpenProject = useCallback(async (
+    project: Project,
+    destinationPath = appRoutes['designer-design'].path,
+  ) => {
     setCurrentProject(project);
     const history = useHistoryStore.getState();
     history.clear();
     history.pause();
 
-    const result = await projectRepository.load(project.id);
+    try {
+      const result = await projectRepository.load(project.id);
 
-    if (result.status === 'ok') {
-      replaceDocument(result.config, { markSaved: true });
-      if (result.config.name !== project.name) {
-        await updateProject(project.id, { name: result.config.name });
-      }
-      setLoadError(null);
-      setRecoveryRaw(null);
-      setSaveBlocked(false);
-    } else {
-      replaceDocument(createDefaultConfig(), { markSaved: true });
-      if (result.status === 'invalid') {
-        setLoadError(
-          `项目“${project.name}”的结构校验失败，已保留原始恢复副本（${result.issues.slice(0, 2).join('；')}）。`,
-        );
-        setRecoveryRaw(result.raw);
-      } else {
-        setLoadError(`无法加载项目“${project.name}”的配置数据，已打开空白工作区。`);
+      if (result.status === 'ok') {
+        replaceDocument(result.config, { markSaved: true });
+        if (result.config.name !== project.name) {
+          await updateProject(project.id, { name: result.config.name });
+        }
+        setLoadError(null);
         setRecoveryRaw(null);
+        setSaveBlocked(false);
+      } else {
+        replaceDocument(createDefaultConfig(), { markSaved: true });
+        if (result.status === 'invalid') {
+          setLoadError(
+            `项目“${project.name}”的结构校验失败，已保留原始恢复副本（${result.issues.slice(0, 2).join('；')}）。`,
+          );
+          setRecoveryRaw(result.raw);
+        } else {
+          setLoadError(`无法加载项目“${project.name}”的配置数据，已打开空白工作区。`);
+          setRecoveryRaw(null);
+        }
+        setSaveBlocked(true);
       }
-      setSaveBlocked(true);
+    } finally {
+      history.resume();
     }
 
-    history.resume();
-    navigate(appRoutes['designer-design'].path);
-  };
+    navigate(destinationPath, { projectId: project.id });
+  }, [navigate, replaceDocument, setCurrentProject, updateProject]);
+
+  useEffect(() => {
+    if (
+      !projectId
+      || route.section !== 'designer'
+      || !authReady
+      || !currentUserId
+      || !projectsReady
+      || projectsReady.userId !== currentUserId
+      || projectsReady.requestId !== projectsLoadRequestRef.current
+    ) {
+      if (!projectId || !currentUserId) {
+        restoreProjectAttemptRef.current = null;
+      }
+      return;
+    }
+
+    const attemptKey = `${currentUserId}:${projectId}`;
+    if (
+      restoreProjectAttemptRef.current === attemptKey
+      || (currentProject?.id === projectId && config.id === projectId)
+    ) {
+      return;
+    }
+    restoreProjectAttemptRef.current = attemptKey;
+
+    const project = projects.find((candidate) => candidate.id === projectId);
+    if (!project) {
+      setCurrentProject(null);
+      replaceDocument(createDefaultConfig(), { markSaved: true });
+      navigate(appRoutes.home.path);
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => {
+        if (cancelled) return;
+        return handleOpenProject(project, route.path);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('项目恢复失败:', error);
+        setCurrentProject(null);
+        replaceDocument(createDefaultConfig(), { markSaved: true });
+        navigate(appRoutes.home.path);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authReady,
+    config.id,
+    currentProject?.id,
+    currentUserId,
+    handleOpenProject,
+    navigate,
+    projectId,
+    projects,
+    projectsReady,
+    replaceDocument,
+    route.path,
+    route.section,
+    setCurrentProject,
+  ]);
 
   const handleWizardComplete = () => {
     setLoadError(null);
@@ -440,7 +558,9 @@ export default function App() {
     setSaveBlocked(false);
     setWizardOpen(false);
     useHistoryStore.getState().clear();
-    navigate(appRoutes['designer-design'].path);
+    navigate(appRoutes['designer-design'].path, {
+      projectId: useProjectStore.getState().currentProject?.id ?? null,
+    });
   };
 
   const handleCloseProject = () => {
@@ -551,7 +671,7 @@ export default function App() {
         saveBlocked={saveBlocked}
         canUndo={canUndo}
         canRedo={canRedo}
-        onNavigate={navigate}
+        onNavigate={handleNavigate}
         onUndo={handleUndo}
         onRedo={handleRedo}
         onOpenAuth={() => setAuthOpen(true)}

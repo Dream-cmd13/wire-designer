@@ -54,6 +54,14 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
 
 export const defaultRoute = appRoutes.home;
 
+export const projectIdQueryKey = 'projectId';
+
+const routeBaseUrl = 'http://wire-harness-designer.local';
+
+function toUrl(path: string): URL {
+  return new URL(path, routeBaseUrl);
+}
+
 const routeByPath = new Map(
   Object.values(appRoutes).flatMap((route) => {
     const aliases = route.id === 'home' ? ['/', route.path] : [route.path];
@@ -62,5 +70,21 @@ const routeByPath = new Map(
 );
 
 export function getRouteByPath(pathname: string): AppRoute {
-  return routeByPath.get(pathname) ?? defaultRoute;
+  return routeByPath.get(toUrl(pathname).pathname) ?? defaultRoute;
+}
+
+export function getProjectIdFromSearch(search: string): string | null {
+  const projectId = new URLSearchParams(search).get(projectIdQueryKey)?.trim();
+  return projectId || null;
+}
+
+export function buildProjectRoutePath(path: string, projectId: string | null = null): string {
+  const url = toUrl(path);
+  if (projectId) {
+    url.searchParams.set(projectIdQueryKey, projectId);
+  } else {
+    url.searchParams.delete(projectIdQueryKey);
+  }
+
+  return `${url.pathname}${url.search}${url.hash}`;
 }

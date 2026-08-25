@@ -1,36 +1,81 @@
 import { useCallback, useEffect, useState } from 'react';
-import { defaultRoute, getRouteByPath, type AppRoute } from '@/lib/appRoute';
+import {
+  buildProjectRoutePath,
+  defaultRoute,
+  getProjectIdFromSearch,
+  getRouteByPath,
+  type AppRoute,
+} from '@/lib/appRoute';
 
-function readRoute() {
+interface AppLocation {
+  route: AppRoute;
+  projectId: string | null;
+}
+
+export interface NavigateOptions {
+  projectId?: string | null;
+}
+
+function readLocation(): AppLocation {
   if (typeof window === 'undefined') {
-    return defaultRoute;
+    return { route: defaultRoute, projectId: null };
   }
-  return getRouteByPath(window.location.pathname);
+
+  const route = getRouteByPath(window.location.pathname);
+  return {
+    route,
+    projectId: route.section === 'designer'
+      ? getProjectIdFromSearch(window.location.search)
+      : null,
+  };
 }
 
 export function useAppRoute() {
-  const [route, setRoute] = useState<AppRoute>(() => readRoute());
+  const [location, setLocation] = useState<AppLocation>(() => readLocation());
 
   useEffect(() => {
-    const nextRoute = readRoute();
-    if (nextRoute.path !== window.location.pathname) {
-      window.history.replaceState(null, '', nextRoute.path);
+    const nextLocation = readLocation();
+    const canonicalPath = buildProjectRoutePath(
+      nextLocation.route.path,
+      nextLocation.projectId,
+    );
+    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (canonicalPath !== currentPath) {
+      window.history.replaceState(null, '', canonicalPath);
     }
 
-    const handlePopState = () => setRoute(readRoute());
+    const handlePopState = () => setLocation(readLocation());
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const navigate = useCallback((path: string) => {
+  const navigate = useCallback((path: string, options?: NavigateOptions) => {
     const nextRoute = getRouteByPath(path);
-    if (window.location.pathname !== nextRoute.path) {
-      window.history.pushState(null, '', nextRoute.path);
+    const hasProjectIdOption = options && Object.prototype.hasOwnProperty.call(options, 'projectId');
+    const projectId = hasProjectIdOption
+      ? options.projectId ?? null
+      : nextRoute.section === 'designer'
+        ? getProjectIdFromSearch(window.location.search)
+        : null;
+    const nextPath = buildProjectRoutePath(nextRoute.path, projectId);
+    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+    if (currentPath !== nextPath) {
+      window.history.pushState(null, '', nextPath);
     }
-    setRoute(nextRoute);
+
+    setLocation({ route: nextRoute, projectId });
   }, []);
 
-  const isActive = useCallback((path: string) => route.path === getRouteByPath(path).path, [route.path]);
+  const isActive = useCallback(
+    (path: string) => location.route.path === getRouteByPath(path).path,
+    [location.route.path],
+  );
 
-  return { route, navigate, isActive };
+  return {
+    route: location.route,
+    projectId: location.projectId,
+    navigate,
+    isActive,
+  };
 }
