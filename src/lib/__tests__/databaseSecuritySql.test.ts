@@ -22,6 +22,7 @@ describe('minimal database security', () => {
   it('authorizes private catalog images through catalog_items.image_path', () => {
     expect(rlsSql).toContain("bucket_id = 'catalog-assets'");
     expect(rlsSql).toContain('item.image_path = storage.objects.name');
+    expect(rlsSql).toContain('jsonb_each_text(item.image_variants)');
     expect(rlsSql).not.toContain('resource_item_images');
     expect(rlsSql).not.toContain('project-assets');
   });

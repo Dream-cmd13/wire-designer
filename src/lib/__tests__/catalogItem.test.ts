@@ -11,6 +11,7 @@ const connectorRow = {
   resource_group: '绘图连接器',
   description: '',
   image_path: null,
+  image_variants: {},
   sort_order: 10,
   spec: {
     connectorType: 'female',

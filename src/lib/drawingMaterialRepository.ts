@@ -88,6 +88,7 @@ export class DrawingMaterialRepository {
       resource_group: '绘图辅材',
       description: normalized.note,
       image_path: null,
+      image_variants: {},
       sort_order: 0,
       spec: {
         specification: normalized.nameAndSpecification,

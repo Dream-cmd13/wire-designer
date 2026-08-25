@@ -96,17 +96,31 @@ export class CatalogRepository {
     }
   }
 
+  private async imageVariants(paths: Record<string, string>): Promise<Record<string, string>> {
+    const entries = await Promise.all(Object.entries(paths).map(async ([role, path]) => {
+      const url = await this.imageUrl(path);
+      return url ? [role, url] as const : null;
+    }));
+    return Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => entry !== null));
+  }
+
   async listConnectors(): Promise<Connector[]> {
     const items = await this.items('connector');
     return Promise.all(items.map(async (item) => ({
       id: item.code,
       resourceItemId: item.id,
       name: item.name,
+      model: item.model,
       manufacturer: item.manufacturer,
+      resourceGroup: item.resource_group,
+      description: item.description,
+      series: item.spec.series,
       pinCount: item.spec.pinCount,
+      rowCount: item.spec.rowCount,
       pitch: item.spec.pitchMm,
       type: item.spec.connectorType,
       pinLabels: [...item.spec.pinLabels],
+      imageVariants: await this.imageVariants(item.image_variants),
       housingMaterial: item.spec.housingMaterial,
       contactMaterial: item.spec.contactMaterial,
       nutMaterial: item.spec.nutMaterial,

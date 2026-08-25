@@ -19,7 +19,7 @@ function columns(sql: string, table: string): string[] {
 }
 
 describe('minimal database schema', () => {
-  it('defines only the three application tables with 22 columns', () => {
+  it('defines only the three application tables with 23 columns', () => {
     const names = [...schema.matchAll(/create table(?: if not exists)? public\.([a-z_]+)/gi)]
       .map((match) => match[1]);
     expect(names).toEqual(['projects', 'drawings', 'catalog_items']);
@@ -31,7 +31,7 @@ describe('minimal database schema', () => {
     ]);
     expect(columns(catalog, 'catalog_items')).toEqual([
       'id', 'kind', 'code', 'name', 'model', 'manufacturer', 'resource_group',
-      'description', 'image_path', 'sort_order', 'spec',
+      'description', 'image_path', 'image_variants', 'sort_order', 'spec',
     ]);
   });
 

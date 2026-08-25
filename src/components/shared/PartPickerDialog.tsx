@@ -101,6 +101,8 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
     results = results.filter(
       (c) =>
         c.name.toLowerCase().includes(q) ||
+        c.model?.toLowerCase().includes(q) ||
+        c.series?.toLowerCase().includes(q) ||
         c.manufacturer.toLowerCase().includes(q) ||
         c.id.toLowerCase().includes(q)
     );
@@ -239,7 +241,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
                       {selectedId === conn.id && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {conn.manufacturer} · {conn.pinCount}P
+                      {conn.manufacturer} · {conn.model || conn.id} · {conn.pinCount}P
                       {conn.pitch && ` · ${conn.pitch}mm`} · {conn.type}
                     </div>
                   </div>
@@ -257,8 +259,11 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
               <h3 className="text-xs font-semibold text-slate-700 mb-2">详情</h3>
               <div className="space-y-1.5 text-xs">
                 <div><span className="text-slate-400">名称：</span><span className="text-slate-700">{selectedConnector.name}</span></div>
+                <div><span className="text-slate-400">型号：</span><span className="text-slate-700">{selectedConnector.model || selectedConnector.id}</span></div>
                 <div><span className="text-slate-400">制造商：</span><span className="text-slate-700">{selectedConnector.manufacturer}</span></div>
+                {selectedConnector.series && <div><span className="text-slate-400">系列：</span><span className="text-slate-700">{selectedConnector.series}</span></div>}
                 <div><span className="text-slate-400">PIN 数：</span><span className="text-slate-700">{selectedConnector.pinCount}</span></div>
+                {selectedConnector.rowCount && <div><span className="text-slate-400">排数：</span><span className="text-slate-700">{selectedConnector.rowCount}</span></div>}
                 <div><span className="text-slate-400">间距：</span><span className="text-slate-700">{selectedConnector.pitch ? `${selectedConnector.pitch}mm` : '-'}</span></div>
                 <div><span className="text-slate-400">类型：</span><span className="text-slate-700">{selectedConnector.type}</span></div>
                 {selectedConnector.housingMaterial && <div><span className="text-slate-400">外壳材质：</span><span className="text-slate-700">{selectedConnector.housingMaterial}</span></div>}

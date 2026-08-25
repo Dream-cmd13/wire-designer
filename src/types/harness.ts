@@ -17,12 +17,22 @@ export interface Connector {
   /** Stable UUID of the catalog_items row when loaded from Supabase. */
   resourceItemId?: string;
   name: string;
+  model?: string;
   manufacturer: string;
+  resourceGroup?: string;
+  description?: string;
+  series?: string;
   pinCount: number;
+  rowCount?: number;
   pitch?: number;
   type: 'male' | 'female' | 'receptacle';
   pinLabels: string[];
   image?: string;
+  imageVariants?: {
+    before?: string;
+    after?: string;
+    pinMap?: string;
+  };
   /** Optional M12/industrial connector material fields */
   housingMaterial?: string;
   contactMaterial?: string;
@@ -272,6 +282,7 @@ export interface TwoDImage {
   name: string;
   dataUrl: string;
   source: 'catalog';
+  imageRole?: 'primary' | 'connector-before' | 'connector-after' | 'connector-pin-map';
   assetPath?: string;
   elementKind?: 'connector' | 'material' | 'sleeve' | 'model';
   elementId?: string;

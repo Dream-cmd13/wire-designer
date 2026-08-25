@@ -23,6 +23,7 @@ const common = {
   manufacturer: '',
   description: '',
   image_path: null,
+  image_variants: {},
   sort_order: 10,
 };
 

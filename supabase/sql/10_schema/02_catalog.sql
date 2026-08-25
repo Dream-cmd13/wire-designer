@@ -11,6 +11,8 @@ create table public.catalog_items (
   resource_group text not null default '',
   description text not null default '',
   image_path text,
+  image_variants jsonb not null default '{}'::jsonb
+    check (jsonb_typeof(image_variants) = 'object'),
   sort_order integer not null default 0 check (sort_order >= 0),
   spec jsonb not null default '{}'::jsonb check (jsonb_typeof(spec) = 'object'),
   unique (kind, code)

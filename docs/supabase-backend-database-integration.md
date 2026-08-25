@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `projects` | `id`, `owner_id`, `name`, `description`, `config`, `created_at`, `updated_at` | 用户项目及完整 `HarnessConfig` |
 | `drawings` | `id`, `owner_id`, `document`, `updated_at` | 独立制作图纸文档 |
-| `catalog_items` | `id`, `kind`, `code`, `name`, `model`, `manufacturer`, `resource_group`, `description`, `image_path`, `sort_order`, `spec` | 共享物料目录 |
+| `catalog_items` | `id`, `kind`, `code`, `name`, `model`, `manufacturer`, `resource_group`, `description`, `image_path`, `image_variants`, `sort_order`, `spec` | 共享物料目录 |
 
 `projects.owner_id` 和 `drawings.owner_id` 直接引用 `auth.users.id`。应用不维护用户资料表、审计人字段、软删除字段、revision 或数据库文档版本表。
 
@@ -29,7 +29,7 @@
 - `projects`：登录用户仅能 CRUD 自己的行。
 - `drawings`：登录用户仅能 CRUD 自己的行。
 - `catalog_items`：匿名和登录用户均可读；登录用户只能新增 `accessory`，供制作图公司物料使用。
-- `catalog-assets`：保持私有；匿名和登录用户只能读取被 `catalog_items.image_path` 引用的对象。浏览器没有 Storage 写权限。
+- `catalog-assets`：保持私有；匿名和登录用户只能读取被 `catalog_items.image_path` 或 `catalog_items.image_variants` 引用的对象。浏览器没有 Storage 写权限。
 
 项目和图纸均为硬删除。保存不做乐观锁或版本冲突检测，最后一个成功写入覆盖之前内容；浏览器内撤销/重做以及设计文件导入/导出不受影响。
 

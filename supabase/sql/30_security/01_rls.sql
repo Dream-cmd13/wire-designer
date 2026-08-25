@@ -35,5 +35,10 @@ create policy "catalog assets referenced read"
       select 1
       from public.catalog_items item
       where item.image_path = storage.objects.name
+        or exists (
+          select 1
+          from jsonb_each_text(item.image_variants) as variant(role, path)
+          where variant.path = storage.objects.name
+        )
     )
   );

@@ -1,6 +1,6 @@
 import { parseCatalogWireSpec } from '@/lib/wireCatalog';
 
-export const CATALOG_ITEM_COLUMNS = 'id,kind,code,name,model,manufacturer,resource_group,description,image_path,sort_order,spec';
+export const CATALOG_ITEM_COLUMNS = 'id,kind,code,name,model,manufacturer,resource_group,description,image_path,image_variants,sort_order,spec';
 
 export type CatalogItemKind =
   | 'connector'
@@ -70,6 +70,7 @@ type CatalogItemBase = {
   resource_group: string;
   description: string;
   image_path: string | null;
+  image_variants: Record<string, string>;
   sort_order: number;
 };
 
@@ -93,6 +94,19 @@ function object(value: unknown, field: string): UnknownRow {
     throw new CatalogItemError(`目录字段 ${field} 无效。`);
   }
   return value as UnknownRow;
+}
+
+function imageVariants(value: unknown): Record<string, string> {
+  if (value === undefined || value === null) return {};
+  const source = object(value, 'image_variants');
+  const result: Record<string, string> = {};
+  for (const [key, path] of Object.entries(source)) {
+    if (typeof path !== 'string' || !path.trim()) {
+      throw new CatalogItemError(`目录字段 image_variants.${key} 无效。`);
+    }
+    result[key] = path;
+  }
+  return result;
 }
 
 function requiredText(value: unknown, field: string): string {
@@ -235,6 +249,7 @@ export function parseCatalogItemRow(value: unknown): CatalogItemRow {
   if (row.image_path !== null && row.image_path !== undefined && typeof row.image_path !== 'string') {
     throw new CatalogItemError('目录字段 image_path 无效。');
   }
+  const variants = imageVariants(row.image_variants);
   if (typeof row.sort_order !== 'number' || !Number.isInteger(row.sort_order) || row.sort_order < 0) {
     throw new CatalogItemError('目录字段 sort_order 无效。');
   }
@@ -249,6 +264,7 @@ export function parseCatalogItemRow(value: unknown): CatalogItemRow {
     resource_group: text(row.resource_group, 'resource_group'),
     description: text(row.description, 'description'),
     image_path: typeof row.image_path === 'string' ? row.image_path : null,
+    image_variants: variants,
     sort_order: row.sort_order,
     spec: parseSpec(kind, row.spec),
   } as CatalogItemRow;

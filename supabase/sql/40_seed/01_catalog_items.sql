@@ -59,7 +59,27 @@ on conflict (kind, code) do update set
   resource_group = excluded.resource_group,
   description = excluded.description,
   image_path = excluded.image_path,
+  image_variants = excluded.image_variants,
   sort_order = excluded.sort_order,
   spec = excluded.spec;
+
+-- Product-image assets are uploaded to Storage separately. These paths restore
+-- the former M12 state switching and keep one shared jacketed-wire image.
+update public.catalog_items
+set image_path = 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-before.png',
+    image_variants = jsonb_build_object(
+      'before', 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-before.png',
+      'after', 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-after.png',
+      'pinMap', 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-pin-map.png'
+    )
+where kind = 'connector' and code = 'm12a04-07-093';
+
+update public.catalog_items
+set image_path = 'catalog/wire/shared/jacketed-wire.png'
+where kind = 'wire' and spec->>'kind' = 'jacketed';
+
+update public.catalog_items
+set image_path = 'catalog/overmold/40000000-0000-4000-8000-000000000201/overmold.png'
+where kind = 'overmold' and code = 'pvc-45p-pe';
 
 commit;

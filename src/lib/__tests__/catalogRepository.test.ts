@@ -39,6 +39,7 @@ const common = {
   resource_group: '绘图资源',
   description: '',
   image_path: null,
+  image_variants: {},
   sort_order: 10,
 };
 
@@ -80,23 +81,57 @@ describe('CatalogRepository', () => {
 
   it('signs an item image without dropping the catalog item on failure', async () => {
     const row = {
-      id: 'connector-1',
+        id: 'connector-1',
       kind: 'connector',
       code: 'xh254-4p-f',
       name: 'XH2.54-4P',
       model: 'XH2.54-4P-F',
       ...common,
       image_path: 'connector/xh254.png',
-      spec: { connectorType: 'female', pinCount: 4, pinLabels: ['1', '2', '3', '4'] },
+        spec: { connectorType: 'female', series: 'XH2.54', pinCount: 4, rowCount: 1, pitchMm: 2.54, pinLabels: ['1', '2', '3', '4'] },
     };
     const signed = new CatalogRepository(fakeClient({ catalog_items: [row] }, [], 'https://assets.example/xh254.png'));
     const failed = new CatalogRepository(fakeClient({ catalog_items: [row] }));
 
     await expect(signed.listConnectors()).resolves.toEqual([
-      expect.objectContaining({ image: 'https://assets.example/xh254.png' }),
+      expect.objectContaining({
+        image: 'https://assets.example/xh254.png',
+        model: 'XH2.54-4P-F',
+        resourceGroup: '绘图资源',
+        description: '',
+        series: 'XH2.54',
+        rowCount: 1,
+      }),
     ]);
     await expect(failed.listConnectors()).resolves.toEqual([
       expect.objectContaining({ id: 'xh254-4p-f', image: undefined }),
+    ]);
+  });
+
+  it('signs connector image variants independently', async () => {
+    const repository = new CatalogRepository(fakeClient({ catalog_items: [{
+      id: 'connector-1',
+      kind: 'connector',
+      code: 'm12a04-07-093',
+      name: 'M12',
+      model: 'M12A04-07-093',
+      ...common,
+      image_variants: {
+        before: 'connector/before.png',
+        after: 'connector/after.png',
+        pinMap: 'connector/pin-map.png',
+      },
+      spec: { connectorType: 'male', pinCount: 4, pinLabels: ['1', '2', '3', '4'] },
+    }] }, [], 'https://assets.example/image.png'));
+
+    await expect(repository.listConnectors()).resolves.toEqual([
+      expect.objectContaining({
+        imageVariants: {
+          before: 'https://assets.example/image.png',
+          after: 'https://assets.example/image.png',
+          pinMap: 'https://assets.example/image.png',
+        },
+      }),
     ]);
   });
 

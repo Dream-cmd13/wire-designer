@@ -171,8 +171,13 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
   if (
     !isString(value.id)
     || !isString(value.name)
+    || (value.model !== undefined && !isString(value.model))
     || !isString(value.manufacturer)
+    || (value.resourceGroup !== undefined && !isString(value.resourceGroup))
+    || (value.description !== undefined && !isString(value.description))
+    || (value.series !== undefined && !isString(value.series))
     || !isPositiveInteger(value.pinCount)
+    || (value.rowCount !== undefined && !isPositiveInteger(value.rowCount))
     || (value.type !== 'male' && value.type !== 'female' && value.type !== 'receptacle')
     || !pinLabels
     || (value.pitch !== undefined && !isPositiveNumber(value.pitch))
@@ -186,8 +191,13 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
   return {
     id: value.id,
     name: value.name,
+    ...(value.model === undefined ? {} : { model: value.model }),
     manufacturer: value.manufacturer,
+    ...(value.resourceGroup === undefined ? {} : { resourceGroup: value.resourceGroup }),
+    ...(value.description === undefined ? {} : { description: value.description }),
+    ...(value.series === undefined ? {} : { series: value.series }),
     pinCount: value.pinCount,
+    ...(value.rowCount === undefined ? {} : { rowCount: value.rowCount }),
     type: value.type,
     pinLabels,
     ...(value.pitch === undefined ? {} : { pitch: value.pitch }),
