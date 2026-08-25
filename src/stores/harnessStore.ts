@@ -4,12 +4,14 @@ import type {
   CanvasWireMaterial,
   ConnectorInstance,
   HarnessConfig,
+  ProductionDrawingFrame,
   ProtectiveSleeve,
   SaveState,
   Selection,
 } from '@/types/harness';
 import { alignHarnessConfig } from '@/lib/canvasMaterials';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
+import { createDefaultDrawingFrame, ensureDrawingFrame } from '@/lib/drawingFrameDefaults';
 import {
   generateId,
   removeConnector as removeConnectorCommand,
@@ -18,7 +20,7 @@ import {
   updateProtectiveSleeve as updateProtectiveSleeveCommand,
 } from '@/lib/commands';
 
-export function createDefaultConfig(): HarnessConfig {
+export function createDefaultConfig(currentUser?: { name?: string } | null): HarnessConfig {
   const config: HarnessConfig = {
     schemaVersion: 3,
     id: generateId(),
@@ -32,6 +34,7 @@ export function createDefaultConfig(): HarnessConfig {
     quantity: 1,
     leadTime: 'standard',
     twoDImages: [],
+    drawingFrame: createDefaultDrawingFrame(currentUser),
   };
 
   return {
@@ -82,6 +85,7 @@ interface HarnessState {
   reorderTwoDImages: (fromIndex: number, toIndex: number) => void;
   moveTwoDImage: (id: string, x: number, y: number) => void;
   syncTwoDImagesAuto: () => void; // New: auto-sync 2D images
+  updateDrawingFrame: (updates: Partial<ProductionDrawingFrame>) => void;
 }
 
 function dirtyState() {
@@ -333,5 +337,22 @@ export const useHarnessStore = create<HarnessState>()(
           },
           saveState: dirtyState(),
         })),
+
+      updateDrawingFrame: (updates) =>
+        set((state) => {
+          const currentFrame = ensureDrawingFrame(state.config.drawingFrame, null, state.config);
+          const nextFrame: ProductionDrawingFrame = {
+            ...currentFrame,
+            ...updates,
+          };
+          return {
+            config: {
+              ...state.config,
+              drawingFrame: nextFrame,
+              updatedAt: Date.now(),
+            },
+            saveState: dirtyState(),
+          };
+        }),
     }),
 );

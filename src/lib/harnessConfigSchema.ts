@@ -11,6 +11,9 @@ import type {
   ProductionDrawing,
   ProductionDrawingObject,
   ProtectiveSleeve,
+  DrawingRevisionRow,
+  DrawingSignOff,
+  ProductionDrawingFrame,
   TwoDImage,
   WireEndTreatment,
   WireLabel,
@@ -837,6 +840,65 @@ function readProductionDrawing(value: unknown, path: string, issues: string[]): 
   };
 }
 
+
+function readDrawingSignOff(value: unknown, path: string, issues: string[]): DrawingSignOff | null {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be an object`);
+    return null;
+  }
+  return {
+    name: typeof value.name === 'string' ? value.name : '',
+    date: typeof value.date === 'string' ? value.date : '',
+  };
+}
+
+function readRevisionRow(value: unknown, path: string, issues: string[]): DrawingRevisionRow | null {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be an object`);
+    return null;
+  }
+  return {
+    rev: typeof value.rev === 'string' ? value.rev : '',
+    description: typeof value.description === 'string' ? value.description : '',
+    date: typeof value.date === 'string' ? value.date : '',
+  };
+}
+
+function readProductionDrawingFrame(value: unknown, path: string, issues: string[]): ProductionDrawingFrame | null {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be an object`);
+    return null;
+  }
+  const approved = readDrawingSignOff(value.approved, `${path}.approved`, issues);
+  const designer = readDrawingSignOff(value.designer, `${path}.designer`, issues);
+  const drawn = readDrawingSignOff(value.drawn, `${path}.drawn`, issues);
+  const revisionRows = Array.isArray(value.revisionRows)
+    ? value.revisionRows.map((r, idx) => readRevisionRow(r, `${path}.revisionRows[${idx}]`, issues))
+    : [];
+
+  if (!approved || !designer || !drawn || revisionRows.some((r) => !r)) {
+    return null;
+  }
+
+  return {
+    partNo: typeof value.partNo === 'string' ? value.partNo : '',
+    title: typeof value.title === 'string' ? value.title : '',
+    drawingNo: typeof value.drawingNo === 'string' ? value.drawingNo : '',
+    revision: typeof value.revision === 'string' ? value.revision : 'X0',
+    sheet: typeof value.sheet === 'string' ? value.sheet : '1/1',
+    scale: typeof value.scale === 'string' ? value.scale : '1:1',
+    unit: typeof value.unit === 'string' ? value.unit : 'mm',
+    size: typeof value.size === 'string' ? value.size : 'A4',
+    approved,
+    designer,
+    drawn,
+    revisionRows: revisionRows as DrawingRevisionRow[],
+    complianceNote: typeof value.complianceNote === 'string' ? value.complianceNote : '',
+    companyNameCn: typeof value.companyNameCn === 'string' ? value.companyNameCn : '万连科技',
+    companyNameEn: typeof value.companyNameEn === 'string' ? value.companyNameEn : 'WanLian Technology Co., Ltd',
+  };
+}
+
 export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
   const issues: string[] = [];
 
@@ -871,6 +933,9 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
   const productionDrawing = input.productionDrawing === undefined
     ? undefined
     : readProductionDrawing(input.productionDrawing, 'productionDrawing', issues);
+  const drawingFrame = input.drawingFrame === undefined
+    ? undefined
+    : readProductionDrawingFrame(input.drawingFrame, 'drawingFrame', issues);
 
   if (
     connectors.some((item) => !item)
@@ -878,6 +943,7 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
     || protectiveSleeves.some((item) => !item)
     || models.some((item) => !item)
     || productionDrawing === null
+    || drawingFrame === null
   ) {
     return { success: false, issues };
   }
@@ -906,6 +972,7 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
           ) as TwoDImage[]
         : [],
       ...(productionDrawing === undefined ? {} : { productionDrawing }),
+      ...(drawingFrame === undefined ? {} : { drawingFrame }),
     },
   };
 }

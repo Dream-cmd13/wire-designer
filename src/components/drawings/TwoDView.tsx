@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Minus, Plus, RotateCw } from 'lucide-react';
+import { Edit3, Minus, Plus, RotateCw } from 'lucide-react';
 import { getJumperNetwork } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage, CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
-import { imageAssets } from '@/lib/imageAssets';
+import { ProductionDrawingFrameSvg } from './ProductionDrawingFrameSvg';
+import { DrawingFrameEditDialog } from './DrawingFrameEditDialog';
+import { ensureDrawingFrame } from '@/lib/drawingFrameDefaults';
+import { useUserStore } from '@/stores/userStore';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import { generateBOM } from '@/lib/bom';
 import {
@@ -424,6 +427,7 @@ function BOMTable({ config, layout }: { config: HarnessConfig; layout: Productio
   );
 }
 
+
 // ── ImageInfoBox ───────────────────────────────────────────────────────────────
 function ImageInfoBox({
   image,
@@ -474,10 +478,14 @@ function ImageInfoBox({
 
 // ── main view ──────────────────────────────────────────────────────────────────
 export function TwoDView() {
-  const frameAsset = imageAssets.find((a) => a.name === '图纸图框');
-  const frameUrl = frameAsset?.url;
-
+  const currentUser = useUserStore((s) => s.currentUser);
   const config = useHarnessStore((s) => s.config);
+  const updateDrawingFrame = useHarnessStore((s) => s.updateDrawingFrame);
+  const drawingFrame = useMemo(
+    () => ensureDrawingFrame(config.drawingFrame, currentUser, config),
+    [config.drawingFrame, currentUser, config],
+  );
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const twoDImages = useHarnessStore((s) => s.config.twoDImages ?? EMPTY_IMAGES);
   const connectors = useHarnessStore((s) => s.config.connectors);
   const materials = useHarnessStore((s) => s.config.materials);
@@ -830,6 +838,15 @@ export function TwoDView() {
           {twoDImages.length > 0 && (
             <span className="text-xs text-slate-400">{twoDImages.length} 张图片</span>
           )}
+          <button
+            type="button"
+            onClick={() => setIsEditDialogOpen(true)}
+            className="flex items-center gap-1.5 rounded border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 shadow-2xs transition-colors"
+            title="编辑图纸图框及签审信息"
+          >
+            <Edit3 className="h-3.5 w-3.5 text-blue-600" />
+            编辑图框
+          </button>
         </div>
       </div>
 
@@ -876,14 +893,16 @@ export function TwoDView() {
               minHeight: 800,
               maxWidth: 1200,
               maxHeight: 800,
-              backgroundImage: frameUrl ? `url(${frameUrl})` : 'none',
-              backgroundSize: '100% 100%',
-              backgroundPosition: 'center',
-              backgroundRepeat: 'no-repeat',
+              backgroundColor: '#ffffff',
               opacity: isFitted ? 1 : 0,
               transition: 'opacity 0.15s ease-in-out',
             }}
           >
+            {/* SVG Vector Drawing Frame */}
+            <ProductionDrawingFrameSvg
+              frame={drawingFrame}
+              onEdit={() => setIsEditDialogOpen(true)}
+            />
             {(() => {
               return groups.map((group, groupIdx) => {
                 const isDraggingThis = activeDragGroupIdx === groupIdx;
@@ -973,6 +992,16 @@ export function TwoDView() {
         )}
       </div>
 
+
+      {/* Drawing Frame Edit Dialog */}
+      {isEditDialogOpen && (
+        <DrawingFrameEditDialog
+          isOpen={isEditDialogOpen}
+          onClose={() => setIsEditDialogOpen(false)}
+          frame={drawingFrame}
+          onSave={(updated) => updateDrawingFrame(updated)}
+        />
+      )}
 
       {/* right-click context menu */}
       {contextMenu && (

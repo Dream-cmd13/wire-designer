@@ -262,7 +262,7 @@ export interface CanvasModel {
   position: { x: number; y: number };
   width: number;
   height: number;
-/** Reference to an OvermoldSpec resource entry */
+  /** Reference to an OvermoldSpec resource entry */
   overmoldSpecId?: string;
   resourceItemId?: string;
   resourceImageUrl?: string;
@@ -272,10 +272,6 @@ export interface CanvasModel {
 // Top-level Harness Config
 // ============================================================
 
-/**
- * HarnessConfig — the top-level configuration for a wire harness design.
- * Only three kinds of business objects exist: connectors, materials, sleeves.
- */
 /** A 2D image associated with a design element */
 export interface TwoDImage {
   id: string;
@@ -444,6 +440,39 @@ export interface ProductionDrawing {
   techRequirements: string[];
 }
 
+export interface DrawingSignOff {
+  name: string;
+  date: string;
+}
+
+export interface DrawingRevisionRow {
+  rev: string;
+  description: string;
+  date: string;
+}
+
+export interface ProductionDrawingFrame {
+  partNo: string;
+  title: string;
+  drawingNo: string;
+  revision: string;
+  sheet: string;
+  scale: string;
+  unit: string;
+  size: string;
+  approved: DrawingSignOff;
+  designer: DrawingSignOff;
+  drawn: DrawingSignOff;
+  revisionRows: DrawingRevisionRow[];
+  complianceNote: string;
+  companyNameCn: string;
+  companyNameEn: string;
+}
+
+/**
+ * HarnessConfig — the top-level configuration for a wire harness design.
+ * Only three kinds of business objects exist: connectors, materials, sleeves.
+ */
 export interface HarnessConfig {
   schemaVersion: 3;
   id: string;
@@ -458,6 +487,7 @@ export interface HarnessConfig {
   leadTime: 'rush' | 'standard' | 'economy';
   twoDImages?: TwoDImage[];
   productionDrawing?: ProductionDrawing;
+  drawingFrame?: ProductionDrawingFrame;
 }
 
 // ============================================================
