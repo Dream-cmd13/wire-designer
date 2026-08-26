@@ -5,6 +5,7 @@ import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage, CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
 import { TwoDImageCard } from './TwoDImageCard';
+import { WireDimensionAnnotation } from './WireDimensionAnnotation';
 import { ProductionDrawingFrameSvg } from './ProductionDrawingFrameSvg';
 import { DrawingFrameEditDialog } from './DrawingFrameEditDialog';
 import { ensureDrawingFrame } from '@/lib/drawingFrameDefaults';
@@ -492,6 +493,7 @@ export function TwoDView() {
   const sleeves = useHarnessStore((s) => s.config.protectiveSleeves);
   const models = useHarnessStore((s) => s.config.models);
   const selection = useHarnessStore((s) => s.selection);
+  const updateMaterial = useHarnessStore((s) => s.updateMaterial);
   const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
   const patchDocument = useHarnessStore((s) => s.patchDocument);
 
@@ -602,10 +604,11 @@ export function TwoDView() {
   }, [maxCardHeight, productionLayout.assemblyGap, productionLayout.wiringDiagram.height]);
 
   const clampGroupPosition = useCallback((position: { x: number; y: number }, group: { images: TwoDImage[] }) => {
-    const maxY = Math.max(24, productionLayout.bomRect.top - productionLayout.safeGap - getGroupReservedHeight(group));
+    const minY = 56;
+    const maxY = Math.max(minY, productionLayout.bomRect.top - productionLayout.safeGap - getGroupReservedHeight(group));
     return {
       x: position.x,
-      y: Math.min(position.y, maxY),
+      y: Math.max(minY, Math.min(position.y, maxY)),
     };
   }, [getGroupReservedHeight, productionLayout.bomRect.top, productionLayout.safeGap]);
 
@@ -936,6 +939,10 @@ export function TwoDView() {
                         const isSelected = img.id === selectedId;
 
                         const cardWidth = getCardWidth(img);
+                        const wireMaterial =
+                          img.elementKind === 'material'
+                            ? materials.find((m) => m.id === img.elementId)
+                            : undefined;
 
                         return (
                           <div
@@ -947,6 +954,13 @@ export function TwoDView() {
                               position: 'relative',
                             }}
                           >
+                            {wireMaterial && (
+                              <WireDimensionAnnotation
+                                material={wireMaterial}
+                                width={cardWidth}
+                                onUpdate={updateMaterial}
+                              />
+                            )}
                             <TwoDImageCard
                               image={img}
                               highlighted={isHighlighted}

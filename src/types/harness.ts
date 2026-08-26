@@ -170,6 +170,13 @@ export interface ConnectorInstance {
 // Canvas Wire Material
 // ============================================================
 
+export interface WireDimensionOverride {
+  displayLength?: number;
+  upperTolerance?: string;
+  lowerTolerance?: string;
+  isCustom?: boolean;
+}
+
 /** A physical wire/cable placed on the canvas. */
 export interface CanvasWireMaterial {
   id: string;
@@ -184,6 +191,7 @@ export interface CanvasWireMaterial {
   labels?: WireLabel[];
   numberTubes?: WireNumberTube[];
   expandedByDefault?: boolean;
+  dimension?: WireDimensionOverride;
 }
 
 export interface WireLabel {
