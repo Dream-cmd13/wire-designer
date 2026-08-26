@@ -83,7 +83,7 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
           ) : (
             <>
               <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-700">
-                请使用由管理员创建的 Supabase 账号登录。
+                请使用由管理员分配的账号登录。
               </p>
               <form className="space-y-4" onSubmit={(event) => void handleLogin(event)}>
                 <div>

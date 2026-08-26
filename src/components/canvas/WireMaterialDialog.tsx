@@ -22,6 +22,7 @@ import type {
 } from '@/types/harness';
 import { parseQuickInput } from '@/lib/wireParser';
 import { applyCatalogWireSpec } from '@/lib/wireCatalog';
+import { findMatchingCatalogWire, generateWireDefaultName } from '@/lib/wireCatalog';
 
 interface WireMaterialDialogProps {
   material: CanvasWireMaterial | null;
@@ -89,18 +90,37 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
     }
   }, [catalogStatus, initializeCatalog]);
 
+  // When catalogWires load, if selectedCatalogWireId is empty, try to auto-match current spec
+  useEffect(() => {
+    if (!selectedCatalogWireId && catalogWires.length > 0) {
+      const matched = findMatchingCatalogWire(catalogWires, spec);
+      if (matched) {
+        setSelectedCatalogWireId(matched.resourceItemId);
+      }
+    }
+  }, [catalogWires]);
+
   useEffect(() => {
     const selected = catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId);
     if (!selected) return;
     setSpec((current) => applyCatalogWireSpec(current, selected.spec));
   }, [catalogWires, selectedCatalogWireId]);
 
+  const updateSpec = (next: CanvasWireSpec | ((current: CanvasWireSpec) => CanvasWireSpec)) => {
+    setSpec((current) => {
+      const resolved = typeof next === 'function' ? next(current) : next;
+      const matched = findMatchingCatalogWire(catalogWires, resolved);
+      setSelectedCatalogWireId(matched?.resourceItemId ?? '');
+      return resolved;
+    });
+  };
+
   const handleQuickParse = (kind: 'electronic' | 'jacketed', query: string) => {
     if (!query.trim()) return;
     const parsed = parseQuickInput(query, kind);
 
     if (kind === 'electronic') {
-      setSpec((current) => {
+      updateSpec((current) => {
         if (current.kind !== 'electronic') return current;
         return {
           ...current,
@@ -111,7 +131,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
         };
       });
     } else {
-      setSpec((current) => {
+      updateSpec((current) => {
         if (current.kind !== 'jacketed') return current;
         const nextJacketMaterial = parsed.jacketMaterial ?? current.jacketMaterial;
         const nextJacketColor = parsed.jacketColor ?? current.jacketColor;
@@ -159,16 +179,15 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
       return;
     }
     const selectedCatalogWire = catalogWires.find((item) => item.resourceItemId === selectedCatalogWireId);
-    if (!selectedCatalogWire) {
-      setError('请选择线材库中的物料');
-      return;
-    }
+    const wireName = selectedCatalogWire?.name
+      || (material.name && material.name !== '新线材' ? material.name : generateWireDefaultName(spec));
+
     onConfirm({
       spec,
       width: lengthMmToCanvasWidth(spec.lengthMm),
-      name: selectedCatalogWire.name,
-      resourceItemId: selectedCatalogWire.resourceItemId,
-      resourceImageUrl: selectedCatalogWire.image,
+      name: wireName,
+      resourceItemId: selectedCatalogWire?.resourceItemId,
+      resourceImageUrl: selectedCatalogWire?.image,
     });
   };
 
@@ -182,7 +201,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">配置线材</h2>
-              <p className="text-xs text-slate-500">先选线材类型，再设置规格和端部工艺</p>
+              <p className="text-xs text-slate-500">可直接选标准物料或在下方配置属性自动匹配</p>
             </div>
           </div>
           <button type="button" onClick={onCancel} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
@@ -192,35 +211,52 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
 
         <div className="max-h-[calc(90vh-132px)] space-y-5 overflow-y-auto px-5 py-4">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
-            <label className="mb-1.5 block text-xs font-semibold text-slate-700">线材物料</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-semibold text-slate-700">线材物料</label>
+              {selectedCatalogWireId ? (
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                  已关联标准物料
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-slate-200/70 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                  自定义规格 / 未关联物料
+                </span>
+              )}
+            </div>
             <select
               value={selectedCatalogWireId}
               onChange={(event) => setSelectedCatalogWireId(event.target.value)}
               className={fieldClass}
             >
-              <option value="">请选择 Supabase 线材物料</option>
+              <option value="">请选择标准线材物料（或在下方配置属性自动匹配）</option>
               {catalogWires.map((wire) => (
                 <option key={wire.resourceItemId} value={wire.resourceItemId}>{wire.name}</option>
               ))}
             </select>
-            {catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image && (
-              <img
-                src={catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image}
-                alt="所选线材"
-                className="mt-3 h-20 w-full rounded-lg border border-slate-200 bg-white object-contain"
-              />
+            {selectedCatalogWireId ? (
+              catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image && (
+                <img
+                  src={catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image}
+                  alt="所选线材"
+                  className="mt-3 h-20 w-full rounded-lg border border-slate-200 bg-white object-contain"
+                />
+              )
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">
+                提示：可在下方直接配置属性，系统将自动匹配对应标准物料；若无匹配型号亦可直接确认保存。
+              </p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
             <TypeButton
               active={spec.kind === 'electronic'}
               label="电子线"
-              onClick={() => setSpec(createDefaultWireSpec())}
+              onClick={() => updateSpec(createDefaultWireSpec())}
             />
             <TypeButton
               active={spec.kind === 'jacketed'}
               label="护套线"
-              onClick={() => setSpec(defaultJacketedSpec())}
+              onClick={() => updateSpec(defaultJacketedSpec())}
             />
           </div>
 
@@ -257,7 +293,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
               <Field label="颜色">
                 <select
                   value={spec.color}
-                  onChange={(event) => setSpec({ ...spec, color: event.target.value })}
+                  onChange={(event) => updateSpec({ ...spec, color: event.target.value })}
                   className={fieldClass}
                 >
                   {wireColors.map((color) => (
@@ -269,7 +305,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                 <NumberInput value={spec.lengthMm} onChange={(lengthMm) => setSpec({ ...spec, lengthMm })} />
               </Field>
               <Field label="线号 (AWG)">
-                <NumberInput value={spec.awg} onChange={(awg) => setSpec({ ...spec, awg })} />
+                <NumberInput value={spec.awg} onChange={(awg) => updateSpec({ ...spec, awg })} />
               </Field>
               <Field label="UL 号">
                 <select value={spec.ulNumber} disabled className={`${fieldClass} disabled:bg-slate-50`}>
@@ -310,7 +346,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
               <Field label="外被材质">
                 <select
                   value={spec.jacketMaterial}
-                  onChange={(event) => setSpec({ ...spec, jacketMaterial: event.target.value as 'PVC' | 'PUR' })}
+                  onChange={(event) => updateSpec({ ...spec, jacketMaterial: event.target.value as 'PVC' | 'PUR' })}
                   className={fieldClass}
                 >
                   <option value="PVC">PVC</option>
@@ -320,7 +356,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
               <Field label="外被颜色">
                 <select
                   value={spec.jacketColor}
-                  onChange={(event) => setSpec({ ...spec, jacketColor: event.target.value as 'black' | 'green' })}
+                  onChange={(event) => updateSpec({ ...spec, jacketColor: event.target.value as 'black' | 'green' })}
                   className={fieldClass}
                 >
                   <option value="black">黑色</option>
@@ -334,7 +370,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                 <NumberInput
                   value={spec.awg}
                   onChange={(awg) => {
-                    setSpec({
+                    updateSpec({
                       ...spec,
                       awg,
                       odMm: calculateCableOd(awg, spec.coreCount, spec.shielded),
@@ -347,7 +383,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   value={spec.coreCount}
                   onChange={(event) => {
                     const coreCount = Number(event.target.value) as JacketCoreCount;
-                    setSpec({
+                    updateSpec({
                       ...spec,
                       coreCount,
                       coreColors: getCoreColors(coreCount),
@@ -368,7 +404,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                     checked={spec.shielded}
                     onChange={(event) => {
                       const shielded = event.target.checked;
-                      setSpec({
+                      updateSpec({
                         ...spec,
                         shielded,
                         odMm: calculateCableOd(spec.awg, spec.coreCount, shielded),
@@ -383,7 +419,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                   value={spec.ulNumber ?? ''}
                   onChange={(event) => {
                     const value = event.target.value;
-                    setSpec({
+                    updateSpec({
                       ...spec,
                       ulNumber: value ? (value as JacketUlNumber) : undefined,
                     });

@@ -24,7 +24,7 @@ export function DrawingMaterialTableDialog({ drawing, table, onAddCurrent, onClo
   const [form, setForm] = useState<{ mode: 'current' | 'company'; initial?: Partial<DrawingMaterialInput> } | null>(null);
 
   const load = async () => {
-    if (!drawingMaterialRepository) { setError('Supabase 尚未配置，无法读取公司物料表。'); return; }
+    if (!drawingMaterialRepository) { setError('物料服务尚未配置，无法读取公司物料表。'); return; }
     setLoading(true); setError('');
     try { setMaterials(await drawingMaterialRepository.list()); }
     catch (reason) { setError(getUserErrorMessage(reason, '公司物料加载失败，请重试。')); }
@@ -74,7 +74,7 @@ export function DrawingMaterialTableDialog({ drawing, table, onAddCurrent, onClo
     </section>
     {form && <DrawingMaterialFormDialog key={`${form.mode}:${form.initial?.code ?? 'new'}`} mode={form.mode} initial={form.initial} suggestions={materials} onClose={() => setForm(null)} onSubmit={async (input) => {
       if (form.mode === 'current') { onAddCurrent(input); setForm(null); return; }
-      if (!drawingMaterialRepository) throw new Error('Supabase 尚未配置。');
+      if (!drawingMaterialRepository) throw new Error('物料服务尚未配置。');
       await drawingMaterialRepository.create({ code: input.code, nameAndSpecification: input.nameAndSpecification, unit: input.unit, note: input.note });
       await load();
       setForm(null);

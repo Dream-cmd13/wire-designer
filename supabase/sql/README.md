@@ -26,6 +26,8 @@ npm run supabase:bootstrap-storage
 
 - 项目和制作图纸直接保存完整 JSON 文档；数据库不保留版本历史。
 - 目录公共字段和按 `kind` 区分的 `spec` 存在 `catalog_items`。
+- `kind = 'overmold'` 的目录项必须包含非空 `outerMaterial`；内模可选，使用实际材料或兼容前端解析器的 `innerMaterial = '无内模'` 表示没有内模；canonical seed 使用 `outerForm = 'straight' | 'bent'` 保存直头/弯头。
+- 不创建只有内模、没有外模的独立 `overmold` 目录项；内模是外模目录项的可选属性。
 - 业务选项、图纸模板、常用语和图标随前端代码发布。
 - 项目和图纸使用硬删除；重复保存采用最后一次成功写入覆盖。
 - 浏览器只能读取被 `catalog_items.image_path` 引用的私有目录图片；上传由受信任的服务端或 Supabase 管理界面完成。

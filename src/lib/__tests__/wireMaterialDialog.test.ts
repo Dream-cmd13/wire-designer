@@ -9,4 +9,13 @@ describe('WireMaterialDialog catalog defaults', () => {
     expect(dialogSource).toContain('applyCatalogWireSpec(current, selected.spec)');
     expect(dialogSource).toContain('[catalogWires, selectedCatalogWireId]');
   });
+
+  it('removes Supabase wording and supports bidirectional matching', () => {
+    expect(dialogSource).not.toContain('Supabase');
+    expect(dialogSource).not.toContain('请选择线材库中的物料');
+    expect(dialogSource).toContain('findMatchingCatalogWire');
+    expect(dialogSource).toContain('generateWireDefaultName');
+    expect(dialogSource).toContain('请选择标准线材物料');
+  });
 });
+

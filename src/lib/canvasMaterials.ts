@@ -50,6 +50,7 @@ export const CORE_COLOR_OPTIONS = [
 const CORE_COLOR_SEQUENCE = [...CORE_COLOR_OPTIONS];
 
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
+import { WIRE_COLORS } from '@/data/catalogOptions';
 
 // Additional Chinese names not in WIRE_COLORS that appear in CORE_COLOR_OPTIONS.
 const EXTRA_CORE_COLOR_HEX: Record<string, string> = {
@@ -71,7 +72,8 @@ const EXTRA_CORE_COLOR_HEX: Record<string, string> = {
  * Returns { hex, name } for display.
  */
 export function resolveColor(value: string): { hex: string; name: string } {
-  const wireColors = getCatalogSnapshot()?.wireColors ?? [];
+  const snapshotColors = getCatalogSnapshot()?.wireColors;
+  const wireColors = snapshotColors && snapshotColors.length > 0 ? snapshotColors : WIRE_COLORS;
   // Try English ID first (electronic wires)
   const byId = wireColors.find((c) => c.id === value);
   if (byId) return { hex: byId.hex, name: byId.name };

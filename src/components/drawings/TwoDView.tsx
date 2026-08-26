@@ -406,7 +406,9 @@ function BOMTable({ config, layout }: { config: HarnessConfig; layout: Productio
     });
     Object.entries(modelCounts).forEach(([specId, count]) => {
       const spec = getCatalogSnapshot()?.overmolds.find(s => s.id === specId);
-      const specText = spec ? `${spec.outerHardness} ${spec.outerMaterial}` : '45P 黑色 PVC胶料';
+      const specText = spec
+        ? [spec.outerHardness, spec.outerMaterial].filter(Boolean).join(' ')
+        : '45P 黑色PVC';
       rows.push({
         itemNo: 3,
         name: '外模料',

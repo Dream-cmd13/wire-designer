@@ -1,4 +1,4 @@
-import { calculateCableOd } from '@/lib/canvasMaterials';
+import { calculateCableOd, resolveColor } from '@/lib/canvasMaterials';
 import type {
   CanvasWireSpec,
   JacketCoreCount,
@@ -6,7 +6,7 @@ import type {
   JacketColor,
   JacketUlNumber,
 } from '@/types/harness';
-import type { CatalogWireSpec } from '@/types/catalog';
+import type { CatalogWire, CatalogWireSpec } from '@/types/catalog';
 
 export type CatalogWireRow = Record<string, unknown>;
 
@@ -130,4 +130,49 @@ export function applyCatalogWireSpec(current: CanvasWireSpec, catalog: CatalogWi
     lengthMm: current.lengthMm,
     ...(catalog.ulNumber ? { ulNumber: catalog.ulNumber } : {}),
   };
+}
+
+export function generateWireDefaultName(spec: CanvasWireSpec): string {
+  if (spec.kind === 'electronic') {
+    const colorName = resolveColor(spec.color).name;
+    const ul = spec.ulNumber ? `UL${spec.ulNumber} ` : '';
+    return `${ul}${spec.awg}AWG ${colorName}电子线`;
+  }
+  const jacketColorName = spec.jacketColor === 'black' ? '黑色' : spec.jacketColor === 'green' ? '绿色' : spec.jacketColor;
+  const shieldedText = spec.shielded ? '屏蔽' : '';
+  const ul = spec.ulNumber ? `${spec.ulNumber} ` : '';
+  return `${ul}${spec.jacketMaterial} ${spec.awg}AWG ${spec.coreCount}芯 ${jacketColorName}${shieldedText}护套线`.replace(/\s+/g, ' ').trim();
+}
+
+export function findMatchingCatalogWire(
+  catalogWires: CatalogWire[],
+  spec: CanvasWireSpec,
+): CatalogWire | undefined {
+  if (spec.kind === 'electronic') {
+    return catalogWires.find((wire) => {
+      if (wire.spec.kind !== 'electronic') return false;
+      if (wire.spec.awg !== spec.awg) return false;
+      const colorMatches = wire.spec.color === spec.color || resolveColor(wire.spec.color).name === resolveColor(spec.color).name;
+      if (!colorMatches) return false;
+      if (spec.ulNumber && wire.spec.ulNumber && wire.spec.ulNumber !== spec.ulNumber) return false;
+      return true;
+    });
+  }
+
+  if (spec.kind === 'jacketed') {
+    return catalogWires.find((wire) => {
+      if (wire.spec.kind !== 'jacketed') return false;
+      if (wire.spec.jacketMaterial !== spec.jacketMaterial) return false;
+      if (wire.spec.jacketColor !== spec.jacketColor) return false;
+      if (wire.spec.awg !== spec.awg) return false;
+      if (wire.spec.coreCount !== spec.coreCount) return false;
+      if (wire.spec.shielded !== spec.shielded) return false;
+      const specUl = spec.ulNumber || undefined;
+      const wireUl = wire.spec.ulNumber || undefined;
+      if (specUl !== wireUl) return false;
+      return true;
+    });
+  }
+
+  return undefined;
 }

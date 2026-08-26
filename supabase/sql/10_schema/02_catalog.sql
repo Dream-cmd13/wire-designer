@@ -15,6 +15,7 @@ create table public.catalog_items (
     check (jsonb_typeof(image_variants) = 'object'),
   sort_order integer not null default 0 check (sort_order >= 0),
   spec jsonb not null default '{}'::jsonb check (jsonb_typeof(spec) = 'object'),
+  constraint catalog_items_overmold_spec_check check (kind <> 'overmold' or (spec ? 'outerMaterial' and jsonb_typeof(spec->'outerMaterial') = 'string' and length(btrim(spec->>'outerMaterial')) > 0 and spec ? 'innerMaterial' and jsonb_typeof(spec->'innerMaterial') = 'string' and length(btrim(spec->>'innerMaterial')) > 0 and spec ? 'innerMaterialOptional' and jsonb_typeof(spec->'innerMaterialOptional') = 'boolean' and spec->>'innerMaterialOptional' = 'true' and (not (spec ? 'outerForm') or spec->>'outerForm' in ('straight', 'bent')))),
   unique (kind, code)
 );
 

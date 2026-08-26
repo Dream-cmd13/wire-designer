@@ -55,16 +55,16 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
 
   const outerMaterials = [...new Set(overmolds.map((o) => o.outerMaterial))].sort();
   const outerHardnesses = [...new Set(overmolds.filter((o) => o.outerHardness).map((o) => o.outerHardness!))].sort();
-  const innerMaterials = [...new Set(overmolds.map((o) => o.innerMaterial))].sort();
+  const innerMaterials = [...new Set(overmolds.map((o) => o.innerMaterial ?? '无内模'))].sort();
 
   let results = overmolds;
   if (search.trim()) {
     const q = search.toLowerCase();
-    results = results.filter((o) => o.name.toLowerCase().includes(q) || o.outerMaterial.toLowerCase().includes(q) || o.innerMaterial.toLowerCase().includes(q));
+    results = results.filter((o) => o.name.toLowerCase().includes(q) || o.outerMaterial.toLowerCase().includes(q) || (o.innerMaterial ?? '无内模').toLowerCase().includes(q));
   }
   if (filters.outerMaterial.size > 0) results = results.filter((o) => filters.outerMaterial.has(o.outerMaterial));
   if (filters.outerHardness.size > 0) results = results.filter((o) => o.outerHardness && filters.outerHardness.has(o.outerHardness));
-  if (filters.innerMaterial.size > 0) results = results.filter((o) => filters.innerMaterial.has(o.innerMaterial));
+  if (filters.innerMaterial.size > 0) results = results.filter((o) => filters.innerMaterial.has(o.innerMaterial ?? '无内模'));
 
   const toggleFilter = (key: FilterKey, value: string) => {
     setFilters((prev) => {
@@ -136,7 +136,7 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
                       {selectedId === o.id && <Check className="w-4 h-4 text-amber-500 shrink-0" />}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      外模：{o.outerMaterial}{o.outerHardness ? ` 硬度${o.outerHardness}` : ''} · 内模：{o.innerMaterial}{o.innerMaterialOptional ? '（可选）' : ''}
+                      外模：{o.outerMaterial}{o.outerHardness ? ` 硬度${o.outerHardness}` : ''} · 内模：{o.innerMaterial ?? '无内模'}{o.innerMaterialOptional ? '（可选）' : ''}
                     </div>
                   </div>
                   <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded shrink-0">{o.id}</span>
@@ -152,7 +152,7 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
                 <div><span className="text-slate-400">名称：</span><span className="text-slate-700">{selectedOvermold.name}</span></div>
                 <div><span className="text-slate-400">外模材质：</span><span className="text-slate-700">{selectedOvermold.outerMaterial}</span></div>
                 {selectedOvermold.outerHardness && <div><span className="text-slate-400">外模硬度：</span><span className="text-slate-700">{selectedOvermold.outerHardness}</span></div>}
-                <div><span className="text-slate-400">内模材质：</span><span className="text-slate-700">{selectedOvermold.innerMaterial}</span></div>
+                <div><span className="text-slate-400">内模材质：</span><span className="text-slate-700">{selectedOvermold.innerMaterial ?? '无内模'}</span></div>
                 {selectedOvermold.innerMaterialOptional && <div className="text-slate-400 italic">内模可选（无需内模亦可）</div>}
               </div>
             </div>

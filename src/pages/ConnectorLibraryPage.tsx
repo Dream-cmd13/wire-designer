@@ -40,7 +40,7 @@ export function ConnectorLibraryPage() {
                 <h2 className="text-lg font-semibold text-slate-900">数据库连接器</h2>
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                连接器数据来自 Supabase 目录表。
+                连接器数据来自标准物料库。
               </p>
             </div>
             <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">

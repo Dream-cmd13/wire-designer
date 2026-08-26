@@ -700,7 +700,7 @@ export default function App() {
         />
         {catalogStatus === 'error' && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-            目录数据暂时不可用：{catalogError ?? '请检查 Supabase 配置后重试。'}
+            目录数据暂时不可用：{catalogError ?? '请检查云端服务配置后重试。'}
           </div>
         )}
         {renderContent()}
