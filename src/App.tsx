@@ -7,7 +7,6 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { TwoDView } from '@/components/drawings/TwoDView';
 import { BomPanel } from '@/components/panels/BomPanel';
-import { ConfigPanel } from '@/components/panels/ConfigPanel';
 import { QuotePanel } from '@/components/panels/QuotePanel';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
@@ -56,7 +55,7 @@ function RightPanel() {
 
 function DesignerView() {
   return (
-    <MainLayout leftPanel={<ConfigPanel />} rightPanel={<RightPanel />}>
+    <MainLayout rightPanel={<RightPanel />}>
       <HarnessCanvas />
     </MainLayout>
   );
@@ -600,6 +599,14 @@ export default function App() {
     navigate(appRoutes.home.path);
   };
 
+  const handleUpdateProjectName = useCallback((nextName: string) => {
+    if (!currentProject) return;
+    const trimmed = nextName.trim();
+    if (!trimmed || trimmed === currentProject.name) return;
+    useHarnessStore.getState().setConfig({ name: trimmed });
+    void updateProject(currentProject.id, { name: trimmed });
+  }, [currentProject, updateProject]);
+
   const saveStatusLabel =
     saveState.status === 'saved'
       ? '已保存'
@@ -692,6 +699,7 @@ export default function App() {
         onRedo={handleRedo}
         onOpenAuth={() => setAuthOpen(true)}
         onCloseProject={handleCloseProject}
+        onUpdateProjectName={handleUpdateProjectName}
       >
         <StorageSetupBanner
           state={storageBootstrapState}

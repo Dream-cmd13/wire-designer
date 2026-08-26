@@ -19,6 +19,7 @@ interface ActionToastProps {
   secondaryAction?: ToastAction;
   onClose: () => void;
   position?: 'top' | 'center';
+  backdrop?: boolean;
 }
 
 const TONE_STYLES: Record<NonNullable<ActionToastProps['tone']>, string> = {
@@ -42,8 +43,8 @@ const TONE_DEFAULTS = {
   },
 };
 
-const POSITION_STYLES = {
-  top: 'top-8 left-1/2 -translate-x-1/2 animate-toast-in-top',
+const POSITION_STYLES: Record<NonNullable<ActionToastProps['position']>, string> = {
+  top: 'top-[35%] left-1/2 z-[75] animate-toast-in-center',
   center: 'top-[35%] left-1/2 z-[75] animate-toast-in-center',
 };
 
@@ -76,10 +77,11 @@ export function ActionToast({
   primaryAction,
   secondaryAction,
   onClose,
-  position = 'top',
+  position = 'center',
+  backdrop,
 }: ActionToastProps) {
   const config = TONE_DEFAULTS[tone];
-  const isCenter = position === 'center';
+  const shouldShowBackdrop = backdrop ?? (role === 'alertdialog');
 
   const toastContent = (
     <div
@@ -111,10 +113,14 @@ export function ActionToast({
     </div>
   );
 
-  if (isCenter) {
+  if (shouldShowBackdrop) {
     return (
       <>
-        <div className="fixed inset-0 z-[70] bg-slate-900/10 backdrop-blur-[1px] transition-opacity duration-300" onClick={onClose} />
+        <div
+          data-testid="toast-backdrop"
+          className="fixed inset-0 z-[70] bg-slate-900/10 backdrop-blur-[1px] transition-opacity duration-300"
+          onClick={onClose}
+        />
         {toastContent}
       </>
     );

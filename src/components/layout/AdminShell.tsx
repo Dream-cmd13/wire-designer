@@ -1,4 +1,4 @@
-import { useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import {
   Cable,
   Database,
@@ -70,6 +70,52 @@ interface AdminShellProps {
   onRedo: () => void;
   onOpenAuth: () => void;
   onCloseProject: () => void;
+  onUpdateProjectName?: (name: string) => void;
+}
+
+function ProjectNameEditor({
+  projectName,
+  onUpdate,
+}: {
+  projectName: string;
+  onUpdate?: (name: string) => void;
+}) {
+  const [value, setValue] = useState(projectName);
+
+  useEffect(() => {
+    setValue(projectName);
+  }, [projectName]);
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setValue(projectName);
+      return;
+    }
+    if (trimmed !== projectName && onUpdate) {
+      onUpdate(trimmed);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 transition-colors focus-within:border-blue-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-blue-500">
+      <span className="shrink-0 font-medium text-slate-500">项目名称</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur();
+          }
+        }}
+        className="w-28 sm:w-44 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+        placeholder="未命名项目"
+        title="点击修改项目名称，回车或失焦生效"
+      />
+    </div>
+  );
 }
 
 function pathMatches(route: AppRoute, item: SidebarItem) {
@@ -92,6 +138,7 @@ export function AdminShell({
   onRedo,
   onOpenAuth,
   onCloseProject,
+  onUpdateProjectName,
 }: AdminShellProps) {
   const showDesignerActions = route.section === 'designer' && Boolean(currentProjectName);
   const contextLabel = route.id === 'drawing-workbench'
@@ -250,27 +297,36 @@ export function AdminShell({
             )}
           </div>
 
-          {currentUser ? (
-            <button
-              type="button"
-              onClick={onOpenAuth}
-              className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
-            >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
-                {currentUser.name[0]}
-              </span>
-              <span className="hidden max-w-28 truncate sm:inline">{currentUser.name}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onOpenAuth}
-              className="flex cursor-pointer items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-            >
-              <User className="h-4 w-4" />
-              <span className="hidden sm:inline">登录</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {Boolean(currentProjectName) && (
+              <ProjectNameEditor
+                projectName={currentProjectName!}
+                onUpdate={onUpdateProjectName}
+              />
+            )}
+
+            {currentUser ? (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
+              >
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
+                  {currentUser.name[0]}
+                </span>
+                <span className="hidden max-w-28 truncate sm:inline">{currentUser.name}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="flex cursor-pointer items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+              >
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">登录</span>
+              </button>
+            )}
+          </div>
         </header>
 
         <main className="min-h-0 flex-1 overflow-hidden">{children}</main>

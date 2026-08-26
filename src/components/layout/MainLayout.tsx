@@ -3,7 +3,7 @@ import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from '
 
 interface MainLayoutProps {
   children: ReactNode;
-  leftPanel: ReactNode;
+  leftPanel?: ReactNode;
   rightPanel: ReactNode;
 }
 
@@ -59,34 +59,36 @@ export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps)
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div
-          className={`flex shrink-0 overflow-hidden transition-[width] duration-200 ${
-            leftOpen ? 'w-80' : 'w-6'
-          }`}
-        >
-          {leftOpen ? (
-            <aside className="relative w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-white">
+        {Boolean(leftPanel) && (
+          <div
+            className={`flex shrink-0 overflow-hidden transition-[width] duration-200 ${
+              leftOpen ? 'w-80' : 'w-6'
+            }`}
+          >
+            {leftOpen ? (
+              <aside className="relative w-80 shrink-0 overflow-y-auto border-r border-slate-200 bg-white">
+                <button
+                  onClick={() => setLeftOpen(false)}
+                  className="absolute top-2 right-2 z-10 cursor-pointer rounded p-1 hover:bg-slate-100"
+                  title="收起左侧面板"
+                  aria-label="收起左侧面板"
+                >
+                  <PanelLeftClose className="h-4 w-4 text-slate-400" />
+                </button>
+                {leftPanel}
+              </aside>
+            ) : (
               <button
-                onClick={() => setLeftOpen(false)}
-                className="absolute top-2 right-2 z-10 cursor-pointer rounded p-1 hover:bg-slate-100"
-                title="收起左侧面板"
-                aria-label="收起左侧面板"
+                onClick={() => setLeftOpen(true)}
+                className="group flex w-6 items-center justify-center border-r border-slate-200 bg-white hover:bg-slate-50"
+                title="展开左侧面板"
+                aria-label="展开左侧面板"
               >
-                <PanelLeftClose className="h-4 w-4 text-slate-400" />
+                <PanelLeftOpen className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600" />
               </button>
-              {leftPanel}
-            </aside>
-          ) : (
-            <button
-              onClick={() => setLeftOpen(true)}
-              className="group flex w-6 items-center justify-center border-r border-slate-200 bg-white hover:bg-slate-50"
-              title="展开左侧面板"
-              aria-label="展开左侧面板"
-            >
-              <PanelLeftOpen className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600" />
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
         <main className="relative min-w-0 flex-1">{children}</main>
 

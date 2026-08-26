@@ -439,7 +439,6 @@ export function DrawingWorkbenchPage() {
     />}
     {refreshDecisionOpen && <ActionToast
       role="alertdialog"
-      position="center"
       title="当前制作图纸"
       message="是否丢弃当前制作的图纸？"
       secondaryAction={{ label: '继续制作', onClick: () => setRefreshDecisionOpen(false) }}

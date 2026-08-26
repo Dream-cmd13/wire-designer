@@ -26,7 +26,7 @@ import {
   type IsValidConnection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { addConnector, attachMaterialEndpoint, addConnectorJumper, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper, removeMaterialCircuit } from '@/lib/commands';
+import { addConnector, attachMaterialEndpoint, addConnectorJumper, changeConnectorPart, detachMaterialEndpoint, reassignMaterialEndpoint, generateId, getActiveConnectorSide, removeConnectorJumper, removeMaterialCircuit } from '@/lib/commands';
 import {
   CANVAS_MODEL_SIZE,
   createDefaultCanvasMaterial,
@@ -59,6 +59,7 @@ import { MaterialAttachmentEdge } from './MaterialAttachmentEdge';
 import { ProtectiveSleeveNode } from './ProtectiveSleeveNode';
 import { WireMaterialNode, type WireMaterialNodeData } from './WireMaterialNode';
 import { OvermoldPickerDialog } from '../shared/OvermoldPickerDialog';
+import { ConnectorPropertiesDialog } from './ConnectorPropertiesDialog';
 import { MaterialAccessoryDialog, type MaterialAccessoryKind } from './MaterialAccessoryDialog';
 import { ProtectiveSleeveDialog } from './ProtectiveSleeveDialog';
 import { WireMaterialDialog } from './WireMaterialDialog';
@@ -593,6 +594,8 @@ function HarnessCanvasInner() {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [canvasSelection, setCanvasSelection] = useState<string | null>(null);
   const [connectorDialog, setConnectorDialog] = useState<ConnectorDialogState | null>(null);
+  const [editingConnectorId, setEditingConnectorId] = useState<string | null>(null);
+  const [changingPartConnectorId, setChangingPartConnectorId] = useState<string | null>(null);
   const [editingMaterialId, setEditingMaterialId] = useState<string | null>(null);
   const [newMaterialDraft, setNewMaterialDraft] = useState<CanvasWireMaterial | null>(null);
   const [sleeveDialog, setSleeveDialog] = useState<SleeveDialogState | null>(null);
@@ -1495,8 +1498,8 @@ function HarnessCanvasInner() {
           onAddModel={handleOpenModelDialog}
           onAddMaterialLabel={(materialId) => setAccessoryDialog({ materialId, kind: 'label' })}
           onAddMaterialNumberTube={(materialId) => setAccessoryDialog({ materialId, kind: 'number-tube' })}
-          onEditConnector={(id) => setSelection({ kind: 'connector', id })}
-          onChangeConnector={(id) => setSelection({ kind: 'connector', id })}
+          onEditConnector={(id) => setEditingConnectorId(id)}
+          onChangeConnector={(id) => setChangingPartConnectorId(id)}
           onCopyConnector={(connectorId) => {
             const instance = config.connectors.find((c) => c.id === connectorId);
             if (!instance) return;
@@ -1587,6 +1590,34 @@ function HarnessCanvasInner() {
       )}
 
       <Suspense fallback={null}>
+      {editingConnectorId && (
+        <ConnectorPropertiesDialog
+          connectorId={editingConnectorId}
+          isOpen={true}
+          onClose={() => setEditingConnectorId(null)}
+          onChangePart={() => {
+            const id = editingConnectorId;
+            setEditingConnectorId(null);
+            setChangingPartConnectorId(id);
+          }}
+        />
+      )}
+      {changingPartConnectorId && (() => {
+        const instance = config.connectors.find((c) => c.id === changingPartConnectorId);
+        if (!instance) return null;
+        return (
+          <PartPickerDialog
+            isOpen
+            onClose={() => setChangingPartConnectorId(null)}
+            currentConnectorId={instance.connector.id}
+            onSelect={(pickedConnector) => {
+              const result = changeConnectorPart(config, changingPartConnectorId, pickedConnector);
+              useHarnessStore.getState().replaceDocument(result.config);
+              setChangingPartConnectorId(null);
+            }}
+          />
+        );
+      })()}
       {connectorDialog && (
         <PartPickerDialog
           isOpen

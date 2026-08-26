@@ -9,7 +9,7 @@ interface UndoToastProps {
   position?: 'top' | 'center';
 }
 
-export function UndoToast({ message, canUndo, onUndo, onClose, position = 'top' }: UndoToastProps) {
+export function UndoToast({ message, canUndo, onUndo, onClose, position = 'center' }: UndoToastProps) {
   return (
     <ActionToast
       message={message}

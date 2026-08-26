@@ -155,7 +155,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   const selectedConnector = connectors.find((c) => c.id === selectedId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
       <div
         ref={dialogRef}
         className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[720px] max-h-[85vh] flex flex-col"
