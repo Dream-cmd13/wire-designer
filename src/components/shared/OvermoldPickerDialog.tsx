@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { catalogRepository } from '@/lib/catalogRepository';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogOvermolds } from '@/lib/catalogRuntime';
 import type { OvermoldSpec } from '@/types/harness';
 import { Search, X, Filter, Check } from 'lucide-react';
 
@@ -13,7 +14,10 @@ interface OvermoldPickerDialogProps {
 type FilterKey = 'outerMaterial' | 'outerHardness' | 'innerMaterial';
 
 export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermoldId }: OvermoldPickerDialogProps) {
-  const [overmolds, setOvermolds] = useState<OvermoldSpec[]>([]);
+  const overmolds = useCatalogStore((state) => getCatalogOvermolds(state.snapshot));
+  const catalogStatus = useCatalogStore((state) => state.status);
+  const initializeCatalog = useCatalogStore((state) => state.initialize);
+
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     outerMaterial: new Set(),
@@ -26,13 +30,10 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
 
   const prevOpen = useRef(isOpen);
   useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    catalogRepository.listOvermolds()
-      .then((items) => { if (!cancelled) setOvermolds(items); })
-      .catch(() => { if (!cancelled) setOvermolds([]); });
-    return () => { cancelled = true; };
-  }, [isOpen]);
+    if (isOpen && catalogStatus === 'idle') {
+      void initializeCatalog().catch(() => undefined);
+    }
+  }, [isOpen, catalogStatus, initializeCatalog]);
   useEffect(() => {
     const justOpened = isOpen && !prevOpen.current;
     prevOpen.current = isOpen;
@@ -117,7 +118,7 @@ export function OvermoldPickerDialog({ isOpen, onClose, onSelect, currentOvermol
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {results.length === 0 ? (
               <div className="text-center py-8 text-sm text-slate-400">
-                <p>没有匹配的外模</p>
+                <p>{catalogStatus === 'loading' && overmolds.length === 0 ? '正在加载外模...' : '没有匹配的外模'}</p>
                 {hasActiveFilters && (
                   <button onClick={clearFilters} className="text-amber-500 hover:text-amber-700 mt-1 cursor-pointer text-xs">清除筛选条件</button>
                 )}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { catalogRepository } from '@/lib/catalogRepository';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { getCatalogConnectors } from '@/lib/catalogRuntime';
 import type { Connector } from '@/types/harness';
 import { Search, X, Filter, Check } from 'lucide-react';
 
@@ -13,7 +14,10 @@ interface PartPickerDialogProps {
 type FilterKey = 'manufacturer' | 'pinCount' | 'pitch' | 'type' | 'housingMaterial' | 'contactMaterial' | 'nutMaterial';
 
 export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId }: PartPickerDialogProps) {
-  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
+  const catalogStatus = useCatalogStore((state) => state.status);
+  const initializeCatalog = useCatalogStore((state) => state.initialize);
+
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     manufacturer: new Set(),
@@ -31,13 +35,10 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   // Track previous isOpen to detect transitions
   const prevOpen = useRef(isOpen);
   useEffect(() => {
-    if (!isOpen) return;
-    let cancelled = false;
-    catalogRepository.listConnectors()
-      .then((items) => { if (!cancelled) setConnectors(items); })
-      .catch(() => { if (!cancelled) setConnectors([]); });
-    return () => { cancelled = true; };
-  }, [isOpen]);
+    if (isOpen && catalogStatus === 'idle') {
+      void initializeCatalog().catch(() => undefined);
+    }
+  }, [isOpen, catalogStatus, initializeCatalog]);
   useEffect(() => {
     const justOpened = isOpen && !prevOpen.current;
     prevOpen.current = isOpen;
@@ -216,7 +217,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {results.length === 0 ? (
               <div className="text-center py-8 text-sm text-slate-400">
-                <p>没有匹配的连接器</p>
+                <p>{catalogStatus === 'loading' && connectors.length === 0 ? '正在加载连接器...' : '没有匹配的连接器'}</p>
                 {hasActiveFilters && (
                   <button onClick={clearFilters} className="text-blue-500 hover:text-blue-700 mt-1 cursor-pointer text-xs">
                     清除筛选条件

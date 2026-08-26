@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Cable, Check, X, Search } from 'lucide-react';
 import { useCatalogStore } from '@/stores/catalogStore';
-import { getCatalogWireColors } from '@/lib/catalogRuntime';
+import { getCatalogWireColors, getCatalogWires } from '@/lib/catalogRuntime';
 import {
   calculateCableOd,
   createDefaultWireEndTreatment,
@@ -21,7 +21,6 @@ import type {
   WireEndTreatment,
 } from '@/types/harness';
 import { parseQuickInput } from '@/lib/wireParser';
-import { catalogRepository, type CatalogWire } from '@/lib/catalogRepository';
 import { applyCatalogWireSpec } from '@/lib/wireCatalog';
 
 interface WireMaterialDialogProps {
@@ -75,20 +74,20 @@ function validateSpec(spec: CanvasWireSpec): string | null {
 
 export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMaterialDialogProps) {
   const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
+  const catalogWires = useCatalogStore((state) => getCatalogWires(state.snapshot));
+  const catalogStatus = useCatalogStore((state) => state.status);
+  const initializeCatalog = useCatalogStore((state) => state.initialize);
   const [spec, setSpec] = useState<CanvasWireSpec>(material?.spec ?? createDefaultWireSpec());
   const [error, setError] = useState<string | null>(null);
   const [electronicQuery, setElectronicQuery] = useState('');
   const [jacketedQuery, setJacketedQuery] = useState('');
-  const [catalogWires, setCatalogWires] = useState<CatalogWire[]>([]);
   const [selectedCatalogWireId, setSelectedCatalogWireId] = useState(material?.resourceItemId ?? '');
 
   useEffect(() => {
-    let cancelled = false;
-    catalogRepository.listWires()
-      .then((items) => { if (!cancelled) setCatalogWires(items); })
-      .catch(() => { if (!cancelled) setCatalogWires([]); });
-    return () => { cancelled = true; };
-  }, []);
+    if (catalogStatus === 'idle') {
+      void initializeCatalog().catch(() => undefined);
+    }
+  }, [catalogStatus, initializeCatalog]);
 
   useEffect(() => {
     const selected = catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId);

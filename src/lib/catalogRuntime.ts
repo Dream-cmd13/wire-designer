@@ -1,8 +1,10 @@
-import type { Connector, WireColor } from '@/types/harness';
-import type { CatalogSnapshot, ProtectionOption } from '@/types/catalog';
+import type { Connector, OvermoldSpec, WireColor } from '@/types/harness';
+import type { CatalogSnapshot, CatalogWire, ProtectionOption } from '@/types/catalog';
 
 let activeSnapshot: CatalogSnapshot | null = null;
 const EMPTY_CONNECTORS: Connector[] = [];
+const EMPTY_WIRES: CatalogWire[] = [];
+const EMPTY_OVERMOLDS: OvermoldSpec[] = [];
 const EMPTY_WIRE_COLORS: WireColor[] = [];
 const EMPTY_PROTECTION_OPTIONS: ProtectionOption[] = [];
 
@@ -33,6 +35,14 @@ export function getCatalogConnectors(snapshot: CatalogSnapshot | null): Connecto
   return snapshot?.connectors ?? EMPTY_CONNECTORS;
 }
 
+export function getCatalogWires(snapshot: CatalogSnapshot | null): CatalogWire[] {
+  return snapshot?.wires ?? EMPTY_WIRES;
+}
+
+export function getCatalogOvermolds(snapshot: CatalogSnapshot | null): OvermoldSpec[] {
+  return snapshot?.overmolds ?? EMPTY_OVERMOLDS;
+}
+
 export function getCatalogWireColors(snapshot: CatalogSnapshot | null): WireColor[] {
   return snapshot?.wireColors ?? EMPTY_WIRE_COLORS;
 }
@@ -40,3 +50,4 @@ export function getCatalogWireColors(snapshot: CatalogSnapshot | null): WireColo
 export function getCatalogProtectionOptions(snapshot: CatalogSnapshot | null): ProtectionOption[] {
   return snapshot?.protectionOptions ?? EMPTY_PROTECTION_OPTIONS;
 }
+
