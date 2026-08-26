@@ -11,6 +11,7 @@ import {
   loadStaticDrawingTemplate,
 } from '@/lib/drawingStaticResources';
 import { supabase } from '@/lib/supabaseClient';
+import { signCatalogImageResult, type CatalogStorageClient } from '@/lib/catalogImageUrl';
 import type {
   DrawingCatalogFilters,
   DrawingCatalogResource,
@@ -150,13 +151,11 @@ export class DrawingCatalogRepository {
     const storage = this.client?.storage;
     const resources = await Promise.all(mapped.map(async ({ storagePath, ...resource }) => {
       if (!storagePath || !storage) return resource;
-      const { data, error } = await storage
-        .from('catalog-assets')
-        .createSignedUrl(storagePath, 60 * 60);
-      if (error) return { ...resource, imageError: error.message };
-      return !data?.signedUrl
-        ? { ...resource, imageError: '资源图片签名地址为空。' }
-        : { ...resource, imageUrl: data.signedUrl };
+      const result = await signCatalogImageResult({ storage } as CatalogStorageClient, storagePath);
+      if (result.error) return { ...resource, imageError: result.error };
+      return result.signedUrl
+        ? { ...resource, imageUrl: result.signedUrl }
+        : { ...resource, imageError: '资源图片签名地址为空。' };
     }));
     return filterDrawingCatalogResources(resources, filters);
   }

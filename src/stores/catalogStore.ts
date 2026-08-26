@@ -11,6 +11,7 @@ interface CatalogState {
   error: string | null;
   initialize: () => Promise<void>;
   reload: () => Promise<void>;
+  refreshIfStale: () => Promise<void>;
 }
 
 let loadingPromise: Promise<void> | null = null;
@@ -44,10 +45,17 @@ export const useCatalogStore = create<CatalogState>((set, get) => ({
   },
 
   reload: async () => {
-    if (loadingPromise) await loadingPromise;
-    loadingPromise = load(set).finally(() => {
-      loadingPromise = null;
-    });
+    if (!loadingPromise) {
+      loadingPromise = load(set).finally(() => {
+        loadingPromise = null;
+      });
+    }
     await loadingPromise;
+  },
+
+  refreshIfStale: async () => {
+    const snapshot = get().snapshot;
+    if (!snapshot || Date.now() - snapshot.loadedAt < 55 * 60 * 1000) return;
+    await get().reload();
   },
 }));

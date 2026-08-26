@@ -10,6 +10,7 @@ interface TwoDImageCardProps {
   onMouseDown: (e: React.MouseEvent) => void;
   maxWidth?: number | string;
   maxHeight?: number | string;
+  onImageError?: () => void;
 }
 
 export function TwoDImageCard({
@@ -21,6 +22,7 @@ export function TwoDImageCard({
   onMouseDown,
   maxWidth,
   maxHeight,
+  onImageError,
 }: TwoDImageCardProps) {
   const rotation = image.rotation ?? 0;
   const mirror = image.flipX ? 'scaleX(-1)' : '';
@@ -46,6 +48,7 @@ export function TwoDImageCard({
           src={image.dataUrl}
           alt={image.name}
           draggable={false}
+          onError={onImageError}
           className={`block transition-all ${
             isDragging
               ? 'opacity-80 shadow-2xl ring-4 ring-blue-400'

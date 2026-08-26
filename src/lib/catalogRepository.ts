@@ -8,6 +8,7 @@ import {
   type CatalogItemRow,
 } from '@/lib/catalogItem';
 import { supabase } from '@/lib/supabaseClient';
+import { signCatalogImage, type CatalogStorageClient } from '@/lib/catalogImageUrl';
 import type { CatalogSnapshot, CatalogWire, CatalogWireSpec } from '@/types/catalog';
 import type { Connector, OvermoldSpec } from '@/types/harness';
 
@@ -86,11 +87,7 @@ export class CatalogRepository {
   private async imageUrl(path: string | null): Promise<string | undefined> {
     if (!path) return undefined;
     try {
-      const { data, error } = await this.requireClient()
-        .storage
-        .from('catalog-assets')
-        .createSignedUrl(path, 60 * 60);
-      return error ? undefined : data?.signedUrl;
+      return await signCatalogImage(this.requireClient() as unknown as CatalogStorageClient, path);
     } catch {
       return undefined;
     }

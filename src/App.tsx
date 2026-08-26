@@ -158,6 +158,7 @@ export default function App() {
   const authReady = useUserStore((state) => state.authReady);
   const initializeAuth = useUserStore((state) => state.initialize);
   const initializeCatalog = useCatalogStore((state) => state.initialize);
+  const refreshCatalogIfStale = useCatalogStore((state) => state.refreshIfStale);
   const catalogStatus = useCatalogStore((state) => state.status);
   const catalogError = useCatalogStore((state) => state.error);
   const {
@@ -230,6 +231,21 @@ export default function App() {
       // The catalog store exposes the error state to the shell; no mock fallback is used.
     });
   }, [initializeCatalog]);
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'hidden') return;
+      void refreshCatalogIfStale().catch(() => undefined);
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('pageshow', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('pageshow', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [refreshCatalogIfStale]);
 
   useEffect(() => {
     if (catalogStatus !== 'ready' || !currentProject || configRef.current.id !== currentProject.id) return;

@@ -16,6 +16,7 @@ import { DrawingFrameEditDialog } from './DrawingFrameEditDialog';
 import { ensureDrawingFrame } from '@/lib/drawingFrameDefaults';
 import { useUserStore } from '@/stores/userStore';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
+import { useCatalogStore } from '@/stores/catalogStore';
 import { generateBOM } from '@/lib/bom';
 import {
   resolveColor,
@@ -564,6 +565,8 @@ function ImageInfoBox({
 
 // ── main view ──────────────────────────────────────────────────────────────────
 export function TwoDView() {
+  const reloadCatalog = useCatalogStore((state) => state.reload);
+  const retryingImagesRef = useRef(new Set<string>());
   const currentUser = useUserStore((s) => s.currentUser);
   const config = useHarnessStore((s) => s.config);
   const updateDrawingFrame = useHarnessStore((s) => s.updateDrawingFrame);
@@ -1131,6 +1134,11 @@ export function TwoDView() {
                               selected={isSelected}
                               onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
                               onMouseDown={(e) => handleImageMouseDown(e, groupIdx)}
+                              onImageError={() => {
+                                if (retryingImagesRef.current.has(img.id)) return;
+                                retryingImagesRef.current.add(img.id);
+                                void reloadCatalog();
+                              }}
                               maxWidth={cardWidth}
                               maxHeight={maxCardHeight}
                             />
