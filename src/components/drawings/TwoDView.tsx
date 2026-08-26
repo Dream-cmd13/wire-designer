@@ -575,6 +575,7 @@ export function TwoDView() {
     [config.drawingFrame, currentUser, config],
   );
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editFocusField, setEditFocusField] = useState<string | undefined>();
   const twoDImages = useHarnessStore((s) => s.config.twoDImages ?? EMPTY_IMAGES);
   const connectors = useHarnessStore((s) => s.config.connectors);
   const materials = useHarnessStore((s) => s.config.materials);
@@ -1071,7 +1072,10 @@ export function TwoDView() {
             {/* SVG Vector Drawing Frame */}
             <ProductionDrawingFrameSvg
               frame={drawingFrame}
-              onEdit={() => setIsEditDialogOpen(true)}
+              onEdit={(field) => {
+                setEditFocusField(field);
+                setIsEditDialogOpen(true);
+              }}
             />
             {(() => {
               return groups.map((group, groupIdx) => {
@@ -1183,8 +1187,12 @@ export function TwoDView() {
       {isEditDialogOpen && (
         <DrawingFrameEditDialog
           isOpen={isEditDialogOpen}
-          onClose={() => setIsEditDialogOpen(false)}
+          onClose={() => {
+            setIsEditDialogOpen(false);
+            setEditFocusField(undefined);
+          }}
           frame={drawingFrame}
+          initialFocusField={editFocusField}
           onSave={(updated) => updateDrawingFrame(updated)}
         />
       )}

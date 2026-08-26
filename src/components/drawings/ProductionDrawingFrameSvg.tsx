@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ProductionDrawingFrame } from '@/types/harness';
+import { DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
 
 interface ProductionDrawingFrameSvgProps {
   frame: ProductionDrawingFrame;
@@ -117,9 +118,8 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
       <g
         className={interactiveClass}
         onClick={handleClick('complianceNote')}
-       
       >
-        <title>点击编辑技术要求说明</title>
+        <title>点击编辑顶部合规说明</title>
         <rect
           x="22"
           y="22"
@@ -139,6 +139,57 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           {frame.complianceNote || '该产品的所有材料及加工工艺必须符合 “WL-PZ-001 ” HSF 技术标准的控制要求。'}
         </text>
       </g>
+
+      {/* ── Bottom-Left Technical Requirements (x: 30, y: above 667) ─── */}
+      {(() => {
+        const rawReqs = frame.technicalRequirements ?? DEFAULT_TECHNICAL_REQUIREMENTS;
+        const lines = rawReqs
+          .split('\n')
+          .map((l) => l.trimEnd())
+          .filter((l, idx, arr) => l.length > 0 || idx < arr.length - 1);
+        if (lines.length === 0) return null;
+
+        const lineHeight = 19;
+        const totalHeight = (lines.length - 1) * lineHeight;
+        const baselineBottom = 650;
+        const startY = Math.min(520, baselineBottom - totalHeight);
+
+        return (
+          <g
+            className={interactiveClass}
+            onClick={handleClick('technicalRequirements')}
+          >
+            <title>点击编辑技术要求</title>
+            {/* Transparent click target rect covering whole requirements block */}
+            <rect
+              x="26"
+              y={startY - 14}
+              width="540"
+              height={totalHeight + 22}
+              fill="transparent"
+              stroke="transparent"
+            />
+            {lines.map((line, idx) => {
+              const isHeading =
+                idx === 0 &&
+                (line.includes('技术要求') || line.endsWith('：') || line.endsWith(':'));
+              return (
+                <text
+                  key={idx}
+                  x="30"
+                  y={startY + idx * lineHeight}
+                  fontSize={isHeading ? '10.5' : '9.5'}
+                  fontWeight={isHeading ? 'bold' : '500'}
+                  fill="#000000"
+                  letterSpacing="0.2"
+                >
+                  {line}
+                </text>
+              );
+            })}
+          </g>
+        );
+      })()}
 
       {/* ── Bottom Title Block & Revisions (y: 667 -> 776) ────────── */}
       <g>

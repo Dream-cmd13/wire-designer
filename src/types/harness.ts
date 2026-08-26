@@ -473,6 +473,7 @@ export interface ProductionDrawingFrame {
   drawn: DrawingSignOff;
   revisionRows: DrawingRevisionRow[];
   complianceNote: string;
+  technicalRequirements?: string;
   companyNameCn: string;
   companyNameEn: string;
 }

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, UserCheck, Calendar, FileText, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, UserCheck, Calendar, FileText, Check, RotateCcw } from 'lucide-react';
 import type { ProductionDrawingFrame } from '@/types/harness';
-import { formatDrawingDate } from '@/lib/drawingFrameDefaults';
+import { formatDrawingDate, DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
 import { useUserStore } from '@/stores/userStore';
 
 interface DrawingFrameEditDialogProps {
@@ -17,15 +17,27 @@ export const DrawingFrameEditDialog: React.FC<DrawingFrameEditDialogProps> = ({
   onClose,
   frame,
   onSave,
+  initialFocusField,
 }) => {
   const currentUser = useUserStore((s) => s.currentUser);
   const [formData, setFormData] = useState<ProductionDrawingFrame>(frame);
+  const techReqsRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       setFormData(frame);
     }
   }, [isOpen, frame]);
+
+  useEffect(() => {
+    if (isOpen && initialFocusField === 'technicalRequirements') {
+      const timer = setTimeout(() => {
+        techReqsRef.current?.focus();
+        techReqsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, initialFocusField]);
 
   if (!isOpen) return null;
 
@@ -356,7 +368,47 @@ export const DrawingFrameEditDialog: React.FC<DrawingFrameEditDialogProps> = ({
             </div>
           </div>
 
-          {/* 4. 技术说明与公司 */}
+          {/* 4. 技术要求 */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                技术要求 (TECHNICAL REQUIREMENTS)
+              </h3>
+              <button
+                type="button"
+                onClick={() =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    technicalRequirements: DEFAULT_TECHNICAL_REQUIREMENTS,
+                  }))
+                }
+                className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <RotateCcw className="h-3 w-3" />
+                恢复默认要求
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                成品图左下角技术要求内容（支持多行编辑）
+              </label>
+              <textarea
+                ref={techReqsRef}
+                rows={8}
+                value={formData.technicalRequirements ?? ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, technicalRequirements: e.target.value })
+                }
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-xs font-mono text-slate-900 leading-relaxed focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="请输入技术要求..."
+              />
+              <p className="mt-1 text-[11px] text-slate-400">
+                提示：显示于成品图左下角空白区域，首行将以“技术要求：”大标题加粗排版。
+              </p>
+            </div>
+          </div>
+
+          {/* 5. 技术说明与公司 */}
           <div className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
               技术标准与公司名称

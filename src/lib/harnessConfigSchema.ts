@@ -19,6 +19,7 @@ import type {
   WireLabel,
   WireNumberTube,
 } from '@/types/harness';
+import { DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
 
 export type HarnessConfigParseResult =
   | { success: true; data: HarnessConfig }
@@ -894,6 +895,9 @@ function readProductionDrawingFrame(value: unknown, path: string, issues: string
     drawn,
     revisionRows: revisionRows as DrawingRevisionRow[],
     complianceNote: typeof value.complianceNote === 'string' ? value.complianceNote : '',
+    technicalRequirements: typeof value.technicalRequirements === 'string'
+      ? value.technicalRequirements
+      : DEFAULT_TECHNICAL_REQUIREMENTS,
     companyNameCn: typeof value.companyNameCn === 'string' ? value.companyNameCn : '万连科技',
     companyNameEn: typeof value.companyNameEn === 'string' ? value.companyNameEn : 'WanLian Technology Co., Ltd',
   };

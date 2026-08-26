@@ -18,6 +18,16 @@ export function formatDrawingDate(input?: Date | number | string): string {
   return `${y}.${m}.${day}`;
 }
 
+export const DEFAULT_TECHNICAL_REQUIREMENTS = [
+  '技术要求：',
+  '1. 线束100%导通测试、无断路、短路、间歇性接触不良；',
+  '2. 导通测试:公母对插点对点导通测试；',
+  '3. 外观无缩水、缺胶、流纹、披锋、变形等不良缺陷；',
+  '4. 产品外观整洁、无脏污、刮伤、烫伤等现象；',
+  '5. 纸箱内部需套防水袋或热封袋；',
+  '6. 产品符合RoHS环保标准。',
+].join('\n');
+
 /**
  * Generate a complete default ProductionDrawingFrame with today's date and the current user's name
  */
@@ -59,6 +69,7 @@ export function createDefaultDrawingFrame(
       { rev: '', description: '', date: '' },
     ],
     complianceNote: '该产品的所有材料及加工工艺必须符合 “WL-PZ-001 ” HSF 技术标准的控制要求。',
+    technicalRequirements: DEFAULT_TECHNICAL_REQUIREMENTS,
     companyNameCn: '万连科技',
     companyNameEn: 'WanLian Technology Co., Ltd',
   };
@@ -111,6 +122,7 @@ export function ensureDrawingFrame(
     },
     revisionRows,
     complianceNote: frame.complianceNote ?? defaults.complianceNote,
+    technicalRequirements: frame.technicalRequirements ?? defaults.technicalRequirements,
     companyNameCn: frame.companyNameCn ?? defaults.companyNameCn,
     companyNameEn: frame.companyNameEn ?? defaults.companyNameEn,
   };

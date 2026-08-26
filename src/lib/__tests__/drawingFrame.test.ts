@@ -27,6 +27,9 @@ describe('drawingFrameDefaults', () => {
     expect(frame.revisionRows[0].description).toBe('NEW RELEASE');
     expect(frame.revisionRows).toHaveLength(4);
     expect(frame.companyNameCn).toBe('万连科技');
+    expect(frame.technicalRequirements).toContain('技术要求：');
+    expect(frame.technicalRequirements).toContain('1. 线束100%导通测试');
+    expect(frame.technicalRequirements).toContain('6. 产品符合RoHS环保标准。');
   });
 
   it('ensureDrawingFrame preserves existing values and fills missing fields', () => {
@@ -44,6 +47,14 @@ describe('drawingFrameDefaults', () => {
     expect(merged.drawn.name).toBe('默认用户');
     expect(merged.revisionRows[0].rev).toBe('A1');
     expect(merged.revisionRows).toHaveLength(4);
+    expect(merged.technicalRequirements).toContain('技术要求：');
+
+    // Test custom technical requirements preserved
+    const customMerged = ensureDrawingFrame({
+      ...partial,
+      technicalRequirements: '自定义技术要求：\n1. 特殊测试要求',
+    });
+    expect(customMerged.technicalRequirements).toBe('自定义技术要求：\n1. 特殊测试要求');
   });
 });
 
@@ -56,6 +67,7 @@ describe('harnessConfigSchema with drawingFrame', () => {
     if (result.success) {
       expect(result.data.drawingFrame).toBeDefined();
       expect(result.data.drawingFrame?.drawn.name).toBe('测试员');
+      expect(result.data.drawingFrame?.technicalRequirements).toContain('技术要求：');
     }
   });
 });
