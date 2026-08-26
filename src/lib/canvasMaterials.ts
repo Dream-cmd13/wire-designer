@@ -15,6 +15,7 @@ import type {
   Selection,
 } from '@/types/harness';
 import type { CatalogSnapshot } from '@/types/catalog';
+import { syncConnectorLabels } from '@/lib/connectorDesignation';
 
 export const JACKET_CORE_COUNTS: JacketCoreCount[] = [
   1, 2, 3, 4, 5, 6, 8, 12, 17, 20, 24, 30, 32, 40, 50,
@@ -717,11 +718,11 @@ export function alignHarnessConfig(config: HarnessConfig, selection?: Selection)
     };
   });
 
-  return {
+  return syncConnectorLabels({
     ...config,
     connectors: nextConnectors,
     models: nextModels,
     materials: nextMaterials,
     protectiveSleeves: nextProtectiveSleeves,
-  };
+  });
 }

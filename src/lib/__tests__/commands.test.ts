@@ -649,4 +649,41 @@ describe('multi-pin and duplicate pin support', () => {
     connector = config.connectors.find((c) => c.id === 'conn-b')!;
     expect(connector.jumpers).toHaveLength(0); // Jumpers should be cleaned up
   });
+
+  it('automatically sets connector label to P1 when wire is attached, and P2 for next connector', () => {
+    let config = makeTestConfig();
+    // Initially unconnected connectors have their default labels
+    const connA = config.connectors.find((c) => c.id === 'conn-a')!;
+    const connB = config.connectors.find((c) => c.id === 'conn-b')!;
+    expect(connA.label).not.toBe('P1');
+    expect(connB.label).not.toBe('P2');
+
+    // Attach conn-a (position.x is 50)
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      endpoint: 'start',
+      connectorId: 'conn-a',
+      connectorSide: 'right',
+      pin: 1,
+    });
+    expect(config.connectors.find((c) => c.id === 'conn-a')!.label).toBe('P1');
+
+    // Attach conn-b (position.x is 400)
+    config = attachMaterialEndpoint(config, {
+      materialId: 'mat-1',
+      endpoint: 'end',
+      connectorId: 'conn-b',
+      connectorSide: 'left',
+      pin: 1,
+    });
+    expect(config.connectors.find((c) => c.id === 'conn-a')!.label).toBe('P1');
+    expect(config.connectors.find((c) => c.id === 'conn-b')!.label).toBe('P2');
+
+    // Detach conn-a: conn-b becomes P1, conn-a reverts
+    const circuitId = config.materials[0].circuits[0].id;
+    config = detachMaterialEndpoint(config, 'mat-1', circuitId, 'start');
+    expect(config.connectors.find((c) => c.id === 'conn-a')!.label).not.toBe('P1');
+    expect(config.connectors.find((c) => c.id === 'conn-b')!.label).toBe('P1');
+  });
 });
+

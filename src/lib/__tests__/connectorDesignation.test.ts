@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getWiringConnectorLabels } from '@/lib/connectorDesignation';
-import type { CanvasWireMaterial, ConnectorInstance } from '@/types/harness';
+import { getWiringConnectorLabels, syncConnectorLabels } from '@/lib/connectorDesignation';
+import type { CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
 
 function makeConnector(id: string, name: string, x: number): ConnectorInstance {
   return {
@@ -159,5 +159,161 @@ describe('getWiringConnectorLabels', () => {
     const result = getWiringConnectorLabels([conn1], [mat]);
     expect(result.connectorDesignations.get('conn-1')).toBe('M12成型式防水连接器');
     expect(result.p1Label).toBe('M12成型式防水连接器');
+  });
+
+  it('supports multiple materials when assigning connector labels', () => {
+    const conn1 = makeConnector('conn-1', 'C1', 50);
+    const conn2 = makeConnector('conn-2', 'C2', 200);
+    const conn3 = makeConnector('conn-3', 'C3', 400);
+
+    const mat1 = makeMaterial([
+      {
+        id: 'c1',
+        color: 'red',
+        start: { connectorId: 'conn-1', connectorSide: 'right', pin: 1 },
+        end: { connectorId: 'conn-2', connectorSide: 'left', pin: 1 },
+      },
+    ]);
+    const mat2 = {
+      ...makeMaterial([
+        {
+          id: 'c2',
+          color: 'blue',
+          start: { connectorId: 'conn-2', connectorSide: 'right', pin: 2 },
+          end: { connectorId: 'conn-3', connectorSide: 'left', pin: 1 },
+        },
+      ]),
+      id: 'mat-2',
+    };
+
+    const result = getWiringConnectorLabels([conn3, conn1, conn2], [mat1, mat2]);
+    expect(result.orderedConnectors.map((c) => c.label)).toEqual(['P1', 'P2', 'P3']);
+    expect(result.connectorDesignations.get('conn-1')).toBe('P1');
+    expect(result.connectorDesignations.get('conn-2')).toBe('P2');
+    expect(result.connectorDesignations.get('conn-3')).toBe('P3');
+  });
+});
+
+describe('syncConnectorLabels', () => {
+  function makeBasicConfig(connectors: ConnectorInstance[], materials: CanvasWireMaterial[]): HarnessConfig {
+    return {
+      schemaVersion: 3,
+      id: 'proj-1',
+      name: '测试项目',
+      connectors,
+      materials,
+      protectiveSleeves: [],
+      models: [],
+      twoDImages: [],
+      quantity: 1,
+      leadTime: 'standard',
+      createdAt: 1000,
+      updatedAt: 1000,
+    };
+  }
+
+  it('assigns P1 to a single connector when connected to wire material', () => {
+    const conn1 = makeConnector('conn-1', 'DT06-2S', 100);
+    const mat = makeMaterial([
+      {
+        id: 'c1',
+        color: 'red',
+        start: { connectorId: 'conn-1', connectorSide: 'right', pin: 1 },
+      },
+    ]);
+    const config = makeBasicConfig([conn1], [mat]);
+
+    const updated = syncConnectorLabels(config);
+    expect(updated.connectors[0].label).toBe('P1');
+  });
+
+  it('assigns P1, P2, P3 from left to right when multiple connectors are connected', () => {
+    const connRight = makeConnector('conn-3', 'DT06-4S', 500);
+    const connLeft = makeConnector('conn-1', 'DT06-2S', 100);
+    const connMid = makeConnector('conn-2', 'DT06-3S', 300);
+
+    const mat = makeMaterial([
+      {
+        id: 'c1',
+        color: 'red',
+        start: { connectorId: 'conn-1', connectorSide: 'right', pin: 1 },
+        end: { connectorId: 'conn-2', connectorSide: 'left', pin: 1 },
+      },
+      {
+        id: 'c2',
+        color: 'black',
+        start: { connectorId: 'conn-2', connectorSide: 'right', pin: 2 },
+        end: { connectorId: 'conn-3', connectorSide: 'left', pin: 1 },
+      },
+    ]);
+
+    const config = makeBasicConfig([connRight, connLeft, connMid], [mat]);
+    const updated = syncConnectorLabels(config);
+
+    const map = new Map(updated.connectors.map((c) => [c.id, c.label]));
+    expect(map.get('conn-1')).toBe('P1');
+    expect(map.get('conn-2')).toBe('P2');
+    expect(map.get('conn-3')).toBe('P3');
+  });
+
+  it('keeps original name for unconnected connector, while numbering connected ones', () => {
+    const conn1 = makeConnector('conn-1', 'DT06-2S', 100);
+    const connUnconnected = makeConnector('conn-2', 'JST-4P', 250);
+    const conn3 = makeConnector('conn-3', 'M12-4P', 400);
+
+    const mat = makeMaterial([
+      {
+        id: 'c1',
+        color: 'red',
+        start: { connectorId: 'conn-1', connectorSide: 'right', pin: 1 },
+        end: { connectorId: 'conn-3', connectorSide: 'left', pin: 1 },
+      },
+    ]);
+
+    const config = makeBasicConfig([conn1, connUnconnected, conn3], [mat]);
+    const updated = syncConnectorLabels(config);
+
+    const map = new Map(updated.connectors.map((c) => [c.id, c.label]));
+    expect(map.get('conn-1')).toBe('P1');
+    expect(map.get('conn-2')).toBe('JST-4P');
+    expect(map.get('conn-3')).toBe('P2');
+  });
+
+  it('restores connector name when all circuits are detached, and renumbers remaining connectors', () => {
+    // conn-1 was P1, conn-2 was P2
+    const conn1 = { ...makeConnector('conn-1', 'DT06-2S', 100), label: 'P1' };
+    const conn2 = { ...makeConnector('conn-2', 'JST-4P', 300), label: 'P2' };
+
+    // Now circuit only connects conn-2
+    const mat = makeMaterial([
+      {
+        id: 'c1',
+        color: 'red',
+        start: { connectorId: 'conn-2', connectorSide: 'left', pin: 1 },
+      },
+    ]);
+
+    const config = makeBasicConfig([conn1, conn2], [mat]);
+    const updated = syncConnectorLabels(config);
+
+    const map = new Map(updated.connectors.map((c) => [c.id, c.label]));
+    expect(map.get('conn-1')).toBe('DT06-2S'); // reverted back to connector name
+    expect(map.get('conn-2')).toBe('P1'); // renumbered to P1
+  });
+
+  it('returns exact same config object when no labels change', () => {
+    const conn1 = { ...makeConnector('conn-1', 'DT06-2S', 100), label: 'P1' };
+    const mat = makeMaterial([
+      {
+        id: 'c1',
+        color: 'red',
+        start: { connectorId: 'conn-1', connectorSide: 'right', pin: 1 },
+      },
+    ]);
+
+    const config = makeBasicConfig([conn1], [mat]);
+    const updated = syncConnectorLabels(config);
+
+    expect(updated).toBe(config); // referential equality
   });
 });

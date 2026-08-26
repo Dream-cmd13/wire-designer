@@ -24,6 +24,7 @@ import {
   lengthMmToCanvasWidth,
   placeSleeveAroundMaterials,
 } from '@/lib/canvasMaterials';
+import { syncConnectorLabels } from '@/lib/connectorDesignation';
 
 // ============================================================
 // ID Generator
@@ -231,12 +232,12 @@ export function removeConnector(
     return { ...material, circuits: nextCircuits };
   });
 
-  return {
+  return syncConnectorLabels({
     ...config,
     connectors: config.connectors.filter((c) => c.id !== connectorId),
     materials,
     updatedAt: Date.now(),
-  };
+  });
 }
 
 // ============================================================
@@ -321,7 +322,7 @@ export function removeMaterial(
   materialId: string,
 ): HarnessConfig {
   const materials = config.materials.filter((material) => material.id !== materialId);
-  return {
+  return syncConnectorLabels({
     ...config,
     materials,
     protectiveSleeves: config.protectiveSleeves.map((sleeve) => {
@@ -329,7 +330,7 @@ export function removeMaterial(
       return repositionSleeve({ ...sleeve, attachedMaterialIds }, materials);
     }),
     updatedAt: Date.now(),
-  };
+  });
 }
 
 // ============================================================
@@ -486,13 +487,13 @@ export function attachMaterialEndpoint(
     nextCircuits = [...nextCircuits, newCircuit];
   }
 
-  return {
+  return syncConnectorLabels({
     ...config,
     materials: config.materials.map((m) =>
       m.id === materialId ? { ...m, circuits: nextCircuits } : m,
     ),
     updatedAt: Date.now(),
-  };
+  });
 }
 
 /**
@@ -533,14 +534,14 @@ export function detachMaterialEndpoint(
   });
   const nextCircuits = alignCircuits(material.spec, rawCircuits);
 
-  return {
+  return syncConnectorLabels({
     ...config,
     connectors: nextConnectors,
     materials: config.materials.map((m) =>
       m.id === materialId ? { ...m, circuits: nextCircuits } : m,
     ),
     updatedAt: Date.now(),
-  };
+  });
 }
 
 // ============================================================
@@ -692,7 +693,7 @@ export function reassignMaterialEndpoint(
 
   // Atomically replace the endpoint and update connector jumpers.
   const pinRef = { connectorId, connectorSide, pin: primaryPin };
-  return {
+  return syncConnectorLabels({
     ...config,
     connectors: config.connectors.map((c) =>
       c.id === connectorId ? { ...c, jumpers: newJumpersList } : c
@@ -713,7 +714,7 @@ export function reassignMaterialEndpoint(
           },
     ),
     updatedAt: Date.now(),
-  };
+  });
 }
 
 /** Remove an entire circuit from a material (does not remove the material). */
@@ -722,7 +723,7 @@ export function removeMaterialCircuit(
   materialId: string,
   circuitId: string,
 ): HarnessConfig {
-  return {
+  return syncConnectorLabels({
     ...config,
     materials: config.materials.map((m) =>
       m.id === materialId
@@ -730,7 +731,7 @@ export function removeMaterialCircuit(
         : m,
     ),
     updatedAt: Date.now(),
-  };
+  });
 }
 
 /** Update a circuit's color or signal name. */
