@@ -157,9 +157,24 @@ function WiringDiagram({
   const allLeftCut = rows.every((r) => r.isCutStart);
   const allRightCut = rows.every((r) => r.isCutEnd && numCols === 2);
 
+  // Column constants for strictly uniform segment length and vertical alignment
+  const PIN_COL_WIDTH = 78; // fixed width for every Pin column, comfortably fits 'Pin1, Pin2', 'Pin10, Pin11'
+  const MIN_SEGMENT_WIDTH = 110;
+  const CUT_COL_WIDTH = 45;
+  const PADDING_H = 20;
+
+  const leftCutWidth = allLeftCut ? CUT_COL_WIDTH : 0;
+  const rightCutWidth = allRightCut ? CUT_COL_WIDTH : 0;
+  const requiredContentWidth =
+    leftCutWidth +
+    numCols * PIN_COL_WIDTH +
+    (numCols - 1) * MIN_SEGMENT_WIDTH +
+    rightCutWidth +
+    PADDING_H;
+
   const bodyHeight = layout.height - layout.headerHeight;
   const rowHeight = Math.max(22, Math.floor((bodyHeight - 38) / Math.max(1, rows.length)));
-  const diagramWidth = Math.max(layout.width, numCols * 130);
+  const diagramWidth = Math.max(layout.width, requiredContentWidth);
 
   return (
     <div 
@@ -182,79 +197,100 @@ function WiringDiagram({
       
       {/* Body Area */}
       <div className="flex-1 flex flex-col p-2 relative justify-between overflow-hidden">
-        {/* P1, P2, P3... Headers */}
-        <div className="flex flex-row items-center justify-between text-[10px] leading-tight font-bold px-1 mb-1">
-          {Array.from({ length: numCols }).map((_, idx) => {
-            const conn = orderedConnectors[idx];
-            const label = conn ? conn.label : (idx === 0 ? 'P1' : `P${idx + 1}`);
-            const alignClass =
-              idx === 0
-                ? 'text-left'
-                : idx === numCols - 1
-                ? 'text-right'
-                : 'text-center';
-            return (
-              <React.Fragment key={idx}>
-                <span className={`min-w-[40px] ${alignClass} truncate`} title={label}>
-                  {label}
-                </span>
-                {idx < numCols - 1 && <div className="flex-1" />}
-              </React.Fragment>
-            );
-          })}
+        {/* P1, P2, P3... Headers aligned exactly with Pin columns below */}
+        <div className="flex flex-row items-center text-[10px] leading-tight font-bold mb-1">
+          {allLeftCut && <div style={{ width: CUT_COL_WIDTH }} className="shrink-0" />}
+          <div className="flex-1 flex flex-row items-center">
+            {Array.from({ length: numCols }).map((_, idx) => {
+              const conn = orderedConnectors[idx];
+              const label = conn ? conn.label : (idx === 0 ? 'P1' : `P${idx + 1}`);
+              const alignClass =
+                idx === 0
+                  ? 'text-right pr-2'
+                  : idx === numCols - 1
+                  ? 'text-left pl-2'
+                  : 'text-center px-1';
+              return (
+                <React.Fragment key={idx}>
+                  <span
+                    style={{ width: PIN_COL_WIDTH }}
+                    className={`shrink-0 ${alignClass} truncate`}
+                    title={label}
+                  >
+                    {label}
+                  </span>
+                  {idx < numCols - 1 && <div className="flex-1 min-w-[20px]" />}
+                </React.Fragment>
+              );
+            })}
+          </div>
+          {allRightCut && <div style={{ width: CUT_COL_WIDTH }} className="shrink-0" />}
         </div>
 
         {/* Content Rows */}
-        <div className="flex-1 flex flex-col justify-between h-full py-1">
-          {/* If 2-column single-side cut */}
+        <div className="flex-1 flex flex-row items-center">
+          {/* Left Status (if all cut) */}
           {allLeftCut && (
-            <div className="w-[45px] flex flex-col items-center justify-center text-xs font-bold text-black border-r border-black h-full pr-2">
+            <div
+              style={{ width: CUT_COL_WIDTH }}
+              className="flex flex-col items-center justify-center text-xs font-bold text-black border-r border-black h-full pr-2 shrink-0"
+            >
               <span className="leading-tight">切</span>
               <span className="leading-tight">断</span>
             </div>
           )}
 
-          {rows.map((row, rowIdx) => (
-            <div key={rowIdx} className="flex flex-row items-center" style={{ height: rowHeight }}>
-              {Array.from({ length: numCols }).map((_, colIdx) => {
-                const pinText = row.pins[colIdx] || '';
-                const alignClass =
-                  colIdx === 0
-                    ? 'text-right pr-1'
-                    : colIdx === numCols - 1
-                    ? 'text-left pl-1'
-                    : 'text-center px-1';
+          {/* Center Lines + Pins */}
+          <div className="flex-1 flex flex-col justify-between h-full py-1">
+            {rows.map((row, rowIdx) => (
+              <div key={rowIdx} className="flex flex-row items-center" style={{ height: rowHeight }}>
+                {Array.from({ length: numCols }).map((_, colIdx) => {
+                  const pinText = row.pins[colIdx] || '';
+                  const alignClass =
+                    colIdx === 0
+                      ? 'text-right pr-2'
+                      : colIdx === numCols - 1
+                      ? 'text-left pl-2'
+                      : 'text-center px-1';
 
-                return (
-                  <React.Fragment key={colIdx}>
-                    {/* Pin Column */}
-                    <span className={`min-w-[40px] shrink-0 text-xs font-bold text-black ${alignClass} whitespace-nowrap`}>
-                      {pinText}
-                    </span>
+                  return (
+                    <React.Fragment key={colIdx}>
+                      {/* Pin Column with fixed width */}
+                      <span
+                        style={{ width: PIN_COL_WIDTH }}
+                        className={`shrink-0 text-xs font-bold text-black ${alignClass} whitespace-nowrap`}
+                      >
+                        {pinText}
+                      </span>
 
-                    {/* Segment Column (between colIdx and colIdx + 1) */}
-                    {colIdx < numCols - 1 && (
-                      <div className="flex-1 flex flex-col justify-end h-full px-1 relative pb-1 min-w-[20px]">
-                        {row.segments[colIdx] ? (
-                          <>
-                            <span className="text-center text-[11px] font-bold text-black mb-0.5 whitespace-nowrap">
-                              {row.color}
-                            </span>
-                            <div className="w-full border-b border-black" />
-                          </>
-                        ) : (
-                          <div className="w-full h-[1px]" />
-                        )}
-                      </div>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </div>
-          ))}
+                      {/* Segment Column (between colIdx and colIdx + 1) */}
+                      {colIdx < numCols - 1 && (
+                        <div className="flex-1 flex flex-col justify-end h-full px-1 relative pb-1 min-w-[20px]">
+                          {row.segments[colIdx] ? (
+                            <>
+                              <span className="text-center text-[11px] font-bold text-black mb-0.5 whitespace-nowrap">
+                                {row.color}
+                              </span>
+                              <div className="w-full border-b border-black" />
+                            </>
+                          ) : (
+                            <div className="w-full h-[1px]" />
+                          )}
+                        </div>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
 
+          {/* Right Status (if all cut) */}
           {allRightCut && (
-            <div className="w-[45px] flex flex-col items-center justify-center text-xs font-bold text-black border-l border-black h-full pl-2">
+            <div
+              style={{ width: CUT_COL_WIDTH }}
+              className="flex flex-col items-center justify-center text-xs font-bold text-black border-l border-black h-full pl-2 shrink-0"
+            >
               <span className="leading-tight">切</span>
               <span className="leading-tight">断</span>
             </div>
