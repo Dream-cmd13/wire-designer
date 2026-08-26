@@ -126,12 +126,12 @@ export async function downloadDrawingPng(drawing: DrawingDocument) {
   downloadBlob(blob, getDrawingExportFilename(drawing, 'png'));
 }
 
-function binaryString(dataUrl: string): Uint8Array {
+export function binaryString(dataUrl: string): Uint8Array {
   const raw = atob(dataUrl.split(',')[1] ?? '');
   return Uint8Array.from(raw, (character) => character.charCodeAt(0));
 }
 
-function buildImagePdf(jpeg: Uint8Array, width: number, height: number): Uint8Array {
+export function buildImagePdf(jpeg: Uint8Array, width: number, height: number): Uint8Array {
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];
   const offsets: number[] = [0];

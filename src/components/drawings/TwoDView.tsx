@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Edit3, Minus, Plus, RotateCw } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Minus, Plus, RotateCw } from 'lucide-react';
 import { getJumperNetwork } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type { TwoDImage, CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
+import {
+  getProductDrawingFilename,
+  exportProductDrawingPng,
+  exportProductDrawingPdf,
+} from '@/lib/productImageExport';
 import { TwoDImageCard } from './TwoDImageCard';
 import { WireDimensionAnnotation } from './WireDimensionAnnotation';
 import { ProductionDrawingFrameSvg } from './ProductionDrawingFrameSvg';
@@ -22,6 +27,7 @@ import {
   countProductionBomRows,
   type ProductionDrawingLayout,
 } from '@/lib/productionDrawingLayout';
+import { getWiringConnectorLabels } from '@/lib/connectorDesignation';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -67,10 +73,10 @@ function resolveChineseColorName(value: string): string {
   return value || '灰';
 }
 
-function getJumperNetworkString(connector: ConnectorInstance, side: 'left' | 'right', pin: number): string {
+export function formatPinNetworkString(connector: ConnectorInstance, side: 'left' | 'right', pin: number): string {
   const network = getJumperNetwork(connector.jumpers, side, pin);
   const sorted = Array.from(network).sort((a, b) => a - b);
-  return sorted.join(', ');
+  return sorted.map((p) => `Pin${p}`).join(', ');
 }
 
 function WiringDiagram({
@@ -88,61 +94,79 @@ function WiringDiagram({
   const circuits = mat.circuits || [];
   if (circuits.length === 0) return null;
 
-  // Resolve P1/P2 labels from connectors sorted by X position
-  const sortedConns = [...connectors].sort((a, b) => a.position.x - b.position.x);
-  const leftConn = sortedConns[0];
-  const rightConn = sortedConns.length > 1 ? sortedConns[sortedConns.length - 1] : null;
-
-  const p1Label = leftConn?.label || 'P1';
-  const p2Label = rightConn?.label || 'P2';
+  const { orderedConnectors } = getWiringConnectorLabels(connectors, materials);
+  const numCols = Math.max(2, orderedConnectors.length);
 
   const rows = circuits.map((c) => {
-    let leftText = '切断';
-    let rightText = '切断';
-
-    // Check start endpoint
-    if (c.start) {
-      if (leftConn && c.start.connectorId === leftConn.id) {
-        leftText = getJumperNetworkString(leftConn, c.start.connectorSide, c.start.pin);
-      } else if (rightConn && c.start.connectorId === rightConn.id) {
-        rightText = getJumperNetworkString(rightConn, c.start.connectorSide, c.start.pin);
-      }
-    }
-    // Check end endpoint
-    if (c.end) {
-      if (leftConn && c.end.connectorId === leftConn.id) {
-        leftText = getJumperNetworkString(leftConn, c.end.connectorSide, c.end.pin);
-      } else if (rightConn && c.end.connectorId === rightConn.id) {
-        rightText = getJumperNetworkString(rightConn, c.end.connectorSide, c.end.pin);
-      }
-    }
-
     let name = resolveChineseColorName(c.color);
     if (name.endsWith('色')) {
       name = name.slice(0, -1);
     }
 
-    return { leftText, rightText, color: name };
+    const startConnId = c.start?.connectorId;
+    const endConnId = c.end?.connectorId;
+
+    const startIdx = startConnId ? orderedConnectors.findIndex((x) => x.id === startConnId) : -1;
+    const endIdx = endConnId ? orderedConnectors.findIndex((x) => x.id === endConnId) : -1;
+
+    // Pin strings for each column
+    const pins: string[] = [];
+    for (let i = 0; i < numCols; i++) {
+      const connInfo = orderedConnectors[i];
+      if (!connInfo) {
+        pins.push('');
+        continue;
+      }
+      if (startIdx === i && c.start) {
+        pins.push(formatPinNetworkString(connInfo.connector, c.start.connectorSide, c.start.pin));
+      } else if (endIdx === i && c.end) {
+        pins.push(formatPinNetworkString(connInfo.connector, c.end.connectorSide, c.end.pin));
+      } else {
+        pins.push('');
+      }
+    }
+
+    // Active segments between adjacent connector columns (total numCols - 1 segments)
+    let minIdx = -1;
+    let maxIdx = -1;
+    if (startIdx !== -1 && endIdx !== -1) {
+      minIdx = Math.min(startIdx, endIdx);
+      maxIdx = Math.max(startIdx, endIdx);
+    } else if (startIdx !== -1) {
+      minIdx = startIdx;
+      maxIdx = Math.min(numCols - 1, startIdx + 1);
+    } else if (endIdx !== -1) {
+      maxIdx = endIdx;
+      minIdx = Math.max(0, endIdx - 1);
+    }
+
+    const segments: boolean[] = [];
+    for (let k = 0; k < numCols - 1; k++) {
+      segments.push(minIdx !== -1 && maxIdx !== -1 && k >= minIdx && k < maxIdx);
+    }
+
+    return {
+      pins,
+      segments,
+      color: name,
+      isCutStart: !c.start,
+      isCutEnd: !c.end,
+    };
   });
 
-  const allLeftCut = rows.every((r) => r.leftText === '切断');
-  const allRightCut = rows.every((r) => r.rightText === '切断');
-
-  const displayRows = rows.map((r) => ({
-    ...r,
-    leftText: allLeftCut ? r.leftText : (r.leftText === '切断' ? '' : r.leftText),
-    rightText: allRightCut ? r.rightText : (r.rightText === '切断' ? '' : r.rightText),
-  }));
+  const allLeftCut = rows.every((r) => r.isCutStart);
+  const allRightCut = rows.every((r) => r.isCutEnd && numCols === 2);
 
   const bodyHeight = layout.height - layout.headerHeight;
-  const rowHeight = Math.max(22, Math.floor((bodyHeight - 38) / Math.max(1, displayRows.length)));
+  const rowHeight = Math.max(22, Math.floor((bodyHeight - 38) / Math.max(1, rows.length)));
+  const diagramWidth = Math.max(layout.width, numCols * 130);
 
   return (
     <div 
       className="border border-black bg-white flex flex-col font-serif text-black select-none shadow-sm rounded overflow-hidden"
       style={{
         fontFamily: 'SimSun, STSong, "Songti SC", serif',
-        width: layout.width,
+        width: diagramWidth,
         height: layout.height,
         boxSizing: 'border-box',
       }}
@@ -150,23 +174,39 @@ function WiringDiagram({
     >
       {/* Title Header */}
       <div
-        className="shrink-0 border-b border-black flex items-center justify-center font-bold text-xs tracking-[0.25em] bg-slate-50/50"
-        style={{ height: layout.headerHeight }}
+        className="shrink-0 border-b border-black flex items-center justify-center font-bold text-xs tracking-[0.25em]"
+        style={{ height: layout.headerHeight, backgroundColor: 'rgba(248, 250, 252, 0.5)' }}
       >
         接线图
       </div>
       
       {/* Body Area */}
       <div className="flex-1 flex flex-col p-2 relative justify-between overflow-hidden">
-        {/* P1 and P2 Headers - Large font */}
-        <div className="flex flex-row justify-between gap-3 text-[10px] leading-tight font-bold px-2 mb-1">
-          <span className="min-w-0 flex-1 truncate text-left" title={p1Label}>{p1Label}</span>
-          <span className="min-w-0 flex-1 truncate text-right" title={p2Label}>{p2Label}</span>
+        {/* P1, P2, P3... Headers */}
+        <div className="flex flex-row items-center justify-between text-[10px] leading-tight font-bold px-1 mb-1">
+          {Array.from({ length: numCols }).map((_, idx) => {
+            const conn = orderedConnectors[idx];
+            const label = conn ? conn.label : (idx === 0 ? 'P1' : `P${idx + 1}`);
+            const alignClass =
+              idx === 0
+                ? 'text-left'
+                : idx === numCols - 1
+                ? 'text-right'
+                : 'text-center';
+            return (
+              <React.Fragment key={idx}>
+                <span className={`min-w-[40px] ${alignClass} truncate`} title={label}>
+                  {label}
+                </span>
+                {idx < numCols - 1 && <div className="flex-1" />}
+              </React.Fragment>
+            );
+          })}
         </div>
 
         {/* Content Rows */}
-        <div className="flex-1 flex flex-row items-center">
-          {/* Left Status (if all cut) */}
+        <div className="flex-1 flex flex-col justify-between h-full py-1">
+          {/* If 2-column single-side cut */}
           {allLeftCut && (
             <div className="w-[45px] flex flex-col items-center justify-center text-xs font-bold text-black border-r border-black h-full pr-2">
               <span className="leading-tight">切</span>
@@ -174,36 +214,45 @@ function WiringDiagram({
             </div>
           )}
 
-          {/* Center Lines + Pins */}
-          <div className="flex-1 flex flex-col justify-between h-full py-1">
-            {displayRows.map((row, idx) => (
-              <div key={idx} className="flex flex-row items-center" style={{ height: rowHeight }}>
-                {/* Left Pin number (if not all cut) */}
-                {!allLeftCut && (
-                  <span className="w-[30px] text-right pr-2 text-xs font-bold text-black">
-                    {row.leftText}
-                  </span>
-                )}
-                
-                {/* Center: Color text + line stacked vertically (text above line, not overlapping) */}
-                <div className="flex-1 flex flex-col justify-end h-full px-1 relative pb-1">
-                  <span className="text-center text-[11px] font-bold text-black mb-0.5">
-                    {row.color}
-                  </span>
-                  <div className="w-full border-b border-black" />
-                </div>
+          {rows.map((row, rowIdx) => (
+            <div key={rowIdx} className="flex flex-row items-center" style={{ height: rowHeight }}>
+              {Array.from({ length: numCols }).map((_, colIdx) => {
+                const pinText = row.pins[colIdx] || '';
+                const alignClass =
+                  colIdx === 0
+                    ? 'text-right pr-1'
+                    : colIdx === numCols - 1
+                    ? 'text-left pl-1'
+                    : 'text-center px-1';
 
-                {/* Right Pin number (if not all cut) */}
-                {!allRightCut && (
-                  <span className="w-[30px] text-left pl-2 text-xs font-bold text-black">
-                    {row.rightText}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+                return (
+                  <React.Fragment key={colIdx}>
+                    {/* Pin Column */}
+                    <span className={`min-w-[40px] shrink-0 text-xs font-bold text-black ${alignClass} whitespace-nowrap`}>
+                      {pinText}
+                    </span>
 
-          {/* Right Status (if all cut) */}
+                    {/* Segment Column (between colIdx and colIdx + 1) */}
+                    {colIdx < numCols - 1 && (
+                      <div className="flex-1 flex flex-col justify-end h-full px-1 relative pb-1 min-w-[20px]">
+                        {row.segments[colIdx] ? (
+                          <>
+                            <span className="text-center text-[11px] font-bold text-black mb-0.5 whitespace-nowrap">
+                              {row.color}
+                            </span>
+                            <div className="w-full border-b border-black" />
+                          </>
+                        ) : (
+                          <div className="w-full h-[1px]" />
+                        )}
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          ))}
+
           {allRightCut && (
             <div className="w-[45px] flex flex-col items-center justify-center text-xs font-bold text-black border-l border-black h-full pl-2">
               <span className="leading-tight">切</span>
@@ -409,8 +458,8 @@ function BOMTable({ config, layout }: { config: HarnessConfig; layout: Productio
         
         {/* Table Header (at the bottom) */}
         <div
-          className="flex flex-row bg-slate-50/50 text-[10px] font-bold"
-          style={{ height: layout.bom.headerHeight }}
+          className="flex flex-row text-[10px] font-bold"
+          style={{ height: layout.bom.headerHeight, backgroundColor: 'rgba(248, 250, 252, 0.5)' }}
         >
           <SlashHeaderCell topText="序号" bottomText="ITEM" width="50px" />
           <SlashHeaderCell topText="名称" bottomText="NAME" width="70px" />
@@ -501,6 +550,9 @@ export function TwoDView() {
   const [isFitted, setIsFitted] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   // ── drag group position state ─────────────────────────────────────────────
   const [activeDragGroupIdx, setActiveDragGroupIdx] = useState<number | null>(null);
@@ -700,6 +752,41 @@ export function TwoDView() {
     return () => window.removeEventListener('click', handleClick);
   }, [contextMenu]);
 
+  // ── close export menu on click outside ────────────────────────────────────────
+  useEffect(() => {
+    if (!isExportMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [isExportMenuOpen]);
+
+  const handleExport = async (format: 'png' | 'pdf') => {
+    if (isExporting || !worldRef.current) return;
+    setIsExportMenuOpen(false);
+    setSelectedId(null);
+    setIsExporting(true);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      const filename = getProductDrawingFilename(config, drawingFrame, format);
+      if (format === 'png') {
+        await exportProductDrawingPng(worldRef.current, filename);
+      } else {
+        await exportProductDrawingPdf(worldRef.current, filename);
+      }
+    } catch (err) {
+      console.error('导出成品图失败', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`导出成品图失败: ${msg}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   // ── zoom helpers ──────────────────────────────────────────────────────────────
   const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
@@ -805,7 +892,7 @@ export function TwoDView() {
     <div className="flex h-full flex-col bg-white">
       {/* toolbar */}
       <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
-        <span className="text-sm font-semibold text-slate-700">2D 图</span>
+        <span className="text-sm font-semibold text-slate-700">成品图</span>
         <div className="flex items-center gap-3">
           {/* zoom controls */}
           {twoDImages.length > 0 && (
@@ -850,6 +937,46 @@ export function TwoDView() {
             <Edit3 className="h-3.5 w-3.5 text-blue-600" />
             编辑图框
           </button>
+
+          {/* Export dropdown button */}
+          <div className="relative" ref={exportMenuRef}>
+            <button
+              type="button"
+              disabled={isExporting || twoDImages.length === 0}
+              onClick={() => setIsExportMenuOpen((p) => !p)}
+              className="flex items-center gap-1.5 rounded border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 shadow-2xs transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              title="导出成品图为图片或 PDF"
+            >
+              {isExporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" />
+              ) : (
+                <Download className="h-3.5 w-3.5 text-slate-600" />
+              )}
+              <span>{isExporting ? '导出中...' : '导出'}</span>
+              <ChevronDown className="h-3 w-3 text-slate-400" />
+            </button>
+
+            {isExportMenuOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1 min-w-[140px] rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => handleExport('png')}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileImage className="h-3.5 w-3.5 text-blue-600" />
+                  导出为图片 (PNG)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport('pdf')}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <FileText className="h-3.5 w-3.5 text-rose-600" />
+                  导出为 PDF 文档
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -888,6 +1015,7 @@ export function TwoDView() {
           /* world layer: flex row, zoom+pan via transform */
           <div
             ref={worldRef}
+            data-drawing-world="true"
             style={{
               position: 'absolute',
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
@@ -930,7 +1058,7 @@ export function TwoDView() {
                       padding: '4px',
                       cursor: isDraggingThis ? 'grabbing' : 'grab',
                     }}
-                    className="group/assembly hover:border-slate-200 hover:bg-slate-50/30 transition-colors"
+                    className="group/assembly hover:border-[#e2e8f0] hover:bg-[#f8fafc]/30 transition-colors"
                   >
                     {/* Top Row: image cards */}
                     <div className="flex flex-row items-center gap-0">
