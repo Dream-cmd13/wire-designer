@@ -1,5 +1,6 @@
 import { generateBOM } from '@/lib/bom';
-import type { HarnessConfig } from '@/types/harness';
+import { buildOvermoldBomEntries } from '@/lib/overmoldSpec';
+import type { HarnessConfig, OvermoldSpec } from '@/types/harness';
 
 const FRAME_WIDTH = 1200;
 const FRAME_HEIGHT = 800;
@@ -41,15 +42,18 @@ export interface ProductionDrawingLayout {
   assemblyBottom: number;
 }
 
-export function countProductionBomRows(config: HarnessConfig): number {
+export function countProductionBomRows(
+  config: HarnessConfig,
+  overmolds: readonly OvermoldSpec[],
+): number {
   const bomItems = generateBOM(config);
-  const modelSpecIds = new Set(config.models.map((model) => model.overmoldSpecId ?? 'default'));
+  const overmoldEntries = buildOvermoldBomEntries(config.models, overmolds);
 
   return (
     bomItems.filter((item) => item.type === 'wire').length +
     bomItems.filter((item) => item.type === 'connector').length +
     bomItems.filter((item) => item.type === 'accessory').length +
-    modelSpecIds.size
+    overmoldEntries.length
   );
 }
 

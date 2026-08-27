@@ -4,6 +4,7 @@ import {
   parseCatalogItemRow,
   type CatalogItemRow,
 } from '@/lib/catalogItem';
+import { formatOvermoldForm, formatOvermoldOuterLabel } from '@/lib/overmoldSpec';
 import {
   listStaticDrawingCommonPhrases,
   listStaticDrawingIcons,
@@ -95,7 +96,9 @@ function mapCatalogItem(item: CatalogItemRow): CatalogResourceWithStoragePath | 
     return { ...common, specification: item.spec.modelKind };
   }
   if (item.kind === 'overmold') {
-    return { ...common, specification: item.spec.outerMaterial };
+    const outer = formatOvermoldOuterLabel(item.spec);
+    const form = formatOvermoldForm(item.spec.outerForm);
+    return { ...common, specification: form ? `${outer} ${form}` : outer };
   }
   return {
     ...common,

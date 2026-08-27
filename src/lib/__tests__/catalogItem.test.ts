@@ -31,10 +31,77 @@ describe('parseCatalogItemRow', () => {
     expect(parsed.spec).not.toBe(connectorRow.spec);
   });
 
+  it('accepts an overmold with outerForm and optional innerMold spec', () => {
+    const parsed = parseCatalogItemRow({
+      id: 'om-1',
+      kind: 'overmold',
+      code: 'pvc-straight',
+      name: 'PVC 45P 直头',
+      model: 'PVC-45P-S',
+      manufacturer: '',
+      resource_group: '外模',
+      description: '',
+      image_path: null,
+      sort_order: 1,
+      spec: {
+        outerMaterial: '黑色PVC',
+        outerHardness: '45P',
+        outerForm: 'straight',
+        innerMaterial: '低密度透明PE',
+        innerForm: 'straight',
+      },
+    });
+
+    expect(parsed).toEqual(expect.objectContaining({
+      kind: 'overmold',
+      code: 'pvc-straight',
+    }));
+    expect(parsed.spec).toEqual({
+      outerMaterial: '黑色PVC',
+      outerHardness: '45P',
+      outerForm: 'straight',
+      innerMaterial: '低密度透明PE',
+      innerForm: 'straight',
+    });
+  });
+
+  it('accepts a TPE overmold without inner mold metadata', () => {
+    const parsed = parseCatalogItemRow({
+      id: 'om-2',
+      kind: 'overmold',
+      code: 'tpe-bent',
+      name: 'TPE 弯头',
+      model: 'TPE-BENT',
+      manufacturer: '',
+      resource_group: '外模',
+      description: '',
+      image_path: null,
+      sort_order: 2,
+      spec: {
+        outerMaterial: '黑色TPE',
+        outerForm: 'bent',
+      },
+    });
+
+    expect(parsed.spec).toEqual({
+      outerMaterial: '黑色TPE',
+      outerForm: 'bent',
+    });
+  });
+
   it.each([
     { kind: 'unknown', spec: {} },
     { kind: 'connector', spec: { connectorType: 'female', pinCount: 0, pinLabels: [] } },
     { kind: 'wire', spec: { kind: 'jacketed', awg: 24, coreCount: 4, coreColors: [] } },
+    { kind: 'overmold', spec: { outerMaterial: 'PVC', outerHardness: '45P', outerForm: 'straight' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色PVC', outerHardness: '45P' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色PVC', outerHardness: '40P', outerForm: 'straight' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色TPE', outerHardness: '45P', outerForm: 'straight' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色TPE', outerForm: 'invalid' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色TPE', outerForm: 'straight', innerMaterial: 'PE', innerForm: 'straight' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色TPE', outerForm: 'straight', innerForm: 'straight' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色TPE', outerForm: 'straight', innerMaterial: '低密度透明PE', innerForm: 'bent' } },
+    { kind: 'overmold', spec: { outerMaterial: '黑色TPE', outerForm: 'straight', innerMaterialOptional: true } },
   ])('rejects invalid catalog data %#', (patch) => {
     expect(() => parseCatalogItemRow({
       id: '1',

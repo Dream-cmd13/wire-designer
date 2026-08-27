@@ -8,7 +8,6 @@ values
   ('20000000-0000-4000-8000-000000007001', 'connector', 'demo-m12-4pin', 'M12 4-pin connector', 'DEMO-M12-4P', '', 'Circular connectors', 'Example connector', 'catalog/connector/20000000-0000-4000-8000-000000007001/connector_before_left/connector-before-left.png', 10, '{"connectorType":"male","series":"M12 A-coded","pinCount":4,"rowCount":1,"pitchMm":1,"pinLabels":["1","2","3","4"],"housingMaterial":"PA66+GF","contactMaterial":"Brass nickel plated"}'::jsonb),
   ('20000000-0000-4000-8000-000000007002', 'wire', 'demo-ul2464-4c-24awg', 'UL2464 4-core 24 AWG cable', 'DEMO-UL2464-4C-24', '', 'Jacketed wires', 'Example jacketed wire', 'catalog/wire/20000000-0000-4000-8000-000000007002/product/wire-product.png', 10, '{"kind":"jacketed","awg":24,"ulNumber":"UL2464","jacketMaterial":"PVC","jacketColor":"black","coreCount":4,"shielded":false,"coreColors":["red","black","white","green"]}'::jsonb),
   ('20000000-0000-4000-8000-000000007003', 'protective_sleeve', 'demo-heat-shrink-3mm', 'Heat shrink sleeve 3 mm', 'DEMO-HS-3MM', '', 'Heat shrink sleeves', 'Example protective sleeve', 'catalog/protective_sleeve/20000000-0000-4000-8000-000000007003/product/sleeve-product.png', 10, '{"sleeveType":"heat-shrink","material":"polyolefin","color":"black","shrinkRatio":2,"suppliedInnerDiameterMm":3,"recoveredInnerDiameterMm":1.5}'::jsonb),
-  ('20000000-0000-4000-8000-000000007004', 'overmold', 'demo-pvc-overmold', 'PVC overmold', 'DEMO-PVC-OM', '', 'PVC overmolds', 'Example overmold', 'catalog/overmold/20000000-0000-4000-8000-000000007004/product/overmold-product.png', 10, '{"outerMaterial":"PVC","outerHardness":"45P","outerForm":"straight","innerMaterial":"PE","innerMaterialOptional":true,"innerForm":"straight"}'::jsonb),
   ('30000000-0000-4000-8000-000000001001', 'connector', 'xh254-4p-f', 'XH2.54-4P母头', 'XH2.54-4P-F', '', '绘图连接器', '4PIN单排母头', null, 100, '{"connectorType":"female","series":"XH2.54","pinCount":4,"rowCount":1,"pitchMm":2.54,"pinLabels":["1","2","3","4"]}'::jsonb),
   ('30000000-0000-4000-8000-000000001002', 'connector', 'xh254-4p-m', 'XH2.54-4P-M', 'XH2.54-4P-M', '', '绘图连接器', '4PIN单排公头', null, 110, '{"connectorType":"male","series":"XH2.54","pinCount":4,"rowCount":1,"pitchMm":2.54,"pinLabels":["1","2","3","4"]}'::jsonb),
   ('30000000-0000-4000-8000-000000001003', 'wire', 'ul1007-24awg', 'UL1007 24AWG电子线', 'UL1007-24AWG', '', '绘图线材', '300V普通电子线', null, 120, '{"kind":"electronic","awg":24,"ulNumber":"1007","conductorColor":"red"}'::jsonb),
@@ -51,7 +50,10 @@ values
   ('40000000-0000-4000-8000-000000000132', 'connector', 'deutsch-dt-2', 'Deutsch DT 2P', 'Deutsch DT 2P', 'Deutsch', '汽车连接器', '', null, 320, '{"connectorType":"receptacle","series":"Deutsch DT","pinCount":2,"rowCount":1,"pitchMm":6.35,"pinLabels":["A","B"]}'::jsonb),
   ('40000000-0000-4000-8000-000000000133', 'connector', 'deutsch-dt-4', 'Deutsch DT 4P', 'Deutsch DT 4P', 'Deutsch', '汽车连接器', '', null, 330, '{"connectorType":"receptacle","series":"Deutsch DT","pinCount":4,"rowCount":1,"pitchMm":6.35,"pinLabels":["A","B","C","D"]}'::jsonb),
   ('40000000-0000-4000-8000-000000000134', 'connector', 'deutsch-dt-6', 'Deutsch DT 6P', 'Deutsch DT 6P', 'Deutsch', '汽车连接器', '', null, 340, '{"connectorType":"receptacle","series":"Deutsch DT","pinCount":6,"rowCount":1,"pitchMm":6.35,"pinLabels":["A","B","C","D","E","F"]}'::jsonb),
-  ('40000000-0000-4000-8000-000000000201', 'overmold', 'pvc-45p-pe', '黑色PVC外模 + 透明PE内模', 'PVC-45P-PE', '', 'PVC外模', '', null, 10, '{"outerMaterial":"黑色PVC","outerHardness":"45P","outerForm":"straight","innerMaterial":"低密度透明PE","innerMaterialOptional":true,"innerForm":"straight"}'::jsonb)
+  ('40000000-0000-4000-8000-000000000201', 'overmold', 'pvc-45p-pe', '黑色PVC 45P直头外模', 'PVC-45P-STRAIGHT', '', '外模', '', 'catalog/overmold/40000000-0000-4000-8000-000000000201/overmold.png', 10, '{"outerMaterial":"黑色PVC","outerHardness":"45P","outerForm":"straight","innerMaterial":"低密度透明PE","innerForm":"straight"}'::jsonb),
+  ('40000000-0000-4000-8000-000000000202', 'overmold', 'pvc-45p-bent', '黑色PVC 45P弯头外模', 'PVC-45P-BENT', '', '外模', '', 'catalog/overmold/40000000-0000-4000-8000-000000000201/overmold.png', 20, '{"outerMaterial":"黑色PVC","outerHardness":"45P","outerForm":"bent","innerMaterial":"低密度透明PE","innerForm":"bent"}'::jsonb),
+  ('40000000-0000-4000-8000-000000000203', 'overmold', 'tpe-straight', '黑色TPE直头外模', 'TPE-STRAIGHT', '', '外模', '', 'catalog/overmold/40000000-0000-4000-8000-000000000201/overmold.png', 30, '{"outerMaterial":"黑色TPE","outerForm":"straight","innerMaterial":"低密度透明PE","innerForm":"straight"}'::jsonb),
+  ('40000000-0000-4000-8000-000000000204', 'overmold', 'tpe-bent', '黑色TPE弯头外模', 'TPE-BENT', '', '外模', '', 'catalog/overmold/40000000-0000-4000-8000-000000000201/overmold.png', 40, '{"outerMaterial":"黑色TPE","outerForm":"bent","innerMaterial":"低密度透明PE","innerForm":"bent"}'::jsonb)
 on conflict (kind, code) do update set
   name = excluded.name,
   model = excluded.model,
@@ -77,9 +79,5 @@ where kind = 'connector' and code = 'm12a04-07-093';
 update public.catalog_items
 set image_path = 'catalog/wire/shared/jacketed-wire.png'
 where kind = 'wire' and spec->>'kind' = 'jacketed';
-
-update public.catalog_items
-set image_path = 'catalog/overmold/40000000-0000-4000-8000-000000000201/overmold.png'
-where kind = 'overmold' and code = 'pvc-45p-pe';
 
 commit;

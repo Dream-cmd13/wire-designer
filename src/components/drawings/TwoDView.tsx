@@ -3,7 +3,13 @@ import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Minus, Plus
 import { getJumperNetwork } from '@/lib/commands';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
-import type { TwoDImage, CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig } from '@/types/harness';
+import type {
+  TwoDImage,
+  CanvasWireMaterial,
+  ConnectorInstance,
+  HarnessConfig,
+  OvermoldSpec,
+} from '@/types/harness';
 import {
   getProductDrawingFilename,
   exportProductDrawingPng,
@@ -29,6 +35,7 @@ import {
   type ProductionDrawingLayout,
 } from '@/lib/productionDrawingLayout';
 import { getWiringConnectorLabels } from '@/lib/connectorDesignation';
+import { buildOvermoldBomEntries } from '@/lib/overmoldSpec';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -329,7 +336,15 @@ function SlashHeaderCell({
   );
 }
 
-function BOMTable({ config, layout }: { config: HarnessConfig; layout: ProductionDrawingLayout }) {
+function BOMTable({
+  config,
+  layout,
+  overmolds,
+}: {
+  config: HarnessConfig;
+  layout: ProductionDrawingLayout;
+  overmolds: readonly OvermoldSpec[];
+}) {
   const bomItems = generateBOM(config);
   
   interface BOMTableRow {
@@ -399,22 +414,14 @@ function BOMTable({ config, layout }: { config: HarnessConfig; layout: Productio
 
   // 3. Add overmolds
   if (config.models && config.models.length > 0) {
-    const modelCounts: Record<string, number> = {};
-    config.models.forEach((m: CanvasModel) => {
-      const specId = m.overmoldSpecId ?? 'default';
-      modelCounts[specId] = (modelCounts[specId] || 0) + 1;
-    });
-    Object.entries(modelCounts).forEach(([specId, count]) => {
-      const spec = getCatalogSnapshot()?.overmolds.find(s => s.id === specId);
-      const specText = spec
-        ? [spec.outerHardness, spec.outerMaterial].filter(Boolean).join(' ')
-        : '45P 黑色PVC';
+    const overmoldEntries = buildOvermoldBomEntries(config.models, overmolds);
+    overmoldEntries.forEach((entry) => {
       rows.push({
         itemNo: 3,
-        name: '外模料',
-        spec: specText,
+        name: entry.kind === 'outer' ? '外模料' : '内模料',
+        spec: entry.specification,
         unit: 'PCS',
-        qty: count,
+        qty: entry.quantity,
       });
     });
   }
@@ -568,6 +575,7 @@ function ImageInfoBox({
 // ── main view ──────────────────────────────────────────────────────────────────
 export function TwoDView() {
   const reloadCatalog = useCatalogStore((state) => state.reload);
+  const catalogOvermolds = useCatalogStore((state) => state.snapshot?.overmolds);
   const retryingImagesRef = useRef(new Set<string>());
   const currentUser = useUserStore((s) => s.currentUser);
   const config = useHarnessStore((s) => s.config);
@@ -634,7 +642,10 @@ export function TwoDView() {
     () => groups.some((group) => group.images.some((img) => img.elementKind === 'material')),
     [groups],
   );
-  const bomRowCount = useMemo(() => countProductionBomRows(config), [config]);
+  const bomRowCount = useMemo(
+    () => countProductionBomRows(config, catalogOvermolds ?? []),
+    [config, catalogOvermolds],
+  );
   const productionLayout = useMemo(
     () => calculateProductionDrawingLayout({ bomRowCount, hasWiringDiagram }),
     [bomRowCount, hasWiringDiagram],
@@ -1179,7 +1190,11 @@ export function TwoDView() {
               });
             })()}
             {/* BOM Table */}
-            <BOMTable config={config} layout={productionLayout} />
+            <BOMTable
+              config={config}
+              layout={productionLayout}
+              overmolds={catalogOvermolds ?? []}
+            />
           </div>
         )}
       </div>

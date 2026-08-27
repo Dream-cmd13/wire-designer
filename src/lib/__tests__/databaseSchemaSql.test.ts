@@ -43,11 +43,11 @@ describe('minimal database schema', () => {
     );
   });
 
-  it('seeds exactly 47 unified catalog items with the expected distribution', () => {
+  it('seeds exactly 49 unified catalog items with the expected distribution', () => {
     const kinds = [...seed.matchAll(
       /\(\s*'[0-9a-f-]{36}'\s*,\s*'(connector|wire|protective_sleeve|overmold|model|accessory|packaging)'\s*,/gi,
     )].map((match) => match[1]);
-    expect(kinds).toHaveLength(47);
+    expect(kinds).toHaveLength(49);
     expect(
       kinds.reduce<Record<string, number>>((counts, kind) => {
         counts[kind] = (counts[kind] ?? 0) + 1;
@@ -57,7 +57,7 @@ describe('minimal database schema', () => {
       connector: 37,
       wire: 3,
       protective_sleeve: 2,
-      overmold: 2,
+      overmold: 4,
       model: 1,
       accessory: 1,
       packaging: 1,
@@ -69,7 +69,25 @@ describe('minimal database schema', () => {
     expect(seed).toContain('xh254-4p-f');
     expect(seed).toContain('jst-xh-2');
     expect(seed).toContain('pvc-45p-pe');
+    expect(seed).toContain('pvc-45p-bent');
+    expect(seed).toContain('tpe-straight');
+    expect(seed).toContain('tpe-bent');
     expect(seed).toContain('coil-bag');
     expect(seed).toContain('on conflict (kind, code)');
+  });
+
+  it('enforces the final overmold contract and one shared outer image', () => {
+    expect(catalog).toContain("spec->>'outerMaterial' in ('黑色PVC', '黑色TPE')");
+    expect(catalog).toContain("spec->>'outerForm' in ('straight', 'bent')");
+    expect(catalog).toContain("spec->>'outerHardness' = '45P'");
+    expect(catalog).toContain("spec->>'innerMaterial' = '低密度透明PE'");
+    expect(catalog).toContain("spec->>'innerForm' = spec->>'outerForm'");
+    expect(catalog).toContain("not (spec ? 'innerMaterialOptional')");
+    expect(catalog).toContain(') is true');
+
+    const sharedImagePath = 'catalog/overmold/40000000-0000-4000-8000-000000000201/overmold.png';
+    expect(seed.split(sharedImagePath)).toHaveLength(5);
+    expect(seed).not.toContain('demo-pvc-overmold');
+    expect(seed).not.toContain('innerMaterialOptional');
   });
 });

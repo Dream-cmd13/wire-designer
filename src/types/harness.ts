@@ -246,16 +246,21 @@ export interface ProtectiveSleeve {
 // Overmold Catalog
 // ============================================================
 
+export type OvermoldForm = 'straight' | 'bent';
+export type OvermoldOuterMaterial = '黑色PVC' | '黑色TPE';
+export type OvermoldHardness = '45P';
+export type OvermoldInnerMaterial = '低密度透明PE';
+
 export interface OvermoldSpec {
   id: string;
   resourceItemId?: string;
   name: string;
   image?: string;
-  outerMaterial: string;
-  outerHardness?: string;
-  /** '无内模' means no inner mold */
-  innerMaterial: string;
-  innerMaterialOptional?: boolean;
+  outerMaterial: OvermoldOuterMaterial;
+  outerHardness?: OvermoldHardness;
+  outerForm: OvermoldForm;
+  innerMaterial?: OvermoldInnerMaterial;
+  innerForm?: OvermoldForm;
 }
 
 // ============================================================
@@ -271,9 +276,15 @@ export interface CanvasModel {
   width: number;
   height: number;
   /** Reference to an OvermoldSpec resource entry */
-  overmoldSpecId?: string;
+  overmoldSpecId: string;
+  includeInnerMold: boolean;
   resourceItemId?: string;
   resourceImageUrl?: string;
+}
+
+export interface OvermoldSelection {
+  overmold: OvermoldSpec;
+  includeInnerMold: boolean;
 }
 
 // ============================================================

@@ -1735,7 +1735,7 @@ function HarnessCanvasInner() {
         <OvermoldPickerDialog
           isOpen={true}
           onClose={() => setModelDialogPosition(null)}
-          onSelect={(overmold) => {
+          onSelect={(selection) => {
             const state = useHarnessStore.getState();
             const placementPos = findModelPlacement(state.config, modelDialogPosition);
             
@@ -1757,9 +1757,10 @@ function HarnessCanvasInner() {
               position: placementPos,
               width: CANVAS_MODEL_SIZE,
               height: connectorHeight,
-              overmoldSpecId: overmold.id,
-              resourceItemId: overmold.resourceItemId,
-              resourceImageUrl: overmold.image,
+              overmoldSpecId: selection.overmold.id,
+              includeInnerMold: selection.includeInnerMold,
+              resourceItemId: selection.overmold.resourceItemId,
+              resourceImageUrl: selection.overmold.image,
             };
             state.addModel(model);
             setSelection({ kind: 'model', id: model.id });

@@ -150,4 +150,35 @@ describe('CatalogRepository', () => {
 
     await expect(repository.listWires()).rejects.toThrow(CatalogRepositoryError);
   });
+
+  it('loads overmold catalog specs with outerForm and innerForm', async () => {
+    const repository = new CatalogRepository(fakeClient({
+      catalog_items: [{
+        id: 'om-1',
+        kind: 'overmold',
+        code: 'pvc-45p-pe',
+        name: 'PVC 45P 直头',
+        model: 'PVC-45P-S',
+        ...common,
+        spec: {
+          outerMaterial: '黑色PVC',
+          outerHardness: '45P',
+          outerForm: 'straight',
+          innerMaterial: '低密度透明PE',
+          innerForm: 'straight',
+        },
+      }],
+    }));
+
+    await expect(repository.listOvermolds()).resolves.toEqual([expect.objectContaining({
+      id: 'pvc-45p-pe',
+      resourceItemId: 'om-1',
+      name: 'PVC 45P 直头',
+      outerMaterial: '黑色PVC',
+      outerHardness: '45P',
+      outerForm: 'straight',
+      innerMaterial: '低密度透明PE',
+      innerForm: 'straight',
+    })]);
+  });
 });

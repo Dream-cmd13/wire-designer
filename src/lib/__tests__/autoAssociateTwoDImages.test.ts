@@ -45,6 +45,48 @@ describe('product image wire matching', () => {
     })]);
   });
 
+  it('uses only the outer mold image even when the model includes an inner mold', () => {
+    setCatalogSnapshot({
+      connectors: [],
+      wires: [],
+      overmolds: [{
+        id: 'pvc-45p-pe',
+        resourceItemId: 'overmold-resource',
+        name: '黑色PVC 45P直头外模',
+        outerMaterial: '黑色PVC',
+        outerHardness: '45P',
+        outerForm: 'straight',
+        innerMaterial: '低密度透明PE',
+        innerForm: 'straight',
+        image: 'https://assets.example/shared-overmold.png',
+      }],
+      ...staticCatalogOptions(),
+      loadedAt: Date.now(),
+    });
+    const config = {
+      ...createDefaultConfig(),
+      models: [{
+        id: 'model-1',
+        kind: 'outer-box' as const,
+        position: { x: 0, y: 0 },
+        width: 80,
+        height: 60,
+        overmoldSpecId: 'pvc-45p-pe',
+        includeInnerMold: true,
+        resourceItemId: 'overmold-resource',
+      }],
+    };
+
+    expect(autoAssociateTwoDImages(config)).toEqual([
+      expect.objectContaining({
+        name: 'Overmold',
+        elementKind: 'model',
+        elementId: 'model-1',
+        dataUrl: 'https://assets.example/shared-overmold.png',
+      }),
+    ]);
+  });
+
   it('matches any AWG four-core PVC jacketed wire', () => {
     expect(isProductImageEligibleJacketedWire({
       kind: 'jacketed',

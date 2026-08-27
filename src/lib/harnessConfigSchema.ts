@@ -567,7 +567,9 @@ function readModel(value: unknown, path: string, issues: string[]): CanvasModel 
     || value.kind !== 'outer-box'
     || !isPositiveNumber(value.width)
     || !isPositiveNumber(value.height)
-    || (value.overmoldSpecId !== undefined && !isString(value.overmoldSpecId))
+    || !isString(value.overmoldSpecId)
+    || value.overmoldSpecId.trim() === ''
+    || typeof value.includeInnerMold !== 'boolean'
     || (value.resourceItemId !== undefined && !isString(value.resourceItemId))
     || (value.resourceImageUrl !== undefined && !isString(value.resourceImageUrl))
   ) {
@@ -584,7 +586,8 @@ function readModel(value: unknown, path: string, issues: string[]): CanvasModel 
     position,
     width: value.width,
     height: value.height,
-    ...(value.overmoldSpecId === undefined ? {} : { overmoldSpecId: value.overmoldSpecId }),
+    overmoldSpecId: value.overmoldSpecId,
+    includeInnerMold: value.includeInnerMold,
     ...(value.resourceItemId === undefined ? {} : { resourceItemId: value.resourceItemId }),
     ...(value.resourceImageUrl === undefined ? {} : { resourceImageUrl: value.resourceImageUrl }),
   };

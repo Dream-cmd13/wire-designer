@@ -144,8 +144,9 @@ export class CatalogRepository {
       name: item.name,
       outerMaterial: item.spec.outerMaterial,
       outerHardness: item.spec.outerHardness,
+      outerForm: item.spec.outerForm,
       innerMaterial: item.spec.innerMaterial,
-      innerMaterialOptional: item.spec.innerMaterialOptional,
+      innerForm: item.spec.innerForm,
       image: await this.imageUrl(item.image_path),
     } satisfies OvermoldSpec)));
   }

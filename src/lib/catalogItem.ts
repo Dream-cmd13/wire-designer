@@ -1,4 +1,10 @@
 import { parseCatalogWireSpec } from '@/lib/wireCatalog';
+import type {
+  OvermoldForm,
+  OvermoldHardness,
+  OvermoldInnerMaterial,
+  OvermoldOuterMaterial,
+} from '@/types/harness';
 
 export const CATALOG_ITEM_COLUMNS = 'id,kind,code,name,model,manufacturer,resource_group,description,image_path,image_variants,sort_order,spec';
 
@@ -51,10 +57,11 @@ export interface CatalogItemSpecByKind {
     recoveredWallThicknessMm?: number;
   };
   overmold: {
-    outerMaterial: string;
-    outerHardness?: string;
-    innerMaterial: string;
-    innerMaterialOptional?: boolean;
+    outerMaterial: OvermoldOuterMaterial;
+    outerHardness?: OvermoldHardness;
+    outerForm: OvermoldForm;
+    innerMaterial?: OvermoldInnerMaterial;
+    innerForm?: OvermoldForm;
   };
   model: { modelKind: string };
   accessory: { specification: string; unit: string };
@@ -218,14 +225,56 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
   }
 
   if (kind === 'overmold') {
-    if (spec.innerMaterialOptional !== undefined && typeof spec.innerMaterialOptional !== 'boolean') {
-      throw new CatalogItemError('目录字段 spec.innerMaterialOptional 无效。');
+    if (spec.innerMaterialOptional !== undefined) {
+      throw new CatalogItemError('目录字段 spec.innerMaterialOptional 已废弃。');
     }
+    const outerMaterialText = requiredText(spec.outerMaterial, 'spec.outerMaterial');
+    if (outerMaterialText !== '黑色PVC' && outerMaterialText !== '黑色TPE') {
+      throw new CatalogItemError('目录字段 spec.outerMaterial 无效。');
+    }
+    const outerMaterial = outerMaterialText as OvermoldOuterMaterial;
+
+    const outerFormText = requiredText(spec.outerForm, 'spec.outerForm');
+    if (outerFormText !== 'straight' && outerFormText !== 'bent') {
+      throw new CatalogItemError('目录字段 spec.outerForm 必须为 straight 或 bent。');
+    }
+    const outerForm = outerFormText as OvermoldForm;
+
+    let outerHardness: OvermoldHardness | undefined;
+    if (outerMaterial === '黑色PVC') {
+      if (requiredText(spec.outerHardness, 'spec.outerHardness') !== '45P') {
+        throw new CatalogItemError('黑色PVC外模的 spec.outerHardness 必须为 45P。');
+      }
+      outerHardness = '45P';
+    } else if (spec.outerHardness !== undefined) {
+      throw new CatalogItemError('黑色TPE外模不能包含 spec.outerHardness。');
+    }
+
+    const hasInnerMaterial = spec.innerMaterial !== undefined;
+    const hasInnerForm = spec.innerForm !== undefined;
+    if (hasInnerMaterial !== hasInnerForm) {
+      throw new CatalogItemError('目录字段 spec.innerMaterial 和 spec.innerForm 必须同时存在或同时省略。');
+    }
+
+    let innerMaterial: OvermoldInnerMaterial | undefined;
+    let innerForm: OvermoldForm | undefined;
+    if (hasInnerMaterial && hasInnerForm) {
+      if (requiredText(spec.innerMaterial, 'spec.innerMaterial') !== '低密度透明PE') {
+        throw new CatalogItemError('目录字段 spec.innerMaterial 无效。');
+      }
+      const innerFormText = requiredText(spec.innerForm, 'spec.innerForm');
+      if (innerFormText !== outerForm) {
+        throw new CatalogItemError('目录字段 spec.innerForm 必须与 spec.outerForm 一致。');
+      }
+      innerMaterial = '低密度透明PE';
+      innerForm = outerForm;
+    }
+
     return {
-      outerMaterial: requiredText(spec.outerMaterial, 'spec.outerMaterial'),
-      outerHardness: optionalText(spec.outerHardness, 'spec.outerHardness'),
-      innerMaterial: requiredText(spec.innerMaterial, 'spec.innerMaterial'),
-      innerMaterialOptional: spec.innerMaterialOptional as boolean | undefined,
+      outerMaterial,
+      ...(outerHardness ? { outerHardness } : {}),
+      outerForm,
+      ...(innerMaterial && innerForm ? { innerMaterial, innerForm } : {}),
     };
   }
 

@@ -154,7 +154,7 @@ describe('normalizeHarnessConfig', () => {
         circuits: [],
       }],
       protectiveSleeves: [],
-      models: [{ id: 'model-1', kind: 'outer-box', resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png', position: { x: 0, y: 0 }, width: 100, height: 80 }],
+      models: [{ id: 'model-1', kind: 'outer-box', overmoldSpecId: 'pvc-45p-pe', includeInnerMold: false, resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png', position: { x: 0, y: 0 }, width: 100, height: 80 }],
       quantity: 1,
       leadTime: 'standard',
     };
@@ -165,7 +165,7 @@ describe('normalizeHarnessConfig', () => {
     if (result.success) {
       expect(result.data.connectors[0].connector.resourceItemId).toBe('connector-resource');
       expect(result.data.materials[0]).toMatchObject({ resourceItemId: 'wire-resource', resourceImageUrl: 'https://example.test/wire.png' });
-      expect(result.data.models[0]).toMatchObject({ resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png' });
+      expect(result.data.models[0]).toMatchObject({ overmoldSpecId: 'pvc-45p-pe', includeInnerMold: false, resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png' });
     }
   });
 
@@ -238,11 +238,69 @@ describe('normalizeHarnessConfig', () => {
     expect(parsed.success).toBe(false);
   });
 
-  it('preserves model overmold spec selection during schema parsing', () => {
+  it('preserves model overmold spec selection and includeInnerMold during schema parsing', () => {
     const input: HarnessConfig = {
       schemaVersion: 3,
       id: 'model-spec',
       name: 'model-spec',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [],
+      materials: [],
+      protectiveSleeves: [],
+      models: [{
+        id: 'model-1',
+        kind: 'outer-box',
+        position: { x: 10, y: 20 },
+        width: 80,
+        height: 60,
+        overmoldSpecId: 'pvc-45p-pe',
+        includeInnerMold: true,
+      }],
+      quantity: 1,
+      leadTime: 'standard',
+    };
+
+    const parsed = parseHarnessConfig(input);
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.models[0].overmoldSpecId).toBe('pvc-45p-pe');
+      expect(parsed.data.models[0].includeInnerMold).toBe(true);
+    }
+  });
+
+  it('rejects model without overmoldSpecId', () => {
+    const input = {
+      schemaVersion: 3,
+      id: 'missing-overmold',
+      name: 'missing-overmold',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [],
+      materials: [],
+      protectiveSleeves: [],
+      models: [{
+        id: 'model-1',
+        kind: 'outer-box',
+        position: { x: 10, y: 20 },
+        width: 80,
+        height: 60,
+        includeInnerMold: false,
+      }],
+      quantity: 1,
+      leadTime: 'standard',
+    };
+
+    const parsed = parseHarnessConfig(input);
+    expect(parsed.success).toBe(false);
+  });
+
+  it('rejects model without an explicit includeInnerMold decision', () => {
+    const input = {
+      schemaVersion: 3,
+      id: 'missing-inner-mold-decision',
+      name: 'missing-inner-mold-decision',
       createdAt: 100,
       updatedAt: 200,
       connectors: [],
@@ -260,12 +318,7 @@ describe('normalizeHarnessConfig', () => {
       leadTime: 'standard',
     };
 
-    const parsed = parseHarnessConfig(input);
-
-    expect(parsed.success).toBe(true);
-    if (parsed.success) {
-      expect(parsed.data.models[0].overmoldSpecId).toBe('pvc-45p-pe');
-    }
+    expect(parseHarnessConfig(input).success).toBe(false);
   });
 });
 

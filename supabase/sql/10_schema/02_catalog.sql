@@ -15,7 +15,44 @@ create table public.catalog_items (
     check (jsonb_typeof(image_variants) = 'object'),
   sort_order integer not null default 0 check (sort_order >= 0),
   spec jsonb not null default '{}'::jsonb check (jsonb_typeof(spec) = 'object'),
-  constraint catalog_items_overmold_spec_check check (kind <> 'overmold' or (spec ? 'outerMaterial' and jsonb_typeof(spec->'outerMaterial') = 'string' and length(btrim(spec->>'outerMaterial')) > 0 and spec ? 'innerMaterial' and jsonb_typeof(spec->'innerMaterial') = 'string' and length(btrim(spec->>'innerMaterial')) > 0 and spec ? 'innerMaterialOptional' and jsonb_typeof(spec->'innerMaterialOptional') = 'boolean' and spec->>'innerMaterialOptional' = 'true' and (not (spec ? 'outerForm') or spec->>'outerForm' in ('straight', 'bent')))),
+  constraint catalog_items_overmold_spec_check check (
+    (kind <> 'overmold') or
+    (
+      (spec ? 'outerMaterial') and
+      (jsonb_typeof(spec->'outerMaterial') = 'string') and
+      (spec->>'outerMaterial' in ('黑色PVC', '黑色TPE')) and
+      (spec ? 'outerForm') and
+      (jsonb_typeof(spec->'outerForm') = 'string') and
+      (spec->>'outerForm' in ('straight', 'bent')) and
+      (not (spec ? 'innerMaterialOptional')) and
+      (
+        (
+          (spec->>'outerMaterial' = '黑色PVC') and
+          (spec ? 'outerHardness') and
+          (jsonb_typeof(spec->'outerHardness') = 'string') and
+          (spec->>'outerHardness' = '45P')
+        ) or
+        (
+          (spec->>'outerMaterial' = '黑色TPE') and
+          (not (spec ? 'outerHardness'))
+        )
+      ) and
+      (
+        (
+          (not (spec ? 'innerMaterial')) and
+          (not (spec ? 'innerForm'))
+        ) or
+        (
+          (spec ? 'innerMaterial') and
+          (jsonb_typeof(spec->'innerMaterial') = 'string') and
+          (spec->>'innerMaterial' = '低密度透明PE') and
+          (spec ? 'innerForm') and
+          (jsonb_typeof(spec->'innerForm') = 'string') and
+          (spec->>'innerForm' = spec->>'outerForm')
+        )
+      )
+    ) is true
+  ),
   unique (kind, code)
 );
 

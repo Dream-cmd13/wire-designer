@@ -21,7 +21,7 @@ export function CanvasModelDialog({ onClose, onConfirm }: CanvasModelDialogProps
             </div>
             <div>
               <h2 className="text-base font-semibold text-slate-900">添加外模</h2>
-              <p className="text-xs text-slate-500">当前提供 1 个可选外模，用于包覆连接器和线材之间的中间连接段</p>
+              <p className="text-xs text-slate-500">用于包覆连接器和线材之间的中间连接段</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100">
