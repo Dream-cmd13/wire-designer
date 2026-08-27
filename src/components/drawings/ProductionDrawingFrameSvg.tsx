@@ -149,7 +149,7 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           .filter((l, idx, arr) => l.length > 0 || idx < arr.length - 1);
         if (lines.length === 0) return null;
 
-        const lineHeight = 19;
+        const lineHeight = 23;
         const totalHeight = (lines.length - 1) * lineHeight;
         const baselineBottom = 650;
         const startY = Math.min(520, baselineBottom - totalHeight);
@@ -163,9 +163,9 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
             {/* Transparent click target rect covering whole requirements block */}
             <rect
               x="26"
-              y={startY - 14}
+              y={startY - 18}
               width="540"
-              height={totalHeight + 22}
+              height={totalHeight + 26}
               fill="transparent"
               stroke="transparent"
             />
@@ -178,7 +178,7 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
                   key={idx}
                   x="30"
                   y={startY + idx * lineHeight}
-                  fontSize={isHeading ? '10.5' : '9.5'}
+                  fontSize={isHeading ? '14' : '12'}
                   fontWeight={isHeading ? 'bold' : '500'}
                   fill="#000000"
                   letterSpacing="0.2"
