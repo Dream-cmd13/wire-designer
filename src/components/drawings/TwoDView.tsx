@@ -87,6 +87,95 @@ export function formatPinNetworkString(connector: ConnectorInstance, side: 'left
   return sorted.map((p) => `Pin${p}`).join(', ');
 }
 
+export interface WiringDiagramColumnInfo {
+  index: number;
+  width: number;
+  label: string;
+  isCut: boolean;
+  alignClass: string;
+}
+
+export function getWiringDiagramColumns({
+  numCols,
+  orderedConnectors,
+  allLeftCut,
+  allRightCut,
+}: {
+  numCols: number;
+  orderedConnectors: Array<{ label: string }>;
+  allLeftCut: boolean;
+  allRightCut: boolean;
+}): WiringDiagramColumnInfo[] {
+  const PIN_COL_WIDTH = 70;
+
+  return Array.from({ length: numCols }).map((_, idx) => {
+    const conn = orderedConnectors[idx];
+    const isCut = (idx === 0 && allLeftCut) || (idx === numCols - 1 && allRightCut);
+    const label = isCut ? '' : (conn ? conn.label : (idx === 0 ? 'P1' : ''));
+
+    return {
+      index: idx,
+      width: PIN_COL_WIDTH,
+      label,
+      isCut,
+      alignClass: 'text-center',
+    };
+  });
+}
+
+export function calculateWiringDiagramWidth({
+  numCols,
+  allLeftCut: _allLeftCut,
+  allRightCut: _allRightCut,
+  baseWidth = 280,
+}: {
+  numCols: number;
+  allLeftCut: boolean;
+  allRightCut: boolean;
+  baseWidth?: number;
+}): {
+  requiredContentWidth: number;
+  diagramWidth: number;
+} {
+  const PIN_COL_WIDTH = 70;
+  const MIN_SEGMENT_WIDTH = 110;
+  const PADDING_H = 20;
+
+  const requiredContentWidth =
+    numCols * PIN_COL_WIDTH +
+    (numCols - 1) * MIN_SEGMENT_WIDTH +
+    PADDING_H;
+
+  return {
+    requiredContentWidth,
+    diagramWidth: Math.max(baseWidth, requiredContentWidth),
+  };
+}
+
+export function getCutLineBounds({
+  rowsCount,
+  rowHeight,
+  bodyHeight,
+}: {
+  rowsCount: number;
+  rowHeight: number;
+  bodyHeight: number;
+}): { top: number; height: number } {
+  if (rowsCount <= 1) {
+    const wireY = rowHeight;
+    const height = Math.min(38, Math.max(30, rowHeight));
+    const top = Math.max(4, wireY - Math.floor(height / 2));
+    return { top, height };
+  }
+  const topWireY = rowHeight;
+  const contentHeight = Math.max(rowHeight * rowsCount, bodyHeight - 34);
+  const bottomWireY = contentHeight - 8;
+  const top = Math.max(4, topWireY - 12);
+  const bottom = Math.min(contentHeight - 4, bottomWireY + 12);
+  const height = Math.max(36, bottom - top);
+  return { top, height };
+}
+
 function WiringDiagram({
   materials,
   connectors,
@@ -163,26 +252,24 @@ function WiringDiagram({
   });
 
   const allLeftCut = rows.every((r) => r.isCutStart);
-  const allRightCut = rows.every((r) => r.isCutEnd && numCols === 2);
+  const allRightCut = rows.every((r) => r.isCutEnd);
 
-  // Column constants for strictly uniform segment length and vertical alignment
-  const PIN_COL_WIDTH = 78; // fixed width for every Pin column, comfortably fits 'Pin1, Pin2', 'Pin10, Pin11'
-  const MIN_SEGMENT_WIDTH = 110;
-  const CUT_COL_WIDTH = 45;
-  const PADDING_H = 20;
+  const columns = getWiringDiagramColumns({
+    numCols,
+    orderedConnectors,
+    allLeftCut,
+    allRightCut,
+  });
 
-  const leftCutWidth = allLeftCut ? CUT_COL_WIDTH : 0;
-  const rightCutWidth = allRightCut ? CUT_COL_WIDTH : 0;
-  const requiredContentWidth =
-    leftCutWidth +
-    numCols * PIN_COL_WIDTH +
-    (numCols - 1) * MIN_SEGMENT_WIDTH +
-    rightCutWidth +
-    PADDING_H;
+  const { diagramWidth } = calculateWiringDiagramWidth({
+    numCols,
+    allLeftCut,
+    allRightCut,
+    baseWidth: layout.width,
+  });
 
   const bodyHeight = layout.height - layout.headerHeight;
   const rowHeight = Math.max(22, Math.floor((bodyHeight - 38) / Math.max(1, rows.length)));
-  const diagramWidth = Math.max(layout.width, requiredContentWidth);
 
   return (
     <div 
@@ -207,44 +294,35 @@ function WiringDiagram({
       <div className="flex-1 flex flex-col p-2 relative justify-between overflow-hidden">
         {/* P1, P2, P3... Headers aligned exactly with Pin columns below */}
         <div className="flex flex-row items-center text-[10px] leading-tight font-bold mb-1">
-          {allLeftCut && <div style={{ width: CUT_COL_WIDTH }} className="shrink-0" />}
           <div className="flex-1 flex flex-row items-center">
-            {Array.from({ length: numCols }).map((_, idx) => {
-              const conn = orderedConnectors[idx];
-              const label = conn ? conn.label : (idx === 0 ? 'P1' : `P${idx + 1}`);
-              const alignClass =
-                idx === 0
-                  ? 'text-right pr-2'
-                  : idx === numCols - 1
-                  ? 'text-left pl-2'
-                  : 'text-center px-1';
-              return (
-                <React.Fragment key={idx}>
-                  <span
-                    style={{ width: PIN_COL_WIDTH }}
-                    className={`shrink-0 ${alignClass} truncate`}
-                    title={label}
-                  >
-                    {label}
-                  </span>
-                  {idx < numCols - 1 && <div className="flex-1 min-w-[20px]" />}
-                </React.Fragment>
-              );
-            })}
+            {columns.map((col, idx) => (
+              <React.Fragment key={idx}>
+                <span
+                  style={{ width: col.width }}
+                  className={`shrink-0 ${col.alignClass} truncate`}
+                  title={col.label}
+                >
+                  {col.label}
+                </span>
+                {idx < numCols - 1 && <div className="flex-1 min-w-[20px]" />}
+              </React.Fragment>
+            ))}
           </div>
-          {allRightCut && <div style={{ width: CUT_COL_WIDTH }} className="shrink-0" />}
         </div>
 
         {/* Content Rows */}
         <div className="flex-1 flex flex-row items-center">
           {/* Left Status (if all cut) */}
           {allLeftCut && (
-            <div
-              style={{ width: CUT_COL_WIDTH }}
-              className="flex flex-col items-center justify-center text-xs font-bold text-black border-r border-black h-full pr-2 shrink-0"
-            >
-              <span className="leading-tight">切</span>
-              <span className="leading-tight">断</span>
+            <div style={{ width: 70 }} className="flex flex-row h-full shrink-0">
+              <div
+                style={{ width: 35 }}
+                className="flex flex-col items-center justify-center text-xs font-bold text-black border-r border-black h-full pr-1 shrink-0"
+              >
+                <span className="leading-tight">切</span>
+                <span className="leading-tight">断</span>
+              </div>
+              <div style={{ width: 35 }} className="shrink-0" />
             </div>
           )}
 
@@ -252,39 +330,47 @@ function WiringDiagram({
           <div className="flex-1 flex flex-col justify-between h-full py-1">
             {rows.map((row, rowIdx) => (
               <div key={rowIdx} className="flex flex-row items-center" style={{ height: rowHeight }}>
-                {Array.from({ length: numCols }).map((_, colIdx) => {
-                  const pinText = row.pins[colIdx] || '';
-                  const alignClass =
-                    colIdx === 0
-                      ? 'text-right pr-2'
-                      : colIdx === numCols - 1
-                      ? 'text-left pl-2'
-                      : 'text-center px-1';
+                {/* Column 0 Pin (only if not left cut) */}
+                {!allLeftCut && (
+                  <span
+                    style={{ width: 70 }}
+                    className="shrink-0 text-xs font-bold text-black text-center whitespace-nowrap"
+                  >
+                    {row.pins[0] || ''}
+                  </span>
+                )}
+
+                {/* Segments and subsequent columns */}
+                {Array.from({ length: numCols - 1 }).map((_, segIdx) => {
+                  const targetColIdx = segIdx + 1;
+                  const isLastCol = targetColIdx === numCols - 1;
+                  const showPin = !(isLastCol && allRightCut);
+                  const targetCol = columns[targetColIdx];
 
                   return (
-                    <React.Fragment key={colIdx}>
-                      {/* Pin Column with fixed width */}
-                      <span
-                        style={{ width: PIN_COL_WIDTH }}
-                        className={`shrink-0 text-xs font-bold text-black ${alignClass} whitespace-nowrap`}
-                      >
-                        {pinText}
-                      </span>
+                    <React.Fragment key={segIdx}>
+                      {/* Segment Column (between segIdx and segIdx + 1) */}
+                      <div className="flex-1 flex flex-col justify-end h-full relative pb-1 min-w-[20px] px-0">
+                        {row.segments[segIdx] ? (
+                          <>
+                            <span className="text-center text-[11px] font-bold text-black mb-0.5 whitespace-nowrap">
+                              {row.color}
+                            </span>
+                            <div className="w-full border-b border-black" />
+                          </>
+                        ) : (
+                          <div className="w-full h-[1px]" />
+                        )}
+                      </div>
 
-                      {/* Segment Column (between colIdx and colIdx + 1) */}
-                      {colIdx < numCols - 1 && (
-                        <div className="flex-1 flex flex-col justify-end h-full px-1 relative pb-1 min-w-[20px]">
-                          {row.segments[colIdx] ? (
-                            <>
-                              <span className="text-center text-[11px] font-bold text-black mb-0.5 whitespace-nowrap">
-                                {row.color}
-                              </span>
-                              <div className="w-full border-b border-black" />
-                            </>
-                          ) : (
-                            <div className="w-full h-[1px]" />
-                          )}
-                        </div>
+                      {/* Pin Column (if not right cut) */}
+                      {showPin && (
+                        <span
+                          style={{ width: targetCol?.width ?? 70 }}
+                          className={`shrink-0 text-xs font-bold text-black ${targetCol?.alignClass ?? 'text-center px-1'} whitespace-nowrap`}
+                        >
+                          {row.pins[targetColIdx] || ''}
+                        </span>
                       )}
                     </React.Fragment>
                   );
@@ -295,12 +381,15 @@ function WiringDiagram({
 
           {/* Right Status (if all cut) */}
           {allRightCut && (
-            <div
-              style={{ width: CUT_COL_WIDTH }}
-              className="flex flex-col items-center justify-center text-xs font-bold text-black border-l border-black h-full pl-2 shrink-0"
-            >
-              <span className="leading-tight">切</span>
-              <span className="leading-tight">断</span>
+            <div style={{ width: 70 }} className="flex flex-row h-full shrink-0">
+              <div style={{ width: 35 }} className="shrink-0" />
+              <div
+                style={{ width: 35 }}
+                className="flex flex-col items-center justify-center text-xs font-bold text-black border-l border-black h-full pl-1 shrink-0"
+              >
+                <span className="leading-tight">切</span>
+                <span className="leading-tight">断</span>
+              </div>
             </div>
           )}
         </div>
