@@ -53,6 +53,136 @@ create table public.catalog_items (
       )
     ) is true
   ),
+  constraint catalog_items_connector_spec_check check (
+    (kind <> 'connector') or
+    (
+      (spec ? 'connectorType') and
+      (jsonb_typeof(spec->'connectorType') = 'string') and
+      (spec->>'connectorType' in ('male', 'female', 'receptacle')) and
+      (spec ? 'pinCount') and
+      (jsonb_typeof(spec->'pinCount') = 'number') and
+      ((spec->>'pinCount')::numeric > 0) and
+      ((spec->>'pinCount')::numeric = trunc((spec->>'pinCount')::numeric)) and
+      (spec ? 'pinLabels') and
+      (jsonb_typeof(spec->'pinLabels') = 'array') and
+      (jsonb_array_length(spec->'pinLabels') = (spec->>'pinCount')::integer) and
+      (not (spec ? 'shielded') or jsonb_typeof(spec->'shielded') = 'boolean') and
+      (not (spec ? 'ratedVoltageV') or (jsonb_typeof(spec->'ratedVoltageV') = 'number' and (spec->>'ratedVoltageV')::numeric > 0)) and
+      (not (spec ? 'ratedCurrentA') or (jsonb_typeof(spec->'ratedCurrentA') = 'number' and (spec->>'ratedCurrentA')::numeric > 0)) and
+      (not (spec ? 'temperatureRangeC') or (
+        jsonb_typeof(spec->'temperatureRangeC') = 'object' and
+        ((not (spec->'temperatureRangeC' ? 'min')) or jsonb_typeof(spec->'temperatureRangeC'->'min') = 'number') and
+        ((not (spec->'temperatureRangeC' ? 'max')) or jsonb_typeof(spec->'temperatureRangeC'->'max') = 'number') and
+        (spec->'temperatureRangeC' ? 'min' or spec->'temperatureRangeC' ? 'max') and
+        (
+          not (spec->'temperatureRangeC' ? 'min' and spec->'temperatureRangeC' ? 'max') or
+          (spec->'temperatureRangeC'->>'min')::numeric <= (spec->'temperatureRangeC'->>'max')::numeric
+        )
+      )) and
+      (not (spec ? 'matingCyclesMin') or (
+        jsonb_typeof(spec->'matingCyclesMin') = 'number' and
+        (spec->>'matingCyclesMin')::numeric > 0 and
+        (spec->>'matingCyclesMin')::numeric = trunc((spec->>'matingCyclesMin')::numeric)
+      )) and
+      (not (spec ? 'ingressProtection') or (
+        jsonb_typeof(spec->'ingressProtection') = 'string' and
+        length(btrim(spec->>'ingressProtection')) > 0
+      )) and
+      (not (spec ? 'flammabilityRating') or (
+        jsonb_typeof(spec->'flammabilityRating') = 'string' and
+        length(btrim(spec->>'flammabilityRating')) > 0
+      ))
+    ) is true
+  ),
+  constraint catalog_items_wire_spec_check check (
+    (kind <> 'wire') or
+    (
+      (spec ? 'kind') and
+      (jsonb_typeof(spec->'kind') = 'string') and
+      (spec->>'kind' in ('electronic', 'jacketed')) and
+      (spec ? 'awg') and
+      (jsonb_typeof(spec->'awg') = 'number') and
+      ((spec->>'awg')::numeric > 0) and
+      (not (spec ? 'ratedVoltageV') or (jsonb_typeof(spec->'ratedVoltageV') = 'number' and (spec->>'ratedVoltageV')::numeric > 0)) and
+      (not (spec ? 'temperatureRangeC') or (
+        jsonb_typeof(spec->'temperatureRangeC') = 'object' and
+        ((not (spec->'temperatureRangeC' ? 'min')) or jsonb_typeof(spec->'temperatureRangeC'->'min') = 'number') and
+        ((not (spec->'temperatureRangeC' ? 'max')) or jsonb_typeof(spec->'temperatureRangeC'->'max') = 'number') and
+        (spec->'temperatureRangeC' ? 'min' or spec->'temperatureRangeC' ? 'max') and
+        (
+          not (spec->'temperatureRangeC' ? 'min' and spec->'temperatureRangeC' ? 'max') or
+          (spec->'temperatureRangeC'->>'min')::numeric <= (spec->'temperatureRangeC'->>'max')::numeric
+        )
+      )) and
+      (not (spec ? 'rohsCompliant') or jsonb_typeof(spec->'rohsCompliant') = 'boolean') and
+      (not (spec ? 'shieldCoverageRatio') or (
+        jsonb_typeof(spec->'shieldCoverageRatio') = 'number' and
+        (spec->>'shieldCoverageRatio')::numeric between 0 and 1
+      )) and
+      (not (spec ? 'outerDiameterMm') or (jsonb_typeof(spec->'outerDiameterMm') = 'number' and (spec->>'outerDiameterMm')::numeric > 0)) and
+      (not (spec ? 'outerDiameterToleranceMm') or (jsonb_typeof(spec->'outerDiameterToleranceMm') = 'number' and (spec->>'outerDiameterToleranceMm')::numeric > 0)) and
+      (not (spec ? 'flameTest') or (
+        jsonb_typeof(spec->'flameTest') = 'string' and
+        length(btrim(spec->>'flameTest')) > 0
+      )) and
+      (not (spec ? 'conductorMaterial') or (
+        jsonb_typeof(spec->'conductorMaterial') = 'string' and
+        length(btrim(spec->>'conductorMaterial')) > 0
+      )) and
+      (not (spec ? 'conductorStructure') or (
+        jsonb_typeof(spec->'conductorStructure') = 'string' and
+        length(btrim(spec->>'conductorStructure')) > 0
+      )) and
+      (not (spec ? 'insulationMaterial') or (
+        jsonb_typeof(spec->'insulationMaterial') = 'string' and
+        length(btrim(spec->>'insulationMaterial')) > 0
+      )) and
+      (not (spec ? 'insulationDiameterMm') or (
+        jsonb_typeof(spec->'insulationDiameterMm') = 'number' and
+        (spec->>'insulationDiameterMm')::numeric > 0
+      )) and
+      (not (spec ? 'insulationDiameterToleranceMm') or (
+        jsonb_typeof(spec->'insulationDiameterToleranceMm') = 'number' and
+        (spec->>'insulationDiameterToleranceMm')::numeric > 0
+      )) and
+      (not (spec ? 'braidStructure') or (
+        jsonb_typeof(spec->'braidStructure') = 'string' and
+        length(btrim(spec->>'braidStructure')) > 0
+      )) and
+      (not (spec ? 'braidStructureDescription') or (
+        jsonb_typeof(spec->'braidStructureDescription') = 'string' and
+        length(btrim(spec->>'braidStructureDescription')) > 0
+      )) and
+      (not (spec ? 'shieldCoverageDescription') or (
+        jsonb_typeof(spec->'shieldCoverageDescription') = 'string' and
+        length(btrim(spec->>'shieldCoverageDescription')) > 0
+      )) and
+      (not (spec ? 'jacketHardnessP') or (
+        jsonb_typeof(spec->'jacketHardnessP') = 'number' and
+        (spec->>'jacketHardnessP')::numeric > 0
+      )) and
+      (not (spec ? 'tensileStrengthPsi') or (
+        jsonb_typeof(spec->'tensileStrengthPsi') = 'number' and
+        (spec->>'tensileStrengthPsi')::numeric > 0
+      )) and
+      (not (spec ? 'elongationPercent') or (
+        jsonb_typeof(spec->'elongationPercent') = 'number' and
+        (spec->>'elongationPercent')::numeric >= 0
+      )) and
+      (not (spec ? 'conductorResistanceOhmPerKmAt20C') or (
+        jsonb_typeof(spec->'conductorResistanceOhmPerKmAt20C') = 'number' and
+        (spec->>'conductorResistanceOhmPerKmAt20C')::numeric > 0
+      )) and
+      (not (spec ? 'insulationResistanceMOhmKm') or (
+        jsonb_typeof(spec->'insulationResistanceMOhmKm') = 'number' and
+        (spec->>'insulationResistanceMOhmKm')::numeric > 0
+      )) and
+      (not (spec ? 'coreColorDescription') or (
+        jsonb_typeof(spec->'coreColorDescription') = 'string' and
+        length(btrim(spec->>'coreColorDescription')) > 0
+      ))
+    ) is true
+  ),
   unique (kind, code)
 );
 

@@ -9,7 +9,12 @@ import {
 } from '@/lib/catalogItem';
 import { supabase } from '@/lib/supabaseClient';
 import { signCatalogImage, type CatalogStorageClient } from '@/lib/catalogImageUrl';
-import type { CatalogSnapshot, CatalogWire, CatalogWireSpec } from '@/types/catalog';
+import type {
+  CatalogSnapshot,
+  CatalogWire,
+  CatalogWireEngineeringSpec,
+  CatalogWireSpec,
+} from '@/types/catalog';
 import type { Connector, OvermoldSpec } from '@/types/harness';
 
 export type { CatalogWire } from '@/types/catalog';
@@ -31,6 +36,7 @@ function wireSpec(item: CatalogItemOf<'wire'>): CatalogWireSpec {
         color: spec.conductorColor,
         awg: spec.awg,
         ulNumber: spec.ulNumber,
+        ...engineeringWireFields(spec),
       }
     : {
         kind: spec.kind,
@@ -41,7 +47,34 @@ function wireSpec(item: CatalogItemOf<'wire'>): CatalogWireSpec {
         shielded: spec.shielded,
         coreColors: [...spec.coreColors],
         ...(spec.ulNumber ? { ulNumber: spec.ulNumber } : {}),
+        ...engineeringWireFields(spec),
       };
+}
+
+function engineeringWireFields(spec: CatalogItemOf<'wire'>['spec']): CatalogWireEngineeringSpec {
+  return {
+    ...(spec.ratedVoltageV === undefined ? {} : { ratedVoltageV: spec.ratedVoltageV }),
+    ...(spec.temperatureRangeC === undefined ? {} : { temperatureRangeC: { ...spec.temperatureRangeC } }),
+    ...(spec.flameTest === undefined ? {} : { flameTest: spec.flameTest }),
+    ...(spec.rohsCompliant === undefined ? {} : { rohsCompliant: spec.rohsCompliant }),
+    ...(spec.conductorMaterial === undefined ? {} : { conductorMaterial: spec.conductorMaterial }),
+    ...(spec.conductorStructure === undefined ? {} : { conductorStructure: spec.conductorStructure }),
+    ...(spec.insulationMaterial === undefined ? {} : { insulationMaterial: spec.insulationMaterial }),
+    ...(spec.insulationDiameterMm === undefined ? {} : { insulationDiameterMm: spec.insulationDiameterMm }),
+    ...(spec.insulationDiameterToleranceMm === undefined ? {} : { insulationDiameterToleranceMm: spec.insulationDiameterToleranceMm }),
+    ...(spec.braidStructure === undefined ? {} : { braidStructure: spec.braidStructure }),
+    ...(spec.braidStructureDescription === undefined ? {} : { braidStructureDescription: spec.braidStructureDescription }),
+    ...(spec.shieldCoverageRatio === undefined ? {} : { shieldCoverageRatio: spec.shieldCoverageRatio }),
+    ...(spec.shieldCoverageDescription === undefined ? {} : { shieldCoverageDescription: spec.shieldCoverageDescription }),
+    ...(spec.jacketHardnessP === undefined ? {} : { jacketHardnessP: spec.jacketHardnessP }),
+    ...(spec.outerDiameterMm === undefined ? {} : { outerDiameterMm: spec.outerDiameterMm }),
+    ...(spec.outerDiameterToleranceMm === undefined ? {} : { outerDiameterToleranceMm: spec.outerDiameterToleranceMm }),
+    ...(spec.tensileStrengthPsi === undefined ? {} : { tensileStrengthPsi: spec.tensileStrengthPsi }),
+    ...(spec.elongationPercent === undefined ? {} : { elongationPercent: spec.elongationPercent }),
+    ...(spec.conductorResistanceOhmPerKmAt20C === undefined ? {} : { conductorResistanceOhmPerKmAt20C: spec.conductorResistanceOhmPerKmAt20C }),
+    ...(spec.insulationResistanceMOhmKm === undefined ? {} : { insulationResistanceMOhmKm: spec.insulationResistanceMOhmKm }),
+    ...(spec.coreColorDescription === undefined ? {} : { coreColorDescription: spec.coreColorDescription }),
+  };
 }
 
 export class CatalogRepository {
@@ -121,6 +154,15 @@ export class CatalogRepository {
       housingMaterial: item.spec.housingMaterial,
       contactMaterial: item.spec.contactMaterial,
       nutMaterial: item.spec.nutMaterial,
+      shielded: item.spec.shielded,
+      ratedVoltageV: item.spec.ratedVoltageV,
+      ratedCurrentA: item.spec.ratedCurrentA,
+      temperatureRangeC: item.spec.temperatureRangeC
+        ? { ...item.spec.temperatureRangeC }
+        : undefined,
+      ingressProtection: item.spec.ingressProtection,
+      flammabilityRating: item.spec.flammabilityRating,
+      matingCyclesMin: item.spec.matingCyclesMin,
       image: await this.imageUrl(item.image_path),
     } satisfies Connector)));
   }
@@ -131,6 +173,10 @@ export class CatalogRepository {
       id: item.code,
       resourceItemId: item.id,
       name: item.name,
+      model: item.model,
+      manufacturer: item.manufacturer,
+      resourceGroup: item.resource_group,
+      description: item.description,
       spec: wireSpec(item),
       image: await this.imageUrl(item.image_path),
     })));

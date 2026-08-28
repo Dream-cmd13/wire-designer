@@ -5,8 +5,9 @@ import type {
   JacketMaterial,
   JacketColor,
   JacketUlNumber,
+  TemperatureRangeC,
 } from '@/types/harness';
-import type { CatalogWire, CatalogWireSpec } from '@/types/catalog';
+import type { CatalogWire, CatalogWireEngineeringSpec, CatalogWireSpec } from '@/types/catalog';
 
 export type CatalogWireRow = Record<string, unknown>;
 
@@ -24,8 +25,12 @@ export class WireCatalogError extends Error {
   }
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
+function text(value: unknown, field = 'text'): string | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new WireCatalogError(`invalid ${field}`);
+  }
+  return value;
 }
 
 function positiveNumber(value: unknown, field: string): number {
@@ -36,6 +41,113 @@ function positiveNumber(value: unknown, field: string): number {
   return parsed;
 }
 
+function optionalPositiveNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  return positiveNumber(value, field);
+}
+
+function optionalNonNegativeNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new WireCatalogError(`invalid ${field}`);
+  }
+  return parsed;
+}
+
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'boolean') throw new WireCatalogError(`invalid ${field}`);
+  return value;
+}
+
+function temperatureRange(value: unknown, field: string): TemperatureRangeC | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new WireCatalogError(`invalid ${field}`);
+  }
+  const source = value as Record<string, unknown>;
+  const parsedMin = source.min === undefined || source.min === null
+    ? undefined
+    : typeof source.min === 'number' && Number.isFinite(source.min)
+      ? source.min
+      : (() => {
+          const parsed = Number(source.min);
+          if (!Number.isFinite(parsed)) throw new WireCatalogError(`invalid ${field}.min`);
+          return parsed;
+        })();
+  const max = source.max === undefined || source.max === null
+    ? undefined
+    : typeof source.max === 'number' && Number.isFinite(source.max)
+      ? source.max
+      : (() => {
+          const parsed = Number(source.max);
+          if (!Number.isFinite(parsed)) throw new WireCatalogError(`invalid ${field}.max`);
+          return parsed;
+        })();
+  if (parsedMin === undefined && max === undefined) {
+    throw new WireCatalogError(`invalid ${field}`);
+  }
+  if (parsedMin !== undefined && max !== undefined && parsedMin > max) {
+    throw new WireCatalogError(`invalid ${field}`);
+  }
+  return {
+    ...(parsedMin === undefined ? {} : { min: parsedMin }),
+    ...(max === undefined ? {} : { max }),
+  };
+}
+
+function engineeringSpec(row: CatalogWireRow): CatalogWireEngineeringSpec {
+  const ratedVoltageV = optionalPositiveNumber(row.rated_voltage_v, 'rated voltage');
+  const temperatureRangeC = temperatureRange(row.temperature_range_c, 'temperature range');
+  const flameTest = text(row.flame_test, 'flame test');
+  const rohsCompliant = optionalBoolean(row.rohs_compliant, 'ROHS flag');
+  const conductorMaterial = text(row.conductor_material, 'conductor material');
+  const conductorStructure = text(row.conductor_structure, 'conductor structure');
+  const insulationMaterial = text(row.insulation_material, 'insulation material');
+  const insulationDiameterMm = optionalPositiveNumber(row.insulation_diameter_mm, 'insulation diameter');
+  const insulationDiameterToleranceMm = optionalPositiveNumber(row.insulation_diameter_tolerance_mm, 'insulation diameter tolerance');
+  const braidStructure = text(row.braid_structure, 'braid structure');
+  const braidStructureDescription = text(row.braid_structure_description, 'braid structure description');
+  const shieldCoverageRatio = optionalNonNegativeNumber(row.shield_coverage_ratio, 'shield coverage ratio');
+  if (shieldCoverageRatio !== undefined && shieldCoverageRatio > 1) {
+    throw new WireCatalogError('invalid shield coverage ratio');
+  }
+  const shieldCoverageDescription = text(row.shield_coverage_description, 'shield coverage description');
+  const jacketHardnessP = optionalPositiveNumber(row.jacket_hardness_p, 'jacket hardness');
+  const outerDiameterMm = optionalPositiveNumber(row.outer_diameter_mm, 'outer diameter');
+  const outerDiameterToleranceMm = optionalPositiveNumber(row.outer_diameter_tolerance_mm, 'outer diameter tolerance');
+  const tensileStrengthPsi = optionalPositiveNumber(row.tensile_strength_psi, 'tensile strength');
+  const elongationPercent = optionalNonNegativeNumber(row.elongation_percent, 'elongation');
+  const conductorResistanceOhmPerKmAt20C = optionalPositiveNumber(row.conductor_resistance_ohm_per_km_at_20c, 'conductor resistance');
+  const insulationResistanceMOhmKm = optionalPositiveNumber(row.insulation_resistance_mohm_km, 'insulation resistance');
+  const coreColorDescription = text(row.core_color_description, 'core color description');
+
+  return {
+    ...(ratedVoltageV === undefined ? {} : { ratedVoltageV }),
+    ...(temperatureRangeC === undefined ? {} : { temperatureRangeC }),
+    ...(flameTest === undefined ? {} : { flameTest }),
+    ...(rohsCompliant === undefined ? {} : { rohsCompliant }),
+    ...(conductorMaterial === undefined ? {} : { conductorMaterial }),
+    ...(conductorStructure === undefined ? {} : { conductorStructure }),
+    ...(insulationMaterial === undefined ? {} : { insulationMaterial }),
+    ...(insulationDiameterMm === undefined ? {} : { insulationDiameterMm }),
+    ...(insulationDiameterToleranceMm === undefined ? {} : { insulationDiameterToleranceMm }),
+    ...(braidStructure === undefined ? {} : { braidStructure }),
+    ...(braidStructureDescription === undefined ? {} : { braidStructureDescription }),
+    ...(shieldCoverageRatio === undefined ? {} : { shieldCoverageRatio }),
+    ...(shieldCoverageDescription === undefined ? {} : { shieldCoverageDescription }),
+    ...(jacketHardnessP === undefined ? {} : { jacketHardnessP }),
+    ...(outerDiameterMm === undefined ? {} : { outerDiameterMm }),
+    ...(outerDiameterToleranceMm === undefined ? {} : { outerDiameterToleranceMm }),
+    ...(tensileStrengthPsi === undefined ? {} : { tensileStrengthPsi }),
+    ...(elongationPercent === undefined ? {} : { elongationPercent }),
+    ...(conductorResistanceOhmPerKmAt20C === undefined ? {} : { conductorResistanceOhmPerKmAt20C }),
+    ...(insulationResistanceMOhmKm === undefined ? {} : { insulationResistanceMOhmKm }),
+    ...(coreColorDescription === undefined ? {} : { coreColorDescription }),
+  };
+}
+
 function stringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item.trim())) {
     throw new WireCatalogError(`invalid ${field}`);
@@ -44,15 +156,16 @@ function stringArray(value: unknown, field: string): string[] {
 }
 
 export function parseCatalogWireSpec(row: CatalogWireRow): CatalogWireSpec {
-  const kind = text(row.wire_kind);
+  const kind = text(row.wire_kind, 'wire kind');
   if (kind !== 'electronic' && kind !== 'jacketed') {
     throw new WireCatalogError('invalid wire kind');
   }
   const awg = positiveNumber(row.awg, 'awg');
+  const engineering = engineeringSpec(row);
 
   if (kind === 'electronic') {
     if (row.ul_number !== '1007') throw new WireCatalogError('invalid electronic UL number');
-    const color = text(row.conductor_color);
+    const color = text(row.conductor_color, 'conductor color');
     if (!color
       || (row.jacket_material !== null && row.jacket_material !== undefined)
       || (row.jacket_color !== null && row.jacket_color !== undefined)
@@ -62,16 +175,16 @@ export function parseCatalogWireSpec(row: CatalogWireRow): CatalogWireSpec {
     if (row.is_shielded !== false) throw new WireCatalogError('invalid electronic shielded flag');
     const coreColors = stringArray(row.core_colors, 'core colors');
     if (coreColors.length !== 0) throw new WireCatalogError('invalid electronic core colors');
-    return { kind, color, awg, ulNumber: '1007' };
+    return { kind, color, awg, ulNumber: '1007', ...engineering };
   }
 
   if (kind === 'jacketed') {
-    const jacketMaterial = text(row.jacket_material);
-    const jacketColor = text(row.jacket_color);
+    const jacketMaterial = text(row.jacket_material, 'jacket material');
+    const jacketColor = text(row.jacket_color, 'jacket color');
     const coreCount = Number(row.core_count);
     const ulNumber = row.ul_number === null || row.ul_number === undefined || row.ul_number === ''
       ? undefined
-      : text(row.ul_number);
+      : text(row.ul_number, 'UL number');
     if (!jacketMaterial || !JACKET_MATERIALS.includes(jacketMaterial as JacketMaterial)) {
       throw new WireCatalogError('invalid jacket material');
     }
@@ -99,6 +212,7 @@ export function parseCatalogWireSpec(row: CatalogWireRow): CatalogWireSpec {
       shielded: row.is_shielded,
       coreColors,
       ...(ulNumber ? { ulNumber: ulNumber as JacketUlNumber } : {}),
+      ...engineering,
     };
   }
 
@@ -124,7 +238,11 @@ export function applyCatalogWireSpec(current: CanvasWireSpec, catalog: CatalogWi
     awg: catalog.awg,
     coreCount: catalog.coreCount,
     shielded: catalog.shielded,
-    odMm: calculateCableOd(catalog.awg, catalog.coreCount, catalog.shielded),
+    odMm: catalog.outerDiameterMm
+      ?? calculateCableOd(catalog.awg, catalog.coreCount, catalog.shielded),
+    ...(catalog.outerDiameterToleranceMm === undefined
+      ? {}
+      : { outerDiameterToleranceMm: catalog.outerDiameterToleranceMm }),
     coreColors: [...catalog.coreColors],
     endTreatment: current.endTreatment,
     lengthMm: current.lengthMm,

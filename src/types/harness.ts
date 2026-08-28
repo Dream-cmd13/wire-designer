@@ -37,6 +37,20 @@ export interface Connector {
   housingMaterial?: string;
   contactMaterial?: string;
   nutMaterial?: string;
+  /** Optional engineering attributes supplied by the connector catalog. */
+  shielded?: boolean;
+  ratedVoltageV?: number;
+  ratedCurrentA?: number;
+  temperatureRangeC?: TemperatureRangeC;
+  ingressProtection?: string;
+  flammabilityRating?: string;
+  matingCyclesMin?: number;
+}
+
+/** A temperature interval in degrees Celsius. At least one bound is present. */
+export interface TemperatureRangeC {
+  min?: number;
+  max?: number;
 }
 
 /** Wire color catalog entry */
@@ -89,6 +103,8 @@ export interface JacketedWireSpec {
   coreCount: JacketCoreCount;
   shielded: boolean;
   odMm: number;
+  /** Optional catalog nominal OD tolerance retained for drawing annotations. */
+  outerDiameterToleranceMm?: number;
   coreColors: string[];
   endTreatment: WireEndTreatment;
   lengthMm: number;

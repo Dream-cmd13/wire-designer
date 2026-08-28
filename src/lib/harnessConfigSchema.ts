@@ -18,6 +18,7 @@ import type {
   WireEndTreatment,
   WireLabel,
   WireNumberTube,
+  TemperatureRangeC,
 } from '@/types/harness';
 import { DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
 
@@ -61,6 +62,36 @@ function readStringArray(value: unknown, path: string, issues: string[]): string
     return null;
   }
   return value;
+}
+
+function readTemperatureRange(
+  value: unknown,
+  path: string,
+  issues: string[],
+): TemperatureRangeC | undefined | null {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) {
+    issues.push(`${path} must be an object`);
+    return null;
+  }
+  const min = value.min === undefined ? undefined : value.min;
+  const max = value.max === undefined ? undefined : value.max;
+  if ((min !== undefined && !isFiniteNumber(min)) || (max !== undefined && !isFiniteNumber(max))) {
+    issues.push(`${path} bounds must be finite numbers`);
+    return null;
+  }
+  if (min === undefined && max === undefined) {
+    issues.push(`${path} must include min or max`);
+    return null;
+  }
+  if (min !== undefined && max !== undefined && min > max) {
+    issues.push(`${path}.min must not exceed max`);
+    return null;
+  }
+  return {
+    ...(min === undefined ? {} : { min }),
+    ...(max === undefined ? {} : { max }),
+  };
 }
 
 function readEndTreatment(
@@ -172,6 +203,7 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
   }
 
   const pinLabels = readStringArray(value.pinLabels, `${path}.pinLabels`, issues);
+  const temperatureRangeC = readTemperatureRange(value.temperatureRangeC, `${path}.temperatureRangeC`, issues);
   if (
     !isString(value.id)
     || !isString(value.name)
@@ -187,6 +219,16 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
     || (value.pitch !== undefined && !isPositiveNumber(value.pitch))
     || (value.image !== undefined && !isString(value.image))
     || (value.resourceItemId !== undefined && !isString(value.resourceItemId))
+    || (value.housingMaterial !== undefined && !isString(value.housingMaterial))
+    || (value.contactMaterial !== undefined && !isString(value.contactMaterial))
+    || (value.nutMaterial !== undefined && !isString(value.nutMaterial))
+    || (value.shielded !== undefined && typeof value.shielded !== 'boolean')
+    || (value.ratedVoltageV !== undefined && !isPositiveNumber(value.ratedVoltageV))
+    || (value.ratedCurrentA !== undefined && !isPositiveNumber(value.ratedCurrentA))
+    || temperatureRangeC === null
+    || (value.ingressProtection !== undefined && !isString(value.ingressProtection))
+    || (value.flammabilityRating !== undefined && !isString(value.flammabilityRating))
+    || (value.matingCyclesMin !== undefined && !isPositiveInteger(value.matingCyclesMin))
   ) {
     issues.push(`${path} is not a valid connector`);
     return null;
@@ -207,6 +249,16 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
     ...(value.pitch === undefined ? {} : { pitch: value.pitch }),
     ...(value.image === undefined ? {} : { image: value.image }),
     ...(value.resourceItemId === undefined ? {} : { resourceItemId: value.resourceItemId }),
+    ...(value.housingMaterial === undefined ? {} : { housingMaterial: value.housingMaterial }),
+    ...(value.contactMaterial === undefined ? {} : { contactMaterial: value.contactMaterial }),
+    ...(value.nutMaterial === undefined ? {} : { nutMaterial: value.nutMaterial }),
+    ...(value.shielded === undefined ? {} : { shielded: value.shielded }),
+    ...(value.ratedVoltageV === undefined ? {} : { ratedVoltageV: value.ratedVoltageV }),
+    ...(value.ratedCurrentA === undefined ? {} : { ratedCurrentA: value.ratedCurrentA }),
+    ...(temperatureRangeC === undefined ? {} : { temperatureRangeC }),
+    ...(value.ingressProtection === undefined ? {} : { ingressProtection: value.ingressProtection }),
+    ...(value.flammabilityRating === undefined ? {} : { flammabilityRating: value.flammabilityRating }),
+    ...(value.matingCyclesMin === undefined ? {} : { matingCyclesMin: value.matingCyclesMin }),
   };
 }
 
@@ -375,6 +427,7 @@ function readWireSpec(value: unknown, path: string, issues: string[]): CanvasWir
     || coreCount > 100
     || typeof value.shielded !== 'boolean'
     || !isPositiveNumber(value.odMm)
+    || (value.outerDiameterToleranceMm !== undefined && !isPositiveNumber(value.outerDiameterToleranceMm))
     || !coreColors
     || coreColors.length !== coreCount
     || (value.ulNumber !== undefined && value.ulNumber !== 'UL2464' && value.ulNumber !== 'UL20276')
@@ -391,6 +444,9 @@ function readWireSpec(value: unknown, path: string, issues: string[]): CanvasWir
     coreCount,
     shielded: value.shielded,
     odMm: value.odMm,
+    ...(value.outerDiameterToleranceMm === undefined
+      ? {}
+      : { outerDiameterToleranceMm: value.outerDiameterToleranceMm }),
     coreColors,
     endTreatment,
     lengthMm: value.lengthMm,

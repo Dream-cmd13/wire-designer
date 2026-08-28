@@ -63,6 +63,36 @@ function sleeveSpecification(item: Extract<CatalogItemRow, { kind: 'protective_s
   ].filter(Boolean).join(' · ');
 }
 
+function connectorSpecification(item: Extract<CatalogItemRow, { kind: 'connector' }>): string {
+  const spec = item.spec;
+  return [
+    spec.series ?? '',
+    `${spec.pinCount}PIN`,
+    spec.connectorType,
+    spec.pitchMm === undefined ? '' : `${spec.pitchMm}mm pitch`,
+    spec.shielded === undefined ? '' : (spec.shielded ? 'shielded' : 'unshielded'),
+  ].filter(Boolean).join(' · ');
+}
+
+function wireSpecification(item: Extract<CatalogItemRow, { kind: 'wire' }>): string {
+  const spec = item.spec;
+  if (spec.kind === 'electronic') {
+    return [
+      item.model,
+      `${spec.awg}AWG`,
+      spec.ulNumber ? `UL${spec.ulNumber}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+  return [
+    item.model,
+    `${spec.awg}AWG`,
+    `${spec.coreCount}C`,
+    spec.shielded ? 'shielded' : 'unshielded',
+    spec.outerDiameterMm === undefined ? '' : `OD ${spec.outerDiameterMm}mm${spec.outerDiameterToleranceMm === undefined ? '' : `±${spec.outerDiameterToleranceMm}`}`,
+    spec.ulNumber ?? '',
+  ].filter(Boolean).join(' · ');
+}
+
 function mapCatalogItem(item: CatalogItemRow): CatalogResourceWithStoragePath | null {
   if (item.kind === 'protective_sleeve' && item.spec.sleeveType !== 'heat-shrink') return null;
 
@@ -79,15 +109,53 @@ function mapCatalogItem(item: CatalogItemRow): CatalogResourceWithStoragePath | 
   if (item.kind === 'connector') {
     return {
       ...common,
+      specification: connectorSpecification(item),
       gender: item.spec.connectorType,
       series: item.spec.series,
       pinCount: item.spec.pinCount,
       rowCount: item.spec.rowCount,
       pitchMm: item.spec.pitchMm,
+      shielded: item.spec.shielded,
+      ratedVoltageV: item.spec.ratedVoltageV,
+      ratedCurrentA: item.spec.ratedCurrentA,
+      temperatureRangeC: item.spec.temperatureRangeC
+        ? { ...item.spec.temperatureRangeC }
+        : undefined,
+      ingressProtection: item.spec.ingressProtection,
+      flammabilityRating: item.spec.flammabilityRating,
+      matingCyclesMin: item.spec.matingCyclesMin,
     };
   }
   if (item.kind === 'wire') {
-    return { ...common, specification: item.spec.kind };
+    return {
+      ...common,
+      specification: wireSpecification(item),
+      wireEngineering: {
+        ratedVoltageV: item.spec.ratedVoltageV,
+        temperatureRangeC: item.spec.temperatureRangeC
+          ? { ...item.spec.temperatureRangeC }
+          : undefined,
+        flameTest: item.spec.flameTest,
+        rohsCompliant: item.spec.rohsCompliant,
+        conductorMaterial: item.spec.conductorMaterial,
+        conductorStructure: item.spec.conductorStructure,
+        insulationMaterial: item.spec.insulationMaterial,
+        insulationDiameterMm: item.spec.insulationDiameterMm,
+        insulationDiameterToleranceMm: item.spec.insulationDiameterToleranceMm,
+        braidStructure: item.spec.braidStructure,
+        braidStructureDescription: item.spec.braidStructureDescription,
+        shieldCoverageRatio: item.spec.shieldCoverageRatio,
+        shieldCoverageDescription: item.spec.shieldCoverageDescription,
+        jacketHardnessP: item.spec.jacketHardnessP,
+        outerDiameterMm: item.spec.outerDiameterMm,
+        outerDiameterToleranceMm: item.spec.outerDiameterToleranceMm,
+        tensileStrengthPsi: item.spec.tensileStrengthPsi,
+        elongationPercent: item.spec.elongationPercent,
+        conductorResistanceOhmPerKmAt20C: item.spec.conductorResistanceOhmPerKmAt20C,
+        insulationResistanceMOhmKm: item.spec.insulationResistanceMOhmKm,
+        coreColorDescription: item.spec.coreColorDescription,
+      },
+    };
   }
   if (item.kind === 'protective_sleeve') {
     return { ...common, specification: sleeveSpecification(item), unit: 'PCS' };

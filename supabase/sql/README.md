@@ -13,6 +13,7 @@
 5. `20_storage/01_buckets.sql`：确保私有 `catalog-assets` 桶存在，并安装只读状态 RPC。
 6. `30_security/01_rls.sql`：安装三张表与目录图片读取策略。
 7. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
+8. `40_seed/02_real_harness_catalog.sql`：写入 `线束设计器.xlsx` 中的 12 个真实连接器和 4 个真实线材。
 
 完成 SQL 后，可在 CI、部署服务器或管理员工作站运行：
 
@@ -26,6 +27,8 @@ npm run supabase:bootstrap-storage
 
 - 项目和制作图纸直接保存完整 JSON 文档；数据库不保留版本历史。
 - 目录公共字段和按 `kind` 区分的 `spec` 存在 `catalog_items`。
+- `02_real_harness_catalog.sql` 是真实 Excel 目录的唯一 seed 责任文件；同一 `kind + code` 不得在基线 seed 中重复维护。
+- 真实线材的原始描述保存在 `description`，工程字段保存在 `spec`；当来源文本与结构化值冲突时，两者都保留。
 - `kind = 'overmold'` 的目录项只允许黑色 PVC 45P / 黑色 TPE 与直头 / 弯头四种组合；可用内模固定为低密度透明 PE，且内模外型必须与外模一致。
 - 不创建只有内模、没有外模的独立 `overmold` 目录项；内模是外模目录项的可选属性。
 - 四条 canonical 外模记录共用一张外模图片；内模没有独立图片字段，也不在成品图中单独展示。

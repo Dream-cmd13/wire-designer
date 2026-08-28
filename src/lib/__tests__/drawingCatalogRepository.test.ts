@@ -91,10 +91,11 @@ describe('DrawingCatalogRepository', () => {
       pinCount: 4,
       rowCount: 1,
       pitchMm: 2.54,
+      specification: 'XH2.54 · 4PIN · female · 2.54mm pitch',
     })]);
   });
 
-  it('maps wire kind as the drawing resource specification', async () => {
+  it('maps wire engineering fields into a readable drawing specification', async () => {
     const repository = new DrawingCatalogRepository(fakeClient({
       catalog_items: [{
         id: 'wire-1',
@@ -113,12 +114,14 @@ describe('DrawingCatalogRepository', () => {
           coreCount: 4,
           shielded: true,
           coreColors: ['red', 'black', 'white', 'green'],
+          outerDiameterMm: 5.2,
+          outerDiameterToleranceMm: 0.2,
         },
       }],
     }));
 
     await expect(repository.listResources({ resourceType: 'wire' })).resolves.toEqual([
-      expect.objectContaining({ resourceType: 'wire', specification: 'jacketed' }),
+      expect.objectContaining({ resourceType: 'wire', specification: 'SHIELD-4C · 24AWG · 4C · shielded · OD 5.2mm±0.2 · UL20276' }),
     ]);
   });
 

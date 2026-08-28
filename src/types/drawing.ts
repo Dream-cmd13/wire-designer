@@ -1,3 +1,5 @@
+import type { TemperatureRangeC } from '@/types/harness';
+
 export type DrawingPage = {
   size: 'A4';
   orientation: 'landscape';
@@ -265,6 +267,36 @@ export type DrawingCatalogResource = {
   pinCount?: number;
   rowCount?: number;
   pitchMm?: number;
+  shielded?: boolean;
+  ratedVoltageV?: number;
+  ratedCurrentA?: number;
+  temperatureRangeC?: TemperatureRangeC;
+  ingressProtection?: string;
+  flammabilityRating?: string;
+  matingCyclesMin?: number;
+  wireEngineering?: {
+    ratedVoltageV?: number;
+    temperatureRangeC?: TemperatureRangeC;
+    flameTest?: string;
+    rohsCompliant?: boolean;
+    conductorMaterial?: string;
+    conductorStructure?: string;
+    insulationMaterial?: string;
+    insulationDiameterMm?: number;
+    insulationDiameterToleranceMm?: number;
+    braidStructure?: string;
+    braidStructureDescription?: string;
+    shieldCoverageRatio?: number;
+    shieldCoverageDescription?: string;
+    jacketHardnessP?: number;
+    outerDiameterMm?: number;
+    outerDiameterToleranceMm?: number;
+    tensileStrengthPsi?: number;
+    elongationPercent?: number;
+    conductorResistanceOhmPerKmAt20C?: number;
+    insulationResistanceMOhmKm?: number;
+    coreColorDescription?: string;
+  };
   specification?: string;
   unit?: string;
 };

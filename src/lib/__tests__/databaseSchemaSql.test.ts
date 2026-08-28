@@ -1,11 +1,32 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parseCatalogItemRow } from '@/lib/catalogItem';
 
 const read = (path: string) => readFileSync(path, 'utf8');
 const core = read('supabase/sql/10_schema/01_core.sql');
 const catalog = read('supabase/sql/10_schema/02_catalog.sql');
 const schema = `${core}\n${catalog}`;
 const seed = read('supabase/sql/40_seed/01_catalog_items.sql');
+const realSeed = read('supabase/sql/40_seed/02_real_harness_catalog.sql');
+
+function realSeedCatalogRows(sql: string): unknown[] {
+  return [...sql.matchAll(
+    /\(\s*'([0-9a-f-]{36})'\s*,\s*'(connector|wire)'\s*,\s*'([^']+)'[\s\S]*?,\s*'(\{"(?:connectorType|kind)"[\s\S]*?\})'::jsonb\s*\)/gi,
+  )].map((match) => ({
+    id: match[1],
+    kind: match[2],
+    code: match[3],
+    name: match[3],
+    model: match[3],
+    manufacturer: '',
+    resource_group: '',
+    description: '',
+    image_path: null,
+    image_variants: {},
+    sort_order: 0,
+    spec: JSON.parse(match[4]),
+  }));
+}
 
 function columns(sql: string, table: string): string[] {
   const match = sql.match(new RegExp(`create table public\\.${table} \\(([\\s\\S]*?)\\n\\);`, 'i'));
@@ -14,7 +35,7 @@ function columns(sql: string, table: string): string[] {
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => /^[a-z][a-z0-9_]*\s/i.test(line))
-    .filter((line) => !/^(constraint|primary|foreign|unique|check)\b/i.test(line))
+    .filter((line) => !/^(constraint|primary|foreign|unique|check|not)\b/i.test(line))
     .map((line) => line.match(/^([a-z][a-z0-9_]*)/i)?.[1] ?? '');
 }
 
@@ -43,18 +64,18 @@ describe('minimal database schema', () => {
     );
   });
 
-  it('seeds exactly 49 unified catalog items with the expected distribution', () => {
+  it('seeds the baseline catalog with the expected distribution', () => {
     const kinds = [...seed.matchAll(
       /\(\s*'[0-9a-f-]{36}'\s*,\s*'(connector|wire|protective_sleeve|overmold|model|accessory|packaging)'\s*,/gi,
     )].map((match) => match[1]);
-    expect(kinds).toHaveLength(49);
+    expect(kinds).toHaveLength(48);
     expect(
       kinds.reduce<Record<string, number>>((counts, kind) => {
         counts[kind] = (counts[kind] ?? 0) + 1;
         return counts;
       }, {}),
     ).toEqual({
-      connector: 37,
+      connector: 36,
       wire: 3,
       protective_sleeve: 2,
       overmold: 4,
@@ -76,6 +97,29 @@ describe('minimal database schema', () => {
     expect(seed).toContain('on conflict (kind, code)');
   });
 
+  it('keeps the real Excel catalog in a separate idempotent seed', () => {
+    const connectorCodes = [...realSeed.matchAll(/\(\s*'[0-9a-f-]{36}'\s*,\s*'connector'\s*,\s*'([^']+)'/gi)]
+      .map((match) => match[1]);
+    const wireCodes = [...realSeed.matchAll(/\(\s*'[0-9a-f-]{36}'\s*,\s*'wire'\s*,\s*'([^']+)'/gi)]
+      .map((match) => match[1]);
+    expect(connectorCodes).toHaveLength(12);
+    expect(wireCodes).toHaveLength(4);
+    expect(realSeed).toContain('M12A04-07-093');
+    expect(realSeed).toContain('WL-HTX-PVC-033');
+    expect(realSeed).toContain('WL-HTX-PVC-034');
+    expect(realSeed).toContain('65%');
+    expect(realSeed).toContain('on conflict (kind, code)');
+    expect(seed).not.toContain("'m12a04-07-093'");
+  });
+
+  it('parses every real connector and wire seed row through the catalog contract', () => {
+    const rows = realSeedCatalogRows(realSeed);
+    expect(rows).toHaveLength(16);
+    expect(rows.filter((row) => (row as { kind: string }).kind === 'connector')).toHaveLength(12);
+    expect(rows.filter((row) => (row as { kind: string }).kind === 'wire')).toHaveLength(4);
+    rows.forEach((row) => expect(() => parseCatalogItemRow(row)).not.toThrow());
+  });
+
   it('enforces the final overmold contract and one shared outer image', () => {
     expect(catalog).toContain("spec->>'outerMaterial' in ('黑色PVC', '黑色TPE')");
     expect(catalog).toContain("spec->>'outerForm' in ('straight', 'bent')");
@@ -89,5 +133,21 @@ describe('minimal database schema', () => {
     expect(seed.split(sharedImagePath)).toHaveLength(5);
     expect(seed).not.toContain('demo-pvc-overmold');
     expect(seed).not.toContain('innerMaterialOptional');
+  });
+
+  it('enforces valid connector and wire engineering ranges', () => {
+    expect(catalog).toContain("(spec->>'pinCount')::numeric = trunc((spec->>'pinCount')::numeric)");
+    expect(catalog).toContain("(spec->>'matingCyclesMin')::numeric = trunc((spec->>'matingCyclesMin')::numeric)");
+    expect(catalog).toContain("(spec->'temperatureRangeC'->>'min')::numeric <= (spec->'temperatureRangeC'->>'max')::numeric");
+    for (const field of [
+      'ingressProtection', 'flammabilityRating', 'flameTest', 'conductorMaterial',
+      'conductorStructure', 'insulationMaterial', 'insulationDiameterMm',
+      'insulationDiameterToleranceMm', 'braidStructure', 'braidStructureDescription',
+      'shieldCoverageDescription', 'jacketHardnessP', 'tensileStrengthPsi',
+      'elongationPercent', 'conductorResistanceOhmPerKmAt20C',
+      'insulationResistanceMOhmKm', 'coreColorDescription',
+    ]) {
+      expect(catalog).toContain(`spec ? '${field}'`);
+    }
   });
 });

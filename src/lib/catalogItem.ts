@@ -4,7 +4,9 @@ import type {
   OvermoldHardness,
   OvermoldInnerMaterial,
   OvermoldOuterMaterial,
+  TemperatureRangeC,
 } from '@/types/harness';
+import type { CatalogWireEngineeringSpec } from '@/types/catalog';
 
 export const CATALOG_ITEM_COLUMNS = 'id,kind,code,name,model,manufacturer,resource_group,description,image_path,image_variants,sort_order,spec';
 
@@ -28,15 +30,22 @@ export interface CatalogItemSpecByKind {
     housingMaterial?: string;
     contactMaterial?: string;
     nutMaterial?: string;
+    shielded?: boolean;
+    ratedVoltageV?: number;
+    ratedCurrentA?: number;
+    temperatureRangeC?: TemperatureRangeC;
+    ingressProtection?: string;
+    flammabilityRating?: string;
+    matingCyclesMin?: number;
   };
   wire:
-    | {
+    | ({
         kind: 'electronic';
         awg: number;
         ulNumber: '1007';
         conductorColor: string;
-      }
-    | {
+      } & CatalogWireEngineeringSpec)
+    | ({
         kind: 'jacketed';
         awg: number;
         ulNumber?: 'UL2464' | 'UL20276';
@@ -45,7 +54,7 @@ export interface CatalogItemSpecByKind {
         coreCount: number;
         shielded: boolean;
         coreColors: string[];
-      };
+      } & CatalogWireEngineeringSpec);
   protective_sleeve: {
     sleeveType: string;
     material?: string;
@@ -145,6 +154,44 @@ function optionalPositiveNumber(value: unknown, field: string): number | undefin
   return positiveNumber(value, field);
 }
 
+function optionalBoolean(value: unknown, field: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'boolean') throw new CatalogItemError(`目录字段 ${field} 无效。`);
+  return value;
+}
+
+function optionalPositiveInteger(value: unknown, field: string): number | undefined {
+  const parsed = optionalPositiveNumber(value, field);
+  if (parsed !== undefined && !Number.isInteger(parsed)) {
+    throw new CatalogItemError(`目录字段 ${field} 无效。`);
+  }
+  return parsed;
+}
+
+function temperatureRange(value: unknown, field: string): TemperatureRangeC | undefined {
+  if (value === undefined || value === null) return undefined;
+  const source = object(value, field);
+  const readBound = (bound: unknown, boundField: string): number | undefined => {
+    if (bound === undefined || bound === null) return undefined;
+    if (typeof bound !== 'number' || !Number.isFinite(bound)) {
+      throw new CatalogItemError(`目录字段 ${boundField} 无效。`);
+    }
+    return bound;
+  };
+  const min = readBound(source.min, `${field}.min`);
+  const max = readBound(source.max, `${field}.max`);
+  if (min === undefined && max === undefined) {
+    throw new CatalogItemError(`目录字段 ${field} 无效。`);
+  }
+  if (min !== undefined && max !== undefined && min > max) {
+    throw new CatalogItemError(`目录字段 ${field} 无效。`);
+  }
+  return {
+    ...(min === undefined ? {} : { min }),
+    ...(max === undefined ? {} : { max }),
+  };
+}
+
 function stringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item.trim())) {
     throw new CatalogItemError(`目录字段 ${field} 无效。`);
@@ -160,19 +207,34 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
     if (connectorType !== 'male' && connectorType !== 'female' && connectorType !== 'receptacle') {
       throw new CatalogItemError('目录字段 spec.connectorType 无效。');
     }
-    const pinCount = positiveNumber(spec.pinCount, 'spec.pinCount');
+    const pinCount = optionalPositiveInteger(spec.pinCount, 'spec.pinCount');
+    if (pinCount === undefined) throw new CatalogItemError('目录字段 spec.pinCount 无效。');
     const pinLabels = stringArray(spec.pinLabels, 'spec.pinLabels');
     if (pinLabels.length !== pinCount) throw new CatalogItemError('目录字段 spec.pinLabels 数量无效。');
+    const shielded = optionalBoolean(spec.shielded, 'spec.shielded');
+    const ratedVoltageV = optionalPositiveNumber(spec.ratedVoltageV, 'spec.ratedVoltageV');
+    const ratedCurrentA = optionalPositiveNumber(spec.ratedCurrentA, 'spec.ratedCurrentA');
+    const temperatureRangeC = temperatureRange(spec.temperatureRangeC, 'spec.temperatureRangeC');
+    const ingressProtection = optionalText(spec.ingressProtection, 'spec.ingressProtection');
+    const flammabilityRating = optionalText(spec.flammabilityRating, 'spec.flammabilityRating');
+    const matingCyclesMin = optionalPositiveInteger(spec.matingCyclesMin, 'spec.matingCyclesMin');
     return {
       connectorType,
       series: optionalText(spec.series, 'spec.series'),
       pinCount,
-      rowCount: optionalPositiveNumber(spec.rowCount, 'spec.rowCount'),
+      rowCount: optionalPositiveInteger(spec.rowCount, 'spec.rowCount'),
       pitchMm: optionalPositiveNumber(spec.pitchMm, 'spec.pitchMm'),
       pinLabels,
       housingMaterial: optionalText(spec.housingMaterial, 'spec.housingMaterial'),
       contactMaterial: optionalText(spec.contactMaterial, 'spec.contactMaterial'),
       nutMaterial: optionalText(spec.nutMaterial, 'spec.nutMaterial'),
+      ...(shielded === undefined ? {} : { shielded }),
+      ...(ratedVoltageV === undefined ? {} : { ratedVoltageV }),
+      ...(ratedCurrentA === undefined ? {} : { ratedCurrentA }),
+      ...(temperatureRangeC === undefined ? {} : { temperatureRangeC }),
+      ...(ingressProtection === undefined ? {} : { ingressProtection }),
+      ...(flammabilityRating === undefined ? {} : { flammabilityRating }),
+      ...(matingCyclesMin === undefined ? {} : { matingCyclesMin }),
     };
   }
 
@@ -188,6 +250,27 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
         core_count: spec.kind === 'jacketed' ? spec.coreCount : null,
         is_shielded: spec.kind === 'jacketed' ? spec.shielded : false,
         core_colors: spec.kind === 'jacketed' ? spec.coreColors : [],
+        rated_voltage_v: spec.ratedVoltageV,
+        temperature_range_c: spec.temperatureRangeC,
+        flame_test: spec.flameTest,
+        rohs_compliant: spec.rohsCompliant,
+        conductor_material: spec.conductorMaterial,
+        conductor_structure: spec.conductorStructure,
+        insulation_material: spec.insulationMaterial,
+        insulation_diameter_mm: spec.insulationDiameterMm,
+        insulation_diameter_tolerance_mm: spec.insulationDiameterToleranceMm,
+        braid_structure: spec.braidStructure,
+        braid_structure_description: spec.braidStructureDescription,
+        shield_coverage_ratio: spec.shieldCoverageRatio,
+        shield_coverage_description: spec.shieldCoverageDescription,
+        jacket_hardness_p: spec.jacketHardnessP,
+        outer_diameter_mm: spec.outerDiameterMm,
+        outer_diameter_tolerance_mm: spec.outerDiameterToleranceMm,
+        tensile_strength_psi: spec.tensileStrengthPsi,
+        elongation_percent: spec.elongationPercent,
+        conductor_resistance_ohm_per_km_at_20c: spec.conductorResistanceOhmPerKmAt20C,
+        insulation_resistance_mohm_km: spec.insulationResistanceMOhmKm,
+        core_color_description: spec.coreColorDescription,
       });
       return parsed.kind === 'electronic'
         ? {
@@ -195,6 +278,7 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
             awg: parsed.awg,
             ulNumber: parsed.ulNumber,
             conductorColor: parsed.color,
+            ...engineeringFields(parsed),
           }
         : {
             kind: parsed.kind,
@@ -205,6 +289,7 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
             coreCount: parsed.coreCount,
             shielded: parsed.shielded,
             coreColors: [...parsed.coreColors],
+            ...engineeringFields(parsed),
           };
     } catch {
       throw new CatalogItemError('目录字段 spec 线材规格无效。');
@@ -285,6 +370,32 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
   return {
     specification: requiredText(spec.specification, 'spec.specification'),
     unit: requiredText(spec.unit, 'spec.unit'),
+  };
+}
+
+function engineeringFields(spec: CatalogWireEngineeringSpec): CatalogWireEngineeringSpec {
+  return {
+    ...(spec.ratedVoltageV === undefined ? {} : { ratedVoltageV: spec.ratedVoltageV }),
+    ...(spec.temperatureRangeC === undefined ? {} : { temperatureRangeC: { ...spec.temperatureRangeC } }),
+    ...(spec.flameTest === undefined ? {} : { flameTest: spec.flameTest }),
+    ...(spec.rohsCompliant === undefined ? {} : { rohsCompliant: spec.rohsCompliant }),
+    ...(spec.conductorMaterial === undefined ? {} : { conductorMaterial: spec.conductorMaterial }),
+    ...(spec.conductorStructure === undefined ? {} : { conductorStructure: spec.conductorStructure }),
+    ...(spec.insulationMaterial === undefined ? {} : { insulationMaterial: spec.insulationMaterial }),
+    ...(spec.insulationDiameterMm === undefined ? {} : { insulationDiameterMm: spec.insulationDiameterMm }),
+    ...(spec.insulationDiameterToleranceMm === undefined ? {} : { insulationDiameterToleranceMm: spec.insulationDiameterToleranceMm }),
+    ...(spec.braidStructure === undefined ? {} : { braidStructure: spec.braidStructure }),
+    ...(spec.braidStructureDescription === undefined ? {} : { braidStructureDescription: spec.braidStructureDescription }),
+    ...(spec.shieldCoverageRatio === undefined ? {} : { shieldCoverageRatio: spec.shieldCoverageRatio }),
+    ...(spec.shieldCoverageDescription === undefined ? {} : { shieldCoverageDescription: spec.shieldCoverageDescription }),
+    ...(spec.jacketHardnessP === undefined ? {} : { jacketHardnessP: spec.jacketHardnessP }),
+    ...(spec.outerDiameterMm === undefined ? {} : { outerDiameterMm: spec.outerDiameterMm }),
+    ...(spec.outerDiameterToleranceMm === undefined ? {} : { outerDiameterToleranceMm: spec.outerDiameterToleranceMm }),
+    ...(spec.tensileStrengthPsi === undefined ? {} : { tensileStrengthPsi: spec.tensileStrengthPsi }),
+    ...(spec.elongationPercent === undefined ? {} : { elongationPercent: spec.elongationPercent }),
+    ...(spec.conductorResistanceOhmPerKmAt20C === undefined ? {} : { conductorResistanceOhmPerKmAt20C: spec.conductorResistanceOhmPerKmAt20C }),
+    ...(spec.insulationResistanceMOhmKm === undefined ? {} : { insulationResistanceMOhmKm: spec.insulationResistanceMOhmKm }),
+    ...(spec.coreColorDescription === undefined ? {} : { coreColorDescription: spec.coreColorDescription }),
   };
 }
 

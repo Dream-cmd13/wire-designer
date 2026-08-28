@@ -32,6 +32,26 @@ describe('wire catalog adapters', () => {
     });
   });
 
+  it('parses engineering fields without normalizing away source descriptions', () => {
+    expect(parseCatalogWireSpec({
+      wire_kind: 'jacketed', awg: 22, ul_number: 'UL2464', conductor_color: null,
+      jacket_material: 'PVC', jacket_color: 'black', core_count: 5,
+      is_shielded: true, core_colors: ['棕色', '白色', '蓝色', '黑色', '灰色'],
+      rated_voltage_v: 300, temperature_range_c: { max: 80 }, flame_test: 'VW-1', rohs_compliant: true,
+      conductor_material: '镀锡铜丝', conductor_structure: '17/0.16TC', insulation_material: 'PVC',
+      insulation_diameter_mm: 1.3, insulation_diameter_tolerance_mm: 0.05,
+      braid_structure: '16*5/0.10TC', braid_structure_description: 'B16/6/0.10TC',
+      shield_coverage_ratio: 0.6, shield_coverage_description: '65%', jacket_hardness_p: 60,
+      outer_diameter_mm: 5.5, outer_diameter_tolerance_mm: 0.2, tensile_strength_psi: 1500,
+      elongation_percent: 100, conductor_resistance_ohm_per_km_at_20c: 59.4,
+      insulation_resistance_mohm_km: 10, core_color_description: '棕白蓝黑灰',
+    })).toMatchObject({
+      kind: 'jacketed', awg: 22, coreCount: 5, outerDiameterMm: 5.5,
+      shieldCoverageRatio: 0.6, shieldCoverageDescription: '65%',
+      braidStructureDescription: 'B16/6/0.10TC', coreColorDescription: '棕白蓝黑灰',
+    });
+  });
+
   it('keeps project length and end treatment while applying catalog defaults', () => {
     const current = {
       kind: 'electronic' as const, color: 'blue', awg: 22, ulNumber: '1007' as const,
@@ -45,6 +65,19 @@ describe('wire catalog adapters', () => {
       kind: 'jacketed', awg: 24, lengthMm: 720, endTreatment,
       jacketMaterial: 'PUR', coreCount: 4, odMm: expect.any(Number),
     });
+  });
+
+  it('prefers a catalog outer diameter over the calculated estimate', () => {
+    const current = {
+      kind: 'jacketed' as const, jacketMaterial: 'PVC' as const, jacketColor: 'black' as const,
+      awg: 22, coreCount: 5, shielded: true, odMm: 1, coreColors: ['棕色', '白色', '蓝色', '黑色', '灰色'],
+      lengthMm: 500, endTreatment,
+    };
+    expect(applyCatalogWireSpec(current, {
+      kind: 'jacketed', jacketMaterial: 'PVC', jacketColor: 'black', awg: 22,
+      coreCount: 5, shielded: true, coreColors: ['棕色', '白色', '蓝色', '黑色', '灰色'],
+      ulNumber: 'UL2464', outerDiameterMm: 5.5, outerDiameterToleranceMm: 0.2,
+    })).toMatchObject({ odMm: 5.5, outerDiameterToleranceMm: 0.2 });
   });
 
   it('rejects a mismatched core color array and unknown kind', () => {
@@ -145,4 +178,3 @@ describe('wire catalog adapters', () => {
     expect(unmatched).toBeUndefined();
   });
 });
-

@@ -108,6 +108,51 @@ describe('CatalogRepository', () => {
     ]);
   });
 
+  it('maps connector and wire engineering fields and common wire metadata', async () => {
+    const repository = new CatalogRepository(fakeClient({ catalog_items: [
+      {
+        id: 'connector-real', kind: 'connector', code: 'm12a04-07-068',
+        name: 'M12A04-07-068', model: 'M12A04-07-068', ...common,
+        spec: {
+          connectorType: 'male', series: 'M12 A-Coded', pinCount: 4, rowCount: 1,
+          pinLabels: ['1', '2', '3', '4'], shielded: true, ratedVoltageV: 60,
+          ratedCurrentA: 4, temperatureRangeC: { min: -40, max: 105 },
+          ingressProtection: 'IP67', flammabilityRating: 'UL94V-0', matingCyclesMin: 500,
+        },
+      },
+      {
+        id: 'wire-real', kind: 'wire', code: 'wl-htx-pvc-033', name: 'WL-HTX-PVC-033',
+        model: 'WL-HTX-PVC-033', manufacturer: '', resource_group: '护套线', description: '真实线材',
+        image_path: null, image_variants: {}, sort_order: 1,
+        spec: {
+          kind: 'jacketed', ulNumber: 'UL2464', awg: 22, coreCount: 4, shielded: true,
+          coreColors: ['棕色', '白色', '蓝色', '黑色'], coreColorDescription: '棕白蓝黑',
+          jacketMaterial: 'PVC', jacketColor: 'black', ratedVoltageV: 300,
+          temperatureRangeC: { max: 80 }, flameTest: 'VW-1', rohsCompliant: true,
+          conductorMaterial: '镀锡铜丝', conductorStructure: '17/0.16TC',
+          insulationMaterial: 'PVC', insulationDiameterMm: 1.3, insulationDiameterToleranceMm: 0.05,
+          braidStructure: '16*5/0.10TC', shieldCoverageRatio: 0.6,
+          outerDiameterMm: 5.2, outerDiameterToleranceMm: 0.2, jacketHardnessP: 60,
+          tensileStrengthPsi: 1500, elongationPercent: 100,
+          conductorResistanceOhmPerKmAt20C: 59.4, insulationResistanceMOhmKm: 10,
+        },
+      },
+    ] }));
+
+    await expect(repository.listConnectors()).resolves.toEqual([
+      expect.objectContaining({
+        resourceItemId: 'connector-real', shielded: true, ratedVoltageV: 60,
+        ratedCurrentA: 4, temperatureRangeC: { min: -40, max: 105 }, matingCyclesMin: 500,
+      }),
+    ]);
+    await expect(repository.listWires()).resolves.toEqual([
+      expect.objectContaining({
+        resourceItemId: 'wire-real', model: 'WL-HTX-PVC-033', resourceGroup: '护套线',
+        spec: expect.objectContaining({ outerDiameterMm: 5.2, shieldCoverageRatio: 0.6 }),
+      }),
+    ]);
+  });
+
   it('signs connector image variants independently', async () => {
     const repository = new CatalogRepository(fakeClient({ catalog_items: [{
       id: 'connector-1',

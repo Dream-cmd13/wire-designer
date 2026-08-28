@@ -46,7 +46,6 @@ values
   ('40000000-0000-4000-8000-000000000128', 'connector', 'm8-4', 'M8 4-Pin', 'M8 4-Pin', 'Generic', '圆形连接器', '', null, 280, '{"connectorType":"male","series":"M8","pinCount":4,"rowCount":1,"pinLabels":["1","2","3","4"],"housingMaterial":"锌合金","contactMaterial":"黄铜镀金","nutMaterial":"黄铜镀镍"}'::jsonb),
   ('40000000-0000-4000-8000-000000000129', 'connector', 'm12-4', 'M12 4-Pin (A-Coded)', 'M12 4-Pin (A-Coded)', 'Generic', '圆形连接器', '', null, 290, '{"connectorType":"male","series":"M12 A-Coded","pinCount":4,"rowCount":1,"pinLabels":["1","2","3","4"],"housingMaterial":"锌合金","contactMaterial":"黄铜镀金","nutMaterial":"黄铜镀镍"}'::jsonb),
   ('40000000-0000-4000-8000-000000000130', 'connector', 'm12-5', 'M12 5-Pin (A-Coded)', 'M12 5-Pin (A-Coded)', 'Generic', '圆形连接器', '', null, 300, '{"connectorType":"male","series":"M12 A-Coded","pinCount":5,"rowCount":1,"pinLabels":["1","2","3","4","5"],"housingMaterial":"锌合金","contactMaterial":"黄铜镀金","nutMaterial":"黄铜镀镍"}'::jsonb),
-  ('40000000-0000-4000-8000-000000000131', 'connector', 'm12a04-07-093', 'M12成型式防水连接器 4芯 A编码 焊线式公头 非屏蔽款+11.8L双网纹螺丝', 'M12A04-07-093', '万连', '圆形连接器', '', null, 310, '{"connectorType":"male","series":"M12 A-Coded","pinCount":4,"rowCount":1,"pinLabels":["1","2","3","4"],"housingMaterial":"PA66+GF","contactMaterial":"黄铜镀金","nutMaterial":"黄铜镀镍"}'::jsonb),
   ('40000000-0000-4000-8000-000000000132', 'connector', 'deutsch-dt-2', 'Deutsch DT 2P', 'Deutsch DT 2P', 'Deutsch', '汽车连接器', '', null, 320, '{"connectorType":"receptacle","series":"Deutsch DT","pinCount":2,"rowCount":1,"pitchMm":6.35,"pinLabels":["A","B"]}'::jsonb),
   ('40000000-0000-4000-8000-000000000133', 'connector', 'deutsch-dt-4', 'Deutsch DT 4P', 'Deutsch DT 4P', 'Deutsch', '汽车连接器', '', null, 330, '{"connectorType":"receptacle","series":"Deutsch DT","pinCount":4,"rowCount":1,"pitchMm":6.35,"pinLabels":["A","B","C","D"]}'::jsonb),
   ('40000000-0000-4000-8000-000000000134', 'connector', 'deutsch-dt-6', 'Deutsch DT 6P', 'Deutsch DT 6P', 'Deutsch', '汽车连接器', '', null, 340, '{"connectorType":"receptacle","series":"Deutsch DT","pinCount":6,"rowCount":1,"pitchMm":6.35,"pinLabels":["A","B","C","D","E","F"]}'::jsonb),
@@ -65,17 +64,8 @@ on conflict (kind, code) do update set
   sort_order = excluded.sort_order,
   spec = excluded.spec;
 
--- Product-image assets are uploaded to Storage separately. These paths restore
--- the former M12 state switching and keep one shared jacketed-wire image.
-update public.catalog_items
-set image_path = 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-before.png',
-    image_variants = jsonb_build_object(
-      'before', 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-before.png',
-      'after', 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-after.png',
-      'pinMap', 'catalog/connector/40000000-0000-4000-8000-000000000131/connector-pin-map.png'
-    )
-where kind = 'connector' and code = 'm12a04-07-093';
-
+-- Product-image assets are uploaded to Storage separately. Jacketed wires
+-- share one product image; real M12 image variants live in the real-data seed.
 update public.catalog_items
 set image_path = 'catalog/wire/shared/jacketed-wire.png'
 where kind = 'wire' and spec->>'kind' = 'jacketed';

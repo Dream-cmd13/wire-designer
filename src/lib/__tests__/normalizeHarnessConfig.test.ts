@@ -169,6 +169,73 @@ describe('normalizeHarnessConfig', () => {
     }
   });
 
+  it('preserves connector engineering fields in saved project JSON', () => {
+    const input = {
+      schemaVersion: 3,
+      id: 'connector-engineering',
+      name: '连接器工程字段',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [{
+        id: 'connector-instance', position: { x: 0, y: 0 }, label: 'J1', jumpers: [],
+        connector: {
+          id: 'm12a04-07-068', resourceItemId: 'connector-real', name: 'M12A04-07-068',
+          manufacturer: '万连', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
+          housingMaterial: 'PA66+GF', contactMaterial: '黄铜镀金', nutMaterial: '黄铜镀镍',
+          shielded: true, ratedVoltageV: 60, ratedCurrentA: 4,
+          temperatureRangeC: { min: -40, max: 105 }, ingressProtection: 'IP67',
+          flammabilityRating: 'UL94V-0', matingCyclesMin: 500,
+        },
+      }],
+      materials: [], protectiveSleeves: [], models: [], quantity: 1, leadTime: 'standard',
+    };
+
+    const result = parseHarnessConfig(input);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.connectors[0].connector).toMatchObject({
+        housingMaterial: 'PA66+GF', contactMaterial: '黄铜镀金', nutMaterial: '黄铜镀镍',
+        shielded: true, ratedVoltageV: 60, ratedCurrentA: 4,
+        temperatureRangeC: { min: -40, max: 105 }, matingCyclesMin: 500,
+      });
+    }
+  });
+
+  it('preserves the catalog wire OD tolerance in saved project JSON', () => {
+    const input = {
+      schemaVersion: 3,
+      id: 'wire-engineering',
+      name: '线材工程字段',
+      createdAt: 100,
+      updatedAt: 200,
+      connectors: [],
+      materials: [{
+        id: 'material-1', name: 'WL-HTX-PVC-034', position: { x: 0, y: 0 }, width: 100,
+        resourceItemId: 'wire-real',
+        spec: {
+          kind: 'jacketed', jacketMaterial: 'PVC', jacketColor: 'black', awg: 22,
+          coreCount: 5, shielded: true, odMm: 5.5, outerDiameterToleranceMm: 0.2,
+          coreColors: ['棕色', '白色', '蓝色', '黑色', '灰色'], lengthMm: 100,
+          endTreatment: {
+            start: { stripped: false, termination: 'none' },
+            end: { stripped: false, termination: 'none' },
+          },
+        },
+        circuits: [],
+      }],
+      protectiveSleeves: [], models: [], quantity: 1, leadTime: 'standard',
+    };
+
+    const result = parseHarnessConfig(input);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.materials[0].spec).toMatchObject({
+        odMm: 5.5,
+        outerDiameterToleranceMm: 0.2,
+      });
+    }
+  });
+
   it('rejects nested material data with a missing spec', () => {
     const input = {
       schemaVersion: 3,
