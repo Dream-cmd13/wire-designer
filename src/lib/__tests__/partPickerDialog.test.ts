@@ -13,6 +13,9 @@ describe('Dialogs catalogStore integration contracts', () => {
     expect(partPickerSource).not.toContain('catalogRepository.listConnectors()');
     expect(partPickerSource).toContain("'series'");
     expect(partPickerSource).toContain("'shielded'");
+    expect(partPickerSource).toContain("c.shielded === true");
+    expect(partPickerSource).toContain("c.shielded === false");
+    expect(partPickerSource).toContain('shieldLabel !== null');
     expect(partPickerSource).toContain('工程与电气规格');
   });
 

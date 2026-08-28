@@ -25,7 +25,7 @@ function getAssociatedFiles(item: BOMItem, config: HarnessConfig): AssociatedFil
 
     const matchingInstanceIds = config.connectors
       .filter((connector) => {
-        if (resId && connector.connector?.resourceItemId === resId) return true;
+        if (resId) return connector.connector?.resourceItemId === resId;
         if (connector.connector?.model && connector.connector.model === partNum) return true;
         return connector.connector?.id === partNum;
       })
@@ -35,7 +35,7 @@ function getAssociatedFiles(item: BOMItem, config: HarnessConfig): AssociatedFil
     const resId = item.resourceItemId;
     const matchingMaterialIds = config.materials
       .filter((material) => {
-        if (resId && material.resourceItemId === resId) return true;
+        if (resId) return material.resourceItemId === resId;
         const description = material.spec.kind === 'electronic'
           ? `${material.spec.awg}AWG 电子线`
           : '护套线';

@@ -5,6 +5,7 @@ import type { CanvasWireMaterial } from '@/types/harness';
 import type { CatalogSnapshot } from '@/types/catalog';
 
 const twoDViewSource = readFileSync('src/components/drawings/TwoDView.tsx', 'utf8');
+const bomPanelSource = readFileSync('src/components/panels/BomPanel.tsx', 'utf8');
 
 describe('Production Drawing & BOM specifications formatting', () => {
   const mockCatalog: CatalogSnapshot = {
@@ -103,5 +104,11 @@ describe('Production Drawing & BOM specifications formatting', () => {
     expect(twoDViewSource).not.toContain("ci.partNumber === 'm12a04-07-093'");
     expect(twoDViewSource).not.toContain('(39/0.10TC)*1.2+无纺布');
     expect(twoDViewSource).toContain('formatWireBomSpecification');
+  });
+
+  it('keeps resource associations strict when a resource ID is present', () => {
+    expect(twoDViewSource).toContain('if (wi.resourceItemId) return m.resourceItemId === wi.resourceItemId;');
+    expect(bomPanelSource).toContain('if (resId) return connector.connector?.resourceItemId === resId;');
+    expect(bomPanelSource).toContain('if (resId) return material.resourceItemId === resId;');
   });
 });

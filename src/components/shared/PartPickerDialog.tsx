@@ -120,8 +120,12 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   }
   if (filters.shielded.size > 0) {
     results = results.filter((c) => {
-      const shieldLabel = c.shielded ? '已屏蔽' : '未屏蔽';
-      return filters.shielded.has(shieldLabel);
+      const shieldLabel = c.shielded === true
+        ? '已屏蔽'
+        : c.shielded === false
+          ? '未屏蔽'
+          : null;
+      return shieldLabel !== null && filters.shielded.has(shieldLabel);
     });
   }
   if (filters.pinCount.size > 0) {

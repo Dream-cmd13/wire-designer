@@ -450,7 +450,7 @@ function BOMTable({
   wireItems.forEach((wi) => {
     let wireSpec = wi.description;
     const matObj = config.materials.find((m: CanvasWireMaterial) => {
-      if (wi.resourceItemId && m.resourceItemId === wi.resourceItemId) return true;
+      if (wi.resourceItemId) return m.resourceItemId === wi.resourceItemId;
       const spec = m.spec;
       if (spec.kind === 'electronic') {
         return wi.description.includes(`${spec.awg}AWG`) && wi.description.includes(spec.color);
