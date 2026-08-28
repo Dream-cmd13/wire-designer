@@ -11,6 +11,9 @@ describe('Dialogs catalogStore integration contracts', () => {
     expect(partPickerSource).toContain("import { getCatalogConnectors } from '@/lib/catalogRuntime'");
     expect(partPickerSource).toContain('const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot))');
     expect(partPickerSource).not.toContain('catalogRepository.listConnectors()');
+    expect(partPickerSource).toContain("'series'");
+    expect(partPickerSource).toContain("'shielded'");
+    expect(partPickerSource).toContain('工程与电气规格');
   });
 
   it('OvermoldPickerDialog consumes catalogStore overmolds and removes listOvermolds network call', () => {

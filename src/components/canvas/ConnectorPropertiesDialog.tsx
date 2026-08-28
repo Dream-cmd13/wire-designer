@@ -135,6 +135,12 @@ export function ConnectorPropertiesDialog({
                 <span className="text-slate-400">制造厂家:</span>
                 <span className="text-slate-700">{instance.connector.manufacturer || '通用'}</span>
               </div>
+              {instance.connector.series && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">所属系列:</span>
+                  <span className="text-slate-700">{instance.connector.series}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-400">引脚规格:</span>
                 <span className="text-slate-700">
@@ -143,9 +149,48 @@ export function ConnectorPropertiesDialog({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">类型:</span>
-                <span className="text-slate-700">{instance.connector.type || '未指定'}</span>
+                <span className="text-slate-400">类型 / 屏蔽:</span>
+                <span className="text-slate-700">
+                  {instance.connector.type === 'male' ? '公头' : instance.connector.type === 'female' ? '母头' : (instance.connector.type || '未指定')}
+                  {instance.connector.shielded !== undefined ? (instance.connector.shielded ? ' · 已屏蔽' : ' · 未屏蔽') : ''}
+                </span>
               </div>
+              {(instance.connector.ratedVoltageV !== undefined || instance.connector.ratedCurrentA !== undefined) && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">额定电气:</span>
+                  <span className="text-slate-700">
+                    {instance.connector.ratedVoltageV ? `${instance.connector.ratedVoltageV}V` : ''}
+                    {instance.connector.ratedVoltageV && instance.connector.ratedCurrentA ? ' / ' : ''}
+                    {instance.connector.ratedCurrentA ? `${instance.connector.ratedCurrentA}A` : ''}
+                  </span>
+                </div>
+              )}
+              {instance.connector.temperatureRangeC && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">温度范围:</span>
+                  <span className="text-slate-700">
+                    {instance.connector.temperatureRangeC.min !== undefined && instance.connector.temperatureRangeC.max !== undefined
+                      ? `${instance.connector.temperatureRangeC.min} ~ ${instance.connector.temperatureRangeC.max} ℃`
+                      : instance.connector.temperatureRangeC.max !== undefined
+                        ? `≤ ${instance.connector.temperatureRangeC.max} ℃`
+                        : `≥ ${instance.connector.temperatureRangeC.min} ℃`}
+                  </span>
+                </div>
+              )}
+              {(instance.connector.ingressProtection || instance.connector.flammabilityRating) && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">防护/阻燃:</span>
+                  <span className="text-slate-700">
+                    {[instance.connector.ingressProtection, instance.connector.flammabilityRating].filter(Boolean).join(' · ')}
+                  </span>
+                </div>
+              )}
+              {instance.connector.matingCyclesMin !== undefined && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">插拔寿命:</span>
+                  <span className="text-slate-700">≥ {instance.connector.matingCyclesMin} 次</span>
+                </div>
+              )}
             </div>
           </div>
 

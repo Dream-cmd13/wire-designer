@@ -16,6 +16,9 @@ describe('WireMaterialDialog catalog defaults', () => {
     expect(dialogSource).toContain('findMatchingCatalogWire');
     expect(dialogSource).toContain('generateWireDefaultName');
     expect(dialogSource).toContain('请选择标准线材物料');
+    expect(dialogSource).toContain('wire.model ? `(${wire.model})` :');
+    expect(dialogSource).toContain('标准物料规格详情');
+    expect(dialogSource).toContain('conductorStructure');
   });
 });
 

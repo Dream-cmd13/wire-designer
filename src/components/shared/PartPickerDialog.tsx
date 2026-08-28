@@ -11,7 +11,7 @@ interface PartPickerDialogProps {
   currentConnectorId?: string;
 }
 
-type FilterKey = 'manufacturer' | 'pinCount' | 'pitch' | 'type' | 'housingMaterial' | 'contactMaterial' | 'nutMaterial';
+type FilterKey = 'manufacturer' | 'series' | 'shielded' | 'pinCount' | 'pitch' | 'type' | 'housingMaterial' | 'contactMaterial' | 'nutMaterial';
 
 export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId }: PartPickerDialogProps) {
   const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
@@ -21,6 +21,8 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
     manufacturer: new Set(),
+    series: new Set(),
+    shielded: new Set(),
     pinCount: new Set(),
     pitch: new Set(),
     type: new Set(),
@@ -88,6 +90,8 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
 
   // Extract filter options
   const manufacturers = [...new Set(connectors.map((c) => c.manufacturer))].filter(Boolean).sort();
+  const seriesOptions = [...new Set(connectors.map((c) => c.series).filter(Boolean))].sort() as string[];
+  const shieldOptions = ['已屏蔽', '未屏蔽'];
   const pinCounts = [...new Set(connectors.map((c) => c.pinCount))].sort((a, b) => a - b);
   const pitches = [...new Set(connectors.filter((c) => c.pitch).map((c) => c.pitch!))].sort((a, b) => a - b);
   const types = [...new Set(connectors.map((c) => c.type))] as string[];
@@ -110,6 +114,15 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   }
   if (filters.manufacturer.size > 0) {
     results = results.filter((c) => filters.manufacturer.has(c.manufacturer));
+  }
+  if (filters.series.size > 0) {
+    results = results.filter((c) => c.series && filters.series.has(c.series));
+  }
+  if (filters.shielded.size > 0) {
+    results = results.filter((c) => {
+      const shieldLabel = c.shielded ? '已屏蔽' : '未屏蔽';
+      return filters.shielded.has(shieldLabel);
+    });
   }
   if (filters.pinCount.size > 0) {
     results = results.filter((c) => filters.pinCount.has(String(c.pinCount)));
@@ -141,15 +154,15 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
 
   const clearFilters = () => {
     setFilters({
-      manufacturer: new Set(), pinCount: new Set(), pitch: new Set(), type: new Set(),
+      manufacturer: new Set(), series: new Set(), shielded: new Set(), pinCount: new Set(), pitch: new Set(), type: new Set(),
       housingMaterial: new Set(), contactMaterial: new Set(), nutMaterial: new Set(),
     });
     setSearch('');
   };
 
   const hasActiveFilters = search.trim() !== '' ||
-    filters.manufacturer.size > 0 || filters.pinCount.size > 0 ||
-    filters.pitch.size > 0 || filters.type.size > 0 ||
+    filters.manufacturer.size > 0 || filters.series.size > 0 || filters.shielded.size > 0 ||
+    filters.pinCount.size > 0 || filters.pitch.size > 0 || filters.type.size > 0 ||
     filters.housingMaterial.size > 0 || filters.contactMaterial.size > 0 || filters.nutMaterial.size > 0;
 
   const selectedConnector = connectors.find((c) => c.id === selectedId);
@@ -158,7 +171,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40">
       <div
         ref={dialogRef}
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[720px] max-h-[85vh] flex flex-col"
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-[780px] max-h-[85vh] flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
@@ -181,7 +194,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索名称、制造商或料号..."
+              placeholder="搜索名称、型号、系列、制造商或 ID..."
               className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -204,6 +217,8 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
               )}
             </div>
 
+            <FilterGroup label="系列" options={seriesOptions} selected={filters.series} onToggle={(v) => toggleFilter('series', v)} />
+            <FilterGroup label="屏蔽状态" options={shieldOptions} selected={filters.shielded} onToggle={(v) => toggleFilter('shielded', v)} />
             <FilterGroup label="制造商" options={manufacturers} selected={filters.manufacturer} onToggle={(v) => toggleFilter('manufacturer', v)} />
             <FilterGroup label="Pin 数" options={pinCounts.map(String)} selected={filters.pinCount} onToggle={(v) => toggleFilter('pinCount', v)} />
             <FilterGroup label="间距 (mm)" options={pitches.map(String)} selected={filters.pitch} onToggle={(v) => toggleFilter('pitch', v)} />
@@ -243,11 +258,13 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
                       {conn.manufacturer} · {conn.model || conn.id} · {conn.pinCount}P
-                      {conn.pitch && ` · ${conn.pitch}mm`} · {conn.type}
+                      {conn.pitch && ` · ${conn.pitch}mm`} · {conn.type === 'male' ? '公头' : conn.type === 'female' ? '母头' : conn.type}
+                      {conn.shielded !== undefined && (conn.shielded ? ' · 已屏蔽' : ' · 未屏蔽')}
+                      {conn.series && ` · ${conn.series}`}
                     </div>
                   </div>
                   <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded shrink-0">
-                    {conn.id}
+                    {conn.model || conn.id}
                   </span>
                 </button>
               ))
@@ -256,25 +273,60 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
 
           {/* Detail preview */}
           {selectedConnector && (
-            <div className="w-48 border-l border-slate-100 p-3 overflow-y-auto shrink-0">
-              <h3 className="text-xs font-semibold text-slate-700 mb-2">详情</h3>
-              <div className="space-y-1.5 text-xs">
+            <div className="w-56 border-l border-slate-100 p-3 overflow-y-auto shrink-0">
+              <h3 className="text-xs font-semibold text-slate-700 mb-1.5">基本信息</h3>
+              <div className="space-y-1 text-xs">
                 <div><span className="text-slate-400">名称：</span><span className="text-slate-700">{selectedConnector.name}</span></div>
-                <div><span className="text-slate-400">型号：</span><span className="text-slate-700">{selectedConnector.model || selectedConnector.id}</span></div>
+                <div><span className="text-slate-400">型号：</span><span className="text-slate-700 font-medium">{selectedConnector.model || selectedConnector.id}</span></div>
                 <div><span className="text-slate-400">制造商：</span><span className="text-slate-700">{selectedConnector.manufacturer}</span></div>
                 {selectedConnector.series && <div><span className="text-slate-400">系列：</span><span className="text-slate-700">{selectedConnector.series}</span></div>}
-                <div><span className="text-slate-400">PIN 数：</span><span className="text-slate-700">{selectedConnector.pinCount}</span></div>
-                {selectedConnector.rowCount && <div><span className="text-slate-400">排数：</span><span className="text-slate-700">{selectedConnector.rowCount}</span></div>}
+                <div><span className="text-slate-400">PIN 数：</span><span className="text-slate-700">{selectedConnector.pinCount}P</span></div>
+                {selectedConnector.rowCount && <div><span className="text-slate-400">排数：</span><span className="text-slate-700">{selectedConnector.rowCount}排</span></div>}
                 <div><span className="text-slate-400">间距：</span><span className="text-slate-700">{selectedConnector.pitch ? `${selectedConnector.pitch}mm` : '-'}</span></div>
-                <div><span className="text-slate-400">类型：</span><span className="text-slate-700">{selectedConnector.type}</span></div>
+                <div><span className="text-slate-400">类型：</span><span className="text-slate-700">{selectedConnector.type === 'male' ? '公头' : selectedConnector.type === 'female' ? '母头' : selectedConnector.type}</span></div>
+              </div>
+
+              <h3 className="text-xs font-semibold text-slate-700 mt-3 mb-1.5">工程与电气规格</h3>
+              <div className="space-y-1 text-xs">
+                {selectedConnector.shielded !== undefined && (
+                  <div><span className="text-slate-400">屏蔽：</span><span className="text-slate-700">{selectedConnector.shielded ? '已屏蔽' : '未屏蔽'}</span></div>
+                )}
+                {selectedConnector.ratedVoltageV !== undefined && (
+                  <div><span className="text-slate-400">额定电压：</span><span className="text-slate-700">{selectedConnector.ratedVoltageV}V</span></div>
+                )}
+                {selectedConnector.ratedCurrentA !== undefined && (
+                  <div><span className="text-slate-400">额定电流：</span><span className="text-slate-700">{selectedConnector.ratedCurrentA}A</span></div>
+                )}
+                {selectedConnector.temperatureRangeC && (
+                  <div>
+                    <span className="text-slate-400">温度范围：</span>
+                    <span className="text-slate-700">
+                      {selectedConnector.temperatureRangeC.min !== undefined && selectedConnector.temperatureRangeC.max !== undefined
+                        ? `${selectedConnector.temperatureRangeC.min} ~ ${selectedConnector.temperatureRangeC.max} ℃`
+                        : selectedConnector.temperatureRangeC.max !== undefined
+                          ? `≤ ${selectedConnector.temperatureRangeC.max} ℃`
+                          : `≥ ${selectedConnector.temperatureRangeC.min} ℃`}
+                    </span>
+                  </div>
+                )}
+                {selectedConnector.ingressProtection && (
+                  <div><span className="text-slate-400">防水等级：</span><span className="text-slate-700">{selectedConnector.ingressProtection}</span></div>
+                )}
+                {selectedConnector.flammabilityRating && (
+                  <div><span className="text-slate-400">阻燃等级：</span><span className="text-slate-700">{selectedConnector.flammabilityRating}</span></div>
+                )}
+                {selectedConnector.matingCyclesMin !== undefined && (
+                  <div><span className="text-slate-400">插拔次数：</span><span className="text-slate-700">≥ {selectedConnector.matingCyclesMin} 次</span></div>
+                )}
                 {selectedConnector.housingMaterial && <div><span className="text-slate-400">外壳材质：</span><span className="text-slate-700">{selectedConnector.housingMaterial}</span></div>}
                 {selectedConnector.contactMaterial && <div><span className="text-slate-400">接触件材质：</span><span className="text-slate-700">{selectedConnector.contactMaterial}</span></div>}
                 {selectedConnector.nutMaterial && <div><span className="text-slate-400">螺母材质：</span><span className="text-slate-700">{selectedConnector.nutMaterial}</span></div>}
               </div>
-              {selectedConnector.pinLabels.length > 0 && (
+
+              {selectedConnector.pinLabels && selectedConnector.pinLabels.length > 0 && (
                 <>
                   <h4 className="text-xs font-semibold text-slate-600 mt-3 mb-1">PIN 定义</h4>
-                  <div className="space-y-0.5 max-h-32 overflow-y-auto">
+                  <div className="space-y-0.5 max-h-28 overflow-y-auto">
                     {selectedConnector.pinLabels.map((label, i) => (
                       <div key={i} className="flex items-center gap-1.5 text-[10px]">
                         <span className="text-slate-400 w-8 shrink-0">Pin{i + 1}</span>

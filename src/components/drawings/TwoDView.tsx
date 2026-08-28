@@ -23,9 +23,8 @@ import { ensureDrawingFrame } from '@/lib/drawingFrameDefaults';
 import { useUserStore } from '@/stores/userStore';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import { useCatalogStore } from '@/stores/catalogStore';
-import { generateBOM } from '@/lib/bom';
+import { generateBOM, formatWireBomSpecification } from '@/lib/bom';
 import {
-  resolveColor,
   getCanvasModelDisplayName,
   getProtectiveSleeveDisplayName,
 } from '@/lib/canvasMaterials';
@@ -451,6 +450,7 @@ function BOMTable({
   wireItems.forEach((wi) => {
     let wireSpec = wi.description;
     const matObj = config.materials.find((m: CanvasWireMaterial) => {
+      if (wi.resourceItemId && m.resourceItemId === wi.resourceItemId) return true;
       const spec = m.spec;
       if (spec.kind === 'electronic') {
         return wi.description.includes(`${spec.awg}AWG`) && wi.description.includes(spec.color);
@@ -460,23 +460,7 @@ function BOMTable({
     });
 
     if (matObj) {
-      if (matObj.spec.kind === 'jacketed') {
-        const s = matObj.spec;
-        const sq = s.awg === 22 ? '0.3mm²' : s.awg === 24 ? '0.2mm²' : `${s.awg}AWG`;
-        const colorsClean = s.coreColors.map((c: string) => {
-          const r = resolveColor(c).name;
-          return r.endsWith('色') ? r.slice(0, -1) : r;
-        }).join('、');
-        const shielding = s.shielded ? '屏蔽' : '非屏蔽';
-        const jColor = s.jacketColor === 'black' ? '黑色' : s.jacketColor;
-        wireSpec = `${s.coreCount}C*${sq} (39/0.10TC)*1.2+无纺布  OD: ${s.odMm.toFixed(2)}±0.15\n${colorsClean} ${shielding}${jColor}雾面${s.jacketMaterial}外被`;
-      } else if (matObj.spec.kind === 'electronic') {
-        const s = matObj.spec;
-        const sq = s.awg === 22 ? '0.3mm²' : s.awg === 24 ? '0.2mm²' : `${s.awg}AWG`;
-        const resolved = resolveColor(s.color).name;
-        const colorsClean = resolved.endsWith('色') ? resolved.slice(0, -1) : resolved;
-        wireSpec = `UL${s.ulNumber || '1007'} ${s.awg}AWG (${sq}) 电子线 L=${s.lengthMm}mm\n单芯 ${colorsClean}色`;
-      }
+      wireSpec = formatWireBomSpecification(matObj, getCatalogSnapshot());
     }
 
     rows.push({
@@ -491,7 +475,7 @@ function BOMTable({
   // 2. Add connectors
   const connItems = bomItems.filter(i => i.type === 'connector');
   connItems.forEach((ci) => {
-    const specCode = ci.partNumber === 'm12a04-07-093' ? 'M12A04-07-093' : (ci.partNumber || ci.description);
+    const specCode = ci.model || ci.partNumber || ci.description;
     rows.push({
       itemNo: 2,
       name: '连接器',

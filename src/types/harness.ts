@@ -534,6 +534,8 @@ export interface HarnessConfig {
 export interface BOMItem {
   type: 'connector' | 'wire' | 'accessory';
   partNumber?: string;
+  model?: string;
+  resourceItemId?: string;
   manufacturer?: string;
   description: string;
   quantity: number;

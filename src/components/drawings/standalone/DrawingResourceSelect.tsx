@@ -33,7 +33,7 @@ export function DrawingResourceSelect({ title, resources, filters, selectedId, l
     {error && <div className="mt-3 rounded bg-red-50 p-2 text-xs text-red-700">{error}<button type="button" className="ml-2 underline" onClick={onRetry}>重试</button></div>}
     {!loading && !error && resources.length === 0 && <p className="mt-3 rounded bg-slate-50 p-3 text-xs text-slate-500">没有符合条件的公共资源。</p>}
     <div className="mt-3 grid max-h-44 gap-2 overflow-y-auto sm:grid-cols-2">
-      {resources.map((resource) => <button type="button" key={resource.resourceItemId} onClick={() => onSelect(resource)} className={`rounded border p-2 text-left text-xs ${selectedId === resource.id || selectedId === resource.resourceItemId ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}><strong className="block text-slate-800">{resource.name}</strong><span className="text-slate-500">{resource.model} · {resource.pinCount ?? '-'}PIN · {resource.rowCount ?? '-'}排 · {resource.pitchMm ?? '-'}mm</span></button>)}
+      {resources.map((resource) => <button type="button" key={resource.resourceItemId} onClick={() => onSelect(resource)} className={`rounded border p-2 text-left text-xs ${selectedId === resource.id || selectedId === resource.resourceItemId ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}><strong className="block text-slate-800">{resource.name}</strong><span className="text-slate-500 text-[11px]">{resource.model ? `${resource.model} · ` : ''}{resource.specification || `${resource.pinCount ?? '-'}PIN · ${resource.rowCount ?? '-'}排 · ${resource.pitchMm ?? '-'}mm`}</span></button>)}
     </div>
   </section>;
 }

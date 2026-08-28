@@ -21,14 +21,21 @@ function getAssociatedFiles(item: BOMItem, config: HarnessConfig): AssociatedFil
 
   if (item.type === 'connector') {
     const partNum = item.partNumber || '';
+    const resId = item.resourceItemId;
 
     const matchingInstanceIds = config.connectors
-      .filter((connector) => connector.connector?.id === partNum)
+      .filter((connector) => {
+        if (resId && connector.connector?.resourceItemId === resId) return true;
+        if (connector.connector?.model && connector.connector.model === partNum) return true;
+        return connector.connector?.id === partNum;
+      })
       .map((connector) => connector.id);
     addImages('connector', matchingInstanceIds);
   } else if (item.type === 'wire') {
+    const resId = item.resourceItemId;
     const matchingMaterialIds = config.materials
       .filter((material) => {
+        if (resId && material.resourceItemId === resId) return true;
         const description = material.spec.kind === 'electronic'
           ? `${material.spec.awg}AWG 电子线`
           : '护套线';
@@ -106,10 +113,11 @@ export function BomPanel() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['类型', '描述', '制造商', '单位用量', '总用量', '单价', '总价'];
+    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量', '单价', '总价'];
     const rows = bomItems.map((item) => [
       getTypeName(item.type),
       item.description,
+      item.model || item.partNumber || '',
       item.manufacturer || '',
       String(item.quantity),
       String(item.quantity * config.quantity),
@@ -118,17 +126,18 @@ export function BomPanel() {
     ]);
 
     // Add total row
-    rows.push(['', '', '', '', '', '总计', totalCost.toFixed(2)]);
+    rows.push(['', '', '', '', '', '', '总计', totalCost.toFixed(2)]);
 
     const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n');
     downloadFile('\uFEFF' + csvContent, `${config.name}_BOM.csv`, 'text/csv;charset=utf-8;');
   };
 
   const handleExportExcel = () => {
-    const headers = ['类型', '描述', '制造商', '单位用量', '总用量', '单价', '总价'];
+    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量', '单价', '总价'];
     const rows = bomItems.map((item) => [
       getTypeName(item.type),
       item.description,
+      item.model || item.partNumber || '',
       item.manufacturer || '',
       String(item.quantity),
       String(item.quantity * config.quantity),
@@ -137,7 +146,7 @@ export function BomPanel() {
     ]);
 
     // Add total row
-    rows.push(['', '', '', '', '', '总计', totalCost.toFixed(2)]);
+    rows.push(['', '', '', '', '', '', '总计', totalCost.toFixed(2)]);
 
     // TSV format: tab-separated for spreadsheet compatibility
     const tsvContent = [headers, ...rows].map((row) => row.join('\t')).join('\n');
@@ -207,8 +216,10 @@ export function BomPanel() {
                     >
                       {item.description}
                     </div>
-                    {item.manufacturer && (
-                      <div className="truncate text-[10px] text-slate-400">{item.manufacturer}</div>
+                    {(item.model || item.manufacturer) && (
+                      <div className="truncate text-[10px] text-slate-400">
+                        {item.model ? `${item.model} ` : ''}{item.manufacturer ? `· ${item.manufacturer}` : ''}
+                      </div>
                     )}
                   </td>
                   <td className="whitespace-nowrap px-1 py-1.5 text-right text-slate-600">

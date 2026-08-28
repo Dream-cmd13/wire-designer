@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Cable, Check, X, Search } from 'lucide-react';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { getCatalogWireColors, getCatalogWires } from '@/lib/catalogRuntime';
@@ -83,6 +83,10 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
   const [electronicQuery, setElectronicQuery] = useState('');
   const [jacketedQuery, setJacketedQuery] = useState('');
   const [selectedCatalogWireId, setSelectedCatalogWireId] = useState(material?.resourceItemId ?? '');
+  const selectedCatalogWire = useMemo(
+    () => catalogWires.find((item) => item.resourceItemId === selectedCatalogWireId),
+    [catalogWires, selectedCatalogWireId],
+  );
 
   useEffect(() => {
     if (catalogStatus === 'idle') {
@@ -230,17 +234,73 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
             >
               <option value="">请选择标准线材物料（或在下方配置属性自动匹配）</option>
               {catalogWires.map((wire) => (
-                <option key={wire.resourceItemId} value={wire.resourceItemId}>{wire.name}</option>
+                <option key={wire.resourceItemId} value={wire.resourceItemId}>
+                  {wire.name} {wire.model ? `(${wire.model})` : ''}
+                </option>
               ))}
             </select>
-            {selectedCatalogWireId ? (
-              catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image && (
-                <img
-                  src={catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId)?.image}
-                  alt="所选线材"
-                  className="mt-3 h-20 w-full rounded-lg border border-slate-200 bg-white object-contain"
-                />
-              )
+            {selectedCatalogWireId && selectedCatalogWire ? (
+              <div className="mt-3 space-y-3">
+                {selectedCatalogWire.image && (
+                  <img
+                    src={selectedCatalogWire.image}
+                    alt="所选线材"
+                    className="h-20 w-full rounded-lg border border-slate-200 bg-white object-contain"
+                  />
+                )}
+                <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600 space-y-2">
+                  <div className="font-semibold text-slate-700 text-xs border-b border-slate-100 pb-1.5 flex justify-between items-center">
+                    <span>标准物料规格详情</span>
+                    {selectedCatalogWire.model && (
+                      <span className="font-mono text-blue-600 font-normal text-[11px]">{selectedCatalogWire.model}</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                    {selectedCatalogWire.spec.conductorStructure && (
+                      <div><span className="text-slate-400">导体结构：</span><span className="text-slate-700 font-medium">{selectedCatalogWire.spec.conductorMaterial || ''} {selectedCatalogWire.spec.conductorStructure}</span></div>
+                    )}
+                    {selectedCatalogWire.spec.insulationDiameterMm !== undefined && (
+                      <div><span className="text-slate-400">绝缘外径：</span><span className="text-slate-700">{selectedCatalogWire.spec.insulationMaterial || ''} Φ{selectedCatalogWire.spec.insulationDiameterMm}mm</span></div>
+                    )}
+                    {selectedCatalogWire.spec.braidStructure && (
+                      <div><span className="text-slate-400">屏蔽编织：</span><span className="text-slate-700">{selectedCatalogWire.spec.braidStructure}</span></div>
+                    )}
+                    {(selectedCatalogWire.spec.shieldCoverageDescription || selectedCatalogWire.spec.shieldCoverageRatio !== undefined) && (
+                      <div><span className="text-slate-400">屏蔽覆盖率：</span><span className="text-slate-700">{selectedCatalogWire.spec.shieldCoverageDescription || `${Math.round((selectedCatalogWire.spec.shieldCoverageRatio ?? 0) * 100)}%`}</span></div>
+                    )}
+                    {selectedCatalogWire.spec.outerDiameterMm !== undefined && (
+                      <div><span className="text-slate-400">名义外径：</span><span className="text-slate-700 font-semibold">{selectedCatalogWire.spec.outerDiameterMm} {selectedCatalogWire.spec.outerDiameterToleranceMm !== undefined ? `±${selectedCatalogWire.spec.outerDiameterToleranceMm}` : ''} mm</span></div>
+                    )}
+                    {selectedCatalogWire.spec.jacketHardnessP !== undefined && (
+                      <div><span className="text-slate-400">外被硬度：</span><span className="text-slate-700">{selectedCatalogWire.spec.jacketHardnessP}P</span></div>
+                    )}
+                    {selectedCatalogWire.spec.ratedVoltageV !== undefined && (
+                      <div><span className="text-slate-400">额定电压：</span><span className="text-slate-700">{selectedCatalogWire.spec.ratedVoltageV}V</span></div>
+                    )}
+                    {selectedCatalogWire.spec.temperatureRangeC && (
+                      <div><span className="text-slate-400">耐温等级：</span><span className="text-slate-700">{selectedCatalogWire.spec.temperatureRangeC.max ? `最高 ${selectedCatalogWire.spec.temperatureRangeC.max}℃` : ''}</span></div>
+                    )}
+                    {selectedCatalogWire.spec.flameTest && (
+                      <div><span className="text-slate-400">阻燃等级：</span><span className="text-slate-700">{selectedCatalogWire.spec.flameTest}</span></div>
+                    )}
+                    {selectedCatalogWire.spec.rohsCompliant !== undefined && (
+                      <div><span className="text-slate-400">环保认证：</span><span className="text-slate-700">{selectedCatalogWire.spec.rohsCompliant ? '符合 RoHS' : '未指定'}</span></div>
+                    )}
+                    {selectedCatalogWire.spec.conductorResistanceOhmPerKmAt20C !== undefined && (
+                      <div><span className="text-slate-400">导体电阻(20℃)：</span><span className="text-slate-700">{selectedCatalogWire.spec.conductorResistanceOhmPerKmAt20C} Ω/km</span></div>
+                    )}
+                    {selectedCatalogWire.spec.insulationResistanceMOhmKm !== undefined && (
+                      <div><span className="text-slate-400">绝缘电阻：</span><span className="text-slate-700">≥ {selectedCatalogWire.spec.insulationResistanceMOhmKm} MΩ·km</span></div>
+                    )}
+                  </div>
+                  {selectedCatalogWire.spec.coreColorDescription && (
+                    <div className="text-[11px] bg-slate-50 rounded p-1.5 border border-slate-100 mt-1">
+                      <span className="text-slate-400">芯线颜色说明：</span>
+                      <span className="text-slate-700 font-medium">{selectedCatalogWire.spec.coreColorDescription}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : (
               <p className="mt-2 text-xs text-slate-500">
                 提示：可在下方直接配置属性，系统将自动匹配对应标准物料；若无匹配型号亦可直接确认保存。

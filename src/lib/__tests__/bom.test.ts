@@ -156,6 +156,55 @@ describe('BOM grouping', () => {
     expect(wireItems).toHaveLength(2);
   });
 
+  it('separates jacketed wires by resourceItemId', () => {
+    const w1 = makeJacketedMaterial('m1', 'black', true, 4, 5.2);
+    w1.resourceItemId = 'wire-res-1';
+    const w2 = makeJacketedMaterial('m2', 'black', true, 4, 5.2);
+    w2.resourceItemId = 'wire-res-2';
+
+    const config: HarnessConfig = {
+      ...makeBaseConfig(),
+      materials: [w1, w2],
+    };
+
+    const bom = generateBOM(config);
+    const wireItems = bom.filter((i) => i.type === 'wire');
+    expect(wireItems).toHaveLength(2);
+    expect(wireItems[0].resourceItemId).toBe('wire-res-1');
+    expect(wireItems[1].resourceItemId).toBe('wire-res-2');
+  });
+
+  it('populates model and resourceItemId on connector BOM items', () => {
+    const config: HarnessConfig = {
+      ...makeBaseConfig(),
+      connectors: [
+        {
+          id: 'c1',
+          position: { x: 0, y: 0 },
+          label: 'J1',
+          jumpers: [],
+          connector: {
+            id: 'm12a04-07-093',
+            name: 'M12 A-Coded 4P 公头',
+            model: 'M12A04-07-093',
+            resourceItemId: 'uuid-conn-1',
+            manufacturer: 'Manufacturer A',
+            pinCount: 4,
+            type: 'male',
+            pinLabels: ['1', '2', '3', '4'],
+          },
+        },
+      ],
+    };
+
+    const bom = generateBOM(config);
+    const connItems = bom.filter((i) => i.type === 'connector');
+    expect(connItems).toHaveLength(1);
+    expect(connItems[0].partNumber).toBe('M12A04-07-093');
+    expect(connItems[0].model).toBe('M12A04-07-093');
+    expect(connItems[0].resourceItemId).toBe('uuid-conn-1');
+  });
+
   it('separates corrugated sleeves by material', () => {
     const sleeve1: ProtectiveSleeve = {
       id: 's1',
