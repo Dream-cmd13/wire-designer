@@ -304,7 +304,7 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
         <text x="430" y="707" textAnchor="middle" fontSize="8.5" fontWeight="bold">LINEAR</text>
         <text x="500" y="707" textAnchor="middle" fontSize="8.5" fontWeight="bold">ANGLES</text>
 
-        <text x="430" y="726" textAnchor="middle" fontSize="9">.XX±0.5</text>
+        <text x="430" y="726" textAnchor="middle" fontSize="9">XX±0.5</text>
         <text x="500" y="726" textAnchor="middle" fontSize="9">X°REF±6°</text>
 
         <text x="430" y="747" textAnchor="middle" fontSize="9">X.X±0.3</text>
@@ -382,25 +382,24 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           </text>
         </g>
 
-        {/* ── 5. Part No & Title (x: 720 -> 920, width: 200) ───────── */}
-        <line x1="920" y1="667" x2="920" y2="776" stroke="#000" strokeWidth="1" />
-        <line x1="720" y1="722" x2="920" y2="722" stroke="#000" strokeWidth="1" />
+        {/* ── 5. Part No & Title (x: 720 -> 890, width: 170) ───────── */}
+        <line x1="890" y1="667" x2="890" y2="776" stroke="#000" strokeWidth="1" />
+        <line x1="720" y1="722" x2="890" y2="722" stroke="#000" strokeWidth="1" />
 
         {/* PART.NO */}
         <g
           className={interactiveClass}
           onClick={handleClick('partNo')}
-         
         >
-        <title>点击编辑料号</title>
+          <title>点击编辑料号</title>
           <text x="726" y="680" fontSize="8.5" fontWeight="bold">PART.NO:</text>
           <text
-            x="820"
-            y="702"
+            x="805"
+            y="703"
             textAnchor="middle"
-            fontSize="12"
+            fontSize="11"
             fontWeight="bold"
-            letterSpacing="0.3"
+            letterSpacing="0.2"
           >
             {frame.partNo || ''}
           </text>
@@ -410,12 +409,11 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
         <g
           className={interactiveClass}
           onClick={handleClick('title')}
-         
         >
-        <title>点击编辑图纸标题</title>
+          <title>点击编辑图纸标题</title>
           <text x="726" y="735" fontSize="8.5" fontWeight="bold">TITLE:</text>
           <text
-            x="820"
+            x="805"
             y="756"
             textAnchor="middle"
             fontSize="10"
@@ -426,22 +424,19 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           </text>
         </g>
 
-        {/* ── 6. Drawing No & Rev / Sheet (x: 920 -> 1000, width: 80) ─ */}
+        {/* ── 6. Drawing No (x: 890 -> 1000, width: 110, Full Height) ── */}
         <line x1="1000" y1="667" x2="1000" y2="776" stroke="#000" strokeWidth="1.5" />
-        <line x1="920" y1="735" x2="1000" y2="735" stroke="#000" strokeWidth="1" />
-        <line x1="960" y1="735" x2="960" y2="776" stroke="#000" strokeWidth="1" />
 
         {/* DWG.NO */}
         <g
           className={interactiveClass}
           onClick={handleClick('drawingNo')}
-         
         >
-        <title>点击编辑图号</title>
-          <text x="926" y="680" fontSize="8.5" fontWeight="bold">DWG.NO:</text>
+          <title>点击编辑图号</title>
+          <text x="896" y="680" fontSize="8.5" fontWeight="bold">DWG.NO:</text>
           <text
-            x="960"
-            y="708"
+            x="945"
+            y="728"
             textAnchor="middle"
             fontSize="14"
             fontWeight="bold"
@@ -451,49 +446,32 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           </text>
         </g>
 
-        {/* REV & SHEET */}
-        <g
-          className={interactiveClass}
-          onClick={handleClick('revision')}
-         
-        >
-        <title>点击编辑版本</title>
-          <text x="940" y="759" textAnchor="middle" fontSize="9" fontWeight="bold">
-            REV: {frame.revision || 'X0'}
-          </text>
-        </g>
-        <g
-          className={interactiveClass}
-          onClick={handleClick('sheet')}
-         
-        >
-        <title>点击编辑页码</title>
-          <text x="980" y="759" textAnchor="middle" fontSize="9" fontWeight="bold">
-            SHEET: {frame.sheet || '1/1'}
-          </text>
-        </g>
+        {/* ── 7. Company Logo & Rev / Sheet (x: 1000 -> 1176, width: 176) ─── */}
+        {/* Horizontal divider between company and rev/sheet */}
+        <line x1="1000" y1="740" x2="1176" y2="740" stroke="#000" strokeWidth="1" />
+        {/* Vertical divider between REV and SHEET */}
+        <line x1="1088" y1="740" x2="1088" y2="776" stroke="#000" strokeWidth="1" />
 
-        {/* ── 7. Company Logo & Name (x: 1000 -> 1176, width: 176) ─── */}
+        {/* Company Header */}
         <g
           className={interactiveClass}
           onClick={handleClick('company')}
-         
-          transform="translate(1004, 672)"
+          transform="translate(1006, 668)"
         >
-        <title>万连科技</title>
+          <title>万连科技</title>
           {/* WanLian Stylized 'W' Vector Icon */}
           <path
-            d="M8,18 L18,52 L27,24 L34,52 L44,18 L34,18 L28,40 L23,24 L16,40 L11,18 Z"
+            d="M8,14 L17,46 L25,20 L31,46 L40,14 L31,14 L26,35 L22,20 L15,35 L11,14 Z"
             fill="#000000"
           />
 
           {/* Chinese Title "万连科技" */}
           <text
-            x="50"
-            y="42"
-            fontSize="22"
+            x="48"
+            y="36"
+            fontSize="21"
             fontWeight="bold"
-            letterSpacing="2"
+            letterSpacing="1.5"
             fill="#000000"
             style={{ fontFamily: '"SimHei", "Microsoft YaHei", sans-serif' }}
           >
@@ -503,13 +481,35 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           {/* English Subtitle */}
           <text
             x="8"
-            y="65"
-            fontSize="8.5"
-            letterSpacing="0.4"
+            y="57"
+            fontSize="8"
+            letterSpacing="0.3"
             fill="#333333"
             style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
           >
             {frame.companyNameEn || 'WanLian Technology Co., Ltd'}
+          </text>
+        </g>
+
+        {/* REV */}
+        <g
+          className={interactiveClass}
+          onClick={handleClick('revision')}
+        >
+          <title>点击编辑版本</title>
+          <text x="1044" y="762" textAnchor="middle" fontSize="9" fontWeight="bold">
+            REV: {frame.revision || 'X0'}
+          </text>
+        </g>
+
+        {/* SHEET */}
+        <g
+          className={interactiveClass}
+          onClick={handleClick('sheet')}
+        >
+          <title>点击编辑页码</title>
+          <text x="1132" y="762" textAnchor="middle" fontSize="9" fontWeight="bold">
+            SHEET: {frame.sheet || '1/1'}
           </text>
         </g>
       </g>
