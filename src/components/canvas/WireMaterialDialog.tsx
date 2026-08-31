@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Cable, Check, X, Search } from 'lucide-react';
 import { useCatalogStore } from '@/stores/catalogStore';
-import { getCatalogWireColors, getCatalogWires } from '@/lib/catalogRuntime';
+import { getCatalogSnapshot, getCatalogWireColors, getCatalogWires } from '@/lib/catalogRuntime';
 import {
   calculateCableOd,
   createDefaultWireEndTreatment,
@@ -74,15 +74,21 @@ function validateSpec(spec: CanvasWireSpec): string | null {
 }
 
 export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMaterialDialogProps) {
-  const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
-  const catalogWires = useCatalogStore((state) => getCatalogWires(state.snapshot));
+  const storeWireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
+  const wireColors = storeWireColors.length > 0 ? storeWireColors : getCatalogWireColors(getCatalogSnapshot());
+  const storeCatalogWires = useCatalogStore((state) => getCatalogWires(state.snapshot));
+  const catalogWires = storeCatalogWires.length > 0 ? storeCatalogWires : getCatalogWires(getCatalogSnapshot());
   const catalogStatus = useCatalogStore((state) => state.status);
   const initializeCatalog = useCatalogStore((state) => state.initialize);
   const [spec, setSpec] = useState<CanvasWireSpec>(material?.spec ?? createDefaultWireSpec());
   const [error, setError] = useState<string | null>(null);
   const [electronicQuery, setElectronicQuery] = useState('');
   const [jacketedQuery, setJacketedQuery] = useState('');
-  const [selectedCatalogWireId, setSelectedCatalogWireId] = useState(material?.resourceItemId ?? '');
+  const [selectedCatalogWireId, setSelectedCatalogWireId] = useState(() => {
+    if (material?.resourceItemId) return material.resourceItemId;
+    const matched = findMatchingCatalogWire(catalogWires, material?.spec ?? createDefaultWireSpec());
+    return matched?.resourceItemId ?? '';
+  });
   const selectedCatalogWire = useMemo(
     () => catalogWires.find((item) => item.resourceItemId === selectedCatalogWireId),
     [catalogWires, selectedCatalogWireId],
@@ -94,21 +100,28 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
     }
   }, [catalogStatus, initializeCatalog]);
 
-  // When catalogWires load, if selectedCatalogWireId is empty, try to auto-match current spec
-  useEffect(() => {
-    if (!selectedCatalogWireId && catalogWires.length > 0) {
-      const matched = findMatchingCatalogWire(catalogWires, spec);
-      if (matched) {
-        setSelectedCatalogWireId(matched.resourceItemId);
-      }
-    }
-  }, [catalogWires]);
+  const [syncedCatalogId, setSyncedCatalogId] = useState<string | null>(() => {
+    return material?.resourceItemId ? material.resourceItemId : null;
+  });
 
-  useEffect(() => {
-    const selected = catalogWires.find((wire) => wire.resourceItemId === selectedCatalogWireId);
-    if (!selected) return;
-    setSpec((current) => applyCatalogWireSpec(current, selected.spec));
-  }, [catalogWires, selectedCatalogWireId]);
+  // When catalogWires finishes loading, apply initial catalog spec if not already applied
+  if (selectedCatalogWireId && syncedCatalogId !== selectedCatalogWireId && catalogWires.length > 0) {
+    const selected = catalogWires.find((w) => w.resourceItemId === selectedCatalogWireId);
+    if (selected) {
+      setSyncedCatalogId(selectedCatalogWireId);
+      setSpec((current) => applyCatalogWireSpec(current, selected.spec));
+    }
+  }
+
+  const handleSelectCatalogWire = (wireId: string) => {
+    setSelectedCatalogWireId(wireId);
+    setSyncedCatalogId(wireId || null);
+    if (!wireId) return;
+    const selected = catalogWires.find((w) => w.resourceItemId === wireId);
+    if (selected) {
+      setSpec((current) => applyCatalogWireSpec(current, selected.spec));
+    }
+  };
 
   const updateSpec = (next: CanvasWireSpec | ((current: CanvasWireSpec) => CanvasWireSpec)) => {
     setSpec((current) => {
@@ -229,7 +242,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
             </div>
             <select
               value={selectedCatalogWireId}
-              onChange={(event) => setSelectedCatalogWireId(event.target.value)}
+              onChange={(event) => handleSelectCatalogWire(event.target.value)}
               className={fieldClass}
             >
               <option value="">请选择标准线材物料（或在下方配置属性自动匹配）</option>

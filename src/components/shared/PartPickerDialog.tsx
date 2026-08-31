@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCatalogStore } from '@/stores/catalogStore';
-import { getCatalogConnectors } from '@/lib/catalogRuntime';
+import { getCatalogConnectors, getCatalogSnapshot } from '@/lib/catalogRuntime';
 import type { Connector } from '@/types/harness';
 import { Search, X, Filter, Check } from 'lucide-react';
 
@@ -14,7 +14,8 @@ interface PartPickerDialogProps {
 type FilterKey = 'manufacturer' | 'series' | 'shielded' | 'pinCount' | 'pitch' | 'type' | 'housingMaterial' | 'contactMaterial' | 'nutMaterial';
 
 export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId }: PartPickerDialogProps) {
-  const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
+  const storeConnectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
+  const connectors = storeConnectors.length > 0 ? storeConnectors : getCatalogConnectors(getCatalogSnapshot());
   const catalogStatus = useCatalogStore((state) => state.status);
   const initializeCatalog = useCatalogStore((state) => state.initialize);
 

@@ -5,8 +5,8 @@ import {
   formatPinNetworkString,
   getCutLineBounds,
   getWiringDiagramColumns,
-} from '@/components/drawings/TwoDView';
-import type { ConnectorInstance, HarnessConfig, ProductionDrawingFrame } from '@/types/harness';
+} from '@/lib/wiringDiagramLayout';
+import type { Connector, ConnectorInstance, HarnessConfig, ProductionDrawingFrame } from '@/types/harness';
 
 describe('productImageExport', () => {
   const dummyConfig = {
@@ -54,7 +54,10 @@ describe('formatPinNetworkString in WiringDiagram', () => {
       id: 'c-type-1',
       name: 'M12-4P',
       pinCount: 4,
-    } as any,
+      manufacturer: 'Generic',
+      type: 'male',
+      pinLabels: ['1', '2', '3', '4'],
+    } as Connector,
     position: { x: 0, y: 0 },
     jumpers: [
       { id: 'j-1', side: 'left', pins: [2, 3] },

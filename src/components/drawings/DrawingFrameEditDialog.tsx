@@ -20,14 +20,17 @@ export const DrawingFrameEditDialog: React.FC<DrawingFrameEditDialogProps> = ({
   initialFocusField,
 }) => {
   const currentUser = useUserStore((s) => s.currentUser);
+  const syncKey = `${isOpen}:${frame.drawingNo}:${frame.title}:${frame.partNo}:${frame.revision}`;
+  const [prevSyncKey, setPrevSyncKey] = useState(syncKey);
   const [formData, setFormData] = useState<ProductionDrawingFrame>(frame);
   const techReqsRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
+  if (prevSyncKey !== syncKey) {
+    setPrevSyncKey(syncKey);
     if (isOpen) {
       setFormData(frame);
     }
-  }, [isOpen, frame]);
+  }
 
   useEffect(() => {
     if (isOpen && initialFocusField === 'technicalRequirements') {

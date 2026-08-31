@@ -20,14 +20,15 @@ export function ConnectorPropertiesDialog({
   const updateConnector = useHarnessStore((s) => s.updateConnector);
   const instance = config.connectors.find((c) => c.id === connectorId);
 
+  const [prevInstanceKey, setPrevInstanceKey] = useState(`${connectorId}:${instance?.label ?? ''}`);
   const [label, setLabel] = useState(instance?.label ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (instance) {
-      setLabel(instance.label);
-    }
-  }, [instance?.id, instance?.label]);
+  const currentInstanceKey = `${connectorId}:${instance?.label ?? ''}`;
+  if (prevInstanceKey !== currentInstanceKey) {
+    setPrevInstanceKey(currentInstanceKey);
+    setLabel(instance?.label ?? '');
+  }
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {

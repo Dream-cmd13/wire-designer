@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { useState, type ComponentType, type ReactNode } from 'react';
 import {
   Cable,
   Database,
@@ -80,11 +80,13 @@ function ProjectNameEditor({
   projectName: string;
   onUpdate?: (name: string) => void;
 }) {
+  const [prevName, setPrevName] = useState(projectName);
   const [value, setValue] = useState(projectName);
 
-  useEffect(() => {
+  if (prevName !== projectName) {
+    setPrevName(projectName);
     setValue(projectName);
-  }, [projectName]);
+  }
 
   const commit = () => {
     const trimmed = value.trim();

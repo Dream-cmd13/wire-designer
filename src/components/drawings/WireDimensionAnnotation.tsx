@@ -23,20 +23,21 @@ export const WireDimensionAnnotation: React.FC<WireDimensionAnnotationProps> = (
   const dimInfo = resolveWireDimension(material.spec.lengthMm, material.dimension);
 
   // Edit form state
+  const syncKey = `${material.id}:${dimInfo.length}:${dimInfo.upper}:${dimInfo.lower}:${dimInfo.isCustom}`;
+  const [prevSyncKey, setPrevSyncKey] = useState(syncKey);
   const [editLength, setEditLength] = useState<number>(dimInfo.length);
   const [editUpper, setEditUpper] = useState<string>(dimInfo.upper);
   const [editLower, setEditLower] = useState<string>(dimInfo.lower);
   const [editIsCustom, setEditIsCustom] = useState<boolean>(dimInfo.isCustom);
 
-  // Synchronize draft state when material changes or editing opens
-  useEffect(() => {
-    if (!isEditing) {
-      setEditLength(dimInfo.length);
-      setEditUpper(dimInfo.upper);
-      setEditLower(dimInfo.lower);
-      setEditIsCustom(dimInfo.isCustom);
-    }
-  }, [material, dimInfo.length, dimInfo.upper, dimInfo.lower, dimInfo.isCustom, isEditing]);
+  // Synchronize draft state when material changes while not editing
+  if (!isEditing && prevSyncKey !== syncKey) {
+    setPrevSyncKey(syncKey);
+    setEditLength(dimInfo.length);
+    setEditUpper(dimInfo.upper);
+    setEditLower(dimInfo.lower);
+    setEditIsCustom(dimInfo.isCustom);
+  }
 
   // Click outside to close popover
   useEffect(() => {
