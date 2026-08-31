@@ -595,7 +595,6 @@ export function TwoDView() {
   const savedTwoDViewport = useHarnessStore.getState().twoDViewport;
   const [zoom, setZoom] = useState(savedTwoDViewport?.zoom ?? 1);
   const [pan, setPan] = useState(savedTwoDViewport?.pan ?? { x: 0, y: 0 });
-  const hasSavedViewportRef = useRef(Boolean(savedTwoDViewport));
   const worldRef = useRef<HTMLDivElement>(null);
   const hasCenteredRef = useRef(false);
   const [panning, setPanning] = useState<{

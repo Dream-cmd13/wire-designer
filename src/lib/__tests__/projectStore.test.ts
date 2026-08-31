@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCachedProjects, setCachedProjects } from '@/lib/projectListCache';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
+import type { Project } from '@/types/user';
 
 const mocks = vi.hoisted(() => ({
   createProject: vi.fn(async () => undefined),
-  listProjects: vi.fn(async () => []),
+  listProjects: vi.fn(async () => [] as Project[]),
   updateProject: vi.fn(async () => undefined),
   remove: vi.fn(async () => undefined),
 }));
@@ -78,7 +79,7 @@ describe('project store', () => {
   });
 
   it('implements SWR by showing cached projects immediately while fetching remote updates', async () => {
-    const cachedItem = {
+    const cachedItem: Project = {
       id: 'p-cached',
       userId: 'user-swr',
       name: 'Cached Project',
@@ -88,8 +89,8 @@ describe('project store', () => {
     };
     setCachedProjects('user-swr', [cachedItem]);
 
-    let resolveRemote: (val: typeof cachedItem[]) => void = () => {};
-    mocks.listProjects.mockReturnValue(new Promise((resolve) => {
+    let resolveRemote: (val: Project[]) => void = () => {};
+    mocks.listProjects.mockReturnValue(new Promise<Project[]>((resolve) => {
       resolveRemote = resolve;
     }));
 
@@ -100,7 +101,7 @@ describe('project store', () => {
     expect(useProjectStore.getState().projectsStatus).toBe('loading');
 
     // When remote returns updated list
-    const remoteItem = { ...cachedItem, name: 'Updated Project from Remote', updatedAt: 300 };
+    const remoteItem: Project = { ...cachedItem, name: 'Updated Project from Remote', updatedAt: 300 };
     resolveRemote([remoteItem]);
     await loadPromise;
 
