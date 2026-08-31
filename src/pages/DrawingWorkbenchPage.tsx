@@ -127,10 +127,8 @@ export function DrawingWorkbenchPage() {
   useEffect(() => {
     let cancelled = false;
     entryHandledRef.current = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setDrawingStoreHydrated(false);
-      setEntryReady(false);
+
+    const initialize = async () => {
       setSelectedObjectIds([]);
       setPast([]);
       setFuture([]);
@@ -138,29 +136,43 @@ export function DrawingWorkbenchPage() {
       setClipboard([]);
       setLineEditorObjectId(null);
       setMaterialTableObjectId(null);
-    });
-    void hydrateDrawingStore(drawingOwnerId)
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setDrawingStoreHydrated(true);
-      });
-    return () => { cancelled = true; };
-  }, [drawingOwnerId]);
-  useEffect(() => {
-    if (!drawingStoreHydrated || entryHandledRef.current) return;
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled || entryHandledRef.current) return;
-      entryHandledRef.current = true;
+
       const state = useDrawingStore.getState();
-      const hasExisting = Boolean(state.activeDocumentId && state.documents[state.activeDocumentId]);
+      const alreadyHasDrawing = Boolean(state.activeDocumentId && state.documents[state.activeDocumentId]);
+
+      if (!alreadyHasDrawing) {
+        setDrawingStoreHydrated(false);
+        setEntryReady(false);
+        await hydrateDrawingStore(drawingOwnerId)
+          .catch(() => undefined)
+          .finally(() => {
+            if (!cancelled) setDrawingStoreHydrated(true);
+          });
+      } else {
+        setDrawingStoreHydrated(true);
+      }
+
+      if (cancelled) return;
+
+      const currentState = useDrawingStore.getState();
+      const hasExisting = Boolean(currentState.activeDocumentId && currentState.documents[currentState.activeDocumentId]);
       const entry = enterDrawingWorkbench(hasExisting);
-      if (entry === 'confirm') setRefreshDecisionOpen(true);
-      if (entry === 'create') replaceWithNewDocument('未命名线束图');
-      setEntryReady(true);
-    });
+
+      if (entry === 'confirm') {
+        setRefreshDecisionOpen(true);
+      }
+      if (entry === 'create' || !hasExisting) {
+        replaceWithNewDocument('未命名线束图');
+      }
+
+      if (!cancelled) {
+        setEntryReady(true);
+      }
+    };
+
+    void initialize();
     return () => { cancelled = true; };
-  }, [drawingStoreHydrated, replaceWithNewDocument]);
+  }, [drawingOwnerId, replaceWithNewDocument]);
   useEffect(() => {
     if (saveState !== 'dirty') return;
     const timer = window.setTimeout(() => {
