@@ -35,4 +35,14 @@ describe('harnessStore viewport persistence', () => {
     expect(useHarnessStore.getState().canvasViewport).toBeNull();
     expect(useHarnessStore.getState().twoDViewport).toBeNull();
   });
+
+  it('resets viewports to null on replaceDocument', () => {
+    useHarnessStore.getState().setCanvasViewport({ x: 100, y: 200, zoom: 1.5 });
+    useHarnessStore.getState().setTwoDViewport({ zoom: 1.2, pan: { x: 10, y: 20 } });
+
+    useHarnessStore.getState().replaceDocument(useHarnessStore.getState().config);
+
+    expect(useHarnessStore.getState().canvasViewport).toBeNull();
+    expect(useHarnessStore.getState().twoDViewport).toBeNull();
+  });
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Minus, Plus, RotateCw } from 'lucide-react';
+import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Maximize2, Minus, Plus, RotateCw } from 'lucide-react';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
@@ -845,39 +845,61 @@ export function TwoDView() {
 
   const fitToCanvas = useCallback(() => {
     const vp = viewportRef.current;
-    const world = worldRef.current;
-    if (!vp || !world) return;
+    if (!vp) return;
     const vpW = vp.offsetWidth;
     const vpH = vp.offsetHeight;
-    const worldW = world.offsetWidth;
-    const worldH = world.offsetHeight;
-    if (worldW === 0 || worldH === 0) return;
-    const scaleX = (vpW - 64) / worldW;
-    const scaleY = (vpH - 64) / worldH;
-    const newZoom = clampZoom(Math.min(scaleX, scaleY, 1));
+    if (vpW <= 0 || vpH <= 0) return;
+    const worldW = 1200;
+    const worldH = 800;
+    const paddingX = 32;
+    const paddingY = 24;
+    const scaleX = (vpW - paddingX * 2) / worldW;
+    const scaleY = (vpH - paddingY * 2) / worldH;
+    const newZoom = clampZoom(parseFloat(Math.min(scaleX, scaleY, 1).toFixed(3)));
+    const newPan = {
+      x: Math.round((vpW - worldW * newZoom) / 2),
+      y: Math.round((vpH - worldH * newZoom) / 2),
+    };
     setZoom(newZoom);
-    setPan({
-      x: (vpW - worldW * newZoom) / 2,
-      y: (vpH - worldH * newZoom) / 2,
-    });
+    setPan(newPan);
+    setIsFitted(true);
   }, []);
 
-  // ── fit content to canvas when images first appear ───────────────────────────
+  // ── Auto-fit when viewport size is established or restored from hidden ────────
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          if (!hasCenteredRef.current) {
+            hasCenteredRef.current = true;
+            fitToCanvas();
+          }
+        }
+      }
+    });
+    observer.observe(vp);
+    return () => observer.disconnect();
+  }, [fitToCanvas]);
+
+  // ── fit content to canvas when images first appear or project changes ──────────
   useEffect(() => {
     if (twoDImages.length === 0) {
       hasCenteredRef.current = false;
       const timer = setTimeout(() => setIsFitted(false), 0);
       return () => clearTimeout(timer);
     }
-    if (hasCenteredRef.current || hasSavedViewportRef.current) {
-      hasCenteredRef.current = true;
-      setIsFitted(true);
-      return;
-    }
     const timer = setTimeout(() => {
-      fitToCanvas();
-      hasCenteredRef.current = true;
-      setIsFitted(true);
+      const vp = viewportRef.current;
+      if (vp && vp.offsetWidth > 0 && vp.offsetHeight > 0) {
+        if (!hasCenteredRef.current) {
+          fitToCanvas();
+          hasCenteredRef.current = true;
+        }
+        setIsFitted(true);
+      }
     }, 50);
     return () => clearTimeout(timer);
   }, [twoDImages.length, fitToCanvas]);
@@ -952,11 +974,12 @@ export function TwoDView() {
               </button>
               <button
                 type="button"
-                onClick={resetZoom}
-                className="min-w-[3.5rem] rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                title="重置缩放"
+                onClick={fitToCanvas}
+                className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                title="居中适应整张图纸"
               >
-                {Math.round(zoom * 100)}%
+                <Maximize2 className="h-3 w-3" />
+                <span>{Math.round(zoom * 100)}%</span>
               </button>
               <button
                 type="button"

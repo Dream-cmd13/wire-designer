@@ -129,6 +129,8 @@ export const useHarnessStore = create<HarnessState>()(
         set({
           config: { ...aligned, twoDImages: syncTwoDImages(aligned) },
           selection: { kind: 'none' },
+          canvasViewport: null,
+          twoDViewport: null,
           saveState: options?.markSaved ? { status: 'saved', savedAt: Date.now() } : dirtyState(),
         });
       },

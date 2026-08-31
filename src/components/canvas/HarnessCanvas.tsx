@@ -825,10 +825,10 @@ function HarnessCanvasInner() {
       return;
     }
     hasAutoFitted.current = true;
-    const frameId = requestAnimationFrame(() => {
-      fitView({ duration: 0, padding: 0.16 });
-    });
-    return () => cancelAnimationFrame(frameId);
+    const timer = setTimeout(() => {
+      fitView({ duration: 250, padding: 0.28, maxZoom: 1 });
+    }, 60);
+    return () => clearTimeout(timer);
   }, [fitView, nodes.length]);
 
   const currentFlowPosition = useCallback(() => (
@@ -1500,7 +1500,7 @@ function HarnessCanvasInner() {
         deleteKeyCode={null}
       >
         <Background color="#cbd5e1" gap={20} />
-        <Controls />
+        <Controls fitViewOptions={{ padding: 0.28, duration: 250 }} />
       </ReactFlow>
 
       {pendingConnectionPoint && (
@@ -1607,7 +1607,7 @@ function HarnessCanvasInner() {
           onDeleteAccessory={handleDeleteAccessory}
           onDetachEndpoint={handleDetachEndpoint}
           onDeleteJumper={handleDeleteJumper}
-          onFitView={() => fitView({ duration: 300 })}
+          onFitView={() => fitView({ duration: 300, padding: 0.28 })}
           hasSelection={selection.kind !== 'none' || canvasSelection !== null}
         />
       )}
