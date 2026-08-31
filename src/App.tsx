@@ -141,9 +141,10 @@ export default function App() {
   const [storageBootstrapState, setStorageBootstrapState] = useState<StorageBootstrapState>({
     status: 'unconfigured',
   });
-  const [storageChecking, setStorageChecking] = useState(() => Boolean(supabase));
+  const [storageChecking, setStorageChecking] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveInFlightRef = useRef<Promise<void> | null>(null);
+  const storageCheckInFlightRef = useRef<Promise<StorageBootstrapState> | null>(null);
   const previousAuthUserIdRef = useRef<string | null | undefined>(undefined);
   const restoreProjectAttemptRef = useRef<string | null>(null);
   const projectsLoadRequestRef = useRef(0);
@@ -175,32 +176,57 @@ export default function App() {
   const drawingSaveState = useDrawingStore((state) => state.saveState);
   const saveActiveDrawing = useDrawingStore((state) => state.saveActiveDocument);
 
+  const needsCatalog = route.section === 'designer'
+    || route.id === 'library-connectors'
+    || route.id === 'drawing-workbench'
+    || route.id === 'library-harnesses'
+    || wizardOpen;
+
+  const needsStorageBootstrap = Boolean(supabase) && (
+    route.section === 'designer'
+    || route.id === 'library-connectors'
+    || route.id === 'drawing-workbench'
+  );
+
   useEffect(() => {
     configRef.current = config;
   }, [config]);
 
-  const refreshStorageBootstrap = useCallback(async () => {
+  const performStorageBootstrapCheck = useCallback(async () => {
+    if (!supabase) {
+      setStorageBootstrapState({ status: 'unconfigured' });
+      setStorageChecking(false);
+      return;
+    }
+
+    if (storageCheckInFlightRef.current) {
+      const state = await storageCheckInFlightRef.current;
+      setStorageBootstrapState(state);
+      return;
+    }
+
     setStorageChecking(true);
+    const task = checkStorageBootstrap(supabase);
+    storageCheckInFlightRef.current = task;
     try {
-      setStorageBootstrapState(await checkStorageBootstrap(supabase));
+      const state = await task;
+      setStorageBootstrapState(state);
     } finally {
+      storageCheckInFlightRef.current = null;
       setStorageChecking(false);
     }
   }, []);
 
+  const refreshStorageBootstrap = useCallback(async () => {
+    await performStorageBootstrapCheck();
+  }, [performStorageBootstrapCheck]);
+
   useEffect(() => initializeAuth(), [initializeAuth]);
 
   useEffect(() => {
-    let cancelled = false;
-    void checkStorageBootstrap(supabase).then((state) => {
-      if (cancelled) return;
-      setStorageBootstrapState(state);
-      setStorageChecking(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (!needsStorageBootstrap) return;
+    void performStorageBootstrapCheck();
+  }, [needsStorageBootstrap, performStorageBootstrapCheck]);
 
   useEffect(() => {
     const requestId = ++projectsLoadRequestRef.current;
@@ -226,12 +252,14 @@ export default function App() {
   }, [authReady, currentUserId, loadProjects]);
 
   useEffect(() => {
+    if (!needsCatalog) return;
     void initializeCatalog().catch(() => {
       // The catalog store exposes the error state to the shell; no mock fallback is used.
     });
-  }, [initializeCatalog]);
+  }, [needsCatalog, initializeCatalog]);
 
   useEffect(() => {
+    if (!needsCatalog) return;
     const refresh = () => {
       if (document.visibilityState === 'hidden') return;
       void refreshCatalogIfStale().catch(() => undefined);
@@ -244,7 +272,7 @@ export default function App() {
       window.removeEventListener('pageshow', refresh);
       window.removeEventListener('focus', refresh);
     };
-  }, [refreshCatalogIfStale]);
+  }, [needsCatalog, refreshCatalogIfStale]);
 
   useEffect(() => {
     if (catalogStatus !== 'ready' || !currentProject || configRef.current.id !== currentProject.id) return;
@@ -346,13 +374,13 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
-    setCurrentProject(null);
+    useProjectStore.getState().resetProjects();
     replaceDocument(createDefaultConfig(), { markSaved: true });
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
     useHistoryStore.getState().clear();
     navigate(destinationPath);
-  }, [navigate, replaceDocument, setCurrentProject]);
+  }, [navigate, replaceDocument]);
 
   useEffect(() => {
     if (!authReady) return;

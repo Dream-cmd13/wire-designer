@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Download, Edit3, FolderOpen, HardDrive, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  AlertCircle,
+  Download,
+  Edit3,
+  FolderOpen,
+  HardDrive,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { createDesignFile, downloadTextFile, safeFilename, type DesignFilePreview } from '@/lib/designFile';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { ActionToast } from '@/components/shared/ActionToast';
@@ -19,9 +29,41 @@ function getTimestamp() {
   return Date.now();
 }
 
+function ProjectCardSkeleton() {
+  return (
+    <div className="animate-pulse rounded-xl border border-slate-200 bg-white p-5">
+      <div className="mb-3 flex items-start justify-between">
+        <div className="h-5 w-3/4 rounded bg-slate-200" />
+      </div>
+      <div className="mb-4 space-y-2">
+        <div className="h-4 w-full rounded bg-slate-100" />
+        <div className="h-4 w-1/2 rounded bg-slate-100" />
+      </div>
+      <div className="mb-4 flex items-center justify-between">
+        <div className="h-3 w-20 rounded bg-slate-100" />
+        <div className="h-3 w-20 rounded bg-slate-100" />
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="h-9 flex-1 rounded-lg bg-slate-100" />
+        <div className="h-9 w-9 rounded-lg bg-slate-100" />
+        <div className="h-9 w-9 rounded-lg bg-slate-100" />
+        <div className="h-9 w-9 rounded-lg bg-slate-100" />
+      </div>
+    </div>
+  );
+}
+
 export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
-  const { currentUser } = useUserStore();
-  const { projects, createProject, deleteProject, updateProject } = useProjectStore();
+  const { currentUser, authReady } = useUserStore();
+  const {
+    projects,
+    projectsStatus,
+    projectsError,
+    createProject,
+    deleteProject,
+    updateProject,
+    loadProjects,
+  } = useProjectStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [importOpen, setImportOpen] = useState(false);
@@ -37,6 +79,10 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     .filter((project) => project.userId === currentUser?.id)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
+  const isLoading = !authReady || (projectsStatus === 'loading' && userProjects.length === 0);
+  const hasErrorWithNoData = projectsStatus === 'error' && userProjects.length === 0;
+  const hasErrorWithData = projectsStatus === 'error' && userProjects.length > 0;
+
   useEffect(() => {
     if (!deleteToast) return;
     const timer = window.setTimeout(() => setDeleteToast(null), 8000);
@@ -48,6 +94,12 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     const timer = window.setTimeout(() => setStatusToast(null), 4000);
     return () => window.clearTimeout(timer);
   }, [statusToast]);
+
+  const handleRetry = () => {
+    if (currentUser?.id) {
+      void loadProjects(currentUser.id, { force: true });
+    }
+  };
 
   const confirmDelete = (project: Project) => {
     setDeleteToast(project);
@@ -170,8 +222,28 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
             <HardDrive className="h-4 w-4" />
             <span className="text-sm font-medium">项目总数</span>
           </div>
-          <span className="text-2xl font-bold">{userProjects.length}</span>
+          {isLoading ? (
+            <div className="h-8 w-8 animate-pulse rounded bg-blue-200" />
+          ) : (
+            <span className="text-2xl font-bold">{userProjects.length}</span>
+          )}
         </div>
+
+        {hasErrorWithData && (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
+              <span>项目列表同步失败（已显示本地缓存）：{projectsError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="flex cursor-pointer items-center gap-1 rounded border border-amber-300 bg-white px-2.5 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+            >
+              <RefreshCw className="h-3 w-3" /> 重试
+            </button>
+          </div>
+        )}
 
         {notice && (
           <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
@@ -180,7 +252,26 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
           </div>
         )}
 
-        {userProjects.length === 0 ? (
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <ProjectCardSkeleton />
+            <ProjectCardSkeleton />
+            <ProjectCardSkeleton />
+          </div>
+        ) : hasErrorWithNoData ? (
+          <div className="rounded-xl border border-red-200 bg-red-50/50 py-16 text-center">
+            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-red-400" />
+            <h3 className="mb-1 text-base font-semibold text-slate-800">项目列表加载失败</h3>
+            <p className="mb-4 text-sm text-slate-500">{projectsError || '请检查网络连接后重试'}</p>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+            >
+              <RefreshCw className="h-4 w-4" /> 重新加载
+            </button>
+          </div>
+        ) : userProjects.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white py-20 text-center">
             <FolderOpen className="mx-auto mb-4 h-12 w-12 text-slate-300" />
             <h3 className="mb-2 text-lg font-medium text-slate-600">暂无项目</h3>
