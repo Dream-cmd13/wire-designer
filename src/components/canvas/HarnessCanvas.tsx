@@ -622,7 +622,23 @@ function HarnessCanvasInner() {
   } | null>(null);
   const reconnectSucceeded = useRef(false);
   const hasAutoFitted = useRef(false);
-  const { fitView, screenToFlowPosition } = useReactFlow();
+  const currentConfigIdRef = useRef(config.id);
+  const initialViewportRef = useRef(useHarnessStore.getState().canvasViewport);
+  const { fitView, getViewport, screenToFlowPosition } = useReactFlow();
+
+  useEffect(() => {
+    if (currentConfigIdRef.current !== config.id) {
+      currentConfigIdRef.current = config.id;
+      hasAutoFitted.current = false;
+      initialViewportRef.current = useHarnessStore.getState().canvasViewport;
+    }
+  }, [config.id]);
+
+  useEffect(() => {
+    return () => {
+      useHarnessStore.getState().setCanvasViewport(getViewport());
+    };
+  }, [getViewport]);
 
   const materials = config.materials ?? EMPTY_MATERIALS;
   const sleeves = config.protectiveSleeves ?? EMPTY_SLEEVES;
@@ -798,13 +814,16 @@ function HarnessCanvasInner() {
     nodesRef.current = nodes;
   }, [nodes]);
 
-  // Auto-fit view on first load
+  // Auto-fit view on first load (only if no saved viewport is present)
   useEffect(() => {
     if (nodes.length === 0) {
       hasAutoFitted.current = false;
       return;
     }
-    if (hasAutoFitted.current) return;
+    if (hasAutoFitted.current || initialViewportRef.current) {
+      hasAutoFitted.current = true;
+      return;
+    }
     hasAutoFitted.current = true;
     const frameId = requestAnimationFrame(() => {
       fitView({ duration: 0, padding: 0.16 });
@@ -1443,6 +1462,10 @@ function HarnessCanvasInner() {
   return (
     <div className="relative h-full w-full">
       <ReactFlow
+        defaultViewport={initialViewportRef.current ?? undefined}
+        onMoveEnd={(_, vp) => {
+          useHarnessStore.getState().setCanvasViewport(vp);
+        }}
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}

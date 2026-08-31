@@ -51,6 +51,10 @@ interface HarnessState {
   config: HarnessConfig;
   selection: Selection;
   saveState: SaveState;
+  canvasViewport: { x: number; y: number; zoom: number } | null;
+  twoDViewport: { zoom: number; pan: { x: number; y: number } } | null;
+  setCanvasViewport: (viewport: { x: number; y: number; zoom: number } | null) => void;
+  setTwoDViewport: (viewport: { zoom: number; pan: { x: number; y: number } } | null) => void;
   setConfig: (config: Partial<HarnessConfig>) => void;
   patchDocument: (partial: Partial<HarnessConfig>) => void;
   replaceDocument: (fullConfig: HarnessConfig, options?: ReplaceDocumentOptions) => void;
@@ -97,6 +101,10 @@ export const useHarnessStore = create<HarnessState>()(
       config: createDefaultConfig(),
       selection: { kind: 'none' },
       saveState: { status: 'saved', savedAt: Date.now() },
+      canvasViewport: null,
+      twoDViewport: null,
+      setCanvasViewport: (canvasViewport) => set({ canvasViewport }),
+      setTwoDViewport: (twoDViewport) => set({ twoDViewport }),
 
       setConfig: (updates) =>
         set((state) => {
@@ -289,6 +297,8 @@ export const useHarnessStore = create<HarnessState>()(
           config: createDefaultConfig(),
           selection: { kind: 'none' },
           saveState: dirtyState(),
+          canvasViewport: null,
+          twoDViewport: null,
         }),
 
       rotateTwoDImage: (id) =>

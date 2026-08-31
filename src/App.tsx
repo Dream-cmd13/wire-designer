@@ -348,6 +348,8 @@ export default function App() {
     setSaveBlocked(false);
     setCurrentProject(null);
     replaceDocument(createDefaultConfig(), { markSaved: true });
+    useHarnessStore.getState().setCanvasViewport(null);
+    useHarnessStore.getState().setTwoDViewport(null);
     useHistoryStore.getState().clear();
     navigate(destinationPath);
   }, [navigate, replaceDocument, setCurrentProject]);
@@ -466,6 +468,8 @@ export default function App() {
     destinationPath = appRoutes['designer-design'].path,
   ) => {
     setCurrentProject(project);
+    useHarnessStore.getState().setCanvasViewport(null);
+    useHarnessStore.getState().setTwoDViewport(null);
     const history = useHistoryStore.getState();
     history.clear();
     history.pause();
@@ -572,6 +576,8 @@ export default function App() {
     setRecoveryRaw(null);
     setSaveBlocked(false);
     setWizardOpen(false);
+    useHarnessStore.getState().setCanvasViewport(null);
+    useHarnessStore.getState().setTwoDViewport(null);
     useHistoryStore.getState().clear();
     navigate(appRoutes['designer-design'].path, {
       projectId: useProjectStore.getState().currentProject?.id ?? null,
@@ -595,6 +601,8 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
+    useHarnessStore.getState().setCanvasViewport(null);
+    useHarnessStore.getState().setTwoDViewport(null);
     useHistoryStore.getState().clear();
     navigate(appRoutes.home.path);
   };

@@ -593,8 +593,10 @@ export function TwoDView() {
   const activeDragGroupIdxRef = useRef(activeDragGroupIdx);
 
   // ── zoom & pan ───────────────────────────────────────────────────────────────
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const savedTwoDViewport = useHarnessStore.getState().twoDViewport;
+  const [zoom, setZoom] = useState(savedTwoDViewport?.zoom ?? 1);
+  const [pan, setPan] = useState(savedTwoDViewport?.pan ?? { x: 0, y: 0 });
+  const hasSavedViewportRef = useRef(Boolean(savedTwoDViewport));
   const worldRef = useRef<HTMLDivElement>(null);
   const hasCenteredRef = useRef(false);
   const [panning, setPanning] = useState<{
@@ -602,6 +604,10 @@ export function TwoDView() {
   } | null>(null);
   const panningRef = useRef(panning);
   const zoomRef = useRef(zoom);
+
+  useEffect(() => {
+    useHarnessStore.getState().setTwoDViewport({ zoom, pan });
+  }, [zoom, pan]);
 
   useEffect(() => {
     activeDragGroupIdxRef.current = activeDragGroupIdx;
@@ -864,7 +870,11 @@ export function TwoDView() {
       const timer = setTimeout(() => setIsFitted(false), 0);
       return () => clearTimeout(timer);
     }
-    if (hasCenteredRef.current) return;
+    if (hasCenteredRef.current || hasSavedViewportRef.current) {
+      hasCenteredRef.current = true;
+      setIsFitted(true);
+      return;
+    }
     const timer = setTimeout(() => {
       fitToCanvas();
       hasCenteredRef.current = true;
