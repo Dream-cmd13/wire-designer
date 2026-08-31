@@ -382,11 +382,12 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           </text>
         </g>
 
-        {/* ── 5. Part No & Title (x: 720 -> 890, width: 170) ───────── */}
-        <line x1="890" y1="667" x2="890" y2="776" stroke="#000" strokeWidth="1" />
-        <line x1="720" y1="722" x2="890" y2="722" stroke="#000" strokeWidth="1" />
+        {/* ── 5. Part No & DWG No (Top, y: 667 -> 722) and TITLE (Bottom, y: 722 -> 776) ── */}
+        <line x1="1000" y1="667" x2="1000" y2="776" stroke="#000" strokeWidth="1.5" />
+        <line x1="890" y1="667" x2="890" y2="722" stroke="#000" strokeWidth="1" />
+        <line x1="720" y1="722" x2="1000" y2="722" stroke="#000" strokeWidth="1" />
 
-        {/* PART.NO */}
+        {/* PART.NO (Top-Left, x: 720 -> 890) */}
         <g
           className={interactiveClass}
           onClick={handleClick('partNo')}
@@ -405,29 +406,7 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           </text>
         </g>
 
-        {/* TITLE */}
-        <g
-          className={interactiveClass}
-          onClick={handleClick('title')}
-        >
-          <title>点击编辑图纸标题</title>
-          <text x="726" y="735" fontSize="8.5" fontWeight="bold">TITLE:</text>
-          <text
-            x="805"
-            y="756"
-            textAnchor="middle"
-            fontSize="10"
-            fontWeight="bold"
-            letterSpacing="0.2"
-          >
-            {frame.title || ''}
-          </text>
-        </g>
-
-        {/* ── 6. Drawing No (x: 890 -> 1000, width: 110, Full Height) ── */}
-        <line x1="1000" y1="667" x2="1000" y2="776" stroke="#000" strokeWidth="1.5" />
-
-        {/* DWG.NO */}
+        {/* DWG.NO (Top-Right, x: 890 -> 1000) */}
         <g
           className={interactiveClass}
           onClick={handleClick('drawingNo')}
@@ -436,13 +415,32 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
           <text x="896" y="680" fontSize="8.5" fontWeight="bold">DWG.NO:</text>
           <text
             x="945"
-            y="728"
+            y="705"
             textAnchor="middle"
-            fontSize="14"
+            fontSize="13"
             fontWeight="bold"
             letterSpacing="0.5"
           >
             {frame.drawingNo || ''}
+          </text>
+        </g>
+
+        {/* TITLE (Bottom Full Span, x: 720 -> 1000, width: 280) */}
+        <g
+          className={interactiveClass}
+          onClick={handleClick('title')}
+        >
+          <title>点击编辑图纸标题</title>
+          <text x="726" y="735" fontSize="8.5" fontWeight="bold">TITLE:</text>
+          <text
+            x="860"
+            y="756"
+            textAnchor="middle"
+            fontSize="10.5"
+            fontWeight="bold"
+            letterSpacing="0.3"
+          >
+            {frame.title || ''}
           </text>
         </g>
 
