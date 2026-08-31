@@ -638,13 +638,7 @@ export default function App() {
       return <ProjectRequiredState onNavigateHome={() => navigate(appRoutes.home.path)} />;
     }
 
-    const content = (() => {
-      if (route.id === 'designer-product-image') {
-        return <TwoDView />;
-      }
-
-      return <DesignerView />;
-    })();
+    const isProductImage = route.id === 'designer-product-image';
 
     return (
       <div className="flex h-full min-h-0 flex-col">
@@ -656,7 +650,14 @@ export default function App() {
             onClose={() => setLoadError(null)}
           />
         )}
-        <div className="min-h-0 flex-1">{content}</div>
+        <div className="relative min-h-0 flex-1">
+          <div className={!isProductImage ? 'h-full w-full' : 'hidden h-full w-full'}>
+            <DesignerView />
+          </div>
+          <div className={isProductImage ? 'h-full w-full' : 'hidden h-full w-full'}>
+            <TwoDView />
+          </div>
+        </div>
       </div>
     );
   };
