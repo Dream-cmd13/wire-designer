@@ -317,7 +317,7 @@ function SlashHeaderCell({
 }) {
   return (
     <div 
-      className="relative h-[36px] flex items-center justify-center border-r border-black select-none"
+      className="relative h-[36px] flex items-center justify-center border-r border-black select-none shrink-0"
       style={{ width }}
     >
       <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
@@ -458,27 +458,26 @@ function BOMTable({
         {sortedRows.map((row) => (
           <div
             key={row.itemNo}
-            className="flex flex-row border-b border-black items-center text-[11px] font-semibold"
-            style={{ height: layout.bom.rowHeight }}
+            className="flex flex-row border-b border-black items-stretch text-[10px] font-semibold min-h-[34px]"
           >
             {/* ITEM No */}
-            <div className="w-[50px] border-r border-black h-full flex items-center justify-center text-sm font-bold">
+            <div className="w-[45px] border-r border-black flex items-center justify-center text-xs font-bold shrink-0 self-stretch">
               {circledNums[row.itemNo - 1] || row.itemNo}
             </div>
             {/* NAME */}
-            <div className="w-[70px] border-r border-black h-full flex items-center justify-center">
+            <div className="w-[65px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
               {row.name}
             </div>
             {/* SPECIFICATION */}
-            <div className="flex-1 border-r border-black h-full flex items-center px-3 whitespace-pre-line leading-tight text-[11px]">
+            <div className="flex-1 border-r border-black flex items-center px-3 py-1.5 whitespace-pre-line leading-[14px] text-[10px] break-words self-stretch">
               {row.spec}
             </div>
             {/* UNIT */}
-            <div className="w-[50px] border-r border-black h-full flex items-center justify-center">
+            <div className="w-[45px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
               {row.unit}
             </div>
             {/* QTY */}
-            <div className="w-[50px] h-full flex items-center justify-center text-sm font-bold">
+            <div className="w-[45px] flex items-center justify-center text-xs font-bold shrink-0 self-stretch">
               {row.qty}
             </div>
           </div>
@@ -489,16 +488,16 @@ function BOMTable({
           className="flex flex-row text-[10px] font-bold"
           style={{ height: layout.bom.headerHeight, backgroundColor: 'rgba(248, 250, 252, 0.5)' }}
         >
-          <SlashHeaderCell topText="序号" bottomText="ITEM" width="50px" />
-          <SlashHeaderCell topText="名称" bottomText="NAME" width="70px" />
+          <SlashHeaderCell topText="序号" bottomText="ITEM" width="45px" />
+          <SlashHeaderCell topText="名称" bottomText="NAME" width="65px" />
           
           {/* SPECIFICATION Header */}
           <div className="flex-1 border-r border-black h-full flex items-center justify-center tracking-wider text-xs">
             规格/NAME&DESCRIPTION
           </div>
           
-          <SlashHeaderCell topText="单位" bottomText="UNIT" width="50px" />
-          <SlashHeaderCell topText="用量" bottomText="DSE" width="50px" />
+          <SlashHeaderCell topText="单位" bottomText="UNIT" width="45px" />
+          <SlashHeaderCell topText="用量" bottomText="DSE" width="45px" />
         </div>
       </div>
     </div>

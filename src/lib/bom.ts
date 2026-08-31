@@ -53,7 +53,7 @@ export function formatWireBomSpecification(
       return r.endsWith('色') ? r.slice(0, -1) : r;
     })
     .join('、');
-  const colorDesc = eng?.coreColorDescription ? `${eng.coreColorDescription} (${colorsClean})` : colorsClean;
+  const colorDesc = eng?.coreColorDescription || colorsClean;
 
   const shielding = spec.shielded ? '屏蔽' : '非屏蔽';
   const jColor = spec.jacketColor === 'black' ? '黑色' : spec.jacketColor === 'green' ? '绿色' : spec.jacketColor;
