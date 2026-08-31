@@ -167,7 +167,6 @@ export function AdminShell({
               </div>
               <div className="hidden min-w-0 flex-1 sm:block">
                 <h1 className="truncate text-sm font-bold">线束设计器</h1>
-                <p className="text-xs text-slate-400">Admin Console v2.0</p>
               </div>
             </>
           )}
