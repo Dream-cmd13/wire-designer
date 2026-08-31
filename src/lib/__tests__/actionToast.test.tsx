@@ -4,15 +4,15 @@ import { ActionToast } from '@/components/shared/ActionToast';
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { UndoToast } from '@/components/shared/UndoToast';
 
-describe('Toast unified center-top positioning and backdrop behavior', () => {
-  it('renders ActionToast at unified center-top position by default without backdrop', () => {
+describe('Toast unified top positioning and backdrop behavior', () => {
+  it('renders ActionToast at unified top position by default without backdrop', () => {
     const html = renderToStaticMarkup(
       <ActionToast message="普通状态通知" onClose={() => undefined} />,
     );
 
-    expect(html).toContain('top-[35%]');
+    expect(html).toContain('top-6');
     expect(html).toContain('left-1/2');
-    expect(html).toContain('animate-toast-in-center');
+    expect(html).toContain('animate-toast-in-top');
     expect(html).toContain('普通状态通知');
     expect(html).not.toContain('toast-backdrop');
   });
@@ -27,8 +27,8 @@ describe('Toast unified center-top positioning and backdrop behavior', () => {
       />,
     );
 
-    expect(html).toContain('top-[35%]');
-    expect(html).toContain('animate-toast-in-center');
+    expect(html).toContain('top-6');
+    expect(html).toContain('animate-toast-in-top');
     expect(html).toContain('data-testid="toast-backdrop"');
     expect(html).toContain('确认操作');
   });
@@ -55,7 +55,7 @@ describe('Toast unified center-top positioning and backdrop behavior', () => {
     expect(withBackdrop).toContain('data-testid="toast-backdrop"');
   });
 
-  it('renders DeleteConfirmToast at center-top position with backdrop', () => {
+  it('renders DeleteConfirmToast at top position with backdrop', () => {
     const html = renderToStaticMarkup(
       <DeleteConfirmToast
         title="确认删除连接器"
@@ -65,13 +65,13 @@ describe('Toast unified center-top positioning and backdrop behavior', () => {
       />,
     );
 
-    expect(html).toContain('top-[35%]');
-    expect(html).toContain('animate-toast-in-center');
+    expect(html).toContain('top-6');
+    expect(html).toContain('animate-toast-in-top');
     expect(html).toContain('data-testid="toast-backdrop"');
     expect(html).toContain('确认删除连接器');
   });
 
-  it('renders UndoToast at center-top position without backdrop to avoid blocking interactions', () => {
+  it('renders UndoToast at top position without backdrop to avoid blocking interactions', () => {
     const html = renderToStaticMarkup(
       <UndoToast
         message="已删除 1 个对象"
@@ -81,8 +81,8 @@ describe('Toast unified center-top positioning and backdrop behavior', () => {
       />,
     );
 
-    expect(html).toContain('top-[35%]');
-    expect(html).toContain('animate-toast-in-center');
+    expect(html).toContain('top-6');
+    expect(html).toContain('animate-toast-in-top');
     expect(html).not.toContain('toast-backdrop');
     expect(html).toContain('撤销');
     expect(html).toContain('已删除 1 个对象');

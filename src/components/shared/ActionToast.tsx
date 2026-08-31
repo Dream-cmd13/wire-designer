@@ -44,8 +44,8 @@ const TONE_DEFAULTS = {
 };
 
 const POSITION_STYLES: Record<NonNullable<ActionToastProps['position']>, string> = {
-  top: 'top-[35%] left-1/2 z-[75] animate-toast-in-center',
-  center: 'top-[35%] left-1/2 z-[75] animate-toast-in-center',
+  top: 'top-6 left-1/2 z-[75] animate-toast-in-top',
+  center: 'top-6 left-1/2 z-[75] animate-toast-in-top',
 };
 
 function ToastButton({ action, emphasis = 'secondary' }: { action: ToastAction; emphasis?: 'primary' | 'secondary' }) {
