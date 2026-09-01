@@ -74,6 +74,7 @@ import {
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { PartPickerDialog } from '@/components/shared/PartPickerDialog';
 import { UndoToast } from '@/components/shared/UndoToast';
+import { Lock } from 'lucide-react';
 
 const nodeTypes: NodeTypes = {
   connector: ConnectorNode,
@@ -589,6 +590,9 @@ function getSleevePreviewUpdates(
 
 function HarnessCanvasInner() {
   const { config, selection, setSelection, updateConnector } = useHarnessStore();
+  const [isInteractive, setIsInteractive] = useState(true);
+  const isInteractiveRef = useRef(isInteractive);
+  isInteractiveRef.current = isInteractive;
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -627,6 +631,25 @@ function HarnessCanvasInner() {
   const { fitView, getViewport, screenToFlowPosition } = useReactFlow();
 
   useEffect(() => {
+    if (!isInteractive) {
+      setSelection({ kind: 'none' });
+      setCanvasSelection(null);
+      setContextMenu(null);
+      setPendingConnectionPoint(null);
+      pendingConnectionPointRef.current = null;
+      setConnectorDialog(null);
+      setEditingConnectorId(null);
+      setChangingPartConnectorId(null);
+      setEditingMaterialId(null);
+      setNewMaterialDraft(null);
+      setSleeveDialog(null);
+      setModelDialogPosition(null);
+      setAccessoryDialog(null);
+      setDeleteConfirmToast(null);
+    }
+  }, [isInteractive, setSelection]);
+
+  useEffect(() => {
     if (currentConfigIdRef.current !== config.id) {
       currentConfigIdRef.current = config.id;
       hasAutoFitted.current = false;
@@ -649,6 +672,7 @@ function HarnessCanvasInner() {
   // overlays, not as React Flow edges, so onEdgeContextMenu doesn't fire).
   useEffect(() => {
     setJumperContextMenuHandler((jumperId, x, y) => {
+      if (!isInteractiveRef.current) return;
       setContextMenu({ x, y, kind: 'jumper', jumperId });
     });
     return () => setJumperContextMenuHandler(null);
@@ -668,6 +692,7 @@ function HarnessCanvasInner() {
 
   useEffect(() => {
     setMaterialAccessoryDialogHandler((request) => {
+      if (!isInteractiveRef.current) return;
       setAccessoryDialog(request);
     });
     return () => setMaterialAccessoryDialogHandler(null);
@@ -675,6 +700,7 @@ function HarnessCanvasInner() {
 
   useEffect(() => {
     setMaterialAccessoryContextMenuHandler((request) => {
+      if (!isInteractiveRef.current) return;
       setContextMenu({
         x: request.x,
         y: request.y,
@@ -880,6 +906,7 @@ function HarnessCanvasInner() {
 
   useEffect(() => {
     setMaterialConnectionPointHandler((point) => {
+      if (!isInteractiveRef.current) return;
       const pending = pendingConnectionPointRef.current;
       if (!pending || pending.kind === point.kind) {
         pendingConnectionPointRef.current = point;
@@ -926,6 +953,7 @@ function HarnessCanvasInner() {
   }, []);
 
   const isValidConnection: IsValidConnection<Edge> = useCallback((connection) => {
+    if (!isInteractiveRef.current) return false;
     if (!connection.source || !connection.target) return false;
 
     const state = useHarnessStore.getState();
@@ -952,7 +980,7 @@ function HarnessCanvasInner() {
   }, []);
 
   const onConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return;
+    if (!isInteractiveRef.current || !connection.source || !connection.target) return;
 
     const state = useHarnessStore.getState();
     const sourceIsMaterial = state.config.materials.some((m) => m.id === connection.source);
@@ -996,7 +1024,7 @@ function HarnessCanvasInner() {
   // validation failure (side lock, pin range, duplicate) leaves the
   // original connection untouched — no lossy detach-then-attach.
   const onReconnect = useCallback((oldEdge: Edge, connection: Connection) => {
-    if (!connection.target) return;
+    if (!isInteractiveRef.current || !connection.target) return;
     const state = useHarnessStore.getState();
 
     if (oldEdge.type === 'attachment' && oldEdge.data) {
@@ -1176,6 +1204,7 @@ function HarnessCanvasInner() {
   }, [requestDeleteConfirmation]);
 
   const onNodeDragStart: OnNodeDrag = useCallback((_, node) => {
+    if (!isInteractiveRef.current) return;
     const linkedNodeIds = getLinkedDragNodeIds(useHarnessStore.getState().config, node.id);
     if (linkedNodeIds.length <= 1) {
       dragGroupRef.current = null;
@@ -1200,6 +1229,7 @@ function HarnessCanvasInner() {
   }, []);
 
   const onNodeDrag: OnNodeDrag = useCallback((_, node) => {
+    if (!isInteractiveRef.current) return;
     const dragGroup = dragGroupRef.current;
     if (dragGroup && dragGroup.draggedNodeId === node.id) {
       const draggedInitialPosition = dragGroup.initialPositions.get(node.id);
@@ -1263,6 +1293,10 @@ function HarnessCanvasInner() {
   }, [setNodes]);
 
   const onNodeDragStop: OnNodeDrag = useCallback((_, node) => {
+    if (!isInteractiveRef.current) {
+      dragGroupRef.current = null;
+      return;
+    }
     const state = useHarnessStore.getState();
     const dragGroup = dragGroupRef.current;
     if (dragGroup && dragGroup.draggedNodeId === node.id) {
@@ -1346,6 +1380,7 @@ function HarnessCanvasInner() {
 
   // --- Selection ---
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => {
+    if (!isInteractiveRef.current) return;
     if (node.type === 'connector') {
       setCanvasSelection(null);
       setSelection({ kind: 'connector', id: node.id });
@@ -1371,6 +1406,7 @@ function HarnessCanvasInner() {
   }, [setSelection]);
 
   const onEdgeClick: EdgeMouseHandler = useCallback((_, edge) => {
+    if (!isInteractiveRef.current) return;
     setSelection({ kind: 'none' });
     setCanvasSelection(edge.id);
   }, [setSelection]);
@@ -1385,6 +1421,7 @@ function HarnessCanvasInner() {
 
   const onPaneContextMenu = useCallback((event: ReactMouseEvent | MouseEvent) => {
     event.preventDefault();
+    if (!isInteractiveRef.current) return;
     const x = 'clientX' in event ? event.clientX : 0;
     const y = 'clientY' in event ? event.clientY : 0;
     setContextMenu({
@@ -1397,6 +1434,7 @@ function HarnessCanvasInner() {
 
   const onNodeContextMenu = useCallback((event: ReactMouseEvent, node: Node) => {
     event.preventDefault();
+    if (!isInteractiveRef.current) return;
     if (node.type === 'material') {
       setCanvasSelection(node.id);
       setSelection({ kind: 'material', id: node.id });
@@ -1421,6 +1459,7 @@ function HarnessCanvasInner() {
 
   const onEdgeContextMenu = useCallback((event: ReactMouseEvent, edge: Edge) => {
     event.preventDefault();
+    if (!isInteractiveRef.current) return;
     setCanvasSelection(edge.id);
     if (edge.type === 'jumper' && edge.data) {
       const { jumperId } = edge.data as { jumperId: string };
@@ -1468,14 +1507,22 @@ function HarnessCanvasInner() {
         }}
         nodes={nodes}
         edges={edges}
+        nodesDraggable={isInteractive}
+        nodesConnectable={isInteractive}
+        nodesFocusable={isInteractive}
+        elementsSelectable={isInteractive}
+        edgesReconnectable={isInteractive}
+        edgesFocusable={isInteractive}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onReconnect={onReconnect}
         onReconnectStart={() => {
+          if (!isInteractiveRef.current) return;
           reconnectSucceeded.current = false;
         }}
         onReconnectEnd={(_, edge) => {
+          if (!isInteractiveRef.current) return;
           if (!reconnectSucceeded.current) {
             if (edge.type === 'attachment') {
               handleDetachEndpoint(edge.id);
@@ -1496,12 +1543,37 @@ function HarnessCanvasInner() {
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        attributionPosition="bottom-left"
+        proOptions={{ hideAttribution: true }}
         deleteKeyCode={null}
+        className={!isInteractive ? 'canvas-locked select-none' : undefined}
       >
         <Background color="#cbd5e1" gap={20} />
-        <Controls fitViewOptions={{ padding: 0.28, duration: 250 }} />
+        <Controls
+          fitViewOptions={{ padding: 0.28, duration: 250 }}
+          onInteractiveChange={setIsInteractive}
+        />
       </ReactFlow>
+
+      {!isInteractive && (
+        <>
+          <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50/95 px-4 py-1.5 text-xs font-semibold text-amber-800 shadow-md backdrop-blur">
+            <Lock className="h-3.5 w-3.5 text-amber-600" />
+            <span>画布已锁定（只读模式：节点拖动、连线、右键菜单与删除操作已禁用）</span>
+          </div>
+          <style>{`
+            .canvas-locked .react-flow__node,
+            .canvas-locked .cursor-grab,
+            .canvas-locked .cursor-pointer,
+            .canvas-locked .wire-material-drag {
+              cursor: default !important;
+            }
+            .canvas-locked .react-flow__handle {
+              pointer-events: none !important;
+              cursor: default !important;
+            }
+          `}</style>
+        </>
+      )}
 
       {pendingConnectionPoint && (
         <div className="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2 rounded-full border border-blue-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-blue-700 shadow">

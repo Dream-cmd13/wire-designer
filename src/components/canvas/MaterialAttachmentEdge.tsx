@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { BaseEdge, EdgeLabelRenderer, type EdgeProps, useReactFlow } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps, useReactFlow, useStore } from '@xyflow/react';
 import { updateMaterialCircuit } from '@/lib/commands';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
@@ -354,7 +354,10 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
     });
   }, [edgeData.materialId]);
 
+  const nodesDraggable = useStore((s) => s.nodesDraggable);
+
   const startRouteDrag = useCallback((clientX: number, clientY: number) => {
+    if (!nodesDraggable) return;
     const updateRouteFromPointer = (nextClientX: number, nextClientY: number) => {
       const point = screenToFlowPosition({ x: nextClientX, y: nextClientY });
       persistRouteOffset({
@@ -381,9 +384,10 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [midpoint.x, midpoint.y, persistRouteOffset, screenToFlowPosition]);
+  }, [midpoint.x, midpoint.y, nodesDraggable, persistRouteOffset, screenToFlowPosition]);
 
   const startTubeDrag = useCallback((tubeId: string, clientX: number, clientY: number) => {
+    if (!nodesDraggable) return;
     const updateTubeFromPointer = (nextClientX: number, nextClientY: number) => {
       const point = screenToFlowPosition({ x: nextClientX, y: nextClientY });
       const closest = resolveClosestSample(samples, point.x, point.y);
@@ -408,7 +412,7 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp, { once: true });
-  }, [persistTubeDistance, samples, screenToFlowPosition, totalLength]);
+  }, [nodesDraggable, persistTubeDistance, samples, screenToFlowPosition, totalLength]);
 
   const numberTubePlacements = useMemo(
     () =>
@@ -450,8 +454,9 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
         fill="none"
         stroke="transparent"
         strokeWidth={16}
-        className="nopan cursor-grab active:cursor-grabbing"
+        className={`nopan ${nodesDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
         onMouseDown={(event) => {
+          if (!nodesDraggable) return;
           event.preventDefault();
           startRouteDrag(event.clientX, event.clientY);
         }}
@@ -472,6 +477,7 @@ export function MaterialAttachmentEdge(props: EdgeProps) {
             type="button"
             aria-label="拖动芯线形状"
             onMouseDown={(event) => {
+              if (!nodesDraggable) return;
               event.preventDefault();
               event.stopPropagation();
               startRouteDrag(event.clientX, event.clientY);
