@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Maximize2, Minus, Plus } from 'lucide-react';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
@@ -18,7 +18,7 @@ import { TwoDImageCard } from './TwoDImageCard';
 import { WireDimensionAnnotation } from './WireDimensionAnnotation';
 import { ProductionDrawingFrameSvg } from './ProductionDrawingFrameSvg';
 import { DrawingFrameEditDialog } from './DrawingFrameEditDialog';
-import { ensureDrawingFrame } from '@/lib/drawingFrameDefaults';
+import { ensureDrawingFrame, DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
 import { useUserStore } from '@/stores/userStore';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -579,6 +579,11 @@ export function TwoDView() {
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const activeDragGroupIdxRef = useRef(activeDragGroupIdx);
+  const [groupDimensions, setGroupDimensions] = useState<Record<number, { w: number; h: number }>>({});
+  const groupRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const [wireOffsets, setWireOffsets] = useState<Record<number, number>>({});
+  const topRowRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const wireContainerRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   // ── zoom & pan ───────────────────────────────────────────────────────────────
   const savedTwoDViewport = useHarnessStore.getState().twoDViewport;
@@ -636,6 +641,69 @@ export function TwoDView() {
     });
   }, [groups, connectors, materials, sleeves, models]);
 
+  // ── measure exact DOM dimensions and wire offset (in local unscaled layout coordinates) ──
+  const measureGroupDimensions = useCallback(() => {
+    for (let idx = 0; idx < groups.length; idx++) {
+      const groupEl = groupRefs.current[idx];
+      if (groupEl) {
+        const w = groupEl.offsetWidth;
+        const h = groupEl.offsetHeight;
+        if (w > 0 && h > 0) {
+          setGroupDimensions((prev) => {
+            if (prev[idx]?.w === w && prev[idx]?.h === h) return prev;
+            return { ...prev, [idx]: { w, h } };
+          });
+        }
+      }
+
+      const topRowEl = topRowRefs.current[idx];
+      const wireEl = wireContainerRefs.current[idx];
+      if (topRowEl && wireEl) {
+        let exactOffset = 0;
+        if (wireEl.offsetParent === topRowEl) {
+          const wireCenter = wireEl.offsetLeft + wireEl.offsetWidth / 2;
+          const topRowCenter = topRowEl.offsetWidth / 2;
+          exactOffset = Math.round(wireCenter - topRowCenter);
+        } else {
+          const topRowRect = topRowEl.getBoundingClientRect();
+          const wireRect = wireEl.getBoundingClientRect();
+          const currentZoom = zoomRef.current || 1;
+          if (topRowRect.width > 0 && wireRect.width > 0) {
+            const wireCenter = (wireRect.left + wireRect.width / 2) / currentZoom;
+            const topRowCenter = (topRowRect.left + topRowRect.width / 2) / currentZoom;
+            exactOffset = Math.round(wireCenter - topRowCenter);
+          }
+        }
+
+        setWireOffsets((prev) => {
+          if (prev[idx] === exactOffset) return prev;
+          return { ...prev, [idx]: exactOffset };
+        });
+      }
+    }
+  }, [groups]);
+
+  useLayoutEffect(() => {
+    measureGroupDimensions();
+
+    const ro = new ResizeObserver(() => {
+      measureGroupDimensions();
+    });
+
+    for (let idx = 0; idx < groups.length; idx++) {
+      const groupEl = groupRefs.current[idx];
+      const topRowEl = topRowRefs.current[idx];
+      const wireEl = wireContainerRefs.current[idx];
+      if (groupEl) ro.observe(groupEl);
+      if (topRowEl) ro.observe(topRowEl);
+      if (wireEl) ro.observe(wireEl);
+    }
+
+    return () => {
+      ro.disconnect();
+    };
+  }, [groups, measureGroupDimensions]);
+
   // ── Card and Group size helpers ──────────────────────────────────────────────
   const maxCardHeight = productionLayout.maxImageHeight;
   const getWeight = (kind: TwoDImage['elementKind']) => {
@@ -653,53 +721,152 @@ export function TwoDView() {
     return Math.min(600, Math.floor(944 * (weight / Math.max(1, totalWeight))));
   }, [totalWeight]);
 
-  const getGroupWidth = useCallback((g: { images: TwoDImage[] }) => {
-    return g.images.reduce((sum, img) => sum + getCardWidth(img), 0);
-  }, [getCardWidth]);
+  const getGroupWidth = useCallback(
+    (groupIdx: number, g: { images: TwoDImage[] }) => {
+      const measured = groupDimensions[groupIdx]?.w;
+      if (measured && measured > 0) return measured;
+      const domNode = groupRefs.current[groupIdx];
+      if (domNode && domNode.offsetWidth > 0) return domNode.offsetWidth;
+      // Fallback estimate based on realistic card widths
+      const hasWiring = g.images.some((img) => img.elementKind === 'material');
+      const approxCardsWidth = g.images.reduce((sum, img) => sum + (img.elementKind === 'material' ? 240 : 80), 0);
+      return Math.max(approxCardsWidth, hasWiring ? productionLayout.wiringDiagram.width : 0, 400);
+    },
+    [groupDimensions, productionLayout.wiringDiagram.width],
+  );
 
   const defaultGroupPositions = useMemo(() => {
     const positions: Record<number, { x: number; y: number }> = {};
     const groupSpacing = 32;
-    const totalGroupsWidth = groups.reduce((sum, g, idx) => sum + getGroupWidth(g) + (idx > 0 ? groupSpacing : 0), 0);
+    const totalGroupsWidth = groups.reduce(
+      (sum, g, idx) => sum + getGroupWidth(idx, g) + (idx > 0 ? groupSpacing : 0),
+      0,
+    );
     const startX = Math.max(64, (1200 - totalGroupsWidth) / 2);
-    
+
     let currentX = startX;
     for (let i = 0; i < groups.length; i++) {
       positions[i] = {
         x: currentX,
         y: productionLayout.assemblyTop,
       };
-      currentX += getGroupWidth(groups[i]) + groupSpacing;
+      currentX += getGroupWidth(i, groups[i]) + groupSpacing;
     }
     return positions;
   }, [groups, getGroupWidth, productionLayout.assemblyTop]);
 
-  const getGroupReservedHeight = useCallback((group: { images: TwoDImage[] }) => {
-    const groupHasWiring = group.images.some((img) => img.elementKind === 'material');
-    return (
-      maxCardHeight +
-      (groupHasWiring ? productionLayout.assemblyGap + productionLayout.wiringDiagram.height : 0) +
-      8
-    );
-  }, [maxCardHeight, productionLayout.assemblyGap, productionLayout.wiringDiagram.height]);
+  const techRequirementsTop = useMemo(() => {
+    const rawReqs = drawingFrame.technicalRequirements ?? DEFAULT_TECHNICAL_REQUIREMENTS;
+    const lines = rawReqs
+      .split('\n')
+      .map((l) => l.trimEnd())
+      .filter((l, idx, arr) => l.length > 0 || idx < arr.length - 1);
+    if (lines.length === 0) return 667;
+    const lineHeight = 23;
+    const totalHeight = (lines.length - 1) * lineHeight;
+    const baselineBottom = 650;
+    const startY = Math.min(520, baselineBottom - totalHeight);
+    return startY - 18;
+  }, [drawingFrame.technicalRequirements]);
 
-  const clampGroupPosition = useCallback((position: { x: number; y: number }, group: { images: TwoDImage[] }) => {
-    const minY = 56;
-    const maxY = Math.max(minY, productionLayout.bomRect.top - productionLayout.safeGap - getGroupReservedHeight(group));
-    return {
-      x: position.x,
-      y: Math.max(minY, Math.min(position.y, maxY)),
-    };
-  }, [getGroupReservedHeight, productionLayout.bomRect.top, productionLayout.safeGap]);
+  const getGroupFallbackHeight = useCallback(
+    (group: { images: TwoDImage[] }) => {
+      const groupHasWiring = group.images.some((img) => img.elementKind === 'material');
+      const approxImageRowHeight = Math.min(130, maxCardHeight > 0 ? maxCardHeight : 130);
+      const wiringHeight = groupHasWiring
+        ? productionLayout.assemblyGap + productionLayout.wiringDiagram.height
+        : 0;
+      return approxImageRowHeight + wiringHeight + 16;
+    },
+    [maxCardHeight, productionLayout.assemblyGap, productionLayout.wiringDiagram.height],
+  );
 
-  const getGroupPosition = useCallback((groupIdx: number) => {
-    const group = groups[groupIdx];
-    const firstImg = group.images[0];
-    if (firstImg && firstImg.pos) {
-      return clampGroupPosition({ x: firstImg.pos.x, y: firstImg.pos.y }, group);
-    }
-    return clampGroupPosition(defaultGroupPositions[groupIdx], group);
-  }, [clampGroupPosition, groups, defaultGroupPositions]);
+  const getGroupHeight = useCallback(
+    (groupIdx: number, group: { images: TwoDImage[] }) => {
+      const measured = groupDimensions[groupIdx]?.h;
+      if (measured && measured > 0) return measured;
+      const domNode = groupRefs.current[groupIdx];
+      if (domNode && domNode.offsetHeight > 0) return domNode.offsetHeight;
+      return getGroupFallbackHeight(group);
+    },
+    [groupDimensions, getGroupFallbackHeight],
+  );
+
+  const clampGroupPosition = useCallback(
+    (position: { x: number; y: number }, group: { images: TwoDImage[] }, groupIdx: number) => {
+      const rawGroupWidth = getGroupWidth(groupIdx, group);
+      const groupHeight = getGroupHeight(groupIdx, group);
+      const exactOffset = wireOffsets[groupIdx] ?? 0;
+
+      // Calculate relative horizontal bounds of the group (including top row and shifted wiring diagram)
+      const hasWiring = group.images.some((img) => img.elementKind === 'material');
+      const diagramWidth = hasWiring ? productionLayout.wiringDiagram.width : 0;
+      const minRelX = hasWiring
+        ? Math.min(0, (rawGroupWidth - diagramWidth) / 2 + exactOffset)
+        : 0;
+      const maxRelX = hasWiring
+        ? Math.max(rawGroupWidth, (rawGroupWidth + diagramWidth) / 2 + exactOffset)
+        : rawGroupWidth;
+
+      // Horizontal boundaries (inside drawing border x: 22..1176)
+      // Visual left: position.x + minRelX >= 26 => position.x >= 26 - minRelX
+      // Visual right: position.x + maxRelX <= 1174 => position.x <= 1174 - maxRelX
+      const minX = Math.max(26, 26 - minRelX);
+      const maxX = Math.max(minX, 1174 - maxRelX);
+      const clampedX = Math.max(minX, Math.min(position.x, maxX));
+
+      // Vertical boundaries:
+      // Top boundary (below top border / compliance note box at y: 22..46)
+      const minY = 56;
+
+      // Bottom obstacle detection:
+      // - Technical requirements (bottom-left): x: ~26..560
+      // - BOM table (bottom-right): x: ~536..1176
+      const safeGap = 12;
+      const bomTop = productionLayout.bomRect.top;
+      const visualLeft = clampedX + minRelX;
+      const visualRight = clampedX + maxRelX;
+      const overlapsBom = visualRight >= 530;
+      const overlapsTechReq = visualLeft <= 550;
+
+      let obstacleTop = 667;
+      if (overlapsBom && overlapsTechReq) {
+        obstacleTop = Math.min(bomTop, techRequirementsTop);
+      } else if (overlapsBom) {
+        obstacleTop = bomTop;
+      } else if (overlapsTechReq) {
+        obstacleTop = techRequirementsTop;
+      } else {
+        obstacleTop = 667;
+      }
+
+      const maxY = Math.max(minY, obstacleTop - safeGap - groupHeight);
+      const clampedY = Math.max(minY, Math.min(position.y, maxY));
+
+      return {
+        x: clampedX,
+        y: clampedY,
+      };
+    },
+    [getGroupWidth, getGroupHeight, wireOffsets, productionLayout.wiringDiagram.width, productionLayout.bomRect.top, techRequirementsTop],
+  );
+
+  const getGroupPosition = useCallback(
+    (groupIdx: number) => {
+      const group = groups[groupIdx];
+      if (!group) return { x: 64, y: productionLayout.assemblyTop };
+      const firstImg = group.images[0];
+      if (firstImg && firstImg.pos) {
+        return clampGroupPosition({ x: firstImg.pos.x, y: firstImg.pos.y }, group, groupIdx);
+      }
+      return clampGroupPosition(
+        defaultGroupPositions[groupIdx] || { x: 64, y: productionLayout.assemblyTop },
+        group,
+        groupIdx,
+      );
+    },
+    [clampGroupPosition, groups, defaultGroupPositions, productionLayout.assemblyTop],
+  );
 
   // ── global mouse handlers ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -726,28 +893,30 @@ export function TwoDView() {
       const gIdx = activeDragGroupIdxRef.current;
       if (gIdx !== null && dragStartPos && (dragOffset.x !== 0 || dragOffset.y !== 0)) {
         const group = groups[gIdx];
-        const basePos = getGroupPosition(gIdx);
-        const newX = basePos.x + dragOffset.x;
-        const newY = basePos.y + dragOffset.y;
-        const nextPos = clampGroupPosition({ x: newX, y: newY }, group);
+        if (group) {
+          const basePos = getGroupPosition(gIdx);
+          const newX = basePos.x + dragOffset.x;
+          const newY = basePos.y + dragOffset.y;
+          const nextPos = clampGroupPosition({ x: newX, y: newY }, group, gIdx);
 
-        // Update all images in this group with their new absolute pos, maintaining relative horizontal offset
-        const nextImages = twoDImages.map((img) => {
-          const imgInGroupIdx = group.images.findIndex((gImg) => gImg.id === img.id);
-          if (imgInGroupIdx !== -1) {
-            let offsetK = 0;
-            for (let i = 0; i < imgInGroupIdx; i++) {
-              offsetK += getCardWidth(group.images[i]);
+          // Update all images in this group with their new absolute pos, maintaining relative horizontal offset
+          const nextImages = twoDImages.map((img) => {
+            const imgInGroupIdx = group.images.findIndex((gImg) => gImg.id === img.id);
+            if (imgInGroupIdx !== -1) {
+              let offsetK = 0;
+              for (let i = 0; i < imgInGroupIdx; i++) {
+                offsetK += getCardWidth(group.images[i]);
+              }
+              return {
+                ...img,
+                pos: { x: nextPos.x + offsetK, y: nextPos.y },
+              };
             }
-            return {
-              ...img,
-              pos: { x: nextPos.x + offsetK, y: nextPos.y },
-            };
-          }
-          return img;
-        });
+            return img;
+          });
 
-        patchDocument({ twoDImages: nextImages });
+          patchDocument({ twoDImages: nextImages });
+        }
       }
       setActiveDragGroupIdx(null);
       setDragStartPos(null);
@@ -932,6 +1101,19 @@ export function TwoDView() {
   };
 
   // ── drag group mousedown ──────────────────────────────────────────────────────
+  function handleGroupMouseDown(e: React.MouseEvent, groupIdx: number) {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, button, [role="button"], table')) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation(); // prevent viewport pan when dragging group
+    setActiveDragGroupIdx(groupIdx);
+    setDragStartPos({ x: e.clientX, y: e.clientY });
+    setDragOffset({ x: 0, y: 0 });
+  }
+
   function handleImageMouseDown(e: React.MouseEvent, groupIdx: number) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -1096,17 +1278,26 @@ export function TwoDView() {
               return groups.map((group, groupIdx) => {
                 const isDraggingThis = activeDragGroupIdx === groupIdx;
                 const basePos = getGroupPosition(groupIdx);
-                const x = basePos.x + (isDraggingThis ? dragOffset.x : 0);
-                const y = basePos.y + (isDraggingThis ? dragOffset.y : 0);
+                const rawPos = {
+                  x: basePos.x + (isDraggingThis ? dragOffset.x : 0),
+                  y: basePos.y + (isDraggingThis ? dragOffset.y : 0),
+                };
+                const { x, y } = isDraggingThis
+                  ? clampGroupPosition(rawPos, group, groupIdx)
+                  : rawPos;
 
                 return (
                   <div
                     key={groupIdx}
+                    ref={(el) => {
+                      groupRefs.current[groupIdx] = el;
+                    }}
+                    onMouseDown={(e) => handleGroupMouseDown(e, groupIdx)}
                     style={{
                       position: 'absolute',
                       left: x,
                       top: y,
-                      opacity: isDraggingThis ? 0.6 : 1,
+                      opacity: isDraggingThis ? 0.75 : 1,
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
@@ -1274,25 +1465,46 @@ export function TwoDView() {
                       };
 
                       return (
-                        <div className="flex flex-row items-center gap-0">
-                          {renderEnd(leftImgs, 'left')}
-                          {wireImgs.map(renderCard)}
-                          {renderEnd(rightImgs, 'right')}
-                        </div>
-                      );
-                    })()}
+                        <>
+                          <div
+                            ref={(el) => {
+                              topRowRefs.current[groupIdx] = el;
+                            }}
+                            className="relative flex flex-row items-center gap-0"
+                          >
+                            {renderEnd(leftImgs, 'left')}
+                            <div
+                              ref={(el) => {
+                                wireContainerRefs.current[groupIdx] = el;
+                              }}
+                              className="flex flex-row items-center gap-0"
+                            >
+                              {wireImgs.map(renderCard)}
+                            </div>
+                            {renderEnd(rightImgs, 'right')}
+                          </div>
 
-                    {/* Bottom Row: Wiring Diagram */}
-                    {(() => {
-                      const groupMaterials = materials.filter(m => group.images.some(img => img.elementKind === 'material' && img.elementId === m.id));
-                      const groupConnectors = connectors.filter(c => group.images.some(img => img.elementKind === 'connector' && img.elementId === c.id));
-                      return groupMaterials.length > 0 ? (
-                        <WiringDiagram
-                          materials={groupMaterials}
-                          connectors={groupConnectors}
-                          layout={productionLayout.wiringDiagram}
-                        />
-                      ) : null;
+                          {/* Bottom Row: Wiring Diagram (pixel-perfect centered with wire materials) */}
+                          {(() => {
+                            const groupMaterials = materials.filter(m => group.images.some(img => img.elementKind === 'material' && img.elementId === m.id));
+                            const groupConnectors = connectors.filter(c => group.images.some(img => img.elementKind === 'connector' && img.elementId === c.id));
+                            const exactOffset = wireOffsets[groupIdx] ?? 0;
+                            return groupMaterials.length > 0 ? (
+                              <div
+                                style={{
+                                  transform: exactOffset !== 0 ? `translateX(${exactOffset}px)` : undefined,
+                                }}
+                              >
+                                <WiringDiagram
+                                  materials={groupMaterials}
+                                  connectors={groupConnectors}
+                                  layout={productionLayout.wiringDiagram}
+                                />
+                              </div>
+                            ) : null;
+                          })()}
+                        </>
+                      );
                     })()}
                   </div>
                 );
