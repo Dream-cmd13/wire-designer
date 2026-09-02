@@ -21,6 +21,8 @@ describe('Dialogs catalogStore integration contracts', () => {
     expect(partPickerSource).toContain("c.shielded === false");
     expect(partPickerSource).toContain('shieldLabel !== null');
     expect(partPickerSource).toContain('工程与电气规格');
+    expect(partPickerSource).toContain("if (a === '万连') return -1");
+    expect(partPickerSource).toContain("if (b === '万连') return 1");
   });
 
   it('OvermoldPickerDialog consumes catalogStore overmolds and removes listOvermolds network call', () => {

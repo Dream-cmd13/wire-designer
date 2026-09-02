@@ -90,7 +90,13 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   if (!isOpen) return null;
 
   // Extract filter options
-  const manufacturers = [...new Set(connectors.map((c) => c.manufacturer))].filter(Boolean).sort();
+  const manufacturers = [...new Set(connectors.map((c) => c.manufacturer))]
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a === '万连') return -1;
+      if (b === '万连') return 1;
+      return a.localeCompare(b);
+    });
   const seriesOptions = [...new Set(connectors.map((c) => c.series).filter(Boolean))].sort() as string[];
   const shieldOptions = ['已屏蔽', '未屏蔽'];
   const pinCounts = [...new Set(connectors.map((c) => c.pinCount))].sort((a, b) => a - b);
