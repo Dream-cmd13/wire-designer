@@ -1,7 +1,7 @@
 import { getJumperNetwork } from '@/lib/commands';
-import type { ConnectorInstance } from '@/types/harness';
+import type { ConnectorInstance, ConnectorSide } from '@/types/harness';
 
-export function formatPinNetworkString(connector: ConnectorInstance, side: 'left' | 'right', pin: number): string {
+export function formatPinNetworkString(connector: ConnectorInstance, side: ConnectorSide, pin: number): string {
   const network = getJumperNetwork(connector.jumpers, side, pin);
   const sorted = Array.from(network).sort((a, b) => a - b);
   return sorted.map((p) => `Pin${p}`).join(', ');

@@ -3,10 +3,12 @@
  * Image choice comes from the catalog item's `image_path`, not from the canvas
  * position or a hard-coded local filename.
  */
-import type { CanvasModel, CanvasWireMaterial, ConnectorInstance, HarnessConfig, JacketedWireSpec, TwoDImage } from '@/types/harness';
+import type { CanvasModel, CanvasWireMaterial, ConnectorInstance, ConnectorOrientation, HarnessConfig, JacketedWireSpec, OvermoldSpec, TwoDImage } from '@/types/harness';
 import { generateId } from '@/lib/commands';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
-import { getConnectorNodeWidth } from '@/lib/canvasMaterials';
+import { getConnectorNodeWidth, getMoldLinkage } from '@/lib/canvasMaterials';
+
+export { type ConnectorOrientation };
 
 function resourceImage(
   name: string,
@@ -15,7 +17,8 @@ function resourceImage(
   elementId: string,
   previous: TwoDImage | undefined,
   imageRole: TwoDImage['imageRole'] = 'primary',
-  flipX?: boolean,
+  rotation: 0 | 90 | 180 | 270 | -90 = 0,
+  orientation?: ConnectorOrientation,
 ): TwoDImage {
   return {
     id: previous?.id ?? generateId(),
@@ -25,23 +28,40 @@ function resourceImage(
     imageRole,
     elementKind,
     elementId,
-    ...(flipX === undefined
-      ? (previous?.flipX === undefined ? {} : { flipX: previous.flipX })
-      : (flipX ? { flipX: true } : {})),
-    ...(previous?.rotation === undefined ? {} : { rotation: previous.rotation }),
+    orientation,
+    rotation,
     ...(previous?.pos === undefined ? {} : { pos: previous.pos }),
   };
 }
 
-function isConnectorConnectedToModel(connector: ConnectorInstance, models: CanvasModel[]): boolean {
+export function findLinkedModelForConnector(connector: ConnectorInstance, config: HarnessConfig): CanvasModel | undefined {
+  for (const model of config.models) {
+    const linkage = getMoldLinkage(model, config);
+    if (linkage && linkage.connector.id === connector.id) {
+      return model;
+    }
+  }
+  // Fallback: 尚未接线时的几何靠近匹配
   const connectorLeft = connector.position.x;
   const connectorRight = connector.position.x + getConnectorNodeWidth(connector);
-  return models.some((model) => {
+  return config.models.find((model) => {
     const modelLeft = model.position.x;
     const modelRight = model.position.x + model.width;
     const horizontallyClose = modelLeft < connectorRight + 120 && modelRight > connectorLeft - 120;
     return horizontallyClose && Math.abs(model.position.y - connector.position.y) < 200;
   });
+}
+
+export function isConnectorConnectedToModel(connector: ConnectorInstance, config: HarnessConfig): boolean {
+  return findLinkedModelForConnector(connector, config) !== undefined;
+}
+
+export function getConnectedOvermoldSpec(model: CanvasModel): OvermoldSpec | undefined {
+  const snapshot = getCatalogSnapshot();
+  return snapshot?.overmolds.find((item) =>
+    (model.resourceItemId && item.resourceItemId === model.resourceItemId) ||
+    (model.overmoldSpecId && item.id === model.overmoldSpecId),
+  );
 }
 
 function getMaterialCenterX(material: CanvasWireMaterial): number {
@@ -52,17 +72,50 @@ function getNearestMaterialByY(y: number, materials: CanvasWireMaterial[]): Canv
   return [...materials].sort((a, b) => Math.abs(a.position.y - y) - Math.abs(b.position.y - y))[0];
 }
 
-function shouldFlipConnectorImage(connector: ConnectorInstance, config: HarnessConfig): boolean {
+export function getConnectorOrientation(connector: ConnectorInstance, config: HarnessConfig): ConnectorOrientation {
+  // 1. 若连接了弯头外模，强制判定为 bottom（-90° 出线朝上）
+  const connectedModel = findLinkedModelForConnector(connector, config);
+  if (connectedModel) {
+    const overmoldSpec = getConnectedOvermoldSpec(connectedModel);
+    if (overmoldSpec?.outerForm === 'bent') {
+      return 'bottom';
+    }
+  }
+
+  // 2. 直头外模或未注塑连接器：按画布拓扑位置判定
   const connectedMaterials = config.materials.filter((material) => material.circuits.some((circuit) =>
     circuit.start?.connectorId === connector.id || circuit.end?.connectorId === connector.id,
   ));
   const relevantMaterials = connectedMaterials.length > 0
     ? connectedMaterials
     : [getNearestMaterialByY(connector.position.y, config.materials)].filter((item): item is CanvasWireMaterial => Boolean(item));
-  if (relevantMaterials.length === 0) return false;
+  if (relevantMaterials.length === 0) return 'left';
+
   const connectorCenterX = connector.position.x + getConnectorNodeWidth(connector) / 2;
   const materialCenterX = relevantMaterials.reduce((sum, material) => sum + getMaterialCenterX(material), 0) / relevantMaterials.length;
-  return connectorCenterX > materialCenterX;
+
+  const connectorCenterY = connector.position.y;
+  const materialCenterY = relevantMaterials.reduce((sum, material) => sum + material.position.y, 0) / relevantMaterials.length;
+
+  const minMaterialX = Math.min(...relevantMaterials.map((m) => m.position.x));
+  const maxMaterialX = Math.max(...relevantMaterials.map((m) => m.position.x + m.width));
+  if (connectorCenterY > materialCenterY + 100 && connectorCenterX >= minMaterialX - 50 && connectorCenterX <= maxMaterialX + 50) {
+    return 'bottom';
+  }
+
+  return connectorCenterX > materialCenterX ? 'right' : 'left';
+}
+
+export function getConnectorRotationByOrientation(orientation: ConnectorOrientation): 0 | 180 | -90 {
+  switch (orientation) {
+    case 'right':
+      return 180;
+    case 'bottom':
+      return -90;
+    case 'left':
+    default:
+      return 0;
+  }
 }
 
 function connectorImages(connector: ConnectorInstance, config: HarnessConfig): TwoDImage[] {
@@ -75,19 +128,22 @@ function connectorImages(connector: ConnectorInstance, config: HarnessConfig): T
       .map((image) => [image.imageRole ?? 'primary', image]),
   );
 
+  const orientation = getConnectorOrientation(connector, config);
+  const rotation = getConnectorRotationByOrientation(orientation);
+
   if (connector.connector.id !== 'm12a04-07-093' || !variants?.before || !variants.after || !variants.pinMap) {
     const image = catalogConnector?.image ?? connector.connector.image;
-    return image ? [resourceImage(connector.connector.name, image, 'connector', connector.id, previousImages.get('primary'))] : [];
+    return image ? [resourceImage(connector.connector.name, image, 'connector', connector.id, previousImages.get('primary'), 'primary', rotation, orientation)] : [];
   }
 
-  const isRight = shouldFlipConnectorImage(connector, config);
-  const bodyRole = isConnectorConnectedToModel(connector, config.models) ? 'connector-after' : 'connector-before';
+  const isConnected = isConnectorConnectedToModel(connector, config);
+  const bodyRole = isConnected ? 'connector-after' : 'connector-before';
   const bodyPath = bodyRole === 'connector-after' ? variants.after : variants.before;
   const previousBody = previousImages.get(bodyRole)
     ?? previousImages.get(bodyRole === 'connector-after' ? 'connector-before' : 'connector-after');
-  const body = resourceImage(connector.connector.name, bodyPath, 'connector', connector.id, previousBody, bodyRole, isRight);
-  const pinMap = resourceImage('连接器pin位图', variants.pinMap, 'connector', connector.id, previousImages.get('connector-pin-map'), 'connector-pin-map');
-  return isRight ? [body, pinMap] : [pinMap, body];
+  const body = resourceImage(connector.connector.name, bodyPath, 'connector', connector.id, previousBody, bodyRole, rotation, orientation);
+  const pinMap = resourceImage('连接器pin位图', variants.pinMap, 'connector', connector.id, previousImages.get('connector-pin-map'), 'connector-pin-map', 0, orientation);
+  return orientation === 'right' ? [body, pinMap] : [pinMap, body];
 }
 
 function catalogWireImage(material: CanvasWireMaterial): string | undefined {
@@ -123,7 +179,9 @@ export function autoAssociateTwoDImages(config: HarnessConfig): TwoDImage[] {
     }),
     ...config.models.flatMap((model) => {
       const image = catalogOvermoldImage(model);
-      return image ? [resourceImage('Overmold', image, 'model', model.id, previous('model', model.id))] : [];
+      const linkedConnector = config.connectors.find((c) => findLinkedModelForConnector(c, config)?.id === model.id);
+      const orientation = linkedConnector ? getConnectorOrientation(linkedConnector, config) : undefined;
+      return image ? [resourceImage('Overmold', image, 'model', model.id, previous('model', model.id), 'primary', 0, orientation)] : [];
     }),
   ];
 }

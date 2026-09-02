@@ -119,6 +119,7 @@ export type CanvasWireSpec = ElectronicWireSpec | JacketedWireSpec;
 // ============================================================
 
 export type ConnectorSide = 'left' | 'right';
+export type ConnectorOrientation = 'left' | 'right' | 'bottom';
 export type MaterialEndpoint = 'start' | 'end';
 
 export interface MaterialEndpointRouteOffset {
@@ -317,9 +318,8 @@ export interface TwoDImage {
   assetPath?: string;
   elementKind?: 'connector' | 'material' | 'sleeve' | 'model';
   elementId?: string;
-  rotation?: 0 | 90 | 180 | 270;
-  /** Mirror horizontally when the product-side image sits on the right side of a wire. */
-  flipX?: boolean;
+  orientation?: ConnectorOrientation;
+  rotation?: 0 | 90 | 180 | 270 | -90;
   /** Free-canvas position (pixels from top-left of canvas). Auto-layout used when absent. */
   pos?: { x: number; y: number };
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Maximize2, Minus, Plus, RotateCw } from 'lucide-react';
+import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Maximize2, Minus, Plus } from 'lucide-react';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
 import type {
@@ -26,6 +26,7 @@ import { generateBOM, formatWireBomSpecification } from '@/lib/bom';
 import {
   getCanvasModelDisplayName,
   getProtectiveSleeveDisplayName,
+  getMoldLinkage,
 } from '@/lib/canvasMaterials';
 import {
   calculateProductionDrawingLayout,
@@ -508,15 +509,12 @@ function BOMTable({
 // ── ImageInfoBox ───────────────────────────────────────────────────────────────
 function ImageInfoBox({
   image,
-  onRotate,
   onCollapse,
 }: {
   image: TwoDImage;
-  onRotate: (id: string) => void;
   onCollapse: () => void;
 }) {
   const label = useElementLabel(image.elementKind, image.elementId);
-  const rotation = image.rotation ?? 0;
 
   return (
     <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
@@ -535,16 +533,8 @@ function ImageInfoBox({
       <div className="mt-2 flex flex-wrap gap-1.5">
         <button
           type="button"
-          onClick={() => onRotate(image.id)}
-          className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-        >
-          <RotateCw className="h-3 w-3" />
-          旋转 {rotation}°
-        </button>
-        <button
-          type="button"
           onClick={onCollapse}
-          className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+          className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-slate-50 cursor-pointer"
         >
           收起
         </button>
@@ -574,7 +564,6 @@ export function TwoDView() {
   const models = useHarnessStore((s) => s.config.models);
   const selection = useHarnessStore((s) => s.selection);
   const updateMaterial = useHarnessStore((s) => s.updateMaterial);
-  const rotateTwoDImage = useHarnessStore((s) => s.rotateTwoDImage);
   const patchDocument = useHarnessStore((s) => s.patchDocument);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1129,14 +1118,36 @@ export function TwoDView() {
                     }}
                     className="group/assembly hover:border-[#e2e8f0] hover:bg-[#f8fafc]/30 transition-colors"
                   >
-                    {/* Top Row: image cards */}
-                    <div className="flex flex-row items-center gap-0">
-                      {group.images.map((img) => {
+                    {/* Top Row: image cards with straight horizontal / bent bottom-attachment layout */}
+                    {(() => {
+                      const wireImgs = group.images.filter((img) => img.elementKind === 'material' || img.elementKind === 'sleeve');
+                      const wireMaterial = wireImgs.find((img) => img.elementKind === 'material');
+                      const matEntity = wireMaterial ? materials.find((m) => m.id === wireMaterial.elementId) : undefined;
+                      const matCenterX = matEntity ? matEntity.position.x + matEntity.width / 2 : 0;
+
+                      // Split non-wire images into left and right by relative x-position to wire
+                      const nonWireImgs = group.images.filter((img) => img.elementKind !== 'material' && img.elementKind !== 'sleeve');
+                      const leftImgs: TwoDImage[] = [];
+                      const rightImgs: TwoDImage[] = [];
+
+                      if (wireImgs.length > 0) {
+                        for (const img of nonWireImgs) {
+                          const elX = getElementX(img.elementKind, img.elementId, connectors, materials, sleeves, models);
+                          if (elX < matCenterX) {
+                            leftImgs.push(img);
+                          } else {
+                            rightImgs.push(img);
+                          }
+                        }
+                      } else {
+                        leftImgs.push(...nonWireImgs);
+                      }
+
+                      const renderCard = (img: TwoDImage) => {
                         const isHighlighted = img.id === highlightedImageId;
                         const isSelected = img.id === selectedId;
-
                         const cardWidth = getCardWidth(img);
-                        const wireMaterial =
+                        const wireMat =
                           img.elementKind === 'material'
                             ? materials.find((m) => m.id === img.elementId)
                             : undefined;
@@ -1151,9 +1162,9 @@ export function TwoDView() {
                               position: 'relative',
                             }}
                           >
-                            {wireMaterial && (
+                            {wireMat && (
                               <WireDimensionAnnotation
-                                material={wireMaterial}
+                                material={wireMat}
                                 width={cardWidth}
                                 onUpdate={updateMaterial}
                               />
@@ -1176,15 +1187,98 @@ export function TwoDView() {
                               <div className="absolute top-full left-1/2 -translate-x-1/2 z-20 mt-2">
                                 <ImageInfoBox
                                   image={img}
-                                  onRotate={rotateTwoDImage}
                                   onCollapse={() => setSelectedId(null)}
                                 />
                               </div>
                             )}
                           </div>
                         );
-                      })}
-                    </div>
+                      };
+
+                      const renderEnd = (endImgs: TwoDImage[], side: 'left' | 'right') => {
+                        if (endImgs.length === 0) return null;
+
+                        const connectorIds = Array.from(
+                          new Set(
+                            endImgs
+                              .filter((img) => img.elementKind === 'connector' && img.elementId)
+                              .map((img) => img.elementId!),
+                          ),
+                        );
+
+                        const renderedImageIds = new Set<string>();
+
+                        const connectorUnits = connectorIds.map((cId) => {
+                          const connImg = endImgs.find(
+                            (img) => img.elementKind === 'connector' && img.elementId === cId && img.imageRole !== 'connector-pin-map',
+                          );
+                          const pinMapImg = endImgs.find(
+                            (img) => img.elementKind === 'connector' && img.elementId === cId && img.imageRole === 'connector-pin-map',
+                          );
+                          const modelImg = endImgs.find((img) => {
+                            if (img.elementKind !== 'model' || !img.elementId) return false;
+                            const modelEntity = models.find((m) => m.id === img.elementId);
+                            if (!modelEntity) return false;
+                            const linkage = getMoldLinkage(modelEntity, config);
+                            return linkage?.connector.id === cId;
+                          });
+
+                          if (connImg) renderedImageIds.add(connImg.id);
+                          if (pinMapImg) renderedImageIds.add(pinMapImg.id);
+                          if (modelImg) renderedImageIds.add(modelImg.id);
+
+                          return {
+                            cId,
+                            connImg,
+                            pinMapImg,
+                            modelImg,
+                            isBent: connImg?.orientation === 'bottom' || connImg?.rotation === -90,
+                          };
+                        });
+
+                        const unassignedImgs = endImgs.filter((img) => !renderedImageIds.has(img.id));
+
+                        return (
+                          <div key={`end-${side}`} className="flex flex-row items-center gap-1">
+                            {side === 'left' && unassignedImgs.map(renderCard)}
+
+                            {connectorUnits.map((unit) => {
+                              if (unit.isBent && unit.connImg) {
+                                return (
+                                  <div key={`unit-${unit.cId}`} className="flex flex-row items-start gap-1">
+                                    {side === 'left' && unit.pinMapImg && renderCard(unit.pinMapImg)}
+                                    <div className="flex flex-col items-center gap-0">
+                                      {unit.modelImg && renderCard(unit.modelImg)}
+                                      {renderCard(unit.connImg)}
+                                    </div>
+                                    {side === 'right' && unit.pinMapImg && renderCard(unit.pinMapImg)}
+                                  </div>
+                                );
+                              }
+
+                              const straightItems = side === 'left'
+                                ? [unit.pinMapImg, unit.connImg, unit.modelImg].filter((item): item is TwoDImage => Boolean(item))
+                                : [unit.modelImg, unit.connImg, unit.pinMapImg].filter((item): item is TwoDImage => Boolean(item));
+                              return (
+                                <div key={`unit-${unit.cId}`} className="flex flex-row items-center gap-0">
+                                  {straightItems.map(renderCard)}
+                                </div>
+                              );
+                            })}
+
+                            {side === 'right' && unassignedImgs.map(renderCard)}
+                          </div>
+                        );
+                      };
+
+                      return (
+                        <div className="flex flex-row items-center gap-0">
+                          {renderEnd(leftImgs, 'left')}
+                          {wireImgs.map(renderCard)}
+                          {renderEnd(rightImgs, 'right')}
+                        </div>
+                      );
+                    })()}
 
                     {/* Bottom Row: Wiring Diagram */}
                     {(() => {

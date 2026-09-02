@@ -3,7 +3,7 @@
 // Validates the converged data model: connectors, materials, sleeves.
 // ============================================================
 
-import type { HarnessConfig, ValidationIssue } from '@/types/harness';
+import type { ConnectorPinRef, HarnessConfig, ValidationIssue } from '@/types/harness';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import type { CatalogSnapshot } from '@/types/catalog';
 import { getActiveConnectorSide } from '@/lib/commands';
@@ -158,7 +158,7 @@ function validatePinRef(
   config: HarnessConfig,
   materialId: string,
   materialName: string,
-  ref: { connectorId: string; connectorSide: 'left' | 'right'; pin: number },
+  ref: ConnectorPinRef,
   label: string,
   issues: ValidationIssue[],
 ): void {
