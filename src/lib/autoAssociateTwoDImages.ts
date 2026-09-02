@@ -1,7 +1,10 @@
 /**
- * Adds each selected resource item's primary image to the product-image view.
- * Image choice comes from the catalog item's `image_path`, not from the canvas
- * position or a hard-coded local filename.
+ * 2D成品图图元自动关联与定向计算模块。
+ *
+ * - 连接器（Connector）：严格根据物料库中配置的 `imageVariants`（before / after / pinMap）独立生成图元，
+ *   取消所有向普通单图或 `image_path` 的回退。外模连接状态决定主体图（未注塑用 before，已注塑用 after）。
+ * - 线材（Wire）与外模（Overmold）：继续使用物料库中各自对应的物料图片。
+ * - 旋转与方位：由线束拓扑（左/右/下）与外模形态（直头/弯头）实时计算驱动。
  */
 import type { CanvasModel, CanvasWireMaterial, ConnectorInstance, ConnectorOrientation, HarnessConfig, JacketedWireSpec, OvermoldSpec, TwoDImage } from '@/types/harness';
 import { generateId } from '@/lib/commands';
@@ -122,6 +125,10 @@ function connectorImages(connector: ConnectorInstance, config: HarnessConfig): T
   const snapshot = getCatalogSnapshot();
   const catalogConnector = snapshot?.connectors.find((item) => item.resourceItemId === connector.connector.resourceItemId);
   const variants = catalogConnector?.imageVariants;
+  if (!variants) {
+    return [];
+  }
+
   const previousImages = new Map(
     (config.twoDImages ?? [])
       .filter((image) => image.elementKind === 'connector' && image.elementId === connector.id)
@@ -131,19 +138,51 @@ function connectorImages(connector: ConnectorInstance, config: HarnessConfig): T
   const orientation = getConnectorOrientation(connector, config);
   const rotation = getConnectorRotationByOrientation(orientation);
 
-  if (connector.connector.id !== 'm12a04-07-093' || !variants?.before || !variants.after || !variants.pinMap) {
-    const image = catalogConnector?.image ?? connector.connector.image;
-    return image ? [resourceImage(connector.connector.name, image, 'connector', connector.id, previousImages.get('primary'), 'primary', rotation, orientation)] : [];
+  // 连接器只按 imageVariants 独立生成 before / after / pinMap，绝无任何单图或跨图回退
+  const isConnected = isConnectorConnectedToModel(connector, config);
+  const bodyRole: 'connector-after' | 'connector-before' = isConnected ? 'connector-after' : 'connector-before';
+  const bodyPath = isConnected ? variants.after : variants.before;
+
+  let bodyImage: TwoDImage | undefined;
+  if (bodyPath) {
+    const previousBody = previousImages.get(bodyRole)
+      ?? previousImages.get(bodyRole === 'connector-after' ? 'connector-before' : 'connector-after');
+    bodyImage = resourceImage(
+      connector.connector.name,
+      bodyPath,
+      'connector',
+      connector.id,
+      previousBody,
+      bodyRole,
+      rotation,
+      orientation,
+    );
   }
 
-  const isConnected = isConnectorConnectedToModel(connector, config);
-  const bodyRole = isConnected ? 'connector-after' : 'connector-before';
-  const bodyPath = bodyRole === 'connector-after' ? variants.after : variants.before;
-  const previousBody = previousImages.get(bodyRole)
-    ?? previousImages.get(bodyRole === 'connector-after' ? 'connector-before' : 'connector-after');
-  const body = resourceImage(connector.connector.name, bodyPath, 'connector', connector.id, previousBody, bodyRole, rotation, orientation);
-  const pinMap = resourceImage('连接器pin位图', variants.pinMap, 'connector', connector.id, previousImages.get('connector-pin-map'), 'connector-pin-map', 0, orientation);
-  return orientation === 'right' ? [body, pinMap] : [pinMap, body];
+  let pinMapImage: TwoDImage | undefined;
+  if (variants.pinMap) {
+    pinMapImage = resourceImage(
+      '连接器pin位图',
+      variants.pinMap,
+      'connector',
+      connector.id,
+      previousImages.get('connector-pin-map'),
+      'connector-pin-map',
+      0,
+      orientation,
+    );
+  }
+
+  if (bodyImage && pinMapImage) {
+    return orientation === 'right' ? [bodyImage, pinMapImage] : [pinMapImage, bodyImage];
+  }
+  if (bodyImage) {
+    return [bodyImage];
+  }
+  if (pinMapImage) {
+    return [pinMapImage];
+  }
+  return [];
 }
 
 function catalogWireImage(material: CanvasWireMaterial): string | undefined {

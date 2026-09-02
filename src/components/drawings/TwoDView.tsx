@@ -1243,14 +1243,16 @@ export function TwoDView() {
                             {side === 'left' && unassignedImgs.map(renderCard)}
 
                             {connectorUnits.map((unit) => {
-                              if (unit.isBent && unit.connImg) {
+                              if (unit.isBent) {
                                 return (
                                   <div key={`unit-${unit.cId}`} className="flex flex-row items-start gap-1">
                                     {side === 'left' && unit.pinMapImg && renderCard(unit.pinMapImg)}
-                                    <div className="flex flex-col items-center gap-0">
-                                      {unit.modelImg && renderCard(unit.modelImg)}
-                                      {renderCard(unit.connImg)}
-                                    </div>
+                                    {(unit.modelImg || unit.connImg) && (
+                                      <div className="flex flex-col items-center gap-0">
+                                        {unit.modelImg && renderCard(unit.modelImg)}
+                                        {unit.connImg && renderCard(unit.connImg)}
+                                      </div>
+                                    )}
                                     {side === 'right' && unit.pinMapImg && renderCard(unit.pinMapImg)}
                                   </div>
                                 );

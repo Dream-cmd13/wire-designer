@@ -12,8 +12,8 @@
     "supabase:upload-catalog-images": "node scripts/upload-catalog-images.mjs",
     "supabase:reset-project-assets": "node scripts/reset-project-assets.mjs",
     "user:create": "node scripts/create-user.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --exclude \".worktrees/**\"",
+    "test:watch": "vitest --exclude \".worktrees/**\""
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.2",
