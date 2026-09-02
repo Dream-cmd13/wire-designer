@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "supabase:bootstrap-storage": "node scripts/bootstrap-storage.mjs",
     "supabase:upload-catalog-images": "node scripts/upload-catalog-images.mjs",
+    "supabase:upload-m12-pin-maps": "node scripts/upload-m12-pin-maps.mjs",
     "supabase:reset-project-assets": "node scripts/reset-project-assets.mjs",
     "user:create": "node scripts/create-user.mjs",
     "test": "vitest run --exclude \".worktrees/**\"",
