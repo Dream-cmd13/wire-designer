@@ -1430,31 +1430,54 @@ export function TwoDView() {
                         const unassignedImgs = endImgs.filter((img) => !renderedImageIds.has(img.id));
 
                         return (
-                          <div key={`end-${side}`} className="flex flex-row items-center gap-1">
+                          <div key={`end-${side}`} className="flex flex-row items-center gap-0">
                             {side === 'left' && unassignedImgs.map(renderCard)}
 
                             {connectorUnits.map((unit) => {
+                              const physicalItems = side === 'left'
+                                ? [unit.connImg, unit.modelImg].filter((item): item is TwoDImage => Boolean(item))
+                                : [unit.modelImg, unit.connImg].filter((item): item is TwoDImage => Boolean(item));
+
                               if (unit.isBent) {
                                 return (
-                                  <div key={`unit-${unit.cId}`} className="flex flex-row items-start gap-1">
-                                    {side === 'left' && unit.pinMapImg && renderCard(unit.pinMapImg)}
+                                  <div key={`unit-${unit.cId}`} className="flex flex-row items-center">
+                                    {side === 'left' && unit.pinMapImg && (
+                                      <div className="mr-4">
+                                        {renderCard(unit.pinMapImg)}
+                                      </div>
+                                    )}
                                     {(unit.modelImg || unit.connImg) && (
                                       <div className="flex flex-col items-center gap-0">
                                         {unit.modelImg && renderCard(unit.modelImg)}
                                         {unit.connImg && renderCard(unit.connImg)}
                                       </div>
                                     )}
-                                    {side === 'right' && unit.pinMapImg && renderCard(unit.pinMapImg)}
+                                    {side === 'right' && unit.pinMapImg && (
+                                      <div className="ml-4">
+                                        {renderCard(unit.pinMapImg)}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               }
 
-                              const straightItems = side === 'left'
-                                ? [unit.pinMapImg, unit.connImg, unit.modelImg].filter((item): item is TwoDImage => Boolean(item))
-                                : [unit.modelImg, unit.connImg, unit.pinMapImg].filter((item): item is TwoDImage => Boolean(item));
                               return (
-                                <div key={`unit-${unit.cId}`} className="flex flex-row items-center gap-0">
-                                  {straightItems.map(renderCard)}
+                                <div key={`unit-${unit.cId}`} className="flex flex-row items-center">
+                                  {side === 'left' && unit.pinMapImg && (
+                                    <div className="mr-4">
+                                      {renderCard(unit.pinMapImg)}
+                                    </div>
+                                  )}
+                                  {physicalItems.length > 0 && (
+                                    <div className="flex flex-row items-center gap-0">
+                                      {physicalItems.map(renderCard)}
+                                    </div>
+                                  )}
+                                  {side === 'right' && unit.pinMapImg && (
+                                    <div className="ml-4">
+                                      {renderCard(unit.pinMapImg)}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
