@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { getProductDrawingFilename } from '@/lib/productImageExport';
+import {
+  getProductDrawingFilename,
+} from '@/lib/productImageExport';
 import {
   calculateWiringDiagramWidth,
   formatPinNetworkString,
@@ -7,6 +10,9 @@ import {
   getWiringDiagramColumns,
 } from '@/lib/wiringDiagramLayout';
 import type { Connector, ConnectorInstance, HarnessConfig, ProductionDrawingFrame } from '@/types/harness';
+
+const twoDViewSource = readFileSync('src/components/drawings/TwoDView.tsx', 'utf8');
+const exportSource = readFileSync('src/lib/productImageExport.ts', 'utf8');
 
 describe('productImageExport', () => {
   const dummyConfig = {
@@ -43,6 +49,21 @@ describe('productImageExport', () => {
       drawingNo: '',
     };
     expect(getProductDrawingFilename(emptyConfig, emptyFrame, 'png')).toBe('线束成品图_成品图.png');
+  });
+
+  it('includes ItemCalloutLayer inside data-drawing-world container so PNG/PDF exports capture callouts', () => {
+    expect(twoDViewSource).toContain('data-drawing-world="true"');
+    expect(twoDViewSource).toContain('<ItemCalloutLayer');
+    expect(exportSource).toContain("querySelector('[data-drawing-world=\"true\"]')");
+
+    // Ensure ItemCalloutLayer is nested inside data-drawing-world container before BOMTable
+    const worldIndex = twoDViewSource.indexOf('data-drawing-world="true"');
+    const calloutIndex = twoDViewSource.indexOf('<ItemCalloutLayer');
+    const bomIndex = twoDViewSource.indexOf('<BOMTable');
+
+    expect(worldIndex).toBeGreaterThan(-1);
+    expect(calloutIndex).toBeGreaterThan(worldIndex);
+    expect(bomIndex).toBeGreaterThan(calloutIndex);
   });
 });
 

@@ -59,4 +59,16 @@ describe('countProductionBomRows', () => {
     expect(layoutWith5Rows.bomRect.top).toBeCloseTo(432.67, 1);
     expect(layoutWith5Rows.assemblyTop).toBe(76);
   });
+
+  it('guarantees assemblyBottom <= bomRect.top - safeGap even with 8, 10, 15 BOM rows', () => {
+    for (const rowCount of [8, 10, 12, 15]) {
+      const layout = calculateProductionDrawingLayout({
+        bomRowCount: rowCount,
+        hasWiringDiagram: true,
+      });
+
+      const maxAllowedBottom = layout.bomRect.top - layout.safeGap;
+      expect(layout.assemblyBottom).toBeLessThanOrEqual(maxAllowedBottom + 0.01);
+    }
+  });
 });

@@ -1,5 +1,4 @@
-import { generateBOM } from '@/lib/bom';
-import { buildOvermoldBomEntries } from '@/lib/overmoldSpec';
+import { buildProductionBomRows } from '@/lib/productionBomRows';
 import type { HarnessConfig, OvermoldSpec } from '@/types/harness';
 
 const FRAME_WIDTH = 1200;
@@ -12,6 +11,8 @@ const BOM_HEADER_HEIGHT = 34;
 const ASSEMBLY_TOP = 76;
 const ASSEMBLY_PADDING_Y = 8;
 const ASSEMBLY_GAP = 12;
+const CALLOUT_BAND_HEIGHT = 44;
+const CALLOUT_GAP = 10;
 const WIRING_WIDTH = 400;
 const WIRING_HEIGHT = 180;
 const WIRING_HEADER_HEIGHT = 30;
@@ -33,6 +34,10 @@ export interface ProductionDrawingLayout {
   bomRect: { left: number; top: number; right: number; bottom: number };
   assemblyTop: number;
   assemblyGap: number;
+  calloutBand: {
+    height: number;
+    gap: number;
+  };
   maxImageHeight: number;
   wiringDiagram: {
     width: number;
@@ -46,15 +51,7 @@ export function countProductionBomRows(
   config: HarnessConfig,
   overmolds: readonly OvermoldSpec[],
 ): number {
-  const bomItems = generateBOM(config);
-  const overmoldEntries = buildOvermoldBomEntries(config.models, overmolds);
-
-  return (
-    bomItems.filter((item) => item.type === 'wire').length +
-    bomItems.filter((item) => item.type === 'connector').length +
-    bomItems.filter((item) => item.type === 'accessory').length +
-    overmoldEntries.length
-  );
+  return buildProductionBomRows(config, overmolds).length;
 }
 
 export function calculateProductionDrawingLayout({
@@ -68,16 +65,35 @@ export function calculateProductionDrawingLayout({
   const bomHeight = BOM_HEADER_HEIGHT + rowCount * BOM_ROW_HEIGHT;
   const bomBottom = FRAME_HEIGHT - BOM_BOTTOM;
   const bomTop = bomBottom - bomHeight;
-  const wiringHeight = hasWiringDiagram ? WIRING_HEIGHT : 0;
-  const wiringGap = hasWiringDiagram ? ASSEMBLY_GAP : 0;
-  const availableImageHeight =
-    bomTop - SAFE_GAP - ASSEMBLY_TOP - ASSEMBLY_PADDING_Y - wiringGap - wiringHeight;
+
+  const fixedTopHeight = ASSEMBLY_TOP + ASSEMBLY_PADDING_Y;
+  const availableAssemblyHeight = bomTop - SAFE_GAP - fixedTopHeight;
+
+  let effectiveWiringHeight = hasWiringDiagram ? WIRING_HEIGHT : 0;
+  const effectiveWiringGap = hasWiringDiagram ? ASSEMBLY_GAP : 0;
+  const effectiveCalloutHeight = CALLOUT_BAND_HEIGHT;
+  const effectiveCalloutGap = CALLOUT_GAP;
+
+  let fixedExtras = effectiveCalloutGap + effectiveCalloutHeight + effectiveWiringGap + effectiveWiringHeight;
+
+  if (availableAssemblyHeight - fixedExtras < MIN_IMAGE_HEIGHT && hasWiringDiagram) {
+    // Compress wiring diagram height if needed to preserve image and callout space
+    const compressible = WIRING_HEIGHT - 120;
+    const needed = MIN_IMAGE_HEIGHT - (availableAssemblyHeight - fixedExtras);
+    const reduction = Math.min(compressible, Math.max(0, needed));
+    effectiveWiringHeight = WIRING_HEIGHT - reduction;
+    fixedExtras = effectiveCalloutGap + effectiveCalloutHeight + effectiveWiringGap + effectiveWiringHeight;
+  }
+
+  const availableImageHeight = Math.max(16, availableAssemblyHeight - fixedExtras);
   const maxImageHeight = Math.max(
-    MIN_IMAGE_HEIGHT,
+    16,
     Math.min(MAX_IMAGE_HEIGHT, Math.floor(availableImageHeight)),
   );
-  const assemblyBottom =
-    ASSEMBLY_TOP + ASSEMBLY_PADDING_Y + maxImageHeight + wiringGap + wiringHeight;
+  const assemblyBottom = Math.min(
+    bomTop - SAFE_GAP,
+    fixedTopHeight + maxImageHeight + fixedExtras,
+  );
 
   return {
     frame: { width: FRAME_WIDTH, height: FRAME_HEIGHT },
@@ -98,10 +114,14 @@ export function calculateProductionDrawingLayout({
     },
     assemblyTop: ASSEMBLY_TOP,
     assemblyGap: ASSEMBLY_GAP,
+    calloutBand: {
+      height: effectiveCalloutHeight,
+      gap: effectiveCalloutGap,
+    },
     maxImageHeight,
     wiringDiagram: {
       width: WIRING_WIDTH,
-      height: hasWiringDiagram ? WIRING_HEIGHT : 0,
+      height: effectiveWiringHeight,
       headerHeight: WIRING_HEADER_HEIGHT,
     },
     assemblyBottom,

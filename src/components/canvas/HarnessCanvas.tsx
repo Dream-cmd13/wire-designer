@@ -608,7 +608,9 @@ function HarnessCanvasInner() {
   const { config, selection, setSelection, updateConnector } = useHarnessStore();
   const [isInteractive, setIsInteractive] = useState(true);
   const isInteractiveRef = useRef(isInteractive);
-  isInteractiveRef.current = isInteractive;
+  useEffect(() => {
+    isInteractiveRef.current = isInteractive;
+  }, [isInteractive]);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -657,20 +659,23 @@ function HarnessCanvasInner() {
 
   useEffect(() => {
     if (!isInteractive) {
-      setSelection({ kind: 'none' });
-      setCanvasSelection(null);
-      setContextMenu(null);
-      setPendingConnectionPoint(null);
-      pendingConnectionPointRef.current = null;
-      setConnectorDialog(null);
-      setEditingConnectorId(null);
-      setChangingPartConnectorId(null);
-      setEditingMaterialId(null);
-      setNewMaterialDraft(null);
-      setSleeveDialog(null);
-      setModelDialogPosition(null);
-      setAccessoryDialog(null);
-      setDeleteConfirmToast(null);
+      const timer = setTimeout(() => {
+        setSelection({ kind: 'none' });
+        setCanvasSelection(null);
+        setContextMenu(null);
+        setPendingConnectionPoint(null);
+        pendingConnectionPointRef.current = null;
+        setConnectorDialog(null);
+        setEditingConnectorId(null);
+        setChangingPartConnectorId(null);
+        setEditingMaterialId(null);
+        setNewMaterialDraft(null);
+        setSleeveDialog(null);
+        setModelDialogPosition(null);
+        setAccessoryDialog(null);
+        setDeleteConfirmToast(null);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [isInteractive, setSelection]);
 

@@ -6,8 +6,6 @@ import type {
   TwoDImage,
   CanvasWireMaterial,
   ConnectorInstance,
-  HarnessConfig,
-  OvermoldSpec,
 } from '@/types/harness';
 import {
   getProductDrawingFilename,
@@ -22,7 +20,6 @@ import { ensureDrawingFrame, DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawin
 import { useUserStore } from '@/stores/userStore';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import { useCatalogStore } from '@/stores/catalogStore';
-import { generateBOM, formatWireBomSpecification } from '@/lib/bom';
 import {
   getCanvasModelDisplayName,
   getProtectiveSleeveDisplayName,
@@ -30,16 +27,16 @@ import {
 } from '@/lib/canvasMaterials';
 import {
   calculateProductionDrawingLayout,
-  countProductionBomRows,
   type ProductionDrawingLayout,
 } from '@/lib/productionDrawingLayout';
 import { getWiringConnectorLabels } from '@/lib/connectorDesignation';
-import { buildOvermoldBomEntries } from '@/lib/overmoldSpec';
 import {
   formatPinNetworkString,
   getWiringDiagramColumns,
   calculateWiringDiagramWidth,
 } from '@/lib/wiringDiagramLayout';
+import { buildProductionBomRows, type ProductionBomRow } from '@/lib/productionBomRows';
+import { ItemCalloutLayer } from './ItemCalloutLayer';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -335,108 +332,20 @@ function SlashHeaderCell({
 }
 
 function BOMTable({
-  config,
+  rows,
   layout,
-  overmolds,
+  highlightedRowKey,
+  onHoverRowKey,
+  onClickRowKey,
+  twoDImages,
 }: {
-  config: HarnessConfig;
+  rows: ProductionBomRow[];
   layout: ProductionDrawingLayout;
-  overmolds: readonly OvermoldSpec[];
+  highlightedRowKey?: string | null;
+  onHoverRowKey?: (key: string | null) => void;
+  onClickRowKey?: (key: string | null) => void;
+  twoDImages?: TwoDImage[];
 }) {
-  const bomItems = generateBOM(config);
-  
-  interface BOMTableRow {
-    itemNo: number;
-    name: string;
-    spec: string;
-    unit: string;
-    qty: number;
-  }
-  
-  const rows: BOMTableRow[] = [];
-  
-  // 1. Add wires
-  const wireItems = bomItems.filter(i => i.type === 'wire');
-  wireItems.forEach((wi) => {
-    let wireSpec = wi.description;
-    const matObj = config.materials.find((m: CanvasWireMaterial) => {
-      if (wi.resourceItemId) return m.resourceItemId === wi.resourceItemId;
-      const spec = m.spec;
-      if (spec.kind === 'electronic') {
-        return wi.description.includes(`${spec.awg}AWG`) && wi.description.includes(spec.color);
-      } else {
-        return wi.description.includes(`${spec.coreCount}芯`) && wi.description.includes(`${spec.awg}AWG`);
-      }
-    });
-
-    if (matObj) {
-      wireSpec = formatWireBomSpecification(matObj, getCatalogSnapshot());
-    }
-
-    rows.push({
-      itemNo: 1,
-      name: '线材',
-      spec: wireSpec,
-      unit: 'PCS',
-      qty: wi.quantity,
-    });
-  });
-
-  // 2. Add connectors
-  const connItems = bomItems.filter(i => i.type === 'connector');
-  connItems.forEach((ci) => {
-    const specCode = ci.model || ci.partNumber || ci.description;
-    rows.push({
-      itemNo: 2,
-      name: '连接器',
-      spec: specCode,
-      unit: 'PCS',
-      qty: ci.quantity,
-    });
-  });
-
-  // 3. Add overmolds
-  if (config.models && config.models.length > 0) {
-    const overmoldEntries = buildOvermoldBomEntries(config.models, overmolds);
-    overmoldEntries.forEach((entry) => {
-      rows.push({
-        itemNo: 3,
-        name: entry.kind === 'outer' ? '外模料' : '内模料',
-        spec: entry.specification,
-        unit: 'PCS',
-        qty: entry.quantity,
-      });
-    });
-  }
-
-  // 4. Add heat shrink tubes or other accessories
-  const sleeveItems = bomItems.filter(i => i.type === 'accessory');
-  sleeveItems.forEach((si) => {
-    let name = '保护套管';
-    if (si.description.includes('波纹管')) {
-      name = '波纹管';
-    } else if (si.description.includes('网管') || si.description.includes('braided')) {
-      name = '编织网管';
-    } else if (si.description.includes('热缩管') || si.description.includes('heat-shrink')) {
-      name = '热缩管';
-    } else if (si.description.includes('胶带')) {
-      name = '胶带';
-    }
-
-    rows.push({
-      itemNo: 4,
-      name,
-      spec: si.description,
-      unit: 'PCS',
-      qty: si.quantity,
-    });
-  });
-
-  // Assign final sequential item numbers
-  rows.forEach((r, idx) => {
-    r.itemNo = idx + 1;
-  });
-
   const circledNums = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
 
   // Table rows rendered in reverse order (bottom-to-top)
@@ -444,7 +353,7 @@ function BOMTable({
 
   return (
     <div 
-      className="absolute bg-white border border-black text-black select-none shadow-sm font-serif"
+      className="absolute bg-white border border-black text-black select-none shadow-sm font-serif z-20"
       style={{
         bottom: layout.bom.bottom,
         right: layout.bom.right,
@@ -456,33 +365,53 @@ function BOMTable({
     >
       {/* Items (stacked upwards) */}
       <div className="flex flex-col">
-        {sortedRows.map((row) => (
-          <div
-            key={row.itemNo}
-            className="flex flex-row border-b border-black items-stretch text-[10px] font-semibold min-h-[34px]"
-          >
-            {/* ITEM No */}
-            <div className="w-[45px] border-r border-black flex items-center justify-center text-xs font-bold shrink-0 self-stretch">
-              {circledNums[row.itemNo - 1] || row.itemNo}
+        {sortedRows.map((row) => {
+          const isHighlighted = highlightedRowKey === row.key;
+          const hasImage = !twoDImages || twoDImages.length === 0 || row.targets.some((t) =>
+            twoDImages.some((img) => img.elementKind === t.kind && img.elementId === t.id),
+          );
+
+          return (
+            <div
+              key={row.key}
+              className={`flex flex-row border-b border-black items-stretch text-[10px] font-semibold min-h-[34px] cursor-pointer transition-colors ${
+                isHighlighted ? 'bg-blue-50/90' : 'hover:bg-slate-50'
+              }`}
+              onMouseEnter={() => onHoverRowKey?.(row.key)}
+              onMouseLeave={() => onHoverRowKey?.(null)}
+              onClick={() => onClickRowKey?.(isHighlighted ? null : row.key)}
+            >
+              {/* ITEM No */}
+              <div className={`w-[45px] border-r border-black flex items-center justify-center text-xs font-bold shrink-0 self-stretch ${isHighlighted ? 'text-blue-700 font-extrabold' : ''}`}>
+                {circledNums[row.itemNo - 1] || row.itemNo}
+              </div>
+              {/* NAME */}
+              <div className="w-[65px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
+                {row.name}
+              </div>
+              {/* SPECIFICATION */}
+              <div className="flex-1 border-r border-black flex items-center justify-between px-3 py-1.5 whitespace-pre-line leading-[14px] text-[10px] break-words self-stretch">
+                <span>{row.specification}</span>
+                {!hasImage && (
+                  <span
+                    className="ml-1.5 px-1 py-0.5 text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded shrink-0 select-none"
+                    title="该物料在画布上暂无2D对应图片"
+                  >
+                    无2D图
+                  </span>
+                )}
+              </div>
+              {/* UNIT */}
+              <div className="w-[45px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
+                {row.unit}
+              </div>
+              {/* QTY */}
+              <div className="w-[45px] flex items-center justify-center text-xs font-bold shrink-0 self-stretch">
+                {row.quantity}
+              </div>
             </div>
-            {/* NAME */}
-            <div className="w-[65px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
-              {row.name}
-            </div>
-            {/* SPECIFICATION */}
-            <div className="flex-1 border-r border-black flex items-center px-3 py-1.5 whitespace-pre-line leading-[14px] text-[10px] break-words self-stretch">
-              {row.spec}
-            </div>
-            {/* UNIT */}
-            <div className="w-[45px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
-              {row.unit}
-            </div>
-            {/* QTY */}
-            <div className="w-[45px] flex items-center justify-center text-xs font-bold shrink-0 self-stretch">
-              {row.qty}
-            </div>
-          </div>
-        ))}
+          );
+        })}
         
         {/* Table Header (at the bottom) */}
         <div
@@ -567,6 +496,8 @@ export function TwoDView() {
   const patchDocument = useHarnessStore((s) => s.patchDocument);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [highlightedRowKey, setHighlightedRowKey] = useState<string | null>(null);
+  const [showCallouts, setShowCallouts] = useState<boolean>(true);
   const [isFitted, setIsFitted] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -622,10 +553,11 @@ export function TwoDView() {
     () => groups.some((group) => group.images.some((img) => img.elementKind === 'material')),
     [groups],
   );
-  const bomRowCount = useMemo(
-    () => countProductionBomRows(config, catalogOvermolds ?? []),
+  const bomRows = useMemo(
+    () => buildProductionBomRows(config, catalogOvermolds ?? []),
     [config, catalogOvermolds],
   );
+  const bomRowCount = bomRows.length;
   const productionLayout = useMemo(
     () => calculateProductionDrawingLayout({ bomRowCount, hasWiringDiagram }),
     [bomRowCount, hasWiringDiagram],
@@ -725,8 +657,6 @@ export function TwoDView() {
     (groupIdx: number, g: { images: TwoDImage[] }) => {
       const measured = groupDimensions[groupIdx]?.w;
       if (measured && measured > 0) return measured;
-      const domNode = groupRefs.current[groupIdx];
-      if (domNode && domNode.offsetWidth > 0) return domNode.offsetWidth;
       // Fallback estimate based on realistic card widths
       const hasWiring = g.images.some((img) => img.elementKind === 'material');
       const approxCardsWidth = g.images.reduce((sum, img) => sum + (img.elementKind === 'material' ? 240 : 80), 0);
@@ -785,8 +715,6 @@ export function TwoDView() {
     (groupIdx: number, group: { images: TwoDImage[] }) => {
       const measured = groupDimensions[groupIdx]?.h;
       if (measured && measured > 0) return measured;
-      const domNode = groupRefs.current[groupIdx];
-      if (domNode && domNode.offsetHeight > 0) return domNode.offsetHeight;
       return getGroupFallbackHeight(group);
     },
     [groupDimensions, getGroupFallbackHeight],
@@ -829,7 +757,7 @@ export function TwoDView() {
       const overlapsBom = visualRight >= 530;
       const overlapsTechReq = visualLeft <= 550;
 
-      let obstacleTop = 667;
+      let obstacleTop: number;
       if (overlapsBom && overlapsTechReq) {
         obstacleTop = Math.min(bomTop, techRequirementsTop);
       } else if (overlapsBom) {
@@ -1167,6 +1095,23 @@ export function TwoDView() {
           )}
           <button
             type="button"
+            onClick={() => setShowCallouts((p) => !p)}
+            className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-medium shadow-2xs transition-colors ${
+              showCallouts
+                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+            title="显示/隐藏件号气泡引出标注"
+          >
+            <span
+              className={`inline-block h-2 w-2 rounded-full transition-colors ${
+                showCallouts ? 'bg-blue-600' : 'bg-slate-300'
+              }`}
+            />
+            件号标注
+          </button>
+          <button
+            type="button"
             onClick={() => setIsEditDialogOpen(true)}
             className="flex items-center gap-1.5 rounded border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 shadow-2xs transition-colors"
             title="编辑图纸图框及签审信息"
@@ -1289,6 +1234,7 @@ export function TwoDView() {
                 return (
                   <div
                     key={groupIdx}
+                    data-callout-group={groupIdx}
                     ref={(el) => {
                       groupRefs.current[groupIdx] = el;
                     }}
@@ -1301,7 +1247,9 @@ export function TwoDView() {
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: productionLayout.assemblyGap,
+                      gap: showCallouts
+                        ? productionLayout.calloutBand.height + productionLayout.calloutBand.gap
+                        : productionLayout.assemblyGap,
                       border: '1px dashed transparent',
                       borderRadius: '8px',
                       padding: '4px',
@@ -1346,6 +1294,9 @@ export function TwoDView() {
                         return (
                           <div
                             key={img.id}
+                            data-callout-kind={img.elementKind}
+                            data-callout-id={img.elementId}
+                            data-callout-role={img.imageRole}
                             style={{
                               display: 'flex',
                               flexDirection: 'column',
@@ -1533,11 +1484,27 @@ export function TwoDView() {
                 );
               });
             })()}
+            {/* Item Callout Layer (BOM balloon callouts & leader lines) */}
+            <ItemCalloutLayer
+              bomRows={bomRows}
+              worldRef={worldRef}
+              highlightedRowKey={highlightedRowKey}
+              onHoverRowKey={setHighlightedRowKey}
+              onClickRowKey={(k) => setHighlightedRowKey(k)}
+              visible={showCallouts}
+              zoom={zoom}
+              productionLayout={productionLayout}
+              recalculateToken={`${activeDragGroupIdx ?? -1}_${dragOffset.x}_${dragOffset.y}_${twoDImages.length}_${bomRows.length}`}
+            />
+
             {/* BOM Table */}
             <BOMTable
-              config={config}
+              rows={bomRows}
               layout={productionLayout}
-              overmolds={catalogOvermolds ?? []}
+              highlightedRowKey={highlightedRowKey}
+              onHoverRowKey={setHighlightedRowKey}
+              onClickRowKey={(k) => setHighlightedRowKey(k)}
+              twoDImages={twoDImages}
             />
           </div>
         )}

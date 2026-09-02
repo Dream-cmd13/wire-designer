@@ -262,9 +262,12 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   const [projectName, setProjectName] = useState('');
   const [projectDesc, setProjectDesc] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState('blank');
-  const [connectorA, setConnectorA] = useState(connectors[0]?.id ?? '');
-  const [connectorB, setConnectorB] = useState(connectors[4]?.id ?? connectors[1]?.id ?? '');
+  const [connectorA, setConnectorA] = useState('');
+  const [connectorB, setConnectorB] = useState('');
   const [pinCount, setPinCount] = useState(2);
+
+  const activeConnectorA = connectorA || connectors[0]?.id || '';
+  const activeConnectorB = connectorB || (connectors[4]?.id ?? connectors[1]?.id ?? connectors[0]?.id ?? '');
 
   const { currentUser } = useUserStore();
   const { createProject } = useProjectStore();
@@ -274,22 +277,15 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
     void useCatalogStore.getState().initialize().catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (connectors.length > 0) {
-      if (!connectorA) setConnectorA(connectors[0].id);
-      if (!connectorB) setConnectorB(connectors[4]?.id ?? connectors[1]?.id ?? connectors[0].id);
-    }
-  }, [connectors, connectorA, connectorB]);
-
   const canNext = step === 1
     ? projectName.trim().length > 0
     : step === 3 && selectedTemplate !== 'blank'
-      ? Boolean(connectorA && connectorB && connectors.length > 0)
+      ? Boolean(activeConnectorA && activeConnectorB && connectors.length > 0)
       : true;
 
   const handleComplete = async () => {
     if (!currentUser) return;
-    const config = createConfigFromTemplate(selectedTemplate, projectName, connectorA, connectorB, pinCount);
+    const config = createConfigFromTemplate(selectedTemplate, projectName, activeConnectorA, activeConnectorB, pinCount);
     const project = await createProject(currentUser.id, projectName, projectDesc, config);
     replaceDocument({ ...config, id: project.id, name: project.name }, { markSaved: true });
     onComplete();
@@ -408,7 +404,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">起始连接器</label>
                     <select
-                      value={connectorA}
+                      value={activeConnectorA}
                       onChange={(e) => setConnectorA(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -422,7 +418,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">目标连接器</label>
                     <select
-                      value={connectorB}
+                      value={activeConnectorB}
                       onChange={(e) => setConnectorB(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
@@ -435,14 +431,14 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">
-                      接线数量 / PIN数: {pinCount}
+                       接线数量 / PIN数: {pinCount}
                     </label>
                     <input
                       type="range"
                       min={1}
                       max={Math.min(
-                        connectors.find((c) => c.id === connectorA)?.pinCount || 2,
-                        connectors.find((c) => c.id === connectorB)?.pinCount || 2,
+                        connectors.find((c) => c.id === activeConnectorA)?.pinCount || 2,
+                        connectors.find((c) => c.id === activeConnectorB)?.pinCount || 2,
                       )}
                       value={pinCount}
                       onChange={(e) => setPinCount(Number(e.target.value))}
@@ -452,8 +448,8 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                       <span>1</span>
                       <span>
                         {Math.min(
-                          connectors.find((c) => c.id === connectorA)?.pinCount || 2,
-                          connectors.find((c) => c.id === connectorB)?.pinCount || 2,
+                          connectors.find((c) => c.id === activeConnectorA)?.pinCount || 2,
+                          connectors.find((c) => c.id === activeConnectorB)?.pinCount || 2,
                         )}
                       </span>
                     </div>

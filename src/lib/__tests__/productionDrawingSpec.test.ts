@@ -6,6 +6,7 @@ import type { CatalogSnapshot } from '@/types/catalog';
 
 const twoDViewSource = readFileSync('src/components/drawings/TwoDView.tsx', 'utf8');
 const bomPanelSource = readFileSync('src/components/panels/BomPanel.tsx', 'utf8');
+const productionBomRowsSource = readFileSync('src/lib/productionBomRows.ts', 'utf8');
 
 describe('Production Drawing & BOM specifications formatting', () => {
   const mockCatalog: CatalogSnapshot = {
@@ -103,12 +104,18 @@ describe('Production Drawing & BOM specifications formatting', () => {
   it('TwoDView source code has no hardcoded M12 partNumber or wire spec strings', () => {
     expect(twoDViewSource).not.toContain("ci.partNumber === 'm12a04-07-093'");
     expect(twoDViewSource).not.toContain('(39/0.10TC)*1.2+无纺布');
-    expect(twoDViewSource).toContain('formatWireBomSpecification');
+    expect(productionBomRowsSource).toContain('formatWireBomSpecification');
   });
 
   it('keeps resource associations strict when a resource ID is present', () => {
-    expect(twoDViewSource).toContain('if (wi.resourceItemId) return m.resourceItemId === wi.resourceItemId;');
+    expect(productionBomRowsSource).toContain('const resourceKey = material.resourceItemId ??');
+    expect(twoDViewSource).toContain('buildProductionBomRows');
     expect(bomPanelSource).toContain('if (resId) return connector.connector?.resourceItemId === resId;');
     expect(bomPanelSource).toContain('if (resId) return material.resourceItemId === resId;');
+  });
+
+  it('TwoDView assembly graphics stay clean without redundant floating endpoint status badges', () => {
+    expect(twoDViewSource).not.toContain('{connLabel} 对插端');
+    expect(twoDViewSource).not.toContain('{label} {statusText}');
   });
 });

@@ -225,7 +225,10 @@ export default function App() {
 
   useEffect(() => {
     if (!needsStorageBootstrap) return;
-    void performStorageBootstrapCheck();
+    const timer = setTimeout(() => {
+      void performStorageBootstrapCheck();
+    }, 0);
+    return () => clearTimeout(timer);
   }, [needsStorageBootstrap, performStorageBootstrapCheck]);
 
   useEffect(() => {
