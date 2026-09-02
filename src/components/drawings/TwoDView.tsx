@@ -590,7 +590,7 @@ export function TwoDView() {
   const [zoom, setZoom] = useState(savedTwoDViewport?.zoom ?? 1);
   const [pan, setPan] = useState(savedTwoDViewport?.pan ?? { x: 0, y: 0 });
   const worldRef = useRef<HTMLDivElement>(null);
-  const hasCenteredRef = useRef(false);
+  const hasCenteredRef = useRef(Boolean(savedTwoDViewport));
   const [panning, setPanning] = useState<{
     startMX: number; startMY: number; startPX: number; startPY: number;
   } | null>(null);

@@ -13,6 +13,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
+  useNodesInitialized,
   useNodesState,
   useReactFlow,
   type Connection,
@@ -89,6 +90,21 @@ const edgeTypes: EdgeTypes = {
 const EMPTY_MATERIALS: CanvasWireMaterial[] = [];
 const EMPTY_SLEEVES: ProtectiveSleeve[] = [];
 const EMPTY_MODELS: CanvasModel[] = [];
+function isValidCanvasViewport(
+  vp: { x: number; y: number; zoom: number } | null | undefined,
+): vp is { x: number; y: number; zoom: number } {
+  return Boolean(
+    vp &&
+      Number.isFinite(vp.x) &&
+      Number.isFinite(vp.y) &&
+      Number.isFinite(vp.zoom) &&
+      vp.zoom > 0,
+  );
+}
+
+function hasValidContainerDimensions(el: HTMLElement | null): boolean {
+  return Boolean(el && el.clientWidth > 0 && el.clientHeight > 0);
+}
 
 // ============================================================
 // Geometry helpers
@@ -617,6 +633,7 @@ function HarnessCanvasInner() {
     snapshot: HarnessConfig;
     afterConfig: HarnessConfig;
   } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const pendingConnectionPointRef = useRef<MaterialConnectionPoint | null>(null);
   const nodesRef = useRef<Node[]>([]);
   const dragGroupRef = useRef<{
@@ -625,10 +642,18 @@ function HarnessCanvasInner() {
     initialPositions: Map<string, { x: number; y: number }>;
   } | null>(null);
   const reconnectSucceeded = useRef(false);
-  const hasAutoFitted = useRef(false);
+  const [initialViewport] = useState(() => {
+    const vp = useHarnessStore.getState().canvasViewport;
+    return isValidCanvasViewport(vp) ? vp : undefined;
+  });
+  const lastValidViewportRef = useRef<{ x: number; y: number; zoom: number } | null>(
+    initialViewport ?? null,
+  );
+  const hasAutoFitted = useRef(Boolean(initialViewport));
   const currentConfigIdRef = useRef(config.id);
-  const initialViewportRef = useRef(useHarnessStore.getState().canvasViewport);
-  const { fitView, getViewport, screenToFlowPosition } = useReactFlow();
+  const { fitView, screenToFlowPosition } = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
+  const canvasViewport = useHarnessStore((state) => state.canvasViewport);
 
   useEffect(() => {
     if (!isInteractive) {
@@ -652,16 +677,32 @@ function HarnessCanvasInner() {
   useEffect(() => {
     if (currentConfigIdRef.current !== config.id) {
       currentConfigIdRef.current = config.id;
-      hasAutoFitted.current = false;
-      initialViewportRef.current = useHarnessStore.getState().canvasViewport;
+      const vp = useHarnessStore.getState().canvasViewport;
+      const validVp = isValidCanvasViewport(vp) ? vp : null;
+      lastValidViewportRef.current = validVp;
+      hasAutoFitted.current = Boolean(validVp);
     }
   }, [config.id]);
 
   useEffect(() => {
     return () => {
-      useHarnessStore.getState().setCanvasViewport(getViewport());
+      const snapshot = lastValidViewportRef.current;
+      if (snapshot && isValidCanvasViewport(snapshot)) {
+        useHarnessStore.getState().setCanvasViewport(snapshot);
+      }
     };
-  }, [getViewport]);
+  }, []);
+
+  // Sync with store canvasViewport resets (e.g. replaceDocument or resetConfig with same or different ID)
+  useEffect(() => {
+    if (canvasViewport === null) {
+      lastValidViewportRef.current = null;
+      hasAutoFitted.current = false;
+    } else if (isValidCanvasViewport(canvasViewport)) {
+      lastValidViewportRef.current = canvasViewport;
+      hasAutoFitted.current = true;
+    }
+  }, [canvasViewport]);
 
   const materials = config.materials ?? EMPTY_MATERIALS;
   const sleeves = config.protectiveSleeves ?? EMPTY_SLEEVES;
@@ -840,22 +881,47 @@ function HarnessCanvasInner() {
     nodesRef.current = nodes;
   }, [nodes]);
 
-  // Auto-fit view on first load (only if no saved viewport is present)
+  const scheduleFitView = useCallback(() => {
+    if (hasAutoFitted.current) {
+      return;
+    }
+    const container = containerRef.current;
+    if (!hasValidContainerDimensions(container) || !nodesInitialized || nodes.length === 0) {
+      return;
+    }
+    hasAutoFitted.current = true;
+    fitView({ duration: 250, padding: 0.28, maxZoom: 1 });
+  }, [fitView, nodes.length, nodesInitialized]);
+
+  // Auto-fit view on first load (only if no saved viewport is present and container has valid dimensions)
   useEffect(() => {
     if (nodes.length === 0) {
       hasAutoFitted.current = false;
       return;
     }
-    if (hasAutoFitted.current || initialViewportRef.current) {
-      hasAutoFitted.current = true;
-      return;
-    }
-    hasAutoFitted.current = true;
     const timer = setTimeout(() => {
-      fitView({ duration: 250, padding: 0.28, maxZoom: 1 });
+      scheduleFitView();
     }, 60);
     return () => clearTimeout(timer);
-  }, [fitView, nodes.length]);
+  }, [nodes.length, scheduleFitView]);
+
+  // Handle container resizing from hidden/0x0 to visible
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          scheduleFitView();
+        }
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [scheduleFitView]);
 
   const currentFlowPosition = useCallback(() => (
     contextMenu?.flowPosition ?? { x: 220, y: 220 }
@@ -1499,11 +1565,21 @@ function HarnessCanvasInner() {
     }));
 
   return (
-    <div className="relative h-full w-full">
+    <div ref={containerRef} className="relative h-full w-full">
       <ReactFlow
-        defaultViewport={initialViewportRef.current ?? undefined}
+        defaultViewport={initialViewport}
+        onMove={(_, vp) => {
+          const container = containerRef.current;
+          if (hasValidContainerDimensions(container) && isValidCanvasViewport(vp)) {
+            lastValidViewportRef.current = vp;
+          }
+        }}
         onMoveEnd={(_, vp) => {
-          useHarnessStore.getState().setCanvasViewport(vp);
+          const container = containerRef.current;
+          if (hasValidContainerDimensions(container) && isValidCanvasViewport(vp)) {
+            lastValidViewportRef.current = vp;
+            useHarnessStore.getState().setCanvasViewport(vp);
+          }
         }}
         nodes={nodes}
         edges={edges}

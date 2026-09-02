@@ -668,6 +668,8 @@ export default function App() {
 
     const isProductImage = route.id === 'designer-product-image';
 
+    const content = isProductImage ? <TwoDView /> : <DesignerView />;
+
     return (
       <div className="flex h-full min-h-0 flex-col">
         {loadError && (
@@ -678,14 +680,7 @@ export default function App() {
             onClose={() => setLoadError(null)}
           />
         )}
-        <div className="relative min-h-0 flex-1">
-          <div className={!isProductImage ? 'h-full w-full' : 'hidden h-full w-full'}>
-            <DesignerView />
-          </div>
-          <div className={isProductImage ? 'h-full w-full' : 'hidden h-full w-full'}>
-            <TwoDView />
-          </div>
-        </div>
+        <div className="min-h-0 flex-1">{content}</div>
       </div>
     );
   };
