@@ -27,6 +27,8 @@ import {
 } from '@/lib/canvasMaterials';
 import {
   calculateProductionDrawingLayout,
+  calculateCenteredGroupX,
+  calculateEstimatedWireOffset,
   type ProductionDrawingLayout,
 } from '@/lib/productionDrawingLayout';
 import { getWiringConnectorLabels } from '@/lib/connectorDesignation';
@@ -665,25 +667,104 @@ export function TwoDView() {
     [groupDimensions, productionLayout.wiringDiagram.width],
   );
 
+  const getEstimatedWireOffset = useCallback(
+    (g: { images: TwoDImage[] }) => {
+      const wireMaterial = g.images.find((img) => img.elementKind === 'material');
+      if (!wireMaterial) return 0;
+      const matEntity = materials.find((m) => m.id === wireMaterial.elementId);
+      const matCenterX = matEntity ? matEntity.position.x + matEntity.width / 2 : 0;
+
+      const nonWireImgs = g.images.filter(
+        (img) => img.elementKind !== 'material' && img.elementKind !== 'sleeve',
+      );
+      let leftW = 0;
+      let rightW = 0;
+      for (const img of nonWireImgs) {
+        const elX = getElementX(img.elementKind, img.elementId, connectors, materials, sleeves, models);
+        if (elX < matCenterX) {
+          leftW += getCardWidth(img);
+        } else {
+          rightW += getCardWidth(img);
+        }
+      }
+      return calculateEstimatedWireOffset({ leftWidth: leftW, rightWidth: rightW });
+    },
+    [materials, connectors, sleeves, models, getCardWidth],
+  );
+
   const defaultGroupPositions = useMemo(() => {
     const positions: Record<number, { x: number; y: number }> = {};
     const groupSpacing = 32;
-    const totalGroupsWidth = groups.reduce(
-      (sum, g, idx) => sum + getGroupWidth(idx, g) + (idx > 0 ? groupSpacing : 0),
-      0,
-    );
-    const startX = Math.max(64, (1200 - totalGroupsWidth) / 2);
 
-    let currentX = startX;
-    for (let i = 0; i < groups.length; i++) {
-      positions[i] = {
-        x: currentX,
+    // Check if there is a primary group with wire materials
+    const primaryWireGroupIdx = groups.findIndex((g) =>
+      g.images.some((img) => img.elementKind === 'material'),
+    );
+
+    if (groups.length === 1 || primaryWireGroupIdx !== -1) {
+      const targetGroupIdx = primaryWireGroupIdx !== -1 ? primaryWireGroupIdx : 0;
+      const targetGroup = groups[targetGroupIdx];
+      const targetWidth = getGroupWidth(targetGroupIdx, targetGroup);
+      const hasWire = targetGroup.images.some((img) => img.elementKind === 'material');
+      const offset = hasWire
+        ? (wireOffsets[targetGroupIdx] ?? getEstimatedWireOffset(targetGroup))
+        : 0;
+
+      // Position group such that its wire & wiring diagram center (targetWidth / 2 + offset)
+      // aligns with the canvas center (canvasCenterX = 600)
+      const targetX = calculateCenteredGroupX({
+        canvasWidth: 1200,
+        groupWidth: targetWidth,
+        wireOffsetFromGroupCenter: offset,
+      });
+
+      positions[targetGroupIdx] = {
+        x: targetX,
         y: productionLayout.assemblyTop,
       };
-      currentX += getGroupWidth(i, groups[i]) + groupSpacing;
+
+      // If other groups exist, position them relative to the target group
+      let leftX = targetX;
+      for (let i = targetGroupIdx - 1; i >= 0; i--) {
+        const w = getGroupWidth(i, groups[i]);
+        leftX -= w + groupSpacing;
+        positions[i] = {
+          x: leftX,
+          y: productionLayout.assemblyTop,
+        };
+      }
+      let rightX = targetX + targetWidth + groupSpacing;
+      for (let i = targetGroupIdx + 1; i < groups.length; i++) {
+        positions[i] = {
+          x: rightX,
+          y: productionLayout.assemblyTop,
+        };
+        rightX += getGroupWidth(i, groups[i]) + groupSpacing;
+      }
+    } else {
+      const totalGroupsWidth = groups.reduce(
+        (sum, g, idx) => sum + getGroupWidth(idx, g) + (idx > 0 ? groupSpacing : 0),
+        0,
+      );
+      const startX = Math.max(64, (1200 - totalGroupsWidth) / 2);
+
+      let currentX = startX;
+      for (let i = 0; i < groups.length; i++) {
+        positions[i] = {
+          x: currentX,
+          y: productionLayout.assemblyTop,
+        };
+        currentX += getGroupWidth(i, groups[i]) + groupSpacing;
+      }
     }
     return positions;
-  }, [groups, getGroupWidth, productionLayout.assemblyTop]);
+  }, [
+    groups,
+    getGroupWidth,
+    wireOffsets,
+    getEstimatedWireOffset,
+    productionLayout.assemblyTop,
+  ]);
 
   const techRequirementsTop = useMemo(() => {
     const rawReqs = drawingFrame.technicalRequirements ?? DEFAULT_TECHNICAL_REQUIREMENTS;
@@ -724,7 +805,7 @@ export function TwoDView() {
     (position: { x: number; y: number }, group: { images: TwoDImage[] }, groupIdx: number) => {
       const rawGroupWidth = getGroupWidth(groupIdx, group);
       const groupHeight = getGroupHeight(groupIdx, group);
-      const exactOffset = wireOffsets[groupIdx] ?? 0;
+      const exactOffset = wireOffsets[groupIdx] ?? getEstimatedWireOffset(group);
 
       // Calculate relative horizontal bounds of the group (including top row and shifted wiring diagram)
       const hasWiring = group.images.some((img) => img.elementKind === 'material');
@@ -776,7 +857,15 @@ export function TwoDView() {
         y: clampedY,
       };
     },
-    [getGroupWidth, getGroupHeight, wireOffsets, productionLayout.wiringDiagram.width, productionLayout.bomRect.top, techRequirementsTop],
+    [
+      getGroupWidth,
+      getGroupHeight,
+      wireOffsets,
+      getEstimatedWireOffset,
+      productionLayout.wiringDiagram.width,
+      productionLayout.bomRect.top,
+      techRequirementsTop,
+    ],
   );
 
   const getGroupPosition = useCallback(
@@ -1462,7 +1551,7 @@ export function TwoDView() {
                           {(() => {
                             const groupMaterials = materials.filter(m => group.images.some(img => img.elementKind === 'material' && img.elementId === m.id));
                             const groupConnectors = connectors.filter(c => group.images.some(img => img.elementKind === 'connector' && img.elementId === c.id));
-                            const exactOffset = wireOffsets[groupIdx] ?? 0;
+                            const exactOffset = wireOffsets[groupIdx] ?? getEstimatedWireOffset(group);
                             return groupMaterials.length > 0 ? (
                               <div
                                 style={{
@@ -1545,6 +1634,22 @@ export function TwoDView() {
             className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
           >
             重置缩放
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const nextImages = twoDImages.map((img) => {
+                if (img.pos === undefined) return img;
+                const copy = { ...img };
+                delete copy.pos;
+                return copy;
+              });
+              patchDocument({ twoDImages: nextImages });
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 border-t border-slate-100"
+          >
+            重置图元居中
           </button>
         </div>
       )}

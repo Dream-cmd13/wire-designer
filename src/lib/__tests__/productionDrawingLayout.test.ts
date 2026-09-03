@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { staticCatalogOptions } from '@/data/catalogOptions';
 import { setCatalogSnapshot } from '@/lib/catalogRuntime';
-import { countProductionBomRows, calculateProductionDrawingLayout } from '@/lib/productionDrawingLayout';
+import { countProductionBomRows, calculateProductionDrawingLayout, calculateCenteredGroupX, calculateEstimatedWireOffset } from '@/lib/productionDrawingLayout';
 import { createDefaultConfig } from '@/stores/harnessStore';
 
 describe('countProductionBomRows', () => {
+
   it('uses the same grouped inner-mold rows as the rendered BOM', () => {
     const overmolds = [
       {
@@ -72,3 +73,67 @@ describe('countProductionBomRows', () => {
     }
   });
 });
+
+describe('calculateCenteredGroupX & calculateEstimatedWireOffset', () => {
+  it('centers symmetrical groups so wire center is exactly at 600', () => {
+    const groupWidth = 400;
+    const wireOffsetFromGroupCenter = 0;
+    const groupX = calculateCenteredGroupX({
+      canvasWidth: 1200,
+      groupWidth,
+      wireOffsetFromGroupCenter,
+    });
+
+    expect(groupX).toBe(400); // (1200 - 400) / 2
+    const wireCenterOnCanvas = groupX + (groupWidth / 2 + wireOffsetFromGroupCenter);
+    expect(wireCenterOnCanvas).toBe(600);
+  });
+
+  it('centers asymmetrical groups with heavier right side so wire center is exactly 600', () => {
+    // Left items: 80px, wire: 200px, right items: 300px => groupWidth: 580px
+    // wireCenter inside group: 80 + 100 = 180px
+    // groupCenter: 290px
+    // wireOffsetFromGroupCenter: 180 - 290 = -110px
+    const groupWidth = 580;
+    const wireOffset = -110;
+    const groupX = calculateCenteredGroupX({
+      canvasWidth: 1200,
+      groupWidth,
+      wireOffsetFromGroupCenter: wireOffset,
+    });
+
+    // targetX = 600 - (290 - 110) = 420
+    expect(groupX).toBe(420);
+    const wireCenterOnCanvas = groupX + (groupWidth / 2 + wireOffset);
+    expect(wireCenterOnCanvas).toBe(600);
+  });
+
+  it('centers asymmetrical groups with heavier left side so wire center is exactly 600', () => {
+    // Left items: 300px, wire: 200px, right items: 80px => groupWidth: 580px
+    // wireCenter inside group: 300 + 100 = 400px
+    // groupCenter: 290px
+    // wireOffsetFromGroupCenter: 400 - 290 = +110px
+    const groupWidth = 580;
+    const wireOffset = 110;
+    const groupX = calculateCenteredGroupX({
+      canvasWidth: 1200,
+      groupWidth,
+      wireOffsetFromGroupCenter: wireOffset,
+    });
+
+    // targetX = 600 - (290 + 110) = 200
+    expect(groupX).toBe(200);
+    const wireCenterOnCanvas = groupX + (groupWidth / 2 + wireOffset);
+    expect(wireCenterOnCanvas).toBe(600);
+  });
+
+  it('calculateEstimatedWireOffset correctly calculates wire offset from left/right widths', () => {
+    // Symmetrical
+    expect(calculateEstimatedWireOffset({ leftWidth: 80, rightWidth: 80 })).toBe(0);
+    // Right heavier
+    expect(calculateEstimatedWireOffset({ leftWidth: 80, rightWidth: 300 })).toBe(-110);
+    // Left heavier
+    expect(calculateEstimatedWireOffset({ leftWidth: 300, rightWidth: 80 })).toBe(110);
+  });
+});
+

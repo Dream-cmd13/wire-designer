@@ -127,3 +127,34 @@ export function calculateProductionDrawingLayout({
     assemblyBottom,
   };
 }
+
+/**
+ * Calculates the initial horizontal position (X) for an assembly group in the production drawing.
+ * Centers the assembly group such that the wire (and its aligned wiring diagram) is at the horizontal center
+ * of the canvas (canvasCenterX = FRAME_WIDTH / 2 = 600).
+ */
+export function calculateCenteredGroupX({
+  canvasWidth = FRAME_WIDTH,
+  groupWidth,
+  wireOffsetFromGroupCenter = 0,
+}: {
+  canvasWidth?: number;
+  groupWidth: number;
+  wireOffsetFromGroupCenter?: number;
+}): number {
+  const canvasCenterX = canvasWidth / 2;
+  return Math.round(canvasCenterX - (groupWidth / 2 + wireOffsetFromGroupCenter));
+}
+
+/**
+ * Calculates the estimated wire offset from the center of the image row before DOM measurement.
+ */
+export function calculateEstimatedWireOffset({
+  leftWidth,
+  rightWidth,
+}: {
+  leftWidth: number;
+  rightWidth: number;
+}): number {
+  return Math.round((leftWidth - rightWidth) / 2);
+}
