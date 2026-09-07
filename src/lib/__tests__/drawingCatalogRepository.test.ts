@@ -51,7 +51,8 @@ describe('DrawingCatalogRepository', () => {
 
     await expect(repository.listTemplates()).resolves.toHaveLength(2);
     await expect(repository.listCommonPhrases()).resolves.toHaveLength(3);
-    await expect(repository.listIcons()).resolves.toHaveLength(4);
+    const icons = await repository.listIcons();
+    expect(icons).toHaveLength(66);
     await expect(repository.listResources()).rejects.toThrow('Supabase 尚未配置');
   });
 
@@ -64,7 +65,8 @@ describe('DrawingCatalogRepository', () => {
       expect.objectContaining({ id: 'template-single', name: '单头普通电子线模板' }),
     );
     await expect(repository.listCommonPhrases()).resolves.toHaveLength(3);
-    await expect(repository.listIcons()).resolves.toHaveLength(4);
+    const icons = await repository.listIcons();
+    expect(icons).toHaveLength(66);
     await expect(repository.loadTemplate('missing')).rejects.toThrow('未找到图库模板');
     expect(queries).toEqual([]);
   });
