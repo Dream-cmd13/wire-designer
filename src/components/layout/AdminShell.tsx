@@ -14,7 +14,7 @@ import {
   Undo2,
   User,
 } from 'lucide-react';
-import { appRoutes, type AppRoute } from '@/lib/appRoute';
+import { appRoutes, type AppRoute, type AppRouteId } from '@/lib/appRoute';
 import type { User as AppUser } from '@/types/user';
 
 export interface SidebarItem {
@@ -100,7 +100,7 @@ function ProjectNameEditor({
   };
 
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 transition-colors focus-within:border-blue-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-blue-500">
+    <div className="hidden sm:flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 transition-colors focus-within:border-blue-500 focus-within:bg-white focus-within:ring-1 focus-within:ring-blue-500">
       <span className="shrink-0 font-medium text-slate-500">项目名称</span>
       <input
         type="text"
@@ -116,6 +116,51 @@ function ProjectNameEditor({
         placeholder="未命名项目"
         title="点击修改项目名称，回车或失焦生效"
       />
+    </div>
+  );
+}
+
+function DesignViewToggle({
+  currentRouteId,
+  onNavigate,
+}: {
+  currentRouteId: AppRouteId;
+  onNavigate: (path: string) => void;
+}) {
+  return (
+    <div
+      className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs"
+      role="group"
+      aria-label="视图切换"
+    >
+      <button
+        type="button"
+        onClick={() => onNavigate(appRoutes['designer-design'].path)}
+        className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
+          currentRouteId === 'designer-design'
+            ? 'bg-white text-blue-600 shadow-sm font-semibold'
+            : 'text-slate-600 hover:text-slate-900'
+        }`}
+        title="设计图"
+        aria-pressed={currentRouteId === 'designer-design'}
+      >
+        <PenTool className="h-3.5 w-3.5 shrink-0" />
+        <span className="hidden sm:inline">设计图</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => onNavigate(appRoutes['designer-product-image'].path)}
+        className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
+          currentRouteId === 'designer-product-image'
+            ? 'bg-white text-blue-600 shadow-sm font-semibold'
+            : 'text-slate-600 hover:text-slate-900'
+        }`}
+        title="成品图"
+        aria-pressed={currentRouteId === 'designer-product-image'}
+      >
+        <FileImage className="h-3.5 w-3.5 shrink-0" />
+        <span className="hidden sm:inline">成品图</span>
+      </button>
     </div>
   );
 }
@@ -244,7 +289,7 @@ export function AdminShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-4">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <div className="min-w-0">
+            <div className="min-w-0 shrink-0">
               <p className="truncate text-sm font-semibold text-slate-900">{route.title}</p>
               <p className="hidden text-xs text-slate-500 sm:block">
                 {contextLabel}
@@ -252,8 +297,8 @@ export function AdminShell({
             </div>
 
             {showDesignerActions && (
-              <div className="flex min-w-0 items-center gap-1 sm:gap-2">
-                <span className="flex items-center gap-0.5">
+              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                <span className="flex shrink-0 items-center gap-0.5">
                   <button
                     type="button"
                     onClick={onUndo}
@@ -298,12 +343,18 @@ export function AdminShell({
             )}
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             {Boolean(currentProjectName) && (
-              <ProjectNameEditor
-                projectName={currentProjectName!}
-                onUpdate={onUpdateProjectName}
-              />
+              <>
+                <DesignViewToggle
+                  currentRouteId={route.id}
+                  onNavigate={onNavigate}
+                />
+                <ProjectNameEditor
+                  projectName={currentProjectName!}
+                  onUpdate={onUpdateProjectName}
+                />
+              </>
             )}
 
             {currentUser ? (
