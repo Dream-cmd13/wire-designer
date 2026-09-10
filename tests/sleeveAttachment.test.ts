@@ -68,7 +68,7 @@ describe('protective sleeve attachment geometry', () => {
 
     const next = updateMaterial(config, 'material-1', { spec });
 
-    expect(next.materials[0].width).toBe(60);
+    expect(next.materials[0].width).toBe(lengthMmToCanvasWidth(100));
     expect(next.protectiveSleeves[0].position.x).toBe(100);
     expect(next.protectiveSleeves[0].attachedMaterialIds).toEqual(['material-1']);
   });
@@ -82,9 +82,11 @@ describe('protective sleeve attachment geometry', () => {
 
     const next = updateMaterial(config, 'material-1', { spec });
 
-    expect(next.materials[0].width).toBe(40);
-    expect(next.protectiveSleeves[0].width).toBe(120);
-    expect(next.protectiveSleeves[0].position.x).toBe(60);
+    expect(next.materials[0].width).toBe(lengthMmToCanvasWidth(50));
+    expect(next.protectiveSleeves[0].width).toBe(lengthMmToCanvasWidth(200));
+    expect(next.protectiveSleeves[0].position.x).toBe(
+      100 + (lengthMmToCanvasWidth(50) - lengthMmToCanvasWidth(200)) / 2,
+    );
     expect(next.protectiveSleeves[0].attachedMaterialIds).toEqual(['material-1']);
   });
 
@@ -93,19 +95,23 @@ describe('protective sleeve attachment geometry', () => {
 
     const next = updateProtectiveSleeve(config, 'sleeve-1', { lengthMm: 300 });
 
-    expect(next.protectiveSleeves[0].width).toBe(180);
+    expect(next.protectiveSleeves[0].width).toBe(lengthMmToCanvasWidth(300));
     expect(next.protectiveSleeves[0].position.x).toBe(100);
   });
 
   it('keeps attachment centered when material position and width change together', () => {
     const config = makeConfig();
+    const sleeveWidth = lengthMmToCanvasWidth(100);
 
     const next = updateMaterial(config, 'material-1', {
       position: { x: 400, y: 500 },
       width: 60,
     });
 
-    expect(next.protectiveSleeves[0].position).toEqual({ x: 400, y: 493 });
+    expect(next.protectiveSleeves[0].position).toEqual({
+      x: 400 + (60 - sleeveWidth) / 2,
+      y: 493,
+    });
   });
 
   it('supports one sleeve around all four arranged electronic wires', () => {
@@ -119,7 +125,7 @@ describe('protective sleeve attachment geometry', () => {
     const placement = placeSleeveAroundMaterials(materials, 60);
 
     expect(placement).toEqual({
-      position: { x: 160, y: 198 },
+      position: { x: 161, y: 198 },
       height: 110,
     });
   });
@@ -135,7 +141,7 @@ describe('protective sleeve attachment geometry', () => {
     const placement = placeSleeveAroundMaterials(subset, 60);
 
     expect(placement).toEqual({
-      position: { x: 160, y: 198 },
+      position: { x: 161, y: 198 },
       height: 54,
     });
   });

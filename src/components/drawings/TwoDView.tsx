@@ -24,6 +24,7 @@ import {
   getCanvasModelDisplayName,
   getProtectiveSleeveDisplayName,
   getMoldLinkage,
+  lengthMmToCanvasWidth,
 } from '@/lib/canvasMaterials';
 import {
   calculateProductionDrawingLayout,
@@ -651,9 +652,15 @@ export function TwoDView() {
   }, [flatImages]);
 
   const getCardWidth = useCallback((img: TwoDImage) => {
+    if (img.elementKind === 'material') {
+      const mat = materials.find((m) => m.id === img.elementId);
+      if (mat?.spec?.lengthMm != null) {
+        return lengthMmToCanvasWidth(mat.spec.lengthMm);
+      }
+    }
     const weight = getWeight(img.elementKind);
     return Math.min(600, Math.floor(944 * (weight / Math.max(1, totalWeight))));
-  }, [totalWeight]);
+  }, [totalWeight, materials]);
 
   const getGroupWidth = useCallback(
     (groupIdx: number, g: { images: TwoDImage[] }) => {

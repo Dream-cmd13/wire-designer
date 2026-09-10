@@ -128,9 +128,18 @@ export const CONNECTOR_NODE_WIDTH = 236;
 export const CORRUGATED_ENDCAP_WIDTH = 16;
 export const CORRUGATED_ENDCAP_HEIGHT = 18;
 
+export const MIN_CANVAS_WIRE_WIDTH = 120;
+export const MAX_CANVAS_WIRE_WIDTH = 480;
+export const MAX_CANVAS_WIRE_LENGTH_MM = 10000;
+
 /** Unified mm -> canvas-px scale used by both wire materials and protective sleeves. */
 export function lengthMmToCanvasWidth(lengthMm: number): number {
-  return Math.max(40, Math.min(600, lengthMm * 0.6));
+  if (!Number.isFinite(lengthMm) || lengthMm <= 0) {
+    return MIN_CANVAS_WIRE_WIDTH;
+  }
+  const clampedMm = Math.min(lengthMm, MAX_CANVAS_WIRE_LENGTH_MM);
+  const ratio = clampedMm / MAX_CANVAS_WIRE_LENGTH_MM;
+  return Math.round(MIN_CANVAS_WIRE_WIDTH + Math.sqrt(ratio) * (MAX_CANVAS_WIRE_WIDTH - MIN_CANVAS_WIRE_WIDTH));
 }
 
 /**
