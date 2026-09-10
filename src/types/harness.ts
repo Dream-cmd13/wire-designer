@@ -521,6 +521,7 @@ export interface HarnessConfig {
   models: CanvasModel[];
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
+  quotation?: { processingEnds: 1 | 2; srPoints: number };
   twoDImages?: TwoDImage[];
   productionDrawing?: ProductionDrawing;
   drawingFrame?: ProductionDrawingFrame;
@@ -541,18 +542,6 @@ export interface BOMItem {
   quantity: number;
   unitPrice?: number;
   totalPrice?: number;
-}
-
-/** Price breakdown for quotation */
-export interface PriceBreakdown {
-  connectors: number;
-  wires: number;
-  labor: number;
-  protection: number;
-  leadTimeMultiplier: number;
-  quantityDiscount: number;
-  unitPrice: number;
-  totalPrice: number;
 }
 
 // ============================================================

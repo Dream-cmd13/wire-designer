@@ -975,6 +975,13 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
   if (!isFiniteNumber(input.createdAt)) issues.push('createdAt must be finite');
   if (!isFiniteNumber(input.updatedAt)) issues.push('updatedAt must be finite');
   if (!isPositiveInteger(input.quantity)) issues.push('quantity must be a positive integer');
+  if (input.quotation !== undefined && (!isRecord(input.quotation)
+    || ![1, 2].includes(input.quotation.processingEnds as number)
+    || !Number.isInteger(input.quotation.srPoints)
+    || (input.quotation.srPoints as number) < 0
+    || (input.quotation.srPoints as number) > (input.quotation.processingEnds as number))) {
+    issues.push('quotation must contain valid processingEnds and srPoints');
+  }
   if (input.leadTime !== 'rush' && input.leadTime !== 'standard' && input.leadTime !== 'economy') {
     issues.push('leadTime must be rush, standard, or economy');
   }
@@ -1024,6 +1031,7 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
       protectiveSleeves: protectiveSleeves as ProtectiveSleeve[],
       models: models as CanvasModel[],
       quantity: input.quantity as number,
+      ...(input.quotation === undefined ? {} : { quotation: input.quotation as HarnessConfig['quotation'] }),
       leadTime: input.leadTime as 'rush' | 'standard' | 'economy',
       twoDImages: Array.isArray((input as Record<string, unknown>).twoDImages)
         ? ((input as Record<string, unknown>).twoDImages as unknown[]).filter(

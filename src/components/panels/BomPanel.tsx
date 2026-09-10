@@ -56,7 +56,7 @@ function getAssociatedFiles(item: BOMItem, config: HarnessConfig): AssociatedFil
 
 /**
  * BomPanel - Bill of Materials display.
- * Shows a table of all components with quantities and pricing.
+ * Shows component quantities; costs belong to the quotation panel.
  * Supports CSV and Excel (TSV) export.
  */
 export function BomPanel() {
@@ -73,8 +73,6 @@ export function BomPanel() {
     setPreviewFiles(files);
     setPreviewOpen(true);
   };
-
-  const totalCost = bomItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -113,7 +111,7 @@ export function BomPanel() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量', '单价', '总价'];
+    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量'];
     const rows = bomItems.map((item) => [
       getTypeName(item.type),
       item.description,
@@ -121,19 +119,14 @@ export function BomPanel() {
       item.manufacturer || '',
       String(item.quantity),
       String(item.quantity * config.quantity),
-      item.unitPrice ? item.unitPrice.toFixed(2) : '',
-      item.totalPrice ? item.totalPrice.toFixed(2) : '',
     ]);
-
-    // Add total row
-    rows.push(['', '', '', '', '', '', '总计', totalCost.toFixed(2)]);
 
     const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n');
     downloadFile('\uFEFF' + csvContent, `${config.name}_BOM.csv`, 'text/csv;charset=utf-8;');
   };
 
   const handleExportExcel = () => {
-    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量', '单价', '总价'];
+    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量'];
     const rows = bomItems.map((item) => [
       getTypeName(item.type),
       item.description,
@@ -141,12 +134,7 @@ export function BomPanel() {
       item.manufacturer || '',
       String(item.quantity),
       String(item.quantity * config.quantity),
-      item.unitPrice ? item.unitPrice.toFixed(2) : '',
-      item.totalPrice ? item.totalPrice.toFixed(2) : '',
     ]);
-
-    // Add total row
-    rows.push(['', '', '', '', '', '', '总计', totalCost.toFixed(2)]);
 
     // TSV format: tab-separated for spreadsheet compatibility
     const tsvContent = [headers, ...rows].map((row) => row.join('\t')).join('\n');
@@ -186,8 +174,6 @@ export function BomPanel() {
             <col className="w-7" />
             <col />
             <col className="w-10" />
-            <col className="w-14" />
-            <col className="w-14" />
             <col className="w-10" />
           </colgroup>
           <thead>
@@ -195,8 +181,6 @@ export function BomPanel() {
               <th className="px-1 py-1.5 text-left text-slate-500 font-medium"></th>
               <th className="whitespace-nowrap px-1 py-1.5 text-left text-slate-500 font-medium">描述</th>
               <th className="whitespace-nowrap px-1 py-1.5 text-right text-slate-500 font-medium">数量</th>
-              <th className="whitespace-nowrap px-1 py-1.5 text-right text-slate-500 font-medium">单价</th>
-              <th className="whitespace-nowrap px-1 py-1.5 text-right text-slate-500 font-medium">小计</th>
               <th className="whitespace-nowrap px-1 py-1.5 text-center text-slate-500 font-medium">预览</th>
             </tr>
           </thead>
@@ -230,12 +214,6 @@ export function BomPanel() {
                       </div>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1.5 text-right text-slate-600">
-                    {item.unitPrice ? `$${item.unitPrice.toFixed(2)}` : '-'}
-                  </td>
-                  <td className="whitespace-nowrap px-1 py-1.5 text-right text-slate-700 font-medium">
-                    {item.totalPrice ? `$${item.totalPrice.toFixed(2)}` : '-'}
-                  </td>
                   <td className="whitespace-nowrap px-1 py-1.5 text-center">
                     {itemFiles.length > 0 ? (
                       <button
@@ -267,9 +245,6 @@ export function BomPanel() {
         <span className="text-xs text-slate-500">
           共 {bomItems.length} 项物料
           {config.quantity > 1 && ` (x${config.quantity}套)`}
-        </span>
-        <span className="text-sm font-bold text-slate-800">
-          总计: ${totalCost.toFixed(2)}
         </span>
       </div>
 
