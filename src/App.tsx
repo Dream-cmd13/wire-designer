@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Download, FolderOpen } from 'lucide-react';
+import { AlertTriangle, Download, FolderOpen } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
 import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { TwoDView } from '@/components/drawings/TwoDView';
-import { BomPanel } from '@/components/panels/BomPanel';
-import { QuotePanel } from '@/components/panels/QuotePanel';
+import { BomModal } from '@/components/panels/BomPanel';
+import { QuoteModal } from '@/components/panels/QuotePanel';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { useAppRoute } from '@/hooks/useAppRoute';
@@ -28,34 +28,9 @@ import { DrawingWorkbenchPage } from '@/pages/DrawingWorkbenchPage';
 import { HarnessLibraryPage } from '@/pages/HarnessLibraryPage';
 import type { Project } from '@/types/user';
 
-function RightPanel() {
-  const [bomCollapsed, setBomCollapsed] = useState(false);
-
-  return (
-    <div className="flex h-full flex-col">
-      <QuotePanel />
-      <div className="border-t border-slate-200">
-        <button
-          type="button"
-          onClick={() => setBomCollapsed((value) => !value)}
-          className="flex w-full cursor-pointer items-center justify-between px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-50"
-        >
-          <span className="font-semibold">BOM物料清单</span>
-          {bomCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-        </button>
-        {!bomCollapsed && (
-          <div className="px-4 pb-4">
-            <BomPanel />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function DesignerView() {
   return (
-    <MainLayout rightPanel={<RightPanel />}>
+    <MainLayout>
       <HarnessCanvas />
     </MainLayout>
   );
@@ -134,6 +109,8 @@ function LoadErrorBanner({ message, recoveryRaw, projectName, onClose }: LoadErr
 export default function App() {
   const { route, projectId, navigate } = useAppRoute();
   const [authOpen, setAuthOpen] = useState(false);
+  const [bomModalOpen, setBomModalOpen] = useState(false);
+  const [quoteModalOpen, setQuoteModalOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recoveryRaw, setRecoveryRaw] = useState<string | null>(null);
@@ -735,6 +712,8 @@ export default function App() {
         onOpenAuth={() => setAuthOpen(true)}
         onCloseProject={handleCloseProject}
         onUpdateProjectName={handleUpdateProjectName}
+        onOpenBom={() => setBomModalOpen(true)}
+        onOpenQuote={() => setQuoteModalOpen(true)}
       >
         <StorageSetupBanner
           state={storageBootstrapState}
@@ -761,6 +740,20 @@ export default function App() {
         <ProjectWizard
           onComplete={handleWizardComplete}
           onCancel={() => setWizardOpen(false)}
+        />
+      )}
+
+      {bomModalOpen && (
+        <BomModal
+          isOpen
+          onClose={() => setBomModalOpen(false)}
+        />
+      )}
+
+      {quoteModalOpen && (
+        <QuoteModal
+          isOpen
+          onClose={() => setQuoteModalOpen(false)}
         />
       )}
 

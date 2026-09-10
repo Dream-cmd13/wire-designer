@@ -7,19 +7,30 @@ interface PriceState {
   load: () => Promise<void>;
   merge: (prices: MaterialPrice[], source: string) => Promise<void>;
 }
-export const usePriceStore = create<PriceState>((set) => ({
+export const usePriceStore = create<PriceState>((set, get) => ({
   book: null, loading: false, error: null,
   async load() {
-    set({ loading: true });
-    try { set({ book: await priceRepository.load(), error: null }); }
-    catch (error) { set({ book: null, error: error instanceof Error ? error.message : '读取共享价格失败' }); }
-    finally { set({ loading: false }); }
+    const hasExisting = Boolean(get().book);
+    if (!hasExisting) {
+      set({ loading: true });
+    }
+    try {
+      const book = await priceRepository.load();
+      set({ book, error: null });
+    } catch (error) {
+      if (!hasExisting) {
+        set({ book: null });
+      }
+      set({ error: error instanceof Error ? error.message : '读取共享价格失败' });
+    } finally {
+      set({ loading: false });
+    }
   },
   async merge(prices, source) {
     set({ loading: true });
     try { set({ book: await priceRepository.merge(prices, source), error: null }); }
     catch (error) {
-      set({ book: null, error: error instanceof Error ? error.message : '保存共享价格失败' });
+      set({ error: error instanceof Error ? error.message : '保存共享价格失败' });
       throw error;
     } finally { set({ loading: false }); }
   },

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { generateBOM } from '@/lib/bom';
-import { ClipboardList, Plug, Cable, Shield, Download, FileSpreadsheet, Eye, EyeOff } from 'lucide-react';
+import { ClipboardList, Plug, Cable, Shield, Download, FileSpreadsheet, Eye, EyeOff, X } from 'lucide-react';
 import { BomPreviewModal, type AssociatedFile } from './BomPreviewModal';
 import type { BOMItem, HarnessConfig, TwoDImage } from '@/types/harness';
 
@@ -255,6 +255,67 @@ export function BomPanel() {
         itemName={previewItemName}
         files={previewFiles}
       />
+    </div>
+  );
+}
+
+export function BomModal({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs animate-in fade-in duration-150"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-slate-200"
+        role="dialog"
+        aria-modal="true"
+        aria-label="BOM物料清单"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-slate-50/80">
+          <div className="flex items-center gap-2 font-semibold text-slate-800 text-base">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+              <ClipboardList className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 leading-tight">BOM物料清单</h2>
+              <p className="text-[11px] text-slate-500 font-normal">线束工程组件与物料统计</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="cursor-pointer rounded-md p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition"
+            aria-label="关闭"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          <BomPanel />
+        </div>
+      </div>
     </div>
   );
 }

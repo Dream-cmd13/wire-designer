@@ -4,12 +4,12 @@ import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from '
 interface MainLayoutProps {
   children: ReactNode;
   leftPanel?: ReactNode;
-  rightPanel: ReactNode;
+  rightPanel?: ReactNode;
 }
 
 export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps) {
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
+  const [rightOpen, setRightOpen] = useState(() => Boolean(rightPanel) && window.matchMedia('(min-width: 1280px)').matches);
   const [rightWidth, setRightWidth] = useState(288); // 288px is equivalent to w-72 (72 * 4)
   const [isDragging, setIsDragging] = useState(false);
 
@@ -54,9 +54,11 @@ export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps)
 
   return (
     <div className="flex h-full flex-col bg-slate-50">
-      <div className="hidden border-b border-blue-200 bg-blue-50 px-3 py-2 text-center text-xs text-blue-700 max-xl:block">
-        窄屏模式已自动收起右侧面板和等距预览；可按需展开右侧面板。
-      </div>
+      {Boolean(rightPanel) && (
+        <div className="hidden border-b border-blue-200 bg-blue-50 px-3 py-2 text-center text-xs text-blue-700 max-xl:block">
+          窄屏模式已自动收起右侧面板和等距预览；可按需展开右侧面板。
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {Boolean(leftPanel) && (
@@ -92,41 +94,43 @@ export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps)
 
         <main className="relative min-w-0 flex-1">{children}</main>
 
-        <div
-          className={`flex shrink-0 overflow-hidden ${
-            isDragging ? 'transition-none' : 'transition-[width] duration-200'
-          }`}
-          style={{ width: rightOpen ? rightWidth : 24 }}
-        >
-          {rightOpen ? (
-            <aside className="relative w-full shrink-0 overflow-y-auto border-l border-slate-200 bg-white">
-              {/* Drag handle */}
-              <div
-                onMouseDown={handleMouseDown}
-                className="absolute top-0 left-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 hover:w-1.5 active:bg-blue-600 active:w-1.5 transition-all z-50 select-none"
-                title="拖动调整宽度"
-              />
+        {Boolean(rightPanel) && (
+          <div
+            className={`flex shrink-0 overflow-hidden ${
+              isDragging ? 'transition-none' : 'transition-[width] duration-200'
+            }`}
+            style={{ width: rightOpen ? rightWidth : 24 }}
+          >
+            {rightOpen ? (
+              <aside className="relative w-full shrink-0 overflow-y-auto border-l border-slate-200 bg-white">
+                {/* Drag handle */}
+                <div
+                  onMouseDown={handleMouseDown}
+                  className="absolute top-0 left-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 hover:w-1.5 active:bg-blue-600 active:w-1.5 transition-all z-50 select-none"
+                  title="拖动调整宽度"
+                />
+                <button
+                  onClick={() => setRightOpen(false)}
+                  className="absolute top-2 left-4 z-10 cursor-pointer rounded p-1 hover:bg-slate-100"
+                  title="收起右侧面板"
+                  aria-label="收起右侧面板"
+                >
+                  <PanelRightClose className="h-4 w-4 text-slate-400" />
+                </button>
+                {rightPanel}
+              </aside>
+            ) : (
               <button
-                onClick={() => setRightOpen(false)}
-                className="absolute top-2 left-4 z-10 cursor-pointer rounded p-1 hover:bg-slate-100"
-                title="收起右侧面板"
-                aria-label="收起右侧面板"
+                onClick={() => setRightOpen(true)}
+                className="group flex w-6 items-center justify-center border-l border-slate-200 bg-white hover:bg-slate-50"
+                title="展开右侧面板"
+                aria-label="展开右侧面板"
               >
-                <PanelRightClose className="h-4 w-4 text-slate-400" />
+                <PanelRightOpen className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600" />
               </button>
-              {rightPanel}
-            </aside>
-          ) : (
-            <button
-              onClick={() => setRightOpen(true)}
-              className="group flex w-6 items-center justify-center border-l border-slate-200 bg-white hover:bg-slate-50"
-              title="展开右侧面板"
-              aria-label="展开右侧面板"
-            >
-              <PanelRightOpen className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600" />
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

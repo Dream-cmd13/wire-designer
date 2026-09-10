@@ -1,6 +1,8 @@
 import { useState, type ComponentType, type ReactNode } from 'react';
 import {
   Cable,
+  Calculator,
+  ClipboardList,
   Database,
   FileImage,
   FolderOpen,
@@ -71,6 +73,8 @@ interface AdminShellProps {
   onOpenAuth: () => void;
   onCloseProject: () => void;
   onUpdateProjectName?: (name: string) => void;
+  onOpenBom?: () => void;
+  onOpenQuote?: () => void;
 }
 
 function ProjectNameEditor({
@@ -186,6 +190,8 @@ export function AdminShell({
   onOpenAuth,
   onCloseProject,
   onUpdateProjectName,
+  onOpenBom,
+  onOpenQuote,
 }: AdminShellProps) {
   const showDesignerActions = route.section === 'designer' && Boolean(currentProjectName);
   const contextLabel = route.id === 'drawing-workbench'
@@ -346,6 +352,30 @@ export function AdminShell({
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             {Boolean(currentProjectName) && (
               <>
+                {onOpenBom && (
+                  <button
+                    type="button"
+                    onClick={onOpenBom}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs sm:text-sm font-medium text-slate-700 shadow-xs transition-colors hover:bg-slate-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    title="BOM物料清单"
+                    aria-label="BOM物料清单"
+                  >
+                    <ClipboardList className="h-4 w-4 text-blue-600" />
+                    <span className="font-semibold">BOM清单</span>
+                  </button>
+                )}
+                {onOpenQuote && (
+                  <button
+                    type="button"
+                    onClick={onOpenQuote}
+                    className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs sm:text-sm font-medium text-slate-700 shadow-xs transition-colors hover:bg-slate-50 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    title="线束报价核算"
+                    aria-label="线束报价"
+                  >
+                    <Calculator className="h-4 w-4 text-blue-600" />
+                    <span className="font-semibold">线束报价</span>
+                  </button>
+                )}
                 <DesignViewToggle
                   currentRouteId={route.id}
                   onNavigate={onNavigate}
