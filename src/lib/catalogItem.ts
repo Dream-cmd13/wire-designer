@@ -210,7 +210,9 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
     }
     const pinCount = optionalPositiveInteger(spec.pinCount, 'spec.pinCount');
     if (pinCount === undefined) throw new CatalogItemError('目录字段 spec.pinCount 无效。');
-    const pinLabels = stringArray(spec.pinLabels, 'spec.pinLabels');
+    const pinLabels = spec.pinLabels === undefined
+      ? Array.from({ length: pinCount }, (_, i) => String(i + 1))
+      : stringArray(spec.pinLabels, 'spec.pinLabels');
     if (pinLabels.length !== pinCount) throw new CatalogItemError('目录字段 spec.pinLabels 数量无效。');
     const shielded = optionalBoolean(spec.shielded, 'spec.shielded');
     const ratedVoltageV = optionalPositiveNumber(spec.ratedVoltageV, 'spec.ratedVoltageV');

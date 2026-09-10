@@ -334,14 +334,16 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
                 {selectedConnector.nutMaterial && <div><span className="text-slate-400">螺母材质：</span><span className="text-slate-700">{selectedConnector.nutMaterial}</span></div>}
               </div>
 
-              {selectedConnector.pinLabels && selectedConnector.pinLabels.length > 0 && (
+              {selectedConnector.pinLabels &&
+                selectedConnector.pinLabels.length > 0 &&
+                selectedConnector.pinLabels.some((label, i) => label !== String(i + 1)) && (
                 <>
                   <h4 className="text-xs font-semibold text-slate-600 mt-3 mb-1">PIN 定义</h4>
                   <div className="space-y-0.5 max-h-28 overflow-y-auto">
                     {selectedConnector.pinLabels.map((label, i) => (
-                      <div key={i} className="flex items-center gap-1.5 text-[10px]">
-                        <span className="text-slate-400 w-8 shrink-0">Pin{i + 1}</span>
-                        <span className="text-slate-600">{label || '-'}</span>
+                      <div key={i} className="flex items-center gap-2 text-[10px]">
+                        <span className="text-slate-400 w-10 shrink-0">Pin {i + 1}</span>
+                        <span className="text-slate-700 font-medium">{label || '-'}</span>
                       </div>
                     ))}
                   </div>

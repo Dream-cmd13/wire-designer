@@ -31,6 +31,17 @@ describe('parseCatalogItemRow', () => {
     expect(parsed.spec).not.toBe(connectorRow.spec);
   });
 
+  it('defaults pinLabels to 1..pinCount when omitted from connector spec', () => {
+    const specWithoutLabels: Partial<typeof connectorRow.spec> = { ...connectorRow.spec };
+    delete specWithoutLabels.pinLabels;
+    const parsed = parseCatalogItemRow({
+      ...connectorRow,
+      spec: specWithoutLabels,
+    });
+
+    expect((parsed.spec as { pinLabels: string[] }).pinLabels).toEqual(['1', '2', '3', '4']);
+  });
+
   it('preserves real connector engineering attributes', () => {
     const parsed = parseCatalogItemRow({
       ...connectorRow,

@@ -63,9 +63,10 @@ create table public.catalog_items (
       (jsonb_typeof(spec->'pinCount') = 'number') and
       ((spec->>'pinCount')::numeric > 0) and
       ((spec->>'pinCount')::numeric = trunc((spec->>'pinCount')::numeric)) and
-      (spec ? 'pinLabels') and
-      (jsonb_typeof(spec->'pinLabels') = 'array') and
-      (jsonb_array_length(spec->'pinLabels') = (spec->>'pinCount')::integer) and
+      (not (spec ? 'pinLabels') or (
+        (jsonb_typeof(spec->'pinLabels') = 'array') and
+        (jsonb_array_length(spec->'pinLabels') = (spec->>'pinCount')::integer)
+      )) and
       (not (spec ? 'shielded') or jsonb_typeof(spec->'shielded') = 'boolean') and
       (not (spec ? 'ratedVoltageV') or (jsonb_typeof(spec->'ratedVoltageV') = 'number' and (spec->>'ratedVoltageV')::numeric > 0)) and
       (not (spec ? 'ratedCurrentA') or (jsonb_typeof(spec->'ratedCurrentA') = 'number' and (spec->>'ratedCurrentA')::numeric > 0)) and

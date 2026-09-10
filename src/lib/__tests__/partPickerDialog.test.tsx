@@ -106,5 +106,52 @@ describe('Dialogs catalogStore integration contracts', () => {
     expect(html).toContain('IP67');
     expect(html).toContain('UL94 V-0');
     expect(html).toContain('500');
+    // Standard 1..N pin labels should be hidden to avoid redundant Pin1 1 output
+    expect(html).not.toContain('PIN 定义');
+  });
+
+  it('renders PIN definition section only when connector has non-standard custom pin labels', () => {
+    const customSnapshot = {
+      connectors: [
+        {
+          id: 'aviation-conn-1',
+          resourceItemId: 'res-av-1',
+          name: '航空插头 4芯公头',
+          model: 'GX16-4P',
+          manufacturer: 'Standard',
+          type: 'male' as const,
+          pinCount: 4,
+          pinLabels: ['A', 'B', 'C', 'D'],
+        },
+      ],
+      wires: [],
+      wireColors: [],
+      overmolds: [],
+      leadTimeOptions: [],
+      protectionOptions: [],
+      pricingRules: [],
+      quantityDiscountRules: [],
+      loadedAt: 0,
+    };
+    setCatalogSnapshot(customSnapshot);
+    useCatalogStore.setState({
+      status: 'ready',
+      snapshot: customSnapshot,
+    });
+
+    const html = renderToStaticMarkup(
+      <PartPickerDialog
+        isOpen={true}
+        onClose={() => undefined}
+        onSelect={() => undefined}
+        currentConnectorId="aviation-conn-1"
+      />,
+    );
+
+    expect(html).toContain('PIN 定义');
+    expect(html).toContain('Pin 1');
+    expect(html).toContain('A');
+    expect(html).toContain('Pin 4');
+    expect(html).toContain('D');
   });
 });
