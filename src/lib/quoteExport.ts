@@ -8,7 +8,13 @@ import { formatMaterialSpecification, getQuoteMaterials } from './quoteMaterials
 
 /** Snapshot export: formulas and rounding are owned by the tested quote calculator. */
 export function createQuoteWorkbook(config: HarnessConfig, prices: MaterialPrice[], catalog: CatalogSnapshot | null) {
-  const result = calculatePrice(config, prices, catalog);
+  const autoEnds = (config.connectors.length === 1 || config.connectors.length === 2)
+    ? (config.connectors.length as 1 | 2)
+    : undefined;
+  const effectiveConfig = (!config.quotation && autoEnds)
+    ? { ...config, quotation: { processingEnds: autoEnds, srPoints: 0 } }
+    : config;
+  const result = calculatePrice(effectiveConfig, prices, catalog);
   if (result.status !== 'ready') throw new Error(result.issues.join('；'));
   const p = result.price;
   const materials = getQuoteMaterials(config, catalog);

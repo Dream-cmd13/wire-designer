@@ -36,7 +36,9 @@ function Lines({ lines }: { lines: QuoteLine[] }) {
 }
 
 export function QuoteContent() {
-  const { config, setConfig } = useHarnessStore();
+  const storeConfig = useHarnessStore((state) => state.config);
+  const config = typeof window === 'undefined' ? (useHarnessStore.getState().config ?? storeConfig) : storeConfig;
+  const setConfig = useHarnessStore((state) => state.setConfig);
   const catalog = useCatalogStore((state) => state.snapshot);
   const { book, loading, error, load, merge } = usePriceStore();
   const [pending, setPending] = useState<{ name: string; prices: MaterialPrice[] } | null>(null);
@@ -49,10 +51,48 @@ export function QuoteContent() {
     void load();
   }, [load]);
 
+  // 自动根据图纸中的连接器数量推断加工端数（1个连接器对应单端/1端，2个连接器对应双端/2端）
+  const autoEnds: (1 | 2) | null =
+    config.connectors.length === 1 ? 1 : config.connectors.length === 2 ? 2 : null;
+  const effectiveEnds = autoEnds ?? config.quotation?.processingEnds;
+
+  // 构造有效报价配置，确保加工端数自动选出，避免首次渲染时报“请确认加工端数”阻断
+  const effectiveQuotation = autoEnds
+    ? {
+        processingEnds: autoEnds,
+        srPoints: Math.min(config.quotation?.srPoints ?? 0, autoEnds),
+      }
+    : config.quotation;
+
+  const effectiveConfig =
+    effectiveQuotation &&
+    (!config.quotation ||
+      config.quotation.processingEnds !== effectiveQuotation.processingEnds ||
+      config.quotation.srPoints !== effectiveQuotation.srPoints)
+      ? { ...config, quotation: effectiveQuotation }
+      : config;
+
+  // 自动将识别出的加工端数同步持久化到 store
+  useEffect(() => {
+    if (autoEnds !== null) {
+      if (
+        !config.quotation ||
+        config.quotation.processingEnds !== autoEnds
+      ) {
+        setConfig({
+          quotation: {
+            processingEnds: autoEnds,
+            srPoints: Math.min(config.quotation?.srPoints ?? 0, autoEnds),
+          },
+        });
+      }
+    }
+  }, [autoEnds, config.quotation, setConfig]);
+
   const prices = book?.prices || [];
-  const result = calculatePrice(config, prices, catalog);
+  const result = calculatePrice(effectiveConfig, prices, catalog);
   const price = !error && result.status === 'ready' ? result.price : null;
-  const settings = config.quotation;
+  const settings = effectiveQuotation;
   const busy = loading || reading;
 
   const exportPrices = async () => {
@@ -86,8 +126,11 @@ export function QuoteContent() {
     if (latest.error) return;
     try {
       const current = useHarnessStore.getState().config;
+      const effectiveCurrent = (autoEnds && (!current.quotation || current.quotation.processingEnds !== autoEnds))
+        ? { ...current, quotation: { processingEnds: autoEnds, srPoints: Math.min(current.quotation?.srPoints ?? 0, autoEnds) } }
+        : current;
       XLSX.writeFile(
-        createQuoteWorkbook(current, latest.book?.prices ?? [], useCatalogStore.getState().snapshot),
+        createQuoteWorkbook(effectiveCurrent, latest.book?.prices ?? [], useCatalogStore.getState().snapshot),
         `${safeFilename(current.name)}_成本分析.xlsx`,
       );
     } catch (cause) {
@@ -122,8 +165,8 @@ export function QuoteContent() {
           <span className="font-medium text-slate-700">加工端数</span>
           <select
             aria-label="加工端数"
-            value={settings?.processingEnds || ''}
-            className="mt-1 w-full rounded-md border border-slate-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            value={effectiveEnds || ''}
+            className="mt-1 w-full rounded-md border border-slate-300 p-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
             onChange={(event) => {
               const ends = Number(event.target.value) as 1 | 2;
               setConfig({
@@ -134,9 +177,11 @@ export function QuoteContent() {
               });
             }}
           >
-            <option value="" disabled>
-              待确认
-            </option>
+            {!effectiveEnds && (
+              <option value="" disabled>
+                待确认（需1或2个连接器）
+              </option>
+            )}
             <option value={1}>单头 / 1 端</option>
             <option value={2}>双头 / 2 端</option>
           </select>

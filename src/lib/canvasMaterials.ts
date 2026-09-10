@@ -729,8 +729,21 @@ export function alignHarnessConfig(config: HarnessConfig, selection?: Selection)
     };
   });
 
+  let nextQuotation = config.quotation;
+  if (config.quotation && (nextConnectors.length === 1 || nextConnectors.length === 2)) {
+    const autoEnds = nextConnectors.length as 1 | 2;
+    if (config.quotation.processingEnds !== autoEnds) {
+      nextQuotation = {
+        ...config.quotation,
+        processingEnds: autoEnds,
+        srPoints: Math.min(config.quotation.srPoints, autoEnds),
+      };
+    }
+  }
+
   return syncConnectorLabels({
     ...config,
+    ...(nextQuotation !== config.quotation ? { quotation: nextQuotation } : {}),
     connectors: nextConnectors,
     models: nextModels,
     materials: nextMaterials,
