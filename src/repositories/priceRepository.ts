@@ -1,4 +1,6 @@
 import { materialPriceKey, type QuoteMaterial } from '@/lib/quoteMaterials';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 
 export interface MaterialPrice extends Omit<QuoteMaterial, 'quantity'> {
   taxIncludedPrice: string;
@@ -30,27 +32,44 @@ export interface PriceRepository {
   load(): Promise<PriceBook | null>;
   merge(prices: MaterialPrice[], sourceName: string): Promise<PriceBook>;
 }
-const STORAGE_KEY = 'harness-material-prices-v1';
-export function createLocalPriceRepository(storage: Pick<Storage, 'getItem' | 'setItem'>): PriceRepository {
+export function createDatabasePriceRepository(client: SupabaseClient | null): PriceRepository {
+  const requireClient = () => {
+    if (!client) throw new Error('数据库未配置，无法读取共享价格');
+    return client;
+  };
   const load = async (): Promise<PriceBook | null> => {
-    const raw = storage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const value = JSON.parse(raw) as PriceBook;
-    if (typeof value.importedAt !== 'string' || typeof value.sourceName !== 'string') throw new Error('本机价格库格式无效');
-    return { ...value, prices: validatePrices(value.prices) };
+    const prices: MaterialPrice[] = [];
+    let importedAt = '';
+    let sourceName = '';
+    // PostgREST caps each response; fetch every page before exporting or quoting.
+    for (let offset = 0; ; offset += 500) {
+      const { data, error } = await requireClient().from('material_prices').select('*')
+        .order('id').range(offset, offset + 499);
+      if (error) throw new Error(`读取共享价格失败：${error.message}`);
+      for (const row of data ?? []) {
+        prices.push({ kind: row.kind, resourceId: row.resource_id, name: row.name,
+          specification: row.specification, lengthMm: Number(row.length_mm), unit: row.unit,
+          taxIncludedPrice: String(row.tax_included_price) });
+        if (row.updated_at > importedAt) { importedAt = row.updated_at; sourceName = row.source_name; }
+      }
+      if ((data?.length ?? 0) < 500) break;
+    }
+    if (!prices.length) return null;
+    // The 10000-row limit applies to each import, not to the accumulated shared library.
+    for (let i = 0; i < prices.length; i += 10000) validatePrices(prices.slice(i, i + 10000));
+    return { importedAt, sourceName, prices };
   };
   return { load, async merge(prices, sourceName) {
     const incoming = validatePrices(prices);
-    const previous = await load();
-    const merged = new Map((previous?.prices || []).map((row) => [materialPriceKey(row), row]));
-    incoming.forEach((row) => merged.set(materialPriceKey(row), row));
-    const book = { importedAt: new Date().toISOString(), sourceName, prices: validatePrices([...merged.values()]) };
-    storage.setItem(STORAGE_KEY, JSON.stringify(book));
+    if (!sourceName.trim() || sourceName.length > 255) throw new Error('价格文件名无效');
+    const { error } = await requireClient().from('material_prices').upsert(incoming.map((row) => ({
+      kind: row.kind, resource_id: row.resourceId, name: row.name, specification: row.specification,
+      length_mm: row.lengthMm, unit: row.unit, tax_included_price: row.taxIncludedPrice, source_name: sourceName,
+    })), { onConflict: 'kind,resource_id,specification,length_mm,unit' });
+    if (error) throw new Error(`导入共享价格失败：${error.message}`);
+    const book = await load();
+    if (!book) throw new Error('价格已提交，但未能读取共享价格，请刷新重试');
     return book;
   } };
 }
-// The future server implementation only replaces this storage boundary.
-export const priceRepository: PriceRepository = {
-  load: () => createLocalPriceRepository(window.localStorage).load(),
-  merge: (prices, sourceName) => createLocalPriceRepository(window.localStorage).merge(prices, sourceName),
-};
+export const priceRepository = createDatabasePriceRepository(supabase);

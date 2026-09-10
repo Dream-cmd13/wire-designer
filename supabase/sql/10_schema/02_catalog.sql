@@ -100,9 +100,14 @@ create table public.catalog_items (
       (spec ? 'kind') and
       (jsonb_typeof(spec->'kind') = 'string') and
       (spec->>'kind' in ('electronic', 'jacketed')) and
-      (spec ? 'awg') and
-      (jsonb_typeof(spec->'awg') = 'number') and
-      ((spec->>'awg')::numeric > 0) and
+      (
+        ((spec ? 'awg') and jsonb_typeof(spec->'awg') = 'number'
+          and (spec->>'awg')::numeric > 0 and not (spec ? 'conductorAreaMm2'))
+        or
+        (spec->>'kind' = 'jacketed' and not (spec ? 'awg')
+          and (spec ? 'conductorAreaMm2') and jsonb_typeof(spec->'conductorAreaMm2') = 'number'
+          and (spec->>'conductorAreaMm2')::numeric > 0)
+      ) and
       (not (spec ? 'ratedVoltageV') or (jsonb_typeof(spec->'ratedVoltageV') = 'number' and (spec->>'ratedVoltageV')::numeric > 0)) and
       (not (spec ? 'temperatureRangeC') or (
         jsonb_typeof(spec->'temperatureRangeC') = 'object' and

@@ -24,53 +24,18 @@ export const WIRE_COLORS = [
 ] satisfies readonly WireColor[];
 
 export const LEAD_TIME_OPTIONS = [
-  { id: 'rush', name: '加急', days: '10个工作日', multiplier: 1.3 },
+  { id: 'rush', name: '加急', days: '10个工作日', multiplier: 1 },
   { id: 'standard', name: '标准', days: '20-30个工作日', multiplier: 1 },
-  { id: 'economy', name: '经济', days: '30-50个工作日', multiplier: 0.9 },
+  { id: 'economy', name: '经济', days: '30-50个工作日', multiplier: 1 },
 ] satisfies readonly LeadTimeOption[];
 
 export const PROTECTION_OPTIONS: readonly ProtectionOption[] = [
   { id: 'none', name: '无', price: 0, materialMultipliers: {} },
-  { id: 'acetate-cloth', name: '醋酸布', price: 2.2, materialMultipliers: {} },
-  { id: 'fleece', name: '绒布', price: 2.8, materialMultipliers: {} },
-  { id: 'heat-shrink', name: '热缩管', price: 1.67, materialMultipliers: {} },
-  { id: 'braided', name: '编织网管', price: 3.33, materialMultipliers: {} },
-  { id: 'spiral', name: '螺旋缠绕管', price: 0.8, materialMultipliers: {} },
-  { id: 'convoluted', name: '波纹管', price: 1.2, materialMultipliers: {} },
-  {
-    id: 'corrugated',
-    name: '波纹管（可选材质）',
-    price: 4,
-    materialMultipliers: { PP: 1, PA: 1.4, 'stainless-steel': 3.2 },
-  },
 ] satisfies readonly ProtectionOption[];
 
-export const PRICING_RULES = [
-  { ruleCode: 'connector', ruleKey: 'base', numericValue: 0.5 },
-  { ruleCode: 'connector', ruleKey: 'per_pin', numericValue: 0.3 },
-  { ruleCode: 'wire_per_meter', ruleKey: 'awg_22', numericValue: 2 },
-  { ruleCode: 'wire_per_meter', ruleKey: 'awg_24', numericValue: 1.5 },
-  { ruleCode: 'wire_per_meter', ruleKey: 'awg_26', numericValue: 1 },
-  { ruleCode: 'wire_per_meter', ruleKey: 'awg_28', numericValue: 0.8 },
-  { ruleCode: 'wire_per_meter', ruleKey: 'awg_30', numericValue: 0.6 },
-  { ruleCode: 'wire_type_multiplier', ruleKey: 'silicone', numericValue: 1.5 },
-  { ruleCode: 'wire_type_multiplier', ruleKey: 'ul1007', numericValue: 1 },
-  { ruleCode: 'wire_type_multiplier', ruleKey: 'ul1061', numericValue: 0.9 },
-  { ruleCode: 'wire_type_multiplier', ruleKey: 'gxl', numericValue: 1.3 },
-  { ruleCode: 'wire_type_multiplier', ruleKey: 'ptfe', numericValue: 2 },
-  { ruleCode: 'labor', ruleKey: 'per_connector', numericValue: 2 },
-  { ruleCode: 'labor', ruleKey: 'per_meter', numericValue: 1.5 },
-  { ruleCode: 'jacketed', ruleKey: 'core_factor', numericValue: 0.6 },
-] satisfies readonly PricingRule[];
+export const PRICING_RULES: readonly PricingRule[] = [];
 
-export const QUANTITY_DISCOUNT_RULES = [
-  { minimumQuantity: 1, multiplier: 1 },
-  { minimumQuantity: 5, multiplier: 0.95 },
-  { minimumQuantity: 10, multiplier: 0.9 },
-  { minimumQuantity: 20, multiplier: 0.85 },
-  { minimumQuantity: 50, multiplier: 0.8 },
-  { minimumQuantity: 100, multiplier: 0.7 },
-] satisfies readonly QuantityDiscountRule[];
+export const QUANTITY_DISCOUNT_RULES: readonly QuantityDiscountRule[] = [];
 
 export function staticCatalogOptions() {
   return {

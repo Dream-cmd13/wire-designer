@@ -44,6 +44,7 @@ function wireSpec(item: CatalogItemOf<'wire'>): CatalogWireSpec {
         jacketColor: spec.jacketColor,
         awg: spec.awg,
         coreCount: spec.coreCount,
+        ...(spec.conductorAreaMm2 === undefined ? {} : { conductorAreaMm2: spec.conductorAreaMm2 }),
         shielded: spec.shielded,
         coreColors: [...spec.coreColors],
         ...(spec.ulNumber ? { ulNumber: spec.ulNumber } : {}),

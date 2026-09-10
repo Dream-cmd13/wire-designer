@@ -9,6 +9,19 @@ import type { CanvasWireMaterial } from '@/types/harness';
 const dialogSource = readFileSync('src/components/canvas/WireMaterialDialog.tsx', 'utf8');
 
 describe('WireMaterialDialog catalog defaults', () => {
+  it('renders an area-based wire without displaying an invented AWG', () => {
+    setCatalogSnapshot({ connectors: [], wires: [], overmolds: [], wireColors: [],
+      leadTimeOptions: [], protectionOptions: [], pricingRules: [], quantityDiscountRules: [], loadedAt: 0 });
+    useCatalogStore.setState({ status: 'ready', snapshot: null });
+    const material: CanvasWireMaterial = { id: 'area', name: '平方线材', position: { x: 0, y: 0 }, width: 200, circuits: [],
+      spec: { kind: 'jacketed', conductorAreaMm2: 0.3, jacketMaterial: 'PVC', jacketColor: 'black',
+        coreCount: 4, shielded: false, odMm: 4.5, coreColors: ['棕色', '白色', '蓝色', '黑色'], lengthMm: 500,
+        endTreatment: { start: { stripped: false, termination: 'none' }, end: { stripped: false, termination: 'none' } } } };
+    const html = renderToStaticMarkup(<WireMaterialDialog material={material} onConfirm={() => undefined} onCancel={() => undefined} />);
+    expect(html).toContain('截面积 (mm²)');
+    expect(html).toContain('value="0.3"');
+    expect(html).not.toContain('undefinedAWG');
+  });
   it('applies the selected catalog spec through the pure adapter', () => {
     expect(dialogSource).toContain("import { applyCatalogWireSpec } from '@/lib/wireCatalog'");
     expect(dialogSource).toContain('applyCatalogWireSpec(current, selected.spec)');
@@ -124,4 +137,3 @@ describe('WireMaterialDialog catalog defaults', () => {
     expect(html).toContain('59.4 Ω/km');
   });
 });
-

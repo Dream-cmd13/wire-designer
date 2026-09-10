@@ -3,7 +3,7 @@ import { Calculator, Download, Upload, X, Check } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculatePrice, formatQuoteMoney, type QuoteLine } from '@/lib/pricing';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
-import { getQuoteMaterials, getPriceImportCandidates, materialPriceKey, formatMaterialSpecification } from '@/lib/quoteMaterials';
+import { getPriceImportCandidates, materialPriceKey, formatMaterialSpecification } from '@/lib/quoteMaterials';
 import { safeFilename } from '@/lib/designFile';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
 import type { MaterialPrice } from '@/repositories/priceRepository';
@@ -32,28 +32,47 @@ export function QuotePanel() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     const reload = () => { void load(); };
-    window.addEventListener('storage', reload);
-    return () => window.removeEventListener('storage', reload);
+    window.addEventListener('focus', reload);
+    return () => window.removeEventListener('focus', reload);
   }, [load]);
   const prices = book?.prices || [];
-  const materials = getQuoteMaterials(config, catalog);
   const result = calculatePrice(config, prices, catalog);
   const price = !loading && !error && result.status === 'ready' ? result.price : null;
   const settings = config.quotation;
   const busy = loading || reading;
-  const exportQuote = () => {
+  const exportPrices = async () => {
+    setMessage('');
+    await load();
+    const latest = usePriceStore.getState();
+    if (latest.error) return;
+    try {
+      const shared = latest.book?.prices ?? [];
+      const candidates = getPriceImportCandidates(useHarnessStore.getState().config, useCatalogStore.getState().snapshot);
+      const rows = shared.length ? shared.map((row) => ({ ...row, quantity: 1 }))
+        : [...new Map(candidates.map((row) => [materialPriceKey(row), row])).values()];
+      if (!rows.length) throw new Error('目录尚未加载，暂时无法生成价格模板');
+      XLSX.writeFile(createPriceTemplate(rows, shared), shared.length ? '共享材料价格.xlsx' : '材料价格模板.xlsx');
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : '导出共享价格失败'); }
+  };
+  const exportQuote = async () => {
     if (!price) return;
-    try { XLSX.writeFile(createQuoteWorkbook(config, prices, catalog), `${safeFilename(config.name)}_成本分析.xlsx`); }
+    await load();
+    const latest = usePriceStore.getState();
+    if (latest.error) return;
+    try {
+      const current = useHarnessStore.getState().config;
+      XLSX.writeFile(createQuoteWorkbook(current, latest.book?.prices ?? [], useCatalogStore.getState().snapshot), `${safeFilename(current.name)}_成本分析.xlsx`);
+    }
     catch (cause) { setMessage(cause instanceof Error ? cause.message : '导出报价失败'); }
   };
   return <div className="space-y-4 p-4 min-w-0">
     <div className="flex items-center gap-2 font-semibold text-slate-800"><Calculator className="h-5 w-5" /><h2>M8 / M12 报价</h2></div>
     <section className="space-y-2 border-b border-slate-200 pb-3">
-      <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-medium">本机材料价格</h3>
+      <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-medium">共享材料价格</h3>
         <div className="flex gap-1">
-          <button title="下载当前设计价格模板" aria-label="下载当前设计价格模板" disabled={!materials.length || busy}
-            className="p-2 hover:bg-slate-100 disabled:opacity-40" onClick={() => XLSX.writeFile(createPriceTemplate(materials, prices), '材料价格模板.xlsx')}><Download size={16} /></button>
-          <button title="导入价格 Excel" aria-label="导入价格 Excel" disabled={busy} className="p-2 hover:bg-slate-100 disabled:opacity-40" onClick={() => input.current?.click()}><Upload size={16} /></button>
+          <button title="导出共享价格（空库下载模板）" aria-label="导出共享价格（空库下载模板）" disabled={busy}
+            className="p-2 hover:bg-slate-100 disabled:opacity-40" onClick={() => void exportPrices()}><Download size={16} /></button>
+          <button title="导入共享价格 Excel" aria-label="导入共享价格 Excel" disabled={busy} className="p-2 hover:bg-slate-100 disabled:opacity-40" onClick={() => input.current?.click()}><Upload size={16} /></button>
         </div>
       </div>
       <div className="text-xs text-slate-500 break-all">{loading ? '正在读取价格…' : book ? `${prices.length} 条价格 · ${book.sourceName} · ${new Date(book.importedAt).toLocaleString()}` : '尚未导入价格'}</div>
@@ -65,16 +84,22 @@ export function QuotePanel() {
           const data = await file.arrayBuffer();
           const currentConfig = useHarnessStore.getState().config;
           const currentCatalog = useCatalogStore.getState().snapshot;
-          setPending({ name: file.name, prices: parsePriceWorkbook(data, getPriceImportCandidates(currentConfig, currentCatalog)) });
+          await load();
+          const latest = usePriceStore.getState();
+          if (latest.error) throw new Error(latest.error);
+          const candidates = getPriceImportCandidates(currentConfig, currentCatalog);
+          // Include stored specifications so an exported shared price file can be reimported.
+          const stored = (latest.book?.prices ?? []).map((row) => ({ ...row, quantity: 1 }));
+          setPending({ name: file.name, prices: parsePriceWorkbook(data, [...candidates, ...stored]) });
         } catch (cause) { setMessage(cause instanceof Error ? cause.message : '读取价格文件失败'); }
         finally { setReading(false); }
       }} />
-      {reading && <p role="status" className="text-xs">正在解析价格…</p>}
+      {reading && <p role="status" className="text-xs">正在读取价格文件…</p>}
       {pending && <div className="space-y-2 border-t pt-2 text-xs">
         <p className="break-all">{pending.name}：{pending.prices.length} 条，其中 {pending.prices.filter((row) => prices.some((existing) => materialPriceKey(existing) === materialPriceKey(row))).length} 条更新</p>
         <div className="max-h-40 overflow-auto space-y-1">{pending.prices.map((row) => <div className="break-all" key={materialPriceKey(row)}>{row.name} {formatMaterialSpecification(row)}：{row.taxIncludedPrice} {row.unit}</div>)}</div>
         <div className="flex gap-2"><button disabled={busy} className="flex items-center gap-1 text-blue-700 disabled:opacity-40" onClick={async () => {
-          try { await merge(pending.prices, pending.name); setPending(null); setMessage('价格已保存至本机'); }
+          try { await merge(pending.prices, pending.name); setPending(null); setMessage('价格已保存至数据库，所有登录用户共享'); }
           catch { /* The store exposes the persistence error. */ }
         }}><Check size={14} />确认合并</button><button disabled={busy} title="取消导入" aria-label="取消导入" onClick={() => setPending(null)}><X size={14} /></button></div>
       </div>}

@@ -12,14 +12,14 @@ export const usePriceStore = create<PriceState>((set) => ({
   async load() {
     set({ loading: true });
     try { set({ book: await priceRepository.load(), error: null }); }
-    catch (error) { set({ book: null, error: error instanceof Error ? error.message : '读取本机价格失败' }); }
+    catch (error) { set({ book: null, error: error instanceof Error ? error.message : '读取共享价格失败' }); }
     finally { set({ loading: false }); }
   },
   async merge(prices, source) {
     set({ loading: true });
     try { set({ book: await priceRepository.merge(prices, source), error: null }); }
     catch (error) {
-      set({ error: error instanceof Error ? error.message : '保存本机价格失败' });
+      set({ book: null, error: error instanceof Error ? error.message : '保存共享价格失败' });
       throw error;
     } finally { set({ loading: false }); }
   },

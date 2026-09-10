@@ -9,17 +9,16 @@ import {
 } from '@/data/catalogOptions';
 
 describe('static catalog options', () => {
-  it('preserves the database-backed business baseline', () => {
+  it('keeps display options without demo prices or discounts', () => {
     expect(WIRE_COLORS).toHaveLength(14);
     expect(LEAD_TIME_OPTIONS).toEqual([
-      { id: 'rush', name: '加急', days: '10个工作日', multiplier: 1.3 },
+      { id: 'rush', name: '加急', days: '10个工作日', multiplier: 1 },
       { id: 'standard', name: '标准', days: '20-30个工作日', multiplier: 1 },
-      { id: 'economy', name: '经济', days: '30-50个工作日', multiplier: 0.9 },
+      { id: 'economy', name: '经济', days: '30-50个工作日', multiplier: 1 },
     ]);
-    expect(PROTECTION_OPTIONS).toHaveLength(8);
-    expect(PRICING_RULES).toHaveLength(15);
-    expect(QUANTITY_DISCOUNT_RULES.map((rule) => rule.minimumQuantity))
-      .toEqual([1, 5, 10, 20, 50, 100]);
+    expect(PROTECTION_OPTIONS).toEqual([{ id: 'none', name: '无', price: 0, materialMultipliers: {} }]);
+    expect(PRICING_RULES).toEqual([]);
+    expect(QUANTITY_DISCOUNT_RULES).toEqual([]);
   });
 
   it('returns fresh arrays and nested option data for each snapshot', () => {
@@ -27,8 +26,8 @@ describe('static catalog options', () => {
     const second = staticCatalogOptions();
 
     expect(first.wireColors).not.toBe(second.wireColors);
-    expect(first.protectionOptions[7]).not.toBe(second.protectionOptions[7]);
-    expect(first.protectionOptions[7].materialMultipliers)
-      .not.toBe(second.protectionOptions[7].materialMultipliers);
+    expect(first.protectionOptions[0]).not.toBe(second.protectionOptions[0]);
+    expect(first.protectionOptions[0].materialMultipliers)
+      .not.toBe(second.protectionOptions[0].materialMultipliers);
   });
 });

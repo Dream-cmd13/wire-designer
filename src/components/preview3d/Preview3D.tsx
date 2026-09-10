@@ -1,4 +1,5 @@
 import { useRef, useMemo } from 'react';
+import { geometryAwg } from '@/lib/wireGauge';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { getCatalogWireColors } from '@/lib/catalogRuntime';
@@ -66,7 +67,7 @@ export function Preview3D() {
     const paths: Array<{ key: string; path: string; color: string; gauge: number }> = [];
 
     for (const material of materials) {
-      const awg = material.spec.awg;
+      const awg = geometryAwg(material.spec);
       for (const circuit of material.circuits) {
         const startId = circuit.start?.connectorId;
         const endId = circuit.end?.connectorId;

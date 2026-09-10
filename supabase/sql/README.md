@@ -10,10 +10,11 @@
 2. `00_reset/01_drop_all_tables.sql`：删除业务测试数据和旧数据库对象。
 3. `10_schema/01_core.sql`：创建 `projects`、`drawings`。
 4. `10_schema/02_catalog.sql`：创建 `catalog_items`。
-5. `20_storage/01_buckets.sql`：确保私有 `catalog-assets` 桶存在，并安装只读状态 RPC。
-6. `30_security/01_rls.sql`：安装三张表与目录图片读取策略。
-7. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
-8. `40_seed/02_real_harness_catalog.sql`：写入 `线束设计器.xlsx` 中的 12 个真实连接器和 4 个真实线材。
+5. `10_schema/03_material_prices.sql`：创建共享材料价格表、校验触发器和登录用户读写权限。
+6. `20_storage/01_buckets.sql`：确保私有 `catalog-assets` 桶存在，并安装只读状态 RPC。
+7. `30_security/01_rls.sql`：安装项目、图纸、目录与目录图片读取策略。
+8. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
+9. `40_seed/02_real_harness_catalog.sql`：写入 12 个真实连接器和 10 个真实线材。
 
 完成 SQL 后，可在 CI、部署服务器或管理员工作站运行：
 

@@ -47,7 +47,8 @@ export interface CatalogItemSpecByKind {
       } & CatalogWireEngineeringSpec)
     | ({
         kind: 'jacketed';
-        awg: number;
+        awg?: number;
+        conductorAreaMm2?: number;
         ulNumber?: 'UL2464' | 'UL20276';
         jacketMaterial: 'PVC' | 'PUR';
         jacketColor: 'black' | 'green';
@@ -243,6 +244,7 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
       const parsed = parseCatalogWireSpec({
         wire_kind: spec.kind,
         awg: spec.awg,
+        conductor_area_mm2: spec.kind === 'jacketed' ? spec.conductorAreaMm2 : undefined,
         ul_number: spec.ulNumber ?? null,
         conductor_color: spec.kind === 'electronic' ? spec.conductorColor : null,
         jacket_material: spec.kind === 'jacketed' ? spec.jacketMaterial : null,
@@ -284,6 +286,7 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
             kind: parsed.kind,
             awg: parsed.awg,
             ...(parsed.ulNumber ? { ulNumber: parsed.ulNumber } : {}),
+            ...(parsed.conductorAreaMm2 === undefined ? {} : { conductorAreaMm2: parsed.conductorAreaMm2 }),
             jacketMaterial: parsed.jacketMaterial,
             jacketColor: parsed.jacketColor,
             coreCount: parsed.coreCount,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { geometryAwg, isValidWireGauge } from '@/lib/wireGauge';
 import { Cable, Check, X, Search } from 'lucide-react';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { getCatalogSnapshot, getCatalogWireColors, getCatalogWires } from '@/lib/catalogRuntime';
@@ -61,7 +62,7 @@ function validateEnd(end: WireEndProcessing, label: string): string | null {
 }
 
 function validateSpec(spec: CanvasWireSpec): string | null {
-  if (!Number.isFinite(spec.awg) || spec.awg <= 0) return 'AWG 必须大于 0';
+  if (!isValidWireGauge(spec)) return '线号或截面积必须大于 0，且只能填写一种';
   if (!Number.isFinite(spec.lengthMm) || spec.lengthMm <= 0) return '长度必须大于 0';
   if (spec.kind === 'jacketed' && spec.coreColors.length !== spec.coreCount) {
     return '芯线颜色数量必须和芯数一致';
@@ -153,6 +154,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
         const nextJacketMaterial = parsed.jacketMaterial ?? current.jacketMaterial;
         const nextJacketColor = parsed.jacketColor ?? current.jacketColor;
         const nextAwg = parsed.awg ?? current.awg;
+        const nextArea = parsed.awg === undefined ? current.conductorAreaMm2 : undefined;
         const nextCoreCount = parsed.coreCount ?? current.coreCount;
         const nextShielded = parsed.shielded ?? current.shielded;
         const nextLengthMm = parsed.lengthMm ?? current.lengthMm;
@@ -163,12 +165,13 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
           jacketMaterial: nextJacketMaterial,
           jacketColor: nextJacketColor,
           awg: nextAwg,
+          conductorAreaMm2: nextArea,
           coreCount: nextCoreCount,
           shielded: nextShielded,
           lengthMm: nextLengthMm,
           ulNumber: nextUlNumber,
           coreColors: parsed.coreCount !== undefined ? getCoreColors(nextCoreCount) : current.coreColors,
-          odMm: calculateCableOd(nextAwg, nextCoreCount, nextShielded),
+          odMm: calculateCableOd(geometryAwg({ awg: nextAwg, conductorAreaMm2: nextArea }), nextCoreCount, nextShielded),
         };
       });
     }
@@ -439,14 +442,26 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
               <Field label="长度 (mm)">
                 <NumberInput value={spec.lengthMm} onChange={(lengthMm) => setSpec({ ...spec, lengthMm })} />
               </Field>
-              <Field label="线号 (AWG)">
+              <Field label="规格单位">
+                <select className={fieldClass} value={spec.conductorAreaMm2 === undefined ? 'awg' : 'area'}
+                  onChange={(event) => updateSpec(event.target.value === 'area'
+                    ? { ...spec, awg: undefined, conductorAreaMm2: 0.3 }
+                    : { ...spec, awg: 22, conductorAreaMm2: undefined })}>
+                  <option value="awg">AWG</option>
+                  <option value="area">mm²</option>
+                </select>
+              </Field>
+              <Field label={spec.conductorAreaMm2 === undefined ? '线号 (AWG)' : '截面积 (mm²)'}>
                 <NumberInput
-                  value={spec.awg}
+                  value={spec.conductorAreaMm2 ?? spec.awg ?? 22}
                   onChange={(awg) => {
+                    const gauge = spec.conductorAreaMm2 === undefined
+                      ? { awg, conductorAreaMm2: undefined }
+                      : { awg: undefined, conductorAreaMm2: awg };
                     updateSpec({
                       ...spec,
-                      awg,
-                      odMm: calculateCableOd(awg, spec.coreCount, spec.shielded),
+                      ...gauge,
+                      odMm: calculateCableOd(geometryAwg(gauge), spec.coreCount, spec.shielded),
                     });
                   }}
                 />
@@ -460,7 +475,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                       ...spec,
                       coreCount,
                       coreColors: getCoreColors(coreCount),
-                      odMm: calculateCableOd(spec.awg, coreCount, spec.shielded),
+                      odMm: calculateCableOd(geometryAwg(spec), coreCount, spec.shielded),
                     });
                   }}
                   className={fieldClass}
@@ -480,7 +495,7 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                       updateSpec({
                         ...spec,
                         shielded,
-                        odMm: calculateCableOd(spec.awg, spec.coreCount, shielded),
+                        odMm: calculateCableOd(geometryAwg(spec), spec.coreCount, shielded),
                       });
                     }}
                   />

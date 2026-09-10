@@ -17,6 +17,11 @@ export function materialPriceKey(row: Omit<QuoteMaterial, 'name' | 'quantity'>):
   return JSON.stringify([row.kind, row.resourceId, row.specification, row.lengthMm, row.unit]);
 }
 
+/** Price-tier identity, intentionally excluding length so the quote can choose the next tier. */
+export function materialPriceTierKey(row: Omit<QuoteMaterial, 'name' | 'quantity'>): string {
+  return JSON.stringify([row.kind, row.resourceId, row.specification, row.unit]);
+}
+
 /** Business-facing text is independent of the internal exact-match key. */
 export function formatMaterialSpecification(row: Omit<QuoteMaterial, 'quantity'>, includeLength = true): string {
   const fields: unknown[] = JSON.parse(row.specification);
@@ -27,8 +32,8 @@ export function formatMaterialSpecification(row: Omit<QuoteMaterial, 'quantity'>
   } else if (row.kind === 'outer-mold') {
     tokens = [fields[0], fields[1], fields[2] === 'straight' ? '直头' : '弯头'];
   } else if (fields[0] === 'jacketed') {
-    const [, awg, cores, shielded, jacket, color, od, ul, colors] = fields;
-    tokens = [ul, jacket, `${cores}芯`, `${awg}AWG`, shielded ? '屏蔽' : '非屏蔽',
+    const [, awg, cores, shielded, jacket, color, od, ul, colors, area] = fields;
+    tokens = [ul, jacket, `${cores}芯`, area == null ? `${awg}AWG` : `${area}mm²`, shielded ? '屏蔽' : '非屏蔽',
       color === 'black' ? '黑色' : '绿色', `OD${od}mm`,
       ...(colors as string[]).map((value) => resolveColor(value).name)];
   } else {
@@ -65,7 +70,7 @@ export function getQuoteMaterials(config: HarnessConfig, catalog: CatalogSnapsho
   for (const material of config.materials) {
     const s = material.spec;
     const specification = s.kind === 'jacketed'
-      ? [s.kind, s.awg, s.coreCount, s.shielded, s.jacketMaterial, s.jacketColor, s.odMm, s.ulNumber || '', s.coreColors]
+      ? [s.kind, s.awg ?? null, s.coreCount, s.shielded, s.jacketMaterial, s.jacketColor, s.odMm, s.ulNumber || '', s.coreColors, ...(s.conductorAreaMm2 === undefined ? [] : [s.conductorAreaMm2])]
       : [s.kind, s.awg, s.color, s.ulNumber];
     rows.push({ kind: 'wire', resourceId: material.resourceItemId || '', name: material.name,
       specification: JSON.stringify(specification), lengthMm: s.lengthMm, unit: '元/条', quantity: 1 });

@@ -4,7 +4,7 @@ import { calculatePrice, formatQuoteMoney } from '@/lib/pricing';
 import { formatMaterialSpecification, getPriceImportCandidates, getQuoteMaterials } from '@/lib/quoteMaterials';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
-import { createLocalPriceRepository, validatePrices, type MaterialPrice } from '@/repositories/priceRepository';
+import { validatePrices, type MaterialPrice } from '@/repositories/priceRepository';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
 import { generateBOM } from '@/lib/bom';
@@ -87,6 +87,21 @@ describe('M8/M12 quotation', () => {
     const { config, prices } = fixture(); prices[0].taxIncludedPrice = 'not-a-price';
     expect(calculatePrice(config, prices, catalog).status).toBe('blocked');
   });
+  it('uses the next length tier and treats an exact boundary as the current tier', () => {
+    const { config, prices } = fixture();
+    const wire = prices.find((row) => row.kind === 'wire')!;
+    const tier = (lengthMm: number, taxIncludedPrice: string) => ({ ...wire, lengthMm, taxIncludedPrice });
+    const tierPrices = [...prices.filter((row) => row.kind !== 'wire'), tier(500, '3'), tier(1000, '4'), tier(2000, '8'), tier(5000, '20')];
+    for (const [length, expected] of [[1, '3'], [499, '3'], [500, '3'], [501, '4'], [600, '4'],
+      [999, '4'], [1000, '4'], [1001, '8'], [1500, '8'], [2000, '8'], [2001, '20'], [5000, '20']] as const) {
+      config.materials[0].spec.lengthMm = length;
+      const quote = ready(config, tierPrices);
+      expect(quote.materials.find((row) => row.name === '线材')?.unitPrice).toBe(expected);
+      expect(quote.labor[0].points).toBe(Math.ceil(length / 500));
+    }
+    config.materials[0].spec.lengthMm = 600;
+    expect(calculatePrice(config, [...tierPrices, tier(1000, '99')], catalog).status).toBe('blocked');
+  });
   it('uses decimal half-up formatting', () => { expect(formatQuoteMoney('1.005')).toBe('1.01'); });
   it('preserves quotation settings on project save/read and rejects invalid settings', () => {
     const { config } = fixture(); const parsed = parseHarnessConfig(JSON.parse(JSON.stringify(config)));
@@ -121,22 +136,6 @@ describe('price workbook and repository', () => {
   it('accepts explicit zero and six-decimal purchase prices', () => {
     for (const price of ['0', '0.123456']) expect(validatePrices([{ ...fixture().prices[0], taxIncludedPrice: price }])[0].taxIncludedPrice).toBe(price);
   });
-  it('merges by exact key, persists, and leaves prior data intact on invalid import', async () => {
-    let saved: string | null = null;
-    const storage = { getItem: () => saved, setItem: (_key: string, value: string) => { saved = value; } };
-    const repo = createLocalPriceRepository(storage); const { prices } = fixture();
-    await repo.merge(prices, 'first.xlsx');
-    await repo.merge([{ ...prices[0], taxIncludedPrice: '3' }], 'second.xlsx');
-    const old = saved;
-    await expect(repo.merge([{ ...prices[0], taxIncludedPrice: '-1' }], 'bad.xlsx')).rejects.toThrow();
-    expect(saved).toBe(old);
-    expect((await createLocalPriceRepository(storage).load())?.prices).toHaveLength(3);
-    expect((await repo.load())?.prices[0].taxIncludedPrice).toBe('3');
-  });
-  it('reports corrupt storage and failed writes without claiming success', async () => {
-    await expect(createLocalPriceRepository({ getItem: () => 'bad', setItem: () => {} }).load()).rejects.toThrow();
-    await expect(createLocalPriceRepository({ getItem: () => null, setItem: () => { throw new Error('quota'); } }).merge(fixture().prices, 'x')).rejects.toThrow('quota');
-  });
   it('exports only five business columns, with readable length in specification and numeric prices', () => {
     const { config, prices } = fixture();
     const sheet = createPriceTemplate(getQuoteMaterials(config, catalog), prices).Sheets['材料价格'];
@@ -160,6 +159,18 @@ describe('price workbook and repository', () => {
     book.Sheets['材料价格'].C3.v = formatMaterialSpecification(materials[1]).replace('0.6m', '2米');
     const result = parsePriceWorkbook(bytes(book), materials);
     expect(result[1]).toMatchObject({ lengthMm: 2000, taxIncludedPrice: '4' });
+  });
+  it('round-trips every shared price including lengths not in the current design', () => {
+    const { config, prices } = fixture();
+    const wire = prices.find((row) => row.kind === 'wire')!;
+    const shared = [...prices, { ...wire, lengthMm: 1000, taxIncludedPrice: '6.123456' },
+      { ...wire, lengthMm: 5000, taxIncludedPrice: '25' }];
+    const rows = shared.map((row) => ({ ...row, quantity: 1 }));
+    const exported = createPriceTemplate(rows, shared);
+    const imported = parsePriceWorkbook(bytes(exported), [...getPriceImportCandidates(config, catalog), ...rows]);
+    expect(imported.map(({ lengthMm, taxIncludedPrice }) => ({ lengthMm, taxIncludedPrice })))
+      .toEqual(shared.map(({ lengthMm, taxIncludedPrice }) => ({ lengthMm, taxIncludedPrice })));
+    expect(imported).toHaveLength(5);
   });
   it('rejects unknown names, missing lengths, ambiguous materials and duplicate keys', () => {
     const { config, prices } = fixture(); const materials = getQuoteMaterials(config, catalog);

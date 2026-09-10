@@ -1,124 +1,38 @@
--- Real connector and wire catalog transcribed from 线束设计器.xlsx.
--- The source workbook is authoritative: conflicting source notations are kept
--- in explicit description fields instead of being silently normalized away.
+-- Real materials from 成本分析-M12单线. Preserve existing image bindings on reseed.
 
 begin;
 
 insert into public.catalog_items
-  (id, kind, code, name, model, manufacturer, resource_group, description,
-   image_path, image_variants, sort_order, spec)
+  (id, kind, code, name, model, manufacturer, resource_group, description, image_path, image_variants, sort_order, spec)
 values
-  (
-    '40000000-0000-4000-8000-000000000131', 'connector', 'm12a04-07-093',
-    'M12 A编码 4芯公头 非屏蔽', 'M12A04-07-093', '万连', '圆形连接器',
-    'M12成型式防水连接器 4芯 A编码 焊线式公头 非屏蔽款+11.8L双网纹螺丝',
-    'catalog/connector/40000000-0000-4000-8000-000000000131/connector-before.png',
-    '{"before":"catalog/connector/40000000-0000-4000-8000-000000000131/connector-before.png","after":"catalog/connector/40000000-0000-4000-8000-000000000131/connector-after.png","pinMap":"catalog/connector/40000000-0000-4000-8000-000000000131/connector-pin-map.png"}'::jsonb,
-    400,
-    '{"connectorType":"male","series":"M12 A-Coded","pinCount":4,"rowCount":1,"pinLabels":["1","2","3","4"],"housingMaterial":"PA66+GF","contactMaterial":"黄铜镀金","nutMaterial":"黄铜镀镍","shielded":false,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000102', 'connector', 'm12a05-07-093',
-    'M12 A编码 5芯公头 非屏蔽', 'M12A05-07-093', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 410,
-    '{"connectorType":"male","series":"M12 A-Coded","pinCount":5,"rowCount":1,"pinLabels":["1","2","3","4","5"],"shielded":false,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000103', 'connector', 'm12a08-07-093',
-    'M12 A编码 8芯公头 非屏蔽', 'M12A08-07-093', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 420,
-    '{"connectorType":"male","series":"M12 A-Coded","pinCount":8,"rowCount":1,"pinLabels":["1","2","3","4","5","6","7","8"],"shielded":false,"ratedVoltageV":30,"ratedCurrentA":2,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000104', 'connector', 'm12a04-08-085',
-    'M12 A编码 4芯母头 非屏蔽', 'M12A04-08-085', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 430,
-    '{"connectorType":"female","series":"M12 A-Coded","pinCount":4,"rowCount":1,"pinLabels":["1","2","3","4"],"shielded":false,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000105', 'connector', 'm12a05-08-085',
-    'M12 A编码 5芯母头 非屏蔽', 'M12A05-08-085', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 440,
-    '{"connectorType":"female","series":"M12 A-Coded","pinCount":5,"rowCount":1,"pinLabels":["1","2","3","4","5"],"shielded":false,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000106', 'connector', 'm12a08-08-085',
-    'M12 A编码 8芯母头 非屏蔽', 'M12A08-08-085', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 450,
-    '{"connectorType":"female","series":"M12 A-Coded","pinCount":8,"rowCount":1,"pinLabels":["1","2","3","4","5","6","7","8"],"shielded":false,"ratedVoltageV":30,"ratedCurrentA":2,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000107', 'connector', 'm12a04-07-068',
-    'M12 A编码 4芯公头 屏蔽', 'M12A04-07-068', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 460,
-    '{"connectorType":"male","series":"M12 A-Coded","pinCount":4,"rowCount":1,"pinLabels":["1","2","3","4"],"shielded":true,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000108', 'connector', 'm12a05-07-068',
-    'M12 A编码 5芯公头 屏蔽', 'M12A05-07-068', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 470,
-    '{"connectorType":"male","series":"M12 A-Coded","pinCount":5,"rowCount":1,"pinLabels":["1","2","3","4","5"],"shielded":true,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000109', 'connector', 'm12a08-07-068',
-    'M12 A编码 8芯公头 屏蔽', 'M12A08-07-068', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 480,
-    '{"connectorType":"male","series":"M12 A-Coded","pinCount":8,"rowCount":1,"pinLabels":["1","2","3","4","5","6","7","8"],"shielded":true,"ratedVoltageV":30,"ratedCurrentA":2,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000110', 'connector', 'm12a04-08-067',
-    'M12 A编码 4芯母头 屏蔽', 'M12A04-08-067', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 490,
-    '{"connectorType":"female","series":"M12 A-Coded","pinCount":4,"rowCount":1,"pinLabels":["1","2","3","4"],"shielded":true,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000111', 'connector', 'm12a05-08-067',
-    'M12 A编码 5芯母头 屏蔽', 'M12A05-08-067', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 500,
-    '{"connectorType":"female","series":"M12 A-Coded","pinCount":5,"rowCount":1,"pinLabels":["1","2","3","4","5"],"shielded":true,"ratedVoltageV":60,"ratedCurrentA":4,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000112', 'connector', 'm12a08-08-067',
-    'M12 A编码 8芯母头 屏蔽', 'M12A08-08-067', '万连', '圆形连接器', '',
-    null, '{}'::jsonb, 510,
-    '{"connectorType":"female","series":"M12 A-Coded","pinCount":8,"rowCount":1,"pinLabels":["1","2","3","4","5","6","7","8"],"shielded":true,"ratedVoltageV":30,"ratedCurrentA":2,"temperatureRangeC":{"min":-40,"max":105},"ingressProtection":"IP67","flammabilityRating":"UL94V-0","matingCyclesMin":500}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000201', 'wire', 'wl-htx-pvc-033',
-    'WL-HTX-PVC-033 UL2464 4芯屏蔽线', 'WL-HTX-PVC-033', '', '护套线',
-    'UL2464 17/0.16TC*PVC*1.3*4C+AL+60%编织B16/5/0.10TC PVC 棕白蓝黑 OD5.2',
-    'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 400,
-    '{"kind":"jacketed","ulNumber":"UL2464","awg":22,"coreCount":4,"shielded":true,"coreColors":["棕色","白色","蓝色","黑色"],"coreColorDescription":"棕白蓝黑","jacketMaterial":"PVC","jacketColor":"black","ratedVoltageV":300,"temperatureRangeC":{"max":80},"flameTest":"VW-1","rohsCompliant":true,"conductorMaterial":"镀锡铜丝","conductorStructure":"17/0.16TC","insulationMaterial":"PVC","insulationDiameterMm":1.3,"insulationDiameterToleranceMm":0.05,"braidStructure":"16*5/0.10TC","braidStructureDescription":"B16/5/0.10TC","shieldCoverageRatio":0.6,"shieldCoverageDescription":"60%","jacketHardnessP":60,"outerDiameterMm":5.2,"outerDiameterToleranceMm":0.2,"tensileStrengthPsi":1500,"elongationPercent":100,"conductorResistanceOhmPerKmAt20C":59.4,"insulationResistanceMOhmKm":10}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000202', 'wire', 'wl-htx-pvc-034',
-    'WL-HTX-PVC-034 UL2464 5芯屏蔽线', 'WL-HTX-PVC-034', '', '护套线',
-    'UL2464 17/0.16TC*PVC*1.3*5C+AL+65%编织B16/6/0.10TC PVC 棕白蓝黑灰 OD5.5',
-    'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 410,
-    '{"kind":"jacketed","ulNumber":"UL2464","awg":22,"coreCount":5,"shielded":true,"coreColors":["棕色","白色","蓝色","黑色","灰色"],"coreColorDescription":"棕白蓝黑灰","jacketMaterial":"PVC","jacketColor":"black","ratedVoltageV":300,"temperatureRangeC":{"max":80},"flameTest":"VW-1","rohsCompliant":true,"conductorMaterial":"镀锡铜丝","conductorStructure":"17/0.16TC","insulationMaterial":"PVC","insulationDiameterMm":1.3,"insulationDiameterToleranceMm":0.05,"braidStructure":"16*5/0.10TC","braidStructureDescription":"B16/6/0.10TC","shieldCoverageRatio":0.6,"shieldCoverageDescription":"65%","jacketHardnessP":60,"outerDiameterMm":5.5,"outerDiameterToleranceMm":0.2,"tensileStrengthPsi":1500,"elongationPercent":100,"conductorResistanceOhmPerKmAt20C":59.4,"insulationResistanceMOhmKm":10}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000203', 'wire', 'wl-htx-pvc-036',
-    'WL-HTX-PVC-036 UL2464 5芯非屏蔽线', 'WL-HTX-PVC-036', '', '护套线',
-    'UL2464 17/0.16TC*PVC*1.3*5C PVC 棕白蓝黑灰 OD5.1',
-    'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 420,
-    '{"kind":"jacketed","ulNumber":"UL2464","awg":22,"coreCount":5,"shielded":false,"coreColors":["棕色","白色","蓝色","黑色","灰色"],"coreColorDescription":"棕白蓝黑灰","jacketMaterial":"PVC","jacketColor":"black","ratedVoltageV":300,"temperatureRangeC":{"max":80},"flameTest":"VW-1","rohsCompliant":true,"conductorMaterial":"镀锡铜丝","conductorStructure":"17/0.16TC","insulationMaterial":"PVC","insulationDiameterMm":1.3,"insulationDiameterToleranceMm":0.05,"jacketHardnessP":60,"outerDiameterMm":5.1,"outerDiameterToleranceMm":0.15,"tensileStrengthPsi":1500,"elongationPercent":100,"conductorResistanceOhmPerKmAt20C":59.4,"insulationResistanceMOhmKm":10}'::jsonb
-  ),
-  (
-    '50000000-0000-4000-8000-000000000204', 'wire', 'wl-htx-pvc-037',
-    'WL-HTX-PVC-037 UL2464 4芯非屏蔽线', 'WL-HTX-PVC-037', '', '护套线',
-    'UL2464 17/0.16TC*PVC*1.3*4C PVC 棕白蓝黑 OD5.0',
-    'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 430,
-    '{"kind":"jacketed","ulNumber":"UL2464","awg":22,"coreCount":4,"shielded":false,"coreColors":["棕色","白色","蓝色","黑色"],"coreColorDescription":"棕白蓝黑","jacketMaterial":"PVC","jacketColor":"black","ratedVoltageV":300,"temperatureRangeC":{"max":80},"flameTest":"VW-1","rohsCompliant":true,"conductorMaterial":"镀锡铜丝","conductorStructure":"17/0.16TC","insulationMaterial":"PVC","insulationDiameterMm":1.3,"insulationDiameterToleranceMm":0.05,"jacketHardnessP":60,"outerDiameterMm":5.0,"outerDiameterToleranceMm":0.15,"tensileStrengthPsi":1500,"elongationPercent":100,"conductorResistanceOhmPerKmAt20C":59.4,"insulationResistanceMOhmKm":10}'::jsonb
-  )
+  ('50000000-0000-4000-8000-000000000108', 'connector', 'm12a05-07-068', 'M12 A编码 5芯公头 屏蔽', 'M12A05-07-068', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-07-068/connector-after.png","before":"catalog/connector/m12-07-068/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-05-Male.png"}'::jsonb, 470, '{"connectorType":"male","series":"M12 A-Coded","pinCount":5,"rowCount":1,"shielded":true,"pinLabels":["1","2","3","4","5"],"ratedCurrentA":4,"ratedVoltageV":60,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000107', 'connector', 'm12a04-07-068', 'M12 A编码 4芯公头 屏蔽', 'M12A04-07-068', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-07-068/connector-after.png","before":"catalog/connector/m12-07-068/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-04-Male.png"}'::jsonb, 460, '{"connectorType":"male","series":"M12 A-Coded","pinCount":4,"rowCount":1,"shielded":true,"pinLabels":["1","2","3","4"],"ratedCurrentA":4,"ratedVoltageV":60,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000204', 'wire', 'wl-htx-pvc-037', 'WL-HTX-PVC-037 UL2464 4芯非屏蔽线', 'WL-HTX-PVC-037', '', '护套线', 'UL2464 17/0.16TC*PVC*1.3*4C PVC 棕白蓝黑 OD5.0', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 430, '{"kind":"jacketed","awg":22,"shielded":false,"ulNumber":"UL2464","coreCount":4,"flameTest":"VW-1","coreColors":["棕色","白色","蓝色","黑色"],"jacketColor":"black","ratedVoltageV":300,"rohsCompliant":true,"jacketMaterial":"PVC","jacketHardnessP":60,"outerDiameterMm":5,"conductorMaterial":"镀锡铜丝","elongationPercent":100,"temperatureRangeC":{"max":80},"conductorStructure":"17/0.16TC","insulationMaterial":"PVC","tensileStrengthPsi":1500,"coreColorDescription":"棕白蓝黑","insulationDiameterMm":1.3,"outerDiameterToleranceMm":0.15,"insulationResistanceMOhmKm":10,"insulationDiameterToleranceMm":0.05,"conductorResistanceOhmPerKmAt20C":59.4}'::jsonb),
+  ('40000000-0000-4000-8000-000000000131', 'connector', 'm12a04-07-093', 'M12 A编码 4芯公头 非屏蔽', 'M12A04-07-093', '昌骏', '圆形连接器', 'M12成型式防水连接器 4芯 A编码 焊线式公头 非屏蔽款+11.8L双网纹螺丝', null, '{"after":"catalog/connector/m12-07-093/connector-after.png","before":"catalog/connector/m12-07-093/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-04-Male.png"}'::jsonb, 400, '{"connectorType":"male","series":"M12 A-Coded","pinCount":4,"rowCount":1,"shielded":false,"pinLabels":["1","2","3","4"],"nutMaterial":"黄铜镀镍","ratedCurrentA":4,"ratedVoltageV":60,"contactMaterial":"黄铜镀金","housingMaterial":"PA66+GF","matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000110', 'connector', 'm12a04-08-067', 'M12 A编码 4芯母头 屏蔽', 'M12A04-08-067', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-08-067/connector-after.png","before":"catalog/connector/m12-08-067/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-04-Female.png"}'::jsonb, 490, '{"connectorType":"female","series":"M12 A-Coded","pinCount":4,"rowCount":1,"shielded":true,"pinLabels":["1","2","3","4"],"ratedCurrentA":4,"ratedVoltageV":60,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000102', 'connector', 'm12a05-07-093', 'M12 A编码 5芯公头 非屏蔽', 'M12A05-07-093', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-07-093/connector-after.png","before":"catalog/connector/m12-07-093/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-05-Male.png"}'::jsonb, 410, '{"connectorType":"male","series":"M12 A-Coded","pinCount":5,"rowCount":1,"shielded":false,"pinLabels":["1","2","3","4","5"],"ratedCurrentA":4,"ratedVoltageV":60,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000103', 'connector', 'm12a08-07-093', 'M12 A编码 8芯公头 非屏蔽', 'M12A08-07-093', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-07-093/connector-after.png","before":"catalog/connector/m12-07-093/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-08-Male.png"}'::jsonb, 420, '{"connectorType":"male","series":"M12 A-Coded","pinCount":8,"rowCount":1,"shielded":false,"pinLabels":["1","2","3","4","5","6","7","8"],"ratedCurrentA":2,"ratedVoltageV":30,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000109', 'connector', 'm12a08-07-068', 'M12 A编码 8芯公头 屏蔽', 'M12A08-07-068', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-07-068/connector-after.png","before":"catalog/connector/m12-07-068/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-08-Male.png"}'::jsonb, 480, '{"connectorType":"male","series":"M12 A-Coded","pinCount":8,"rowCount":1,"shielded":true,"pinLabels":["1","2","3","4","5","6","7","8"],"ratedCurrentA":2,"ratedVoltageV":30,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000104', 'connector', 'm12a04-08-085', 'M12 A编码 4芯母头 非屏蔽', 'M12A04-08-085', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-08-085/connector-after.png","before":"catalog/connector/m12-08-085/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-04-Female.png"}'::jsonb, 430, '{"connectorType":"female","series":"M12 A-Coded","pinCount":4,"rowCount":1,"shielded":false,"pinLabels":["1","2","3","4"],"ratedCurrentA":4,"ratedVoltageV":60,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000105', 'connector', 'm12a05-08-085', 'M12 A编码 5芯母头 非屏蔽', 'M12A05-08-085', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-08-085/connector-after.png","before":"catalog/connector/m12-08-085/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-05-Female.png"}'::jsonb, 440, '{"connectorType":"female","series":"M12 A-Coded","pinCount":5,"rowCount":1,"shielded":false,"pinLabels":["1","2","3","4","5"],"ratedCurrentA":4,"ratedVoltageV":60,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000106', 'connector', 'm12a08-08-085', 'M12 A编码 8芯母头 非屏蔽', 'M12A08-08-085', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-08-085/connector-after.png","before":"catalog/connector/m12-08-085/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-08-Female.png"}'::jsonb, 450, '{"connectorType":"female","series":"M12 A-Coded","pinCount":8,"rowCount":1,"shielded":false,"pinLabels":["1","2","3","4","5","6","7","8"],"ratedCurrentA":2,"ratedVoltageV":30,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000111', 'connector', 'm12a05-08-067', 'M12 A编码 5芯母头 屏蔽', 'M12A05-08-067', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-08-067/connector-after.png","before":"catalog/connector/m12-08-067/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-05-Female.png"}'::jsonb, 500, '{"connectorType":"female","series":"M12 A-Coded","pinCount":5,"rowCount":1,"shielded":true,"pinLabels":["1","2","3","4","5"],"ratedCurrentA":4,"ratedVoltageV":60,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000112', 'connector', 'm12a08-08-067', 'M12 A编码 8芯母头 屏蔽', 'M12A08-08-067', '昌骏', '圆形连接器', '', null, '{"after":"catalog/connector/m12-08-067/connector-after.png","before":"catalog/connector/m12-08-067/connector-before.png","pinMap":"catalog/connector/pin-maps/M12A-08-Female.png"}'::jsonb, 510, '{"connectorType":"female","series":"M12 A-Coded","pinCount":8,"rowCount":1,"shielded":true,"pinLabels":["1","2","3","4","5","6","7","8"],"ratedCurrentA":2,"ratedVoltageV":30,"matingCyclesMin":500,"ingressProtection":"IP67","temperatureRangeC":{"max":105,"min":-40},"flammabilityRating":"UL94V-0"}'::jsonb),
+  ('50000000-0000-4000-8000-000000000203', 'wire', 'wl-htx-pvc-036', 'WL-HTX-PVC-036 UL2464 5芯非屏蔽线', 'WL-HTX-PVC-036', '', '护套线', 'UL2464 17/0.16TC*PVC*1.3*5C PVC 棕白蓝黑灰 OD5.1', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 420, '{"kind":"jacketed","awg":22,"shielded":false,"ulNumber":"UL2464","coreCount":5,"flameTest":"VW-1","coreColors":["棕色","白色","蓝色","黑色","灰色"],"jacketColor":"black","ratedVoltageV":300,"rohsCompliant":true,"jacketMaterial":"PVC","jacketHardnessP":60,"outerDiameterMm":5.1,"conductorMaterial":"镀锡铜丝","elongationPercent":100,"temperatureRangeC":{"max":80},"conductorStructure":"17/0.16TC","insulationMaterial":"PVC","tensileStrengthPsi":1500,"coreColorDescription":"棕白蓝黑灰","insulationDiameterMm":1.3,"outerDiameterToleranceMm":0.15,"insulationResistanceMOhmKm":10,"insulationDiameterToleranceMm":0.05,"conductorResistanceOhmPerKmAt20C":59.4}'::jsonb),
+  ('3c267863-e1ba-41f6-a9fc-f1532a9cf859', 'wire', 'pvc-8c-0_2mm2-ns-od5_5', '8C*0.2平方 26/0.10TC*PVC*1.1*8C+无纺布 PVC OD5.5', 'PVC-8C-0.2MM2-NS-OD5.5', '', '护套线', '8C*0.2平方 26/0.10TC*PVC*1.1*8C+无纺布 PVC OD5.5', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 500, '{"kind":"jacketed","shielded":false,"coreCount":8,"coreColors":["白色","棕色","绿色","黄色","灰色","紫色","蓝色","红色"],"jacketColor":"black","jacketMaterial":"PVC","outerDiameterMm":5.5,"conductorAreaMm2":0.2}'::jsonb),
+  ('50000000-0000-4000-8000-000000000201', 'wire', 'wl-htx-pvc-033', 'WL-HTX-PVC-033 UL2464 4芯屏蔽线', 'WL-HTX-PVC-033', '', '护套线', 'UL2464 17/0.16TC*PVC*1.3*4C+AL+60%编织B16/5/0.10TC PVC 棕白蓝黑 OD5.2', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 400, '{"kind":"jacketed","awg":22,"shielded":true,"ulNumber":"UL2464","coreCount":4,"flameTest":"VW-1","coreColors":["棕色","白色","蓝色","黑色"],"jacketColor":"black","ratedVoltageV":300,"rohsCompliant":true,"braidStructure":"16*5/0.10TC","jacketMaterial":"PVC","jacketHardnessP":60,"outerDiameterMm":5.2,"conductorMaterial":"镀锡铜丝","elongationPercent":100,"temperatureRangeC":{"max":80},"conductorStructure":"17/0.16TC","insulationMaterial":"PVC","tensileStrengthPsi":1500,"shieldCoverageRatio":0.6,"coreColorDescription":"棕白蓝黑","insulationDiameterMm":1.3,"outerDiameterToleranceMm":0.2,"braidStructureDescription":"B16/5/0.10TC","shieldCoverageDescription":"60%","insulationResistanceMOhmKm":10,"insulationDiameterToleranceMm":0.05,"conductorResistanceOhmPerKmAt20C":59.4}'::jsonb),
+  ('50000000-0000-4000-8000-000000000202', 'wire', 'wl-htx-pvc-034', 'WL-HTX-PVC-034 UL2464 5芯屏蔽线', 'WL-HTX-PVC-034', '', '护套线', 'UL2464 17/0.16TC*PVC*1.3*5C+AL+65%编织B16/6/0.10TC PVC 棕白蓝黑灰 OD5.6', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 410, '{"kind":"jacketed","awg":22,"shielded":true,"ulNumber":"UL2464","coreCount":5,"flameTest":"VW-1","coreColors":["棕色","白色","蓝色","黑色","灰色"],"jacketColor":"black","ratedVoltageV":300,"rohsCompliant":true,"braidStructure":"16*5/0.10TC","jacketMaterial":"PVC","jacketHardnessP":60,"outerDiameterMm":5.6,"conductorMaterial":"镀锡铜丝","elongationPercent":100,"temperatureRangeC":{"max":80},"conductorStructure":"17/0.16TC","insulationMaterial":"PVC","tensileStrengthPsi":1500,"shieldCoverageRatio":0.6,"coreColorDescription":"棕白蓝黑灰","insulationDiameterMm":1.3,"outerDiameterToleranceMm":0.2,"braidStructureDescription":"B16/6/0.10TC","shieldCoverageDescription":"65%","insulationResistanceMOhmKm":10,"insulationDiameterToleranceMm":0.05,"conductorResistanceOhmPerKmAt20C":59.4}'::jsonb),
+  ('337b5455-6c5a-41b3-a10d-02410fbd485c', 'wire', 'pvc-8c-0_2mm2-sh-od5_8', '8C*0.2平方 26/0.10TC*PVC*1.1*8C+AL+65%编织B16/6/0.10TC PVC OD5.8', 'PVC-8C-0.2MM2-SH-OD5.8', '', '护套线', '8C*0.2平方 26/0.10TC*PVC*1.1*8C+AL+65%编织B16/6/0.10TC PVC OD5.8', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 500, '{"kind":"jacketed","shielded":true,"coreCount":8,"coreColors":["白色","棕色","绿色","黄色","灰色","紫色","蓝色","红色"],"jacketColor":"black","jacketMaterial":"PVC","outerDiameterMm":5.8,"conductorAreaMm2":0.2}'::jsonb),
+  ('a7984018-074e-4383-94c3-5ac6f04bb346', 'wire', 'pvc-4c-0_3mm2-ns-od4_5', '4C*0.3平方 39/0.10TC*PVC*1.2*4C+无纺布 PVC OD4.5', 'PVC-4C-0.3MM2-NS-OD4.5', '', '护套线', '4C*0.3平方 39/0.10TC*PVC*1.2*4C+无纺布 PVC OD4.5', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 500, '{"kind":"jacketed","shielded":false,"coreCount":4,"coreColors":["棕色","白色","蓝色","黑色"],"jacketColor":"black","jacketMaterial":"PVC","outerDiameterMm":4.5,"conductorAreaMm2":0.3}'::jsonb),
+  ('fd22f133-be40-4a61-bab5-10e10c076d37', 'wire', 'pvc-5c-0_3mm2-ns-od5', '5C*0.3平方 39/0.10TC*PVC*1.2*5C+无纺布 PVC OD5.0', 'PVC-5C-0.3MM2-NS-OD5', '', '护套线', '5C*0.3平方 39/0.10TC*PVC*1.2*5C+无纺布 PVC OD5.0', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 500, '{"kind":"jacketed","shielded":false,"coreCount":5,"coreColors":["棕色","白色","蓝色","黑色","灰色"],"jacketColor":"black","jacketMaterial":"PVC","outerDiameterMm":5,"conductorAreaMm2":0.3}'::jsonb),
+  ('f9868354-1cb4-4e06-948e-74d0eb1c0170', 'wire', 'pvc-4c-0_3mm2-sh-od5', '4C*0.3平方 39/0.10TC*PVC*1.2*4C+AL+65%编织B16/5/0.10TC PVC OD5.0', 'PVC-4C-0.3MM2-SH-OD5', '', '护套线', '4C*0.3平方 39/0.10TC*PVC*1.2*4C+AL+65%编织B16/5/0.10TC PVC OD5.0', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 500, '{"kind":"jacketed","shielded":true,"coreCount":4,"coreColors":["棕色","白色","蓝色","黑色"],"jacketColor":"black","jacketMaterial":"PVC","outerDiameterMm":5,"conductorAreaMm2":0.3}'::jsonb),
+  ('823e87c0-e4b8-4882-ba57-c038b2ce606d', 'wire', 'pvc-5c-0_3mm2-sh-od5_5', '5C*0.3平方 39/0.10TC*PVC*1.2*5C+AL+65%编织B16/6/0.10TC PVC OD5.5', 'PVC-5C-0.3MM2-SH-OD5.5', '', '护套线', '5C*0.3平方 39/0.10TC*PVC*1.2*5C+AL+65%编织B16/6/0.10TC PVC OD5.5', 'catalog/wire/shared/jacketed-wire.png', '{}'::jsonb, 500, '{"kind":"jacketed","shielded":true,"coreCount":5,"coreColors":["棕色","白色","蓝色","黑色","灰色"],"jacketColor":"black","jacketMaterial":"PVC","outerDiameterMm":5.5,"conductorAreaMm2":0.3}'::jsonb)
 on conflict (kind, code) do update set
   name = excluded.name,
   model = excluded.model,
   manufacturer = excluded.manufacturer,
   resource_group = excluded.resource_group,
   description = excluded.description,
-  image_path = excluded.image_path,
-  image_variants = excluded.image_variants,
   sort_order = excluded.sort_order,
   spec = excluded.spec;
 

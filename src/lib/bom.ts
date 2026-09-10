@@ -6,6 +6,7 @@ import {
 } from './canvasMaterials';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import type { CatalogSnapshot } from '@/types/catalog';
+import { formatWireGauge } from './wireGauge';
 
 export function formatWireBomSpecification(
   material: CanvasWireMaterial,
@@ -26,7 +27,7 @@ export function formatWireBomSpecification(
   }
 
   // Jacketed wire
-  const sq = spec.awg === 22 ? '0.3mm²' : spec.awg === 24 ? '0.2mm²' : spec.awg === 26 ? '0.14mm²' : `${spec.awg}AWG`;
+  const sq = formatWireGauge(spec);
   const eng = catalogWire?.spec;
   const conductorStructure = eng?.conductorStructure ? `(${eng.conductorStructure})` : '';
   const insulation = eng?.insulationDiameterMm ? `*${eng.insulationDiameterMm}` : '';
@@ -61,7 +62,7 @@ function getMaterialDescription(material: CanvasWireMaterial): string {
     return `${spec.awg}AWG 电子线 ${spec.color} ${spec.lengthMm}mm ${getWireEndTreatmentSummary(spec.endTreatment)}`;
   }
   const ul = spec.ulNumber ? ` ${spec.ulNumber}` : '';
-  return `${spec.jacketMaterial}护套线${ul} ${spec.coreCount}芯 ${spec.awg}AWG ${spec.lengthMm}mm ${getWireEndTreatmentSummary(spec.endTreatment)}`;
+  return `${spec.jacketMaterial}护套线${ul} ${spec.coreCount}芯 ${formatWireGauge(spec)} ${spec.lengthMm}mm ${getWireEndTreatmentSummary(spec.endTreatment)}`;
 }
 
 function getEndTreatmentKey(material: CanvasWireMaterial) {
@@ -85,7 +86,7 @@ function getMaterialGroupKey(material: CanvasWireMaterial): string {
     return `elec|${resourceKey}|${spec.awg}|${spec.color}|${spec.lengthMm}|${spec.ulNumber}|${getEndTreatmentKey(material)}`;
   }
 
-  return `jack|${resourceKey}|${spec.jacketMaterial}|${spec.jacketColor}|${spec.awg}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.outerDiameterToleranceMm ?? 'default'}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${getEndTreatmentKey(material)}`;
+  return `jack|${resourceKey}|${spec.jacketMaterial}|${spec.jacketColor}|${formatWireGauge(spec)}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.outerDiameterToleranceMm ?? 'default'}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${getEndTreatmentKey(material)}`;
 }
 
 export function generateBOM(config: HarnessConfig): BOMItem[] {

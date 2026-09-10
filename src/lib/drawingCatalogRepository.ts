@@ -85,7 +85,7 @@ function wireSpecification(item: Extract<CatalogItemRow, { kind: 'wire' }>): str
   }
   return [
     item.model,
-    `${spec.awg}AWG`,
+    spec.conductorAreaMm2 === undefined ? `${spec.awg}AWG` : `${spec.conductorAreaMm2}mm²`,
     `${spec.coreCount}C`,
     spec.shielded ? 'shielded' : 'unshielded',
     spec.outerDiameterMm === undefined ? '' : `OD ${spec.outerDiameterMm}mm${spec.outerDiameterToleranceMm === undefined ? '' : `±${spec.outerDiameterToleranceMm}`}`,

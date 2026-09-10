@@ -3,6 +3,8 @@
 -- Storage protects its metadata tables from direct deletion. Run
 -- `npm run supabase:reset-project-assets` before this SQL when removing the obsolete bucket.
 
+drop table if exists public.material_prices cascade;
+drop function if exists public.validate_material_price();
 drop table if exists public.drawings cascade;
 drop table if exists public.projects cascade;
 drop table if exists public.catalog_items cascade;

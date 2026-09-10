@@ -1,4 +1,5 @@
 import { calculateCableOd, resolveColor } from '@/lib/canvasMaterials';
+import { formatWireGauge, geometryAwg, isValidWireGauge } from './wireGauge';
 import type {
   CanvasWireSpec,
   JacketCoreCount,
@@ -160,10 +161,13 @@ export function parseCatalogWireSpec(row: CatalogWireRow): CatalogWireSpec {
   if (kind !== 'electronic' && kind !== 'jacketed') {
     throw new WireCatalogError('invalid wire kind');
   }
-  const awg = positiveNumber(row.awg, 'awg');
+  const awg = optionalPositiveNumber(row.awg, 'awg');
+  const conductorAreaMm2 = optionalPositiveNumber(row.conductor_area_mm2, 'conductor area');
+  if (!isValidWireGauge({ awg, conductorAreaMm2 })) throw new WireCatalogError('invalid wire gauge');
   const engineering = engineeringSpec(row);
 
   if (kind === 'electronic') {
+    if (awg === undefined || conductorAreaMm2 !== undefined) throw new WireCatalogError('electronic wire requires AWG');
     if (row.ul_number !== '1007') throw new WireCatalogError('invalid electronic UL number');
     const color = text(row.conductor_color, 'conductor color');
     if (!color
@@ -209,6 +213,7 @@ export function parseCatalogWireSpec(row: CatalogWireRow): CatalogWireSpec {
       jacketColor: jacketColor as JacketColor,
       awg,
       coreCount: coreCount as JacketCoreCount,
+      ...(conductorAreaMm2 === undefined ? {} : { conductorAreaMm2 }),
       shielded: row.is_shielded,
       coreColors,
       ...(ulNumber ? { ulNumber: ulNumber as JacketUlNumber } : {}),
@@ -237,9 +242,10 @@ export function applyCatalogWireSpec(current: CanvasWireSpec, catalog: CatalogWi
     jacketColor: catalog.jacketColor,
     awg: catalog.awg,
     coreCount: catalog.coreCount,
+    ...(catalog.conductorAreaMm2 === undefined ? {} : { conductorAreaMm2: catalog.conductorAreaMm2 }),
     shielded: catalog.shielded,
     odMm: catalog.outerDiameterMm
-      ?? calculateCableOd(catalog.awg, catalog.coreCount, catalog.shielded),
+      ?? calculateCableOd(geometryAwg(catalog), catalog.coreCount, catalog.shielded),
     ...(catalog.outerDiameterToleranceMm === undefined
       ? {}
       : { outerDiameterToleranceMm: catalog.outerDiameterToleranceMm }),
@@ -259,7 +265,7 @@ export function generateWireDefaultName(spec: CanvasWireSpec): string {
   const jacketColorName = spec.jacketColor === 'black' ? '黑色' : spec.jacketColor === 'green' ? '绿色' : spec.jacketColor;
   const shieldedText = spec.shielded ? '屏蔽' : '';
   const ul = spec.ulNumber ? `${spec.ulNumber} ` : '';
-  return `${ul}${spec.jacketMaterial} ${spec.awg}AWG ${spec.coreCount}芯 ${jacketColorName}${shieldedText}护套线`.replace(/\s+/g, ' ').trim();
+  return `${ul}${spec.jacketMaterial} ${formatWireGauge(spec)} ${spec.coreCount}芯 ${jacketColorName}${shieldedText}护套线`.replace(/\s+/g, ' ').trim();
 }
 
 export function findMatchingCatalogWire(
@@ -282,6 +288,8 @@ export function findMatchingCatalogWire(
       if (wire.spec.kind !== 'jacketed') return false;
       if (wire.spec.jacketMaterial !== spec.jacketMaterial) return false;
       if (wire.spec.jacketColor !== spec.jacketColor) return false;
+      if (wire.spec.conductorAreaMm2 !== spec.conductorAreaMm2) return false;
+      if (wire.spec.outerDiameterMm !== undefined && wire.spec.outerDiameterMm !== spec.odMm) return false;
       if (wire.spec.awg !== spec.awg) return false;
       if (wire.spec.coreCount !== spec.coreCount) return false;
       if (wire.spec.shielded !== spec.shielded) return false;

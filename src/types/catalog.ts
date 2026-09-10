@@ -36,7 +36,7 @@ export interface CatalogWireEngineeringSpec {
 
 export type CatalogWireSpec =
   | (Pick<ElectronicWireSpec, 'kind' | 'color' | 'awg' | 'ulNumber'> & CatalogWireEngineeringSpec)
-  | (Pick<JacketedWireSpec, 'kind' | 'jacketMaterial' | 'jacketColor' | 'awg' | 'coreCount' | 'shielded' | 'coreColors' | 'ulNumber'> & CatalogWireEngineeringSpec);
+  | (Pick<JacketedWireSpec, 'kind' | 'jacketMaterial' | 'jacketColor' | 'awg' | 'conductorAreaMm2' | 'coreCount' | 'shielded' | 'coreColors' | 'ulNumber'> & CatalogWireEngineeringSpec);
 
 export interface CatalogWire {
   id: string;

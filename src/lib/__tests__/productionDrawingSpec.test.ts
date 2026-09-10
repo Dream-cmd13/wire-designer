@@ -70,7 +70,7 @@ describe('Production Drawing & BOM specifications formatting', () => {
     };
 
     const formatted = formatWireBomSpecification(material, mockCatalog);
-    expect(formatted).toContain('4C*0.3mm²');
+    expect(formatted).toContain('4C*22AWG');
     expect(formatted).toContain('(17/0.16TC)*1.3+编织(16*5/0.10TC)');
     expect(formatted).toContain('OD: 5.20±0.2');
     expect(formatted).toContain('屏蔽黑色雾面PUR外被');

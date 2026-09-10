@@ -99,7 +99,8 @@ export interface JacketedWireSpec {
   kind: 'jacketed';
   jacketMaterial: JacketMaterial;
   jacketColor: JacketColor;
-  awg: number;
+  awg?: number;
+  conductorAreaMm2?: number;
   coreCount: JacketCoreCount;
   shielded: boolean;
   odMm: number;

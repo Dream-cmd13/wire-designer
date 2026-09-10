@@ -53,7 +53,7 @@ export function getWireGroupingKey(material: CanvasWireMaterial): string {
     return `wire|${resourceKey}|${spec.awg}|${spec.color}|${spec.lengthMm}|${spec.ulNumber}|${getEndTreatmentKey(material)}`;
   }
 
-  return `wire|${resourceKey}|${spec.jacketMaterial}|${spec.jacketColor}|${spec.awg}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.outerDiameterToleranceMm ?? 'default'}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${getEndTreatmentKey(material)}`;
+  return `wire|${resourceKey}|${spec.jacketMaterial}|${spec.jacketColor}|${spec.awg}|${spec.conductorAreaMm2}|${spec.coreCount}|${spec.shielded}|${spec.odMm}|${spec.outerDiameterToleranceMm ?? 'default'}|${spec.lengthMm}|${spec.ulNumber ?? 'none'}|${spec.coreColors.join(',')}|${getEndTreatmentKey(material)}`;
 }
 
 export function getSleeveGroupingKey(sleeve: ProtectiveSleeve): string {

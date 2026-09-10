@@ -395,7 +395,10 @@ function readWireSpec(value: unknown, path: string, issues: string[]): CanvasWir
   }
 
   const endTreatment = readEndTreatment(value.endTreatment, `${path}.endTreatment`, issues);
-  if (!endTreatment || !isPositiveNumber(value.lengthMm) || !isPositiveNumber(value.awg)) {
+  const validGauge = value.kind === 'jacketed' && value.conductorAreaMm2 !== undefined
+    ? isPositiveNumber(value.conductorAreaMm2) && value.awg === undefined
+    : isPositiveNumber(value.awg) && value.conductorAreaMm2 === undefined;
+  if (!endTreatment || !isPositiveNumber(value.lengthMm) || !validGauge) {
     issues.push(`${path} has invalid length or awg`);
     return null;
   }
@@ -410,7 +413,7 @@ function readWireSpec(value: unknown, path: string, issues: string[]): CanvasWir
       kind: 'electronic',
       color: value.color,
       lengthMm: value.lengthMm,
-      awg: value.awg,
+      awg: value.awg as number,
       ulNumber: '1007',
       endTreatment,
     };
@@ -440,7 +443,8 @@ function readWireSpec(value: unknown, path: string, issues: string[]): CanvasWir
     kind: 'jacketed',
     jacketMaterial: value.jacketMaterial === 'PVR' ? 'PUR' : value.jacketMaterial,
     jacketColor: value.jacketColor,
-    awg: value.awg,
+    ...(value.awg === undefined ? {} : { awg: value.awg as number }),
+    ...(value.conductorAreaMm2 === undefined ? {} : { conductorAreaMm2: value.conductorAreaMm2 as number }),
     coreCount,
     shielded: value.shielded,
     odMm: value.odMm,

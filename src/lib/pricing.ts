@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import type { HarnessConfig } from '@/types/harness';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { MaterialPrice } from '@/repositories/priceRepository';
-import { getQuoteMaterials, materialPriceKey } from './quoteMaterials';
+import { getQuoteMaterials, materialPriceTierKey } from './quoteMaterials';
 
 const Money = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 export const formatQuoteMoney = (value: string) => new Money(value).toFixed(2);
@@ -45,10 +45,13 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   if (wire.spec.lengthMm > 5000) return { status: 'manual', issues: ['超过 5 米，需人工核价'] };
   const materialLines: QuoteLine[] = [];
   for (const row of getQuoteMaterials(config, catalog)) {
-    const matches = prices.filter((price) => materialPriceKey(price) === materialPriceKey(row));
-    if (!row.resourceId || matches.length !== 1) { issues.push(`${row.name}：缺少唯一匹配的含税价格${row.kind === 'wire' ? `（${row.lengthMm}mm 整条）` : ''}`); continue; }
-    if (!/^\d{1,9}(\.\d{1,6})?$/.test(matches[0].taxIncludedPrice)) { issues.push(`${row.name}：价格无效`); continue; }
-    const amount = new Money(matches[0].taxIncludedPrice);
+    const matches = prices.filter((price) => materialPriceTierKey(price) === materialPriceTierKey(row)
+      && price.lengthMm >= row.lengthMm).sort((a, b) => a.lengthMm - b.lengthMm);
+    const selectedLength = matches[0]?.lengthMm;
+    const selected = matches.filter((price) => price.lengthMm === selectedLength);
+    if (!row.resourceId || selected.length !== 1) { issues.push(`${row.name}：缺少唯一匹配的含税价格${row.kind === 'wire' ? `（实际 ${row.lengthMm}mm，需不小于该长度的价格档位）` : ''}`); continue; }
+    if (!/^\d{1,9}(\.\d{1,6})?$/.test(selected[0].taxIncludedPrice)) { issues.push(`${row.name}：价格无效`); continue; }
+    const amount = new Money(selected[0].taxIncludedPrice);
     if (!amount.isFinite() || amount.isNegative()) { issues.push(`${row.name}：价格无效`); continue; }
     materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString() });
   }
