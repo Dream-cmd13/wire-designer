@@ -84,7 +84,7 @@ describe('AdminShell view toggle buttons', () => {
     expect(html).toMatch(/title="设计图"[^>]*aria-pressed="false"/);
   });
 
-  it('does not render toggle buttons or project name when currentProjectName is undefined', () => {
+  it('does not render toggle buttons, BOM, quote, or project name when currentProjectName is undefined', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes.home}
@@ -97,6 +97,8 @@ describe('AdminShell view toggle buttons', () => {
         onRedo={vi.fn()}
         onOpenAuth={vi.fn()}
         onCloseProject={vi.fn()}
+        onOpenBom={vi.fn()}
+        onOpenQuote={vi.fn()}
       >
         <div>首页</div>
       </AdminShell>,
@@ -104,6 +106,75 @@ describe('AdminShell view toggle buttons', () => {
 
     expect(html).not.toContain('aria-label="视图切换"');
     expect(html).not.toContain('项目名称');
+    expect(html).not.toContain('BOM清单');
+    expect(html).not.toContain('线束报价');
+  });
+
+  it('does not render BOM, quote, view toggle, or project name on non-designer sidebar tabs even if project exists', () => {
+    const nonDesignerRoutes = [
+      appRoutes.home,
+      appRoutes['drawing-workbench'],
+      appRoutes['library-connectors'],
+      appRoutes['library-harnesses'],
+    ];
+
+    for (const route of nonDesignerRoutes) {
+      const html = renderToStaticMarkup(
+        <AdminShell
+          route={route}
+          currentUser={null}
+          currentProjectName="test"
+          saveBlocked={false}
+          canUndo={false}
+          canRedo={false}
+          onNavigate={vi.fn()}
+          onUndo={vi.fn()}
+          onRedo={vi.fn()}
+          onOpenAuth={vi.fn()}
+          onCloseProject={vi.fn()}
+          onOpenBom={vi.fn()}
+          onOpenQuote={vi.fn()}
+        >
+          <div>内容</div>
+        </AdminShell>,
+      );
+
+      expect(html).not.toContain('aria-label="视图切换"');
+      expect(html).not.toContain('BOM清单');
+      expect(html).not.toContain('线束报价');
+      expect(html).not.toContain('value="test"');
+      // context subtitle should also not leak the project name on other sidebar tabs
+      expect(html).not.toMatch(/<p class="hidden text-xs text-slate-500 sm:block">\s*test\s*<\/p>/);
+    }
+  });
+
+  it('renders BOM, quote, view toggle, and project name in designer header when project exists', () => {
+    const html = renderToStaticMarkup(
+      <AdminShell
+        route={appRoutes['designer-design']}
+        currentUser={null}
+        currentProjectName="test"
+        saveBlocked={false}
+        canUndo={false}
+        canRedo={false}
+        onNavigate={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        onOpenAuth={vi.fn()}
+        onCloseProject={vi.fn()}
+        onOpenBom={vi.fn()}
+        onOpenQuote={vi.fn()}
+      >
+        <div>线束设计器内容</div>
+      </AdminShell>,
+    );
+
+    expect(html).toContain('aria-label="视图切换"');
+    expect(html).toContain('BOM清单');
+    expect(html).toContain('线束报价');
+    expect(html).toContain('value="test"');
+    expect(html).toContain('设计图');
+    expect(html).toContain('成品图');
   });
 
   it('prevents narrow viewport header regression by hiding project name on small screens and protecting title and action buttons', () => {
