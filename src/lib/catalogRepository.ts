@@ -75,6 +75,7 @@ function engineeringWireFields(spec: CatalogItemOf<'wire'>['spec']): CatalogWire
     ...(spec.conductorResistanceOhmPerKmAt20C === undefined ? {} : { conductorResistanceOhmPerKmAt20C: spec.conductorResistanceOhmPerKmAt20C }),
     ...(spec.insulationResistanceMOhmKm === undefined ? {} : { insulationResistanceMOhmKm: spec.insulationResistanceMOhmKm }),
     ...(spec.coreColorDescription === undefined ? {} : { coreColorDescription: spec.coreColorDescription }),
+    ...(spec.ingressProtection === undefined ? {} : { ingressProtection: spec.ingressProtection }),
   };
 }
 

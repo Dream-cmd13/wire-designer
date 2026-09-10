@@ -99,6 +99,7 @@ function temperatureRange(value: unknown, field: string): TemperatureRangeC | un
 }
 
 function engineeringSpec(row: CatalogWireRow): CatalogWireEngineeringSpec {
+  const ingressProtection = text(row.ingress_protection, 'ingress protection');
   const ratedVoltageV = optionalPositiveNumber(row.rated_voltage_v, 'rated voltage');
   const temperatureRangeC = temperatureRange(row.temperature_range_c, 'temperature range');
   const flameTest = text(row.flame_test, 'flame test');
@@ -125,6 +126,7 @@ function engineeringSpec(row: CatalogWireRow): CatalogWireEngineeringSpec {
   const coreColorDescription = text(row.core_color_description, 'core color description');
 
   return {
+    ...(ingressProtection === undefined ? {} : { ingressProtection }),
     ...(ratedVoltageV === undefined ? {} : { ratedVoltageV }),
     ...(temperatureRangeC === undefined ? {} : { temperatureRangeC }),
     ...(flameTest === undefined ? {} : { flameTest }),

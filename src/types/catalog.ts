@@ -9,6 +9,7 @@ import type {
 
 /** Engineering facts imported from a manufacturer or customer catalog. */
 export interface CatalogWireEngineeringSpec {
+  ingressProtection?: string;
   ratedVoltageV?: number;
   temperatureRangeC?: TemperatureRangeC;
   flameTest?: string;

@@ -273,6 +273,7 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
         conductor_resistance_ohm_per_km_at_20c: spec.conductorResistanceOhmPerKmAt20C,
         insulation_resistance_mohm_km: spec.insulationResistanceMOhmKm,
         core_color_description: spec.coreColorDescription,
+        ingress_protection: spec.ingressProtection,
       });
       return parsed.kind === 'electronic'
         ? {
@@ -399,6 +400,7 @@ function engineeringFields(spec: CatalogWireEngineeringSpec): CatalogWireEnginee
     ...(spec.conductorResistanceOhmPerKmAt20C === undefined ? {} : { conductorResistanceOhmPerKmAt20C: spec.conductorResistanceOhmPerKmAt20C }),
     ...(spec.insulationResistanceMOhmKm === undefined ? {} : { insulationResistanceMOhmKm: spec.insulationResistanceMOhmKm }),
     ...(spec.coreColorDescription === undefined ? {} : { coreColorDescription: spec.coreColorDescription }),
+    ...(spec.ingressProtection === undefined ? {} : { ingressProtection: spec.ingressProtection }),
   };
 }
 

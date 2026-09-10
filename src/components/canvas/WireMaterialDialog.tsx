@@ -272,6 +272,9 @@ export function WireMaterialDialog({ material, onCancel, onConfirm }: WireMateri
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                    {selectedCatalogWire.spec.ingressProtection && (
+                      <div><span className="text-slate-400">防水等级：</span><span className="text-slate-700">{selectedCatalogWire.spec.ingressProtection}</span></div>
+                    )}
                     {selectedCatalogWire.spec.conductorStructure && (
                       <div><span className="text-slate-400">导体结构：</span><span className="text-slate-700 font-medium">{selectedCatalogWire.spec.conductorMaterial || ''} {selectedCatalogWire.spec.conductorStructure}</span></div>
                     )}

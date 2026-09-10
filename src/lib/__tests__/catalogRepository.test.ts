@@ -127,6 +127,7 @@ describe('CatalogRepository', () => {
         spec: {
           kind: 'jacketed', ulNumber: 'UL2464', awg: 22, coreCount: 4, shielded: true,
           coreColors: ['棕色', '白色', '蓝色', '黑色'], coreColorDescription: '棕白蓝黑',
+          ingressProtection: 'IP67',
           jacketMaterial: 'PVC', jacketColor: 'black', ratedVoltageV: 300,
           temperatureRangeC: { max: 80 }, flameTest: 'VW-1', rohsCompliant: true,
           conductorMaterial: '镀锡铜丝', conductorStructure: '17/0.16TC',
@@ -148,7 +149,7 @@ describe('CatalogRepository', () => {
     await expect(repository.listWires()).resolves.toEqual([
       expect.objectContaining({
         resourceItemId: 'wire-real', model: 'WL-HTX-PVC-033', resourceGroup: '护套线',
-        spec: expect.objectContaining({ outerDiameterMm: 5.2, shieldCoverageRatio: 0.6 }),
+        spec: expect.objectContaining({ outerDiameterMm: 5.2, shieldCoverageRatio: 0.6, ingressProtection: 'IP67' }),
       }),
     ]);
   });
