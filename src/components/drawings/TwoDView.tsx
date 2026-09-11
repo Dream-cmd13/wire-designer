@@ -24,8 +24,14 @@ import {
   getCanvasModelDisplayName,
   getProtectiveSleeveDisplayName,
   getMoldLinkage,
-  lengthMmToCanvasWidth,
 } from '@/lib/canvasMaterials';
+import {
+  calculateAssemblyUnscaledBounds,
+  calculateUniformAssemblyScale,
+  getScaledDisplayDimensions,
+  type ImageDimensions,
+  type AssemblyUnscaledBounds,
+} from '@/lib/productionDrawingImageScale';
 import {
   calculateProductionDrawingLayout,
   calculateCenteredGroupX,
@@ -519,6 +525,77 @@ export function TwoDView() {
   const topRowRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const wireContainerRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
+  // ── image natural sizes & uniform scale state ──────────────────────────────
+  const [naturalSizes, setNaturalSizes] = useState<Record<string, ImageDimensions>>({});
+  const twoDImagesRef = useRef(twoDImages);
+  useEffect(() => {
+    twoDImagesRef.current = twoDImages;
+  }, [twoDImages]);
+
+  const handleNaturalSizeChange = useCallback(
+    (id: string, url: string, size: { w: number; h: number }) => {
+      const currentImg = twoDImagesRef.current.find((img) => img.id === id);
+      if (!currentImg || currentImg.dataUrl !== url) return;
+
+      setNaturalSizes((prev) => {
+        if (prev[id]?.w === size.w && prev[id]?.h === size.h) return prev;
+        return { ...prev, [id]: size };
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (typeof Image === 'undefined') return;
+    let isCancelled = false;
+    const probes: HTMLImageElement[] = [];
+
+    twoDImages.forEach((img) => {
+      if (!img.dataUrl) return;
+      const targetUrl = img.dataUrl;
+      const targetId = img.id;
+      const probe = new Image();
+      probes.push(probe);
+
+      const handleLoad = () => {
+        if (isCancelled) return;
+        probe.onload = null;
+        probe.onerror = null;
+        handleNaturalSizeChange(targetId, targetUrl, {
+          w: probe.naturalWidth,
+          h: probe.naturalHeight,
+        });
+      };
+
+      const handleError = () => {
+        if (isCancelled) return;
+        probe.onload = null;
+        probe.onerror = null;
+      };
+
+      probe.onload = handleLoad;
+      probe.onerror = handleError;
+      probe.src = targetUrl;
+
+      if (probe.complete && probe.naturalWidth > 0) {
+        handleLoad();
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+      probes.forEach((probe) => {
+        probe.onload = null;
+        probe.onerror = null;
+        try {
+          probe.src = '';
+        } catch {
+          // ignore
+        }
+      });
+    };
+  }, [twoDImages, handleNaturalSizeChange]);
+
   // ── zoom & pan ───────────────────────────────────────────────────────────────
   const savedTwoDViewport = useHarnessStore.getState().twoDViewport;
   const [zoom, setZoom] = useState(savedTwoDViewport?.zoom ?? 1);
@@ -639,39 +716,80 @@ export function TwoDView() {
     };
   }, [groups, measureGroupDimensions]);
 
-  // ── Card and Group size helpers ──────────────────────────────────────────────
+  // ── Card and Group size helpers (Uniform Scale) ──────────────────────────────
   const maxCardHeight = productionLayout.maxImageHeight;
-  const getWeight = (kind: TwoDImage['elementKind']) => {
-    if (kind === 'material') return 3;
-    if (kind === 'sleeve') return 2;
-    return 1;
-  };
 
-  const totalWeight = useMemo(() => {
-    return flatImages.reduce((sum, img) => sum + getWeight(img.elementKind), 0);
-  }, [flatImages]);
-
-  const getCardWidth = useCallback((img: TwoDImage) => {
-    if (img.elementKind === 'material') {
-      const mat = materials.find((m) => m.id === img.elementId);
-      if (mat?.spec?.lengthMm != null) {
-        return lengthMmToCanvasWidth(mat.spec.lengthMm);
+  const groupScalesAndDims = useMemo(() => {
+    const result: Record<
+      number,
+      {
+        scale: number;
+        dims: Record<string, ImageDimensions>;
+        unscaledBounds: AssemblyUnscaledBounds;
       }
+    > = {};
+
+    for (let idx = 0; idx < groups.length; idx++) {
+      const g = groups[idx];
+      const unscaledBounds = calculateAssemblyUnscaledBounds(g.images, {
+        connectors,
+        materials,
+        sleeves,
+        models,
+        config,
+        naturalSizes,
+      });
+      const scale = calculateUniformAssemblyScale({
+        unscaledBounds,
+        availableWidth: 1080,
+        availableHeight: maxCardHeight,
+        maxScale: 1.0,
+      });
+      const dims: Record<string, ImageDimensions> = {};
+      for (const img of g.images) {
+        dims[img.id] = getScaledDisplayDimensions(img, scale, naturalSizes);
+      }
+      result[idx] = { scale, dims, unscaledBounds };
     }
-    const weight = getWeight(img.elementKind);
-    return Math.min(600, Math.floor(944 * (weight / Math.max(1, totalWeight))));
-  }, [totalWeight, materials]);
+    return result;
+  }, [groups, connectors, materials, sleeves, models, config, naturalSizes, maxCardHeight]);
+
+  const getCardWidth = useCallback(
+    (img: TwoDImage) => {
+      for (const entry of Object.values(groupScalesAndDims)) {
+        if (entry.dims[img.id]) {
+          return entry.dims[img.id].w;
+        }
+      }
+      return 80;
+    },
+    [groupScalesAndDims],
+  );
+
+  const getCardHeight = useCallback(
+    (img: TwoDImage) => {
+      for (const entry of Object.values(groupScalesAndDims)) {
+        if (entry.dims[img.id]) {
+          return entry.dims[img.id].h;
+        }
+      }
+      return 60;
+    },
+    [groupScalesAndDims],
+  );
 
   const getGroupWidth = useCallback(
     (groupIdx: number, g: { images: TwoDImage[] }) => {
       const measured = groupDimensions[groupIdx]?.w;
       if (measured && measured > 0) return measured;
-      // Fallback estimate based on realistic card widths
       const hasWiring = g.images.some((img) => img.elementKind === 'material');
-      const approxCardsWidth = g.images.reduce((sum, img) => sum + (img.elementKind === 'material' ? 240 : 80), 0);
+      const entry = groupScalesAndDims[groupIdx];
+      const approxCardsWidth = entry
+        ? Math.round(entry.unscaledBounds.totalWidth * entry.scale)
+        : g.images.reduce((sum, img) => sum + getCardWidth(img), 0);
       return Math.max(approxCardsWidth, hasWiring ? productionLayout.wiringDiagram.width : 0, 400);
     },
-    [groupDimensions, productionLayout.wiringDiagram.width],
+    [groupDimensions, productionLayout.wiringDiagram.width, groupScalesAndDims, getCardWidth],
   );
 
   const getEstimatedWireOffset = useCallback(
@@ -1382,6 +1500,7 @@ export function TwoDView() {
                         const isHighlighted = img.id === highlightedImageId;
                         const isSelected = img.id === selectedId;
                         const cardWidth = getCardWidth(img);
+                        const cardHeight = getCardHeight(img);
                         const wireMat =
                           img.elementKind === 'material'
                             ? materials.find((m) => m.id === img.elementId)
@@ -1419,7 +1538,10 @@ export function TwoDView() {
                                 void reloadCatalog();
                               }}
                               maxWidth={cardWidth}
-                              maxHeight={maxCardHeight}
+                              maxHeight={cardHeight}
+                              exactWidth={cardWidth}
+                              exactHeight={cardHeight}
+                              onNaturalSizeChange={handleNaturalSizeChange}
                             />
                             {isSelected && (
                               <div className="absolute top-full left-1/2 -translate-x-1/2 z-20 mt-2">

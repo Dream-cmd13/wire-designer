@@ -11,7 +11,10 @@ interface TwoDImageCardProps {
   onMouseDown: (e: React.MouseEvent) => void;
   maxWidth?: number | string;
   maxHeight?: number | string;
+  exactWidth?: number;
+  exactHeight?: number;
   onImageError?: () => void;
+  onNaturalSizeChange?: (id: string, url: string, size: { w: number; h: number }) => void;
 }
 
 export function TwoDImageCard({
@@ -23,7 +26,10 @@ export function TwoDImageCard({
   onMouseDown,
   maxWidth,
   maxHeight,
+  exactWidth,
+  exactHeight,
   onImageError,
+  onNaturalSizeChange,
 }: TwoDImageCardProps) {
   const rotation = image.rotation ?? 0;
   const isOrthogonal = rotation === 90 || rotation === -90 || rotation === 270;
@@ -41,7 +47,46 @@ export function TwoDImageCard({
     display: 'block',
   };
 
-  if (isOrthogonal && naturalSize && naturalSize.w > 0 && naturalSize.h > 0) {
+  if (exactWidth !== undefined && exactHeight !== undefined) {
+    if (isOrthogonal) {
+      cardBoxStyle = {
+        width: `${exactWidth}px`,
+        height: `${exactHeight}px`,
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      };
+      imgStyle = {
+        width: `${exactHeight}px`,
+        height: `${exactWidth}px`,
+        maxWidth: 'none',
+        maxHeight: 'none',
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        transform: `translate(-50%, -50%) rotate(${rotation}deg)`,
+        transformOrigin: 'center center',
+        objectFit: 'contain',
+        display: 'block',
+      };
+    } else {
+      cardBoxStyle = {
+        width: `${exactWidth}px`,
+        height: `${exactHeight}px`,
+      };
+      imgStyle = {
+        width: `${exactWidth}px`,
+        height: `${exactHeight}px`,
+        maxWidth: 'none',
+        maxHeight: 'none',
+        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+        transformOrigin: 'center center',
+        objectFit: 'contain',
+        display: 'block',
+      };
+    }
+  } else if (isOrthogonal && naturalSize && naturalSize.w > 0 && naturalSize.h > 0) {
     const maxW = typeof maxWidth === 'number' ? maxWidth : 160;
     const maxH = typeof maxHeight === 'number' ? maxHeight : 120;
 
@@ -101,6 +146,7 @@ export function TwoDImageCard({
             const imgEl = e.currentTarget;
             if (imgEl.naturalWidth && imgEl.naturalHeight) {
               setNaturalSize({ w: imgEl.naturalWidth, h: imgEl.naturalHeight });
+              onNaturalSizeChange?.(image.id, image.dataUrl, { w: imgEl.naturalWidth, h: imgEl.naturalHeight });
             }
           }}
           onError={onImageError}
