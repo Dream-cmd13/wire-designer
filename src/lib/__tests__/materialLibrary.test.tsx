@@ -151,7 +151,7 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('300V');
 
     // 多档位价格与元/条单位
-    expect(html).toContain('500mm:');
+    expect(html).toContain('0.5m:');
     expect(html).toContain('¥ 1.80');
     expect(html).toContain('1m:');
     expect(html).toContain('¥ 2.60');

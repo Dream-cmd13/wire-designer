@@ -46,6 +46,18 @@ const BASE_WIRE_SPEC = {
   },
 };
 
+function formatWireTierLength(lengthMm: number): string {
+  if (!Number.isFinite(lengthMm) || lengthMm <= 0) return '-';
+  if (lengthMm >= 1000) {
+    const m = lengthMm / 1000;
+    return `${Number(m.toFixed(2))}m`;
+  }
+  if (lengthMm % 100 === 0) {
+    return `${Number((lengthMm / 1000).toFixed(2))}m`;
+  }
+  return `${lengthMm}mm`;
+}
+
 export function MaterialLibraryPage({
   initialTab = 'connectors',
 }: {
@@ -383,7 +395,7 @@ export function MaterialLibraryPage({
 
   return (
     <div className="h-full overflow-y-auto bg-slate-100">
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 lg:p-5">
+      <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 lg:p-5 pb-12">
         {/* 顶部标题与操作卡片 */}
         <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -626,14 +638,14 @@ export function MaterialLibraryPage({
                 <table className="min-w-[1000px] w-full border-collapse text-left text-xs">
                   <thead className="bg-slate-50 uppercase text-slate-500">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">连接器与型号</th>
-                      <th className="px-4 py-3 font-semibold">厂商与系列</th>
-                      <th className="px-4 py-3 font-semibold">类型 / 屏蔽</th>
-                      <th className="px-4 py-3 font-semibold">PIN / 间距</th>
-                      <th className="px-4 py-3 font-semibold">电气与防护规格</th>
-                      <th className="px-4 py-3 font-semibold">材质</th>
-                      <th className="px-4 py-3 font-semibold text-right">含税单价</th>
-                      <th className="px-4 py-3 font-semibold text-center">计价单位</th>
+                      <th className="min-w-[180px] px-4 py-3 font-semibold">连接器与型号</th>
+                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">厂商与系列</th>
+                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">类型 / 屏蔽</th>
+                      <th className="w-[100px] min-w-[90px] px-4 py-3 font-semibold">PIN / 间距</th>
+                      <th className="w-[140px] min-w-[130px] px-4 py-3 font-semibold">电气与防护规格</th>
+                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">材质</th>
+                      <th className="w-[120px] min-w-[110px] px-4 py-3 font-semibold text-right">含税单价</th>
+                      <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -699,16 +711,16 @@ export function MaterialLibraryPage({
                               {c.housingMaterial ?? c.contactMaterial ?? '-'}
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
                             {price ? (
-                              <span className="font-bold text-emerald-600">
+                              <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
                                 ¥ {Number(price.taxIncludedPrice).toFixed(2)}
                               </span>
                             ) : (
-                              <span className="text-slate-400">待定价</span>
+                              <span className="inline-block px-2 py-1 text-xs text-slate-400">待定价</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center text-slate-500">
+                          <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
                             {price?.unit ?? '元/个'}
                           </td>
                         </tr>
@@ -792,17 +804,17 @@ export function MaterialLibraryPage({
 
             <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="min-w-[1000px] w-full border-collapse text-left text-xs">
+                <table className="min-w-[1060px] w-full border-collapse text-left text-xs">
                   <thead className="bg-slate-50 uppercase text-slate-500">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">线缆名称与型号</th>
-                      <th className="px-4 py-3 font-semibold">线种 / UL标号</th>
-                      <th className="px-4 py-3 font-semibold">线规 / 导体</th>
-                      <th className="px-4 py-3 font-semibold">芯数 / 屏蔽</th>
-                      <th className="px-4 py-3 font-semibold">绝缘与外径 OD</th>
-                      <th className="px-4 py-3 font-semibold">耐温与电气</th>
-                      <th className="px-4 py-3 font-semibold text-right">参考单价与档位</th>
-                      <th className="px-4 py-3 font-semibold text-center">计价单位</th>
+                      <th className="min-w-[180px] px-4 py-3 font-semibold">线缆名称与型号</th>
+                      <th className="w-[100px] min-w-[90px] px-4 py-3 font-semibold">线种 / UL标号</th>
+                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">线规 / 导体</th>
+                      <th className="w-[90px] min-w-[80px] px-4 py-3 font-semibold">芯数 / 屏蔽</th>
+                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">绝缘与外径 OD</th>
+                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">耐温与电气</th>
+                      <th className="w-[240px] min-w-[230px] px-3.5 py-3 font-semibold text-right">参考单价与档位</th>
+                      <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -874,30 +886,52 @@ export function MaterialLibraryPage({
                               {s.flameTest || s.ingressProtection || '-'}
                             </p>
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="w-[240px] min-w-[230px] px-3.5 py-3 text-right">
                             {wireTiers.length > 0 ? (
-                              <div className="flex flex-col items-end gap-1">
-                                {wireTiers.map((tier) => (
-                                  <span
-                                    key={tier.lengthMm}
-                                    className="inline-flex items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700"
-                                    title={`线长不小于 ${tier.lengthMm}mm 时含税单价为 ¥${Number(tier.taxIncludedPrice).toFixed(2)}`}
+                              <div className="flex flex-col items-end">
+                                {wireTiers.length === 1 ? (
+                                  <div
+                                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs whitespace-nowrap shadow-2xs"
+                                    title={`线长档位 ≤ ${formatWireTierLength(wireTiers[0].lengthMm)} (${wireTiers[0].lengthMm}mm): 含税单价 ¥${Number(wireTiers[0].taxIncludedPrice).toFixed(2)} / 条`}
                                   >
-                                    <span className="text-[10px] text-emerald-600/80 font-normal">
-                                      {tier.lengthMm >= 1000
-                                        ? `${tier.lengthMm / 1000}m`
-                                        : `${tier.lengthMm}mm`}
-                                      :
+                                    <span className="font-mono text-xs font-semibold text-emerald-700">
+                                      {formatWireTierLength(wireTiers[0].lengthMm)}:
                                     </span>
-                                    <span>¥ {Number(tier.taxIncludedPrice).toFixed(2)}</span>
-                                  </span>
-                                ))}
+                                    <span className="tabular-nums font-bold text-emerald-800">
+                                      ¥ {Number(wireTiers[0].taxIncludedPrice).toFixed(2)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-1.5 w-full min-w-[200px] max-w-[230px]">
+                                    {wireTiers.map((tier) => {
+                                      const lenStr = formatWireTierLength(tier.lengthMm);
+                                      return (
+                                        <div
+                                          key={tier.lengthMm}
+                                          className="flex items-center justify-between gap-1 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2 py-1 text-xs whitespace-nowrap shadow-2xs"
+                                          title={`线长档位 ≤ ${lenStr} (${tier.lengthMm}mm): 含税单价 ¥${Number(tier.taxIncludedPrice).toFixed(2)} / 条`}
+                                        >
+                                          <span className="font-mono text-xs font-semibold text-emerald-700">
+                                            {lenStr}:
+                                          </span>
+                                          <span className="tabular-nums font-bold text-emerald-800">
+                                            ¥ {Number(tier.taxIncludedPrice).toFixed(2)}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             ) : (
-                              <span className="text-slate-400">待定价</span>
+                              <span className="inline-block px-2 py-1 text-xs text-slate-400">
+                                待定价
+                              </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center text-slate-500">元/条</td>
+                          <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
+                            元/条
+                          </td>
                         </tr>
                       );
                     })}
@@ -932,15 +966,15 @@ export function MaterialLibraryPage({
 
             <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
               <div className="overflow-x-auto">
-                <table className="min-w-[900px] w-full border-collapse text-left text-xs">
+                <table className="min-w-[920px] w-full border-collapse text-left text-xs">
                   <thead className="bg-slate-50 uppercase text-slate-500">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">物料名称与代号</th>
-                      <th className="px-4 py-3 font-semibold">品类与定价机制</th>
-                      <th className="px-4 py-3 font-semibold">规格与工程特征</th>
-                      <th className="px-4 py-3 font-semibold">材质与硬度</th>
-                      <th className="px-4 py-3 font-semibold text-right">参考单价</th>
-                      <th className="px-4 py-3 font-semibold text-center">计价单位</th>
+                      <th className="min-w-[180px] px-4 py-3 font-semibold">物料名称与代号</th>
+                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">品类与定价机制</th>
+                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">规格与工程特征</th>
+                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">材质与硬度</th>
+                      <th className="w-[120px] min-w-[110px] px-4 py-3 font-semibold text-right">参考单价</th>
+                      <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -967,16 +1001,16 @@ export function MaterialLibraryPage({
                               <p className="text-[11px] text-slate-400">硬度: {m.outerHardness}</p>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
                             {price ? (
-                              <span className="font-bold text-emerald-600">
+                              <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
                                 ¥ {Number(price.taxIncludedPrice).toFixed(2)}
                               </span>
                             ) : (
-                              <span className="text-slate-400">待定价</span>
+                              <span className="inline-block px-2 py-1 text-xs text-slate-400">待定价</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center text-slate-500">
+                          <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
                             {price?.unit ?? '元/个'}
                           </td>
                         </tr>
@@ -999,12 +1033,12 @@ export function MaterialLibraryPage({
                           <p>线束防护套管 / 波纹管 / 热缩管</p>
                         </td>
                         <td className="px-4 py-3 text-slate-400">-</td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="font-bold text-emerald-600">
+                        <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
+                          <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
                             ¥ {Number(p.price || 0).toFixed(2)}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center text-slate-500">元/米</td>
+                        <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">元/米</td>
                       </tr>
                     ))}
                   </tbody>
