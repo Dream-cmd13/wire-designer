@@ -5,7 +5,6 @@ import {
   ClipboardList,
   Database,
   FileImage,
-  FolderOpen,
   Home,
   LayoutDashboard,
   LogOut,
@@ -47,13 +46,9 @@ const sidebarItems: SidebarItem[] = [
     icon: LayoutDashboard,
   },
   {
-    label: '正式库',
-    path: appRoutes['library-connectors'].path,
+    label: '物料库',
+    path: appRoutes.materials.path,
     icon: Database,
-    children: [
-      { label: '数据库连接器', path: appRoutes['library-connectors'].path, icon: Database },
-      { label: '线束库', path: appRoutes['library-harnesses'].path, icon: FolderOpen },
-    ],
   },
 ];
 
@@ -200,7 +195,7 @@ export function AdminShell({
       ? (currentProjectName || '选择项目后可进入完整设计流程')
       : route.section === 'home'
         ? '选择项目后可进入完整设计流程'
-        : '标准元器件与线束资产';
+        : '标准元器件与物料规格';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (

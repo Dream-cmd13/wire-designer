@@ -3,14 +3,13 @@ export type AppRouteId =
   | 'designer-design'
   | 'designer-product-image'
   | 'drawing-workbench'
-  | 'library-connectors'
-  | 'library-harnesses';
+  | 'materials';
 
 export interface AppRoute {
   id: AppRouteId;
   path: string;
   title: string;
-  section: 'home' | 'designer' | 'drawing' | 'library';
+  section: 'home' | 'designer' | 'drawing' | 'materials';
 }
 
 export const appRoutes: Record<AppRouteId, AppRoute> = {
@@ -38,17 +37,11 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     title: '制作图纸',
     section: 'drawing',
   },
-  'library-connectors': {
-    id: 'library-connectors',
-    path: '/library/connectors',
-    title: '数据库连接器',
-    section: 'library',
-  },
-  'library-harnesses': {
-    id: 'library-harnesses',
-    path: '/library/harnesses',
-    title: '线束库',
-    section: 'library',
+  materials: {
+    id: 'materials',
+    path: '/materials',
+    title: '物料库',
+    section: 'materials',
   },
 };
 
@@ -64,7 +57,14 @@ function toUrl(path: string): URL {
 
 const routeByPath = new Map(
   Object.values(appRoutes).flatMap((route) => {
-    const aliases = route.id === 'home' ? ['/', route.path] : [route.path];
+    let aliases: string[];
+    if (route.id === 'home') {
+      aliases = ['/', route.path];
+    } else if (route.id === 'materials') {
+      aliases = [route.path, '/library/connectors', '/library/harnesses', '/library'];
+    } else {
+      aliases = [route.path];
+    }
     return aliases.map((path) => [path, route] as const);
   }),
 );

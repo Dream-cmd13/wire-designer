@@ -23,9 +23,8 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
-import { ConnectorLibraryPage } from '@/pages/ConnectorLibraryPage';
+import { MaterialLibraryPage } from '@/pages/MaterialLibraryPage';
 import { DrawingWorkbenchPage } from '@/pages/DrawingWorkbenchPage';
-import { HarnessLibraryPage } from '@/pages/HarnessLibraryPage';
 import type { Project } from '@/types/user';
 
 function DesignerView() {
@@ -48,7 +47,7 @@ function ProjectRequiredState({ onNavigateHome }: { onNavigateHome: () => void }
         <FolderOpen className="mx-auto h-10 w-10 text-slate-300" />
         <h2 className="mt-4 text-base font-semibold text-slate-900">尚未打开项目</h2>
         <p className="mt-2 text-sm text-slate-500">
-          请先从首页或线束库打开项目，再进入线束设计器。
+          请先从首页打开项目，再进入线束设计器。
         </p>
         <button
           type="button"
@@ -154,14 +153,13 @@ export default function App() {
   const saveActiveDrawing = useDrawingStore((state) => state.saveActiveDocument);
 
   const needsCatalog = route.section === 'designer'
-    || route.id === 'library-connectors'
+    || route.id === 'materials'
     || route.id === 'drawing-workbench'
-    || route.id === 'library-harnesses'
     || wizardOpen;
 
   const needsStorageBootstrap = Boolean(supabase) && (
     route.section === 'designer'
-    || route.id === 'library-connectors'
+    || route.id === 'materials'
     || route.id === 'drawing-workbench'
   );
 
@@ -674,17 +672,8 @@ export default function App() {
       return <DrawingWorkbenchPage />;
     }
 
-    if (route.id === 'library-connectors') {
-      return <ConnectorLibraryPage />;
-    }
-
-    if (route.id === 'library-harnesses') {
-      return (
-        <HarnessLibraryPage
-          onOpenProject={(project) => void handleOpenProject(project)}
-          onNavigateHome={() => navigate(appRoutes.home.path)}
-        />
-      );
+    if (route.id === 'materials') {
+      return <MaterialLibraryPage />;
     }
 
     return (

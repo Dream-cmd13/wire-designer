@@ -1,5 +1,6 @@
 import type { HarnessConfig } from '@/types/harness';
 import type { CatalogSnapshot } from '@/types/catalog';
+import type { MaterialPrice } from '@/repositories/priceRepository';
 import { applyCatalogWireSpec } from './wireCatalog';
 import { resolveColor } from './canvasMaterials';
 
@@ -90,4 +91,106 @@ export function getQuoteMaterials(config: HarnessConfig, catalog: CatalogSnapsho
     else grouped.set(key, { ...row });
   }
   return [...grouped.values()];
+}
+
+/**
+ * 从 Catalog 全量元器件生成标准报价物料候选（不依赖任何特定项目工程）。
+ * 线材默认采用 1000mm (1米) 作为初始基准档位。
+ */
+export function getCatalogPriceCandidates(catalog: CatalogSnapshot | null): QuoteMaterial[] {
+  if (!catalog) return [];
+  const rows: QuoteMaterial[] = [];
+
+  for (const c of catalog.connectors ?? []) {
+    rows.push({
+      kind: 'connector',
+      resourceId: c.resourceItemId || c.id,
+      name: c.name,
+      specification: JSON.stringify([c.model || '', c.series || '', c.pinCount, c.type]),
+      lengthMm: 0,
+      unit: '元/个',
+      quantity: 1,
+    });
+  }
+
+  const baseSpec = {
+    kind: 'electronic' as const,
+    awg: 24,
+    color: '黑色',
+    ulNumber: '1007' as const,
+    lengthMm: 1000,
+    endTreatment: { start: { stripped: false, termination: 'none' as const }, end: { stripped: false, termination: 'none' as const } },
+  };
+
+  for (const wire of catalog.wires ?? []) {
+    const s = applyCatalogWireSpec(baseSpec, wire.spec);
+    const specification = s.kind === 'jacketed'
+      ? [s.kind, s.awg ?? null, s.coreCount, s.shielded, s.jacketMaterial, s.jacketColor, s.odMm, s.ulNumber || '', s.coreColors, ...(s.conductorAreaMm2 === undefined ? [] : [s.conductorAreaMm2])]
+      : [s.kind, s.awg, s.color, s.ulNumber];
+    rows.push({
+      kind: 'wire',
+      resourceId: wire.resourceItemId || wire.id,
+      name: wire.name,
+      specification: JSON.stringify(specification),
+      lengthMm: 1000,
+      unit: '元/条',
+      quantity: 1,
+    });
+  }
+
+  for (const mold of catalog.overmolds ?? []) {
+    rows.push({
+      kind: 'outer-mold',
+      resourceId: mold.resourceItemId || mold.id,
+      name: mold.name,
+      specification: JSON.stringify([mold.outerMaterial, mold.outerHardness || '', mold.outerForm]),
+      lengthMm: 0,
+      unit: '元/个',
+      quantity: 1,
+    });
+  }
+
+  return rows;
+}
+
+/**
+ * 构造用于价格模板导出的全量物料列表：
+ * 保证当前 Catalog 中的每个物料都至少存在一行（方便批量补价）；
+ * 同时若价格库已维护了多个线长档位，将保留所有有效档位行。
+ */
+export function buildCatalogPriceTemplateRows(
+  catalog: CatalogSnapshot | null,
+  sharedPrices: MaterialPrice[],
+): QuoteMaterial[] {
+  const candidates = getCatalogPriceCandidates(catalog);
+  if (!candidates.length) return [];
+
+  const rows: QuoteMaterial[] = [];
+
+  for (const candidate of candidates) {
+    const tierKey = materialPriceTierKey(candidate);
+    const matchedPrices = sharedPrices.filter((p) => materialPriceTierKey(p) === tierKey);
+
+    if (matchedPrices.length > 0) {
+      for (const p of matchedPrices) {
+        rows.push({
+          kind: candidate.kind,
+          resourceId: candidate.resourceId,
+          name: candidate.name,
+          specification: candidate.specification,
+          lengthMm: p.lengthMm,
+          unit: candidate.unit,
+          quantity: 1,
+        });
+      }
+    } else {
+      rows.push(candidate);
+    }
+  }
+
+  const uniqueMap = new Map<string, QuoteMaterial>();
+  for (const r of rows) {
+    uniqueMap.set(materialPriceKey(r), r);
+  }
+  return [...uniqueMap.values()];
 }

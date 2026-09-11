@@ -114,8 +114,7 @@ describe('AdminShell view toggle buttons', () => {
     const nonDesignerRoutes = [
       appRoutes.home,
       appRoutes['drawing-workbench'],
-      appRoutes['library-connectors'],
-      appRoutes['library-harnesses'],
+      appRoutes.materials,
     ];
 
     for (const route of nonDesignerRoutes) {

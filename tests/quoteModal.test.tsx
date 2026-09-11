@@ -20,10 +20,18 @@ describe('QuoteModal component & anti-jitter behavior', () => {
       <QuoteModal isOpen={true} onClose={() => {}} />,
     );
     expect(html).toContain('线束报价核算');
-    expect(html).toContain('共享材料价格库');
+    expect(html).not.toContain('共享材料价格库');
+    expect(html).not.toContain('导入价格');
+    expect(html).not.toContain('下载模板');
     expect(html).toContain('订单数量');
     expect(html).toContain('加工端数');
     expect(html).toContain('导出报价 Excel');
+  });
+
+  it('completely removes shared material price db section from QuotePanel.tsx', () => {
+    const source = readFileSync('src/components/panels/QuotePanel.tsx', 'utf8');
+    expect(source).not.toContain('共享材料价格库');
+    expect(source).not.toContain('exportPrices');
   });
 
   it('completely removes M8 / M12 references from QuotePanel.tsx source code', () => {
