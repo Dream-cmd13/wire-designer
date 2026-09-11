@@ -206,7 +206,7 @@ export function QuoteContent() {
           <div className="rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50/50 p-3.5 border border-blue-100">
             <div className="flex items-baseline justify-between mb-1.5">
               <span className="text-xs font-medium text-slate-600">含税含运费单价</span>
-              <span className="text-xl font-bold text-blue-700 tabular-nums">
+              <span className="text-lg font-bold text-slate-900 tabular-nums">
                 ¥{formatQuoteMoney(price.unitPrice)}
               </span>
             </div>
@@ -214,7 +214,7 @@ export function QuoteContent() {
               <span className="text-sm font-semibold text-slate-800">
                 订单总价（{config.quantity} 件）
               </span>
-              <span className="text-lg font-bold text-slate-900 tabular-nums">
+              <span className="text-xl font-bold text-blue-700 tabular-nums">
                 ¥{formatQuoteMoney(price.totalPrice)}
               </span>
             </div>
