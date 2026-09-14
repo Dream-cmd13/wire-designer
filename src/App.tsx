@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Download, FolderOpen } from 'lucide-react';
+import { AlertTriangle, Download, FolderOpen, Loader2 } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
 import { AdminShell } from '@/components/layout/AdminShell';
@@ -39,6 +39,20 @@ function DesignerView() {
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
+function ProjectRestoringState() {
+  return (
+    <div className="flex h-full items-center justify-center bg-slate-100 p-4">
+      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <Loader2 className="mx-auto h-9 w-9 animate-spin text-blue-600" />
+        <h2 className="mt-4 text-base font-semibold text-slate-900">正在加载项目...</h2>
+        <p className="mt-2 text-sm text-slate-500">
+          正在准备设计环境与图纸数据，请稍候。
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function ProjectRequiredState({ onNavigateHome }: { onNavigateHome: () => void }) {
@@ -129,6 +143,9 @@ export default function App() {
     userId: string;
     requestId: number;
   } | null>(null);
+  const [isRestoringProject, setIsRestoringProject] = useState(false);
+  const [failedProjectId, setFailedProjectId] = useState<string | null>(null);
+  const restoreFailed = Boolean(projectId && failedProjectId === projectId);
 
   const currentUser = useUserStore((state) => state.currentUser);
   const currentUserId = currentUser?.id;
@@ -353,6 +370,9 @@ export default function App() {
       saveTimerRef.current = null;
     }
 
+    restoreProjectAttemptRef.current = null;
+    setFailedProjectId(null);
+    setIsRestoringProject(false);
     setWizardOpen(false);
     setLoadError(null);
     setRecoveryRaw(null);
@@ -478,6 +498,8 @@ export default function App() {
     project: Project,
     destinationPath = appRoutes['designer-design'].path,
   ) => {
+    setIsRestoringProject(true);
+    setFailedProjectId(null);
     setCurrentProject(project);
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
@@ -511,43 +533,47 @@ export default function App() {
       }
     } finally {
       history.resume();
+      setIsRestoringProject(false);
     }
 
     navigate(destinationPath, { projectId: project.id });
   }, [navigate, replaceDocument, setCurrentProject, updateProject]);
 
   useEffect(() => {
-    if (
-      !projectId
-      || route.section !== 'designer'
-      || !authReady
-      || !currentUserId
-      || !projectsReady
-      || projectsReady.userId !== currentUserId
-      || projectsReady.requestId !== projectsLoadRequestRef.current
-    ) {
+    if (!projectId || route.section !== 'designer' || !authReady || !currentUserId) {
       if (!projectId || !currentUserId) {
         restoreProjectAttemptRef.current = null;
       }
       return;
     }
 
-    const attemptKey = `${currentUserId}:${projectId}`;
-    if (
-      restoreProjectAttemptRef.current === attemptKey
-      || (currentProject?.id === projectId && config.id === projectId)
-    ) {
+    if (currentProject?.id === projectId && config.id === projectId) {
       return;
     }
-    restoreProjectAttemptRef.current = attemptKey;
+
+    const isRemoteReady = Boolean(
+      projectsReady
+      && projectsReady.userId === currentUserId
+      && projectsReady.requestId === projectsLoadRequestRef.current,
+    );
 
     const project = projects.find((candidate) => candidate.id === projectId);
     if (!project) {
+      if (!isRemoteReady) {
+        return;
+      }
+      setFailedProjectId(projectId);
       setCurrentProject(null);
       replaceDocument(createDefaultConfig(), { markSaved: true });
       navigate(appRoutes.home.path);
       return;
     }
+
+    const attemptKey = `${currentUserId}:${projectId}`;
+    if (restoreProjectAttemptRef.current === attemptKey) {
+      return;
+    }
+    restoreProjectAttemptRef.current = attemptKey;
 
     let cancelled = false;
     void Promise.resolve()
@@ -558,6 +584,7 @@ export default function App() {
       .catch((error) => {
         if (cancelled) return;
         console.error('项目恢复失败:', error);
+        setFailedProjectId(projectId);
         setCurrentProject(null);
         replaceDocument(createDefaultConfig(), { markSaved: true });
         navigate(appRoutes.home.path);
@@ -608,6 +635,9 @@ export default function App() {
       }
     }
 
+    restoreProjectAttemptRef.current = null;
+    setFailedProjectId(null);
+    setIsRestoringProject(false);
     setCurrentProject(null);
     setLoadError(null);
     setRecoveryRaw(null);
@@ -645,7 +675,10 @@ export default function App() {
           : 'text-red-700 bg-red-50';
 
   const renderDesignerContent = () => {
-    if (!currentProject) {
+    if (!currentProject || (projectId && currentProject.id !== projectId) || isRestoringProject) {
+      if (projectId && !restoreFailed) {
+        return <ProjectRestoringState />;
+      }
       return <ProjectRequiredState onNavigateHome={() => navigate(appRoutes.home.path)} />;
     }
 
