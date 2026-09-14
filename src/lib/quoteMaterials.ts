@@ -14,13 +14,21 @@ export interface QuoteMaterial {
   quantity: number;
 }
 
+function normalizeSpecification(value: string): string {
+  try {
+    return JSON.stringify(JSON.parse(value));
+  } catch {
+    return value.trim();
+  }
+}
+
 export function materialPriceKey(row: Omit<QuoteMaterial, 'name' | 'quantity'>): string {
-  return JSON.stringify([row.kind, row.resourceId, row.specification, row.lengthMm, row.unit]);
+  return JSON.stringify([row.kind, row.resourceId, normalizeSpecification(row.specification), row.lengthMm, row.unit]);
 }
 
 /** Price-tier identity, intentionally excluding length so the quote can choose the next tier. */
 export function materialPriceTierKey(row: Omit<QuoteMaterial, 'name' | 'quantity'>): string {
-  return JSON.stringify([row.kind, row.resourceId, row.specification, row.unit]);
+  return JSON.stringify([row.kind, row.resourceId, normalizeSpecification(row.specification), row.unit]);
 }
 
 /** Business-facing text is independent of the internal exact-match key. */
