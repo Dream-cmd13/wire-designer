@@ -78,7 +78,7 @@ export function MaterialLibraryPage({
 
   // 连接器筛选
   const [connQuery, setConnQuery] = useState('');
-  const [connManufacturer, setConnManufacturer] = useState('all');
+  const [connSupplierNo, setConnSupplierNo] = useState('all');
   const [connSeries, setConnSeries] = useState('all');
   const [connShielded, setConnShielded] = useState('all');
   const [connType, setConnType] = useState('all');
@@ -186,8 +186,15 @@ export function MaterialLibraryPage({
   );
 
   // 连接器筛选选项
-  const connManufacturers = useMemo(
-    () => Array.from(new Set(connectors.map((c) => c.manufacturer))).filter(Boolean).sort(),
+  const connSupplierNos = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          connectors.map((c) => c.supplierNo || '未配置厂商编号'),
+        ),
+      )
+        .filter(Boolean)
+        .sort(),
     [connectors],
   );
   const connAllSeries = useMemo(
@@ -203,15 +210,16 @@ export function MaterialLibraryPage({
   const filteredConnectors = useMemo(() => {
     const q = connQuery.trim().toLowerCase();
     return connectors.filter((c) => {
+      const supplierDisplay = c.supplierNo || '未配置厂商编号';
       const matchQ =
         !q ||
         c.name.toLowerCase().includes(q) ||
         c.id.toLowerCase().includes(q) ||
         c.model?.toLowerCase().includes(q) ||
         c.series?.toLowerCase().includes(q) ||
-        c.manufacturer.toLowerCase().includes(q);
+        (c.supplierNo ? c.supplierNo.toLowerCase().includes(q) : false);
 
-      const matchM = connManufacturer === 'all' || c.manufacturer === connManufacturer;
+      const matchM = connSupplierNo === 'all' || supplierDisplay === connSupplierNo;
       const matchS = connSeries === 'all' || c.series === connSeries;
       const matchSh =
         connShielded === 'all' ||
@@ -231,7 +239,7 @@ export function MaterialLibraryPage({
   }, [
     connectors,
     connQuery,
-    connManufacturer,
+    connSupplierNo,
     connSeries,
     connShielded,
     connType,
@@ -258,7 +266,7 @@ export function MaterialLibraryPage({
         w.name.toLowerCase().includes(q) ||
         w.id.toLowerCase().includes(q) ||
         w.model?.toLowerCase().includes(q) ||
-        w.manufacturer?.toLowerCase().includes(q) ||
+        (w.supplierNo ? w.supplierNo.toLowerCase().includes(q) : false) ||
         (w.spec.ulNumber ? String(w.spec.ulNumber).toLowerCase().includes(q) : false) ||
         (w.spec.awg != null &&
           (String(w.spec.awg).includes(q) ||
@@ -554,18 +562,18 @@ export function MaterialLibraryPage({
                     type="search"
                     value={connQuery}
                     onChange={(e) => setConnQuery(e.target.value)}
-                    placeholder="搜索连接器名称、型号、厂商、ID"
+                    placeholder="搜索连接器名称、型号、厂商编号、ID"
                     className="h-9 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </label>
 
                 <select
-                  value={connManufacturer}
-                  onChange={(e) => setConnManufacturer(e.target.value)}
+                  value={connSupplierNo}
+                  onChange={(e) => setConnSupplierNo(e.target.value)}
                   className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs outline-none transition focus:border-blue-400"
                 >
-                  <option value="all">全部厂商</option>
-                  {connManufacturers.map((m) => (
+                  <option value="all">全部厂商编号</option>
+                  {connSupplierNos.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
@@ -639,7 +647,7 @@ export function MaterialLibraryPage({
                   <thead className="bg-slate-50 uppercase text-slate-500">
                     <tr>
                       <th className="min-w-[180px] px-4 py-3 font-semibold">连接器与型号</th>
-                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">厂商与系列</th>
+                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">厂商编号与系列</th>
                       <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">类型 / 屏蔽</th>
                       <th className="w-[100px] min-w-[90px] px-4 py-3 font-semibold">PIN / 间距</th>
                       <th className="w-[140px] min-w-[130px] px-4 py-3 font-semibold">电气与防护规格</th>
@@ -660,7 +668,9 @@ export function MaterialLibraryPage({
                             </p>
                           </td>
                           <td className="px-4 py-3 text-slate-600">
-                            <p className="text-slate-800 font-medium">{c.manufacturer}</p>
+                            <p className="text-slate-800 font-medium">
+                              {c.supplierNo || '未配置厂商编号'}
+                            </p>
                             {c.series && <p className="text-[11px] text-slate-400">{c.series}</p>}
                           </td>
                           <td className="px-4 py-3 text-slate-600">
@@ -828,8 +838,10 @@ export function MaterialLibraryPage({
                             <p className="mt-0.5 font-mono text-[11px] text-blue-600">
                               {w.model || w.id}
                             </p>
-                            {w.manufacturer && (
-                              <p className="text-[11px] text-slate-400">{w.manufacturer}</p>
+                            {w.supplierNo && (
+                              <p className="text-[11px] text-slate-400">
+                                {w.supplierNo}
+                              </p>
                             )}
                           </td>
                           <td className="px-4 py-3 text-slate-600">

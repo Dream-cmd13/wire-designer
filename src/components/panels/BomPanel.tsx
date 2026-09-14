@@ -128,12 +128,12 @@ export function BomPanel() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量'];
+    const headers = ['类型', '描述', '型号', '厂商编号', '单位用量', '总用量'];
     const rows = bomItems.map((item) => [
       getTypeName(item.type),
       item.description,
       item.model || item.partNumber || '',
-      item.manufacturer || '',
+      item.supplierNo || (item.type === 'connector' ? '未配置厂商编号' : ''),
       String(item.quantity),
       String(item.quantity * config.quantity),
     ]);
@@ -143,12 +143,12 @@ export function BomPanel() {
   };
 
   const handleExportExcel = () => {
-    const headers = ['类型', '描述', '型号', '制造商', '单位用量', '总用量'];
+    const headers = ['类型', '描述', '型号', '厂商编号', '单位用量', '总用量'];
     const rows = bomItems.map((item) => [
       getTypeName(item.type),
       item.description,
       item.model || item.partNumber || '',
-      item.manufacturer || '',
+      item.supplierNo || (item.type === 'connector' ? '未配置厂商编号' : ''),
       String(item.quantity),
       String(item.quantity * config.quantity),
     ]);
@@ -217,9 +217,10 @@ export function BomPanel() {
                     >
                       {item.description}
                     </div>
-                    {(item.model || item.manufacturer) && (
+                    {(item.model || item.supplierNo || item.type === 'connector') && (
                       <div className="truncate text-[10px] text-slate-400">
-                        {item.model ? `${item.model} ` : ''}{item.manufacturer ? `· ${item.manufacturer}` : ''}
+                        {item.model ? `${item.model} ` : ''}
+                        {item.supplierNo ? `· ${item.supplierNo}` : (item.type === 'connector' ? '· 未配置厂商编号' : '')}
                       </div>
                     )}
                   </td>

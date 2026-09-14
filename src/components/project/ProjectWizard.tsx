@@ -410,7 +410,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                     >
                       {connectors.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name} ({c.pinCount}P) - {c.manufacturer}
+                          {c.name} ({c.pinCount}P) - {c.supplierNo || '未配置厂商编号'}
                         </option>
                       ))}
                     </select>
@@ -424,7 +424,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                     >
                       {connectors.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name} ({c.pinCount}P) - {c.manufacturer}
+                          {c.name} ({c.pinCount}P) - {c.supplierNo || '未配置厂商编号'}
                         </option>
                       ))}
                     </select>

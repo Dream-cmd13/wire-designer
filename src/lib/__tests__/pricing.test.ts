@@ -16,7 +16,7 @@ const catalog = { overmolds: [{ id: 'mold', name: '外模', outerMaterial: '黑�
 function fixture() {
   const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 2, srPoints: 2 },
     connectors: ['a', 'b'].map((id) => ({ id, label: id, position: { x: 0, y: 0 }, jumpers: [], connector: {
-      id: 'connector', name: 'M12连接器', series: 'M12', manufacturer: '', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
+      id: 'connector', name: 'M12连接器', series: 'M12', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
     } })),
     materials: [{ id: 'wire', resourceItemId: 'wire-resource', name: '线材', position: { x: 0, y: 0 }, width: 200, circuits: [],
       spec: { kind: 'jacketed', awg: 24, coreCount: 4, shielded: true, jacketMaterial: 'PVC', jacketColor: 'black', odMm: 5,

@@ -133,8 +133,10 @@ export function ConnectorPropertiesDialog({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">制造厂家:</span>
-                <span className="text-slate-700">{instance.connector.manufacturer || '通用'}</span>
+                <span className="text-slate-400">厂商编号:</span>
+                <span className="text-slate-700">
+                  {instance.connector.supplierNo || '未配置厂商编号'}
+                </span>
               </div>
               {instance.connector.series && (
                 <div className="flex justify-between">

@@ -10,7 +10,7 @@ function makeConnector(id: string, name: string, x: number): ConnectorInstance {
     connector: {
       id,
       name,
-      manufacturer: 'Generic',
+      supplierNo: 'A118',
       pinCount: 4,
       type: 'male',
       pinLabels: ['1', '2', '3', '4'],

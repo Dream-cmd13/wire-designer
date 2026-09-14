@@ -62,8 +62,8 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     const configWith2 = {
       ...store.config,
       connectors: [
-        { id: 'c1', label: 'J1', position: { x: 0, y: 0 }, jumpers: [], connector: { id: 'p1', name: 'M12-4P', pinCount: 4, type: 'male' as const, manufacturer: '' } },
-        { id: 'c2', label: 'J2', position: { x: 100, y: 0 }, jumpers: [], connector: { id: 'p2', name: 'M12-4P', pinCount: 4, type: 'female' as const, manufacturer: '' } },
+        { id: 'c1', label: 'J1', position: { x: 0, y: 0 }, jumpers: [], connector: { id: 'p1', name: 'M12-4P', pinCount: 4, type: 'male' as const } },
+        { id: 'c2', label: 'J2', position: { x: 100, y: 0 }, jumpers: [], connector: { id: 'p2', name: 'M12-4P', pinCount: 4, type: 'female' as const } },
       ],
     };
     useHarnessStore.getState().replaceDocument(configWith2);
@@ -76,7 +76,7 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     const configWith1 = {
       ...store.config,
       connectors: [
-        { id: 'c1', label: 'J1', position: { x: 0, y: 0 }, jumpers: [], connector: { id: 'p1', name: 'M12-4P', pinCount: 4, type: 'male' as const, manufacturer: '' } },
+        { id: 'c1', label: 'J1', position: { x: 0, y: 0 }, jumpers: [], connector: { id: 'p1', name: 'M12-4P', pinCount: 4, type: 'male' as const } },
       ],
     };
     useHarnessStore.getState().replaceDocument(configWith1);
@@ -92,8 +92,8 @@ describe('QuoteModal component & anti-jitter behavior', () => {
       ...base,
       quotation: { processingEnds: 1 as const, srPoints: 0 },
       connectors: [
-        { id: 'c1', label: 'J1', position: { x: 0, y: 0 }, jumpers: [], connector: { id: 'p1', name: 'M12-4P', pinCount: 4, type: 'male' as const, manufacturer: '' } },
-        { id: 'c2', label: 'J2', position: { x: 100, y: 0 }, jumpers: [], connector: { id: 'p2', name: 'M12-4P', pinCount: 4, type: 'female' as const, manufacturer: '' } },
+        { id: 'c1', label: 'J1', position: { x: 0, y: 0 }, jumpers: [], connector: { id: 'p1', name: 'M12-4P', pinCount: 4, type: 'male' as const } },
+        { id: 'c2', label: 'J2', position: { x: 100, y: 0 }, jumpers: [], connector: { id: 'p2', name: 'M12-4P', pinCount: 4, type: 'female' as const } },
       ],
     };
     const aligned = alignHarnessConfig(initialConfig);

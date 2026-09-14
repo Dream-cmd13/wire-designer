@@ -188,7 +188,7 @@ describe('BOM grouping', () => {
             name: 'M12 A-Coded 4P 公头',
             model: 'M12A04-07-093',
             resourceItemId: 'uuid-conn-1',
-            manufacturer: 'Manufacturer A',
+            supplierNo: 'A227',
             pinCount: 4,
             type: 'male',
             pinLabels: ['1', '2', '3', '4'],
@@ -203,6 +203,7 @@ describe('BOM grouping', () => {
     expect(connItems[0].partNumber).toBe('M12A04-07-093');
     expect(connItems[0].model).toBe('M12A04-07-093');
     expect(connItems[0].resourceItemId).toBe('uuid-conn-1');
+    expect(connItems[0].supplierNo).toBe('A227');
   });
 
   it('separates corrugated sleeves by material', () => {

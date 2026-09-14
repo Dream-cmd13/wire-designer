@@ -35,7 +35,6 @@ function fakeClient(
 }
 
 const common = {
-  manufacturer: '',
   resource_group: '绘图资源',
   description: '',
   image_path: null,
@@ -122,7 +121,7 @@ describe('CatalogRepository', () => {
       },
       {
         id: 'wire-real', kind: 'wire', code: 'wl-htx-pvc-033', name: 'WL-HTX-PVC-033',
-        model: 'WL-HTX-PVC-033', manufacturer: '', resource_group: '护套线', description: '真实线材',
+        model: 'WL-HTX-PVC-033', resource_group: '护套线', description: '真实线材',
         image_path: null, image_variants: {}, sort_order: 1,
         spec: {
           kind: 'jacketed', ulNumber: 'UL2464', awg: 22, coreCount: 4, shielded: true,

@@ -7,7 +7,6 @@ create table public.catalog_items (
   code text not null check (code ~ '^[a-z0-9][a-z0-9_-]{0,99}$'),
   name text not null check (length(btrim(name)) between 1 and 200),
   model text not null check (length(btrim(model)) between 1 and 200),
-  manufacturer text not null default '',
   resource_group text not null default '',
   description text not null default '',
   image_path text,

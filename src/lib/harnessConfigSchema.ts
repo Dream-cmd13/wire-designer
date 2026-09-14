@@ -208,7 +208,7 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
     !isString(value.id)
     || !isString(value.name)
     || (value.model !== undefined && !isString(value.model))
-    || !isString(value.manufacturer)
+    || (value.supplierNo !== undefined && !isString(value.supplierNo))
     || (value.resourceGroup !== undefined && !isString(value.resourceGroup))
     || (value.description !== undefined && !isString(value.description))
     || (value.series !== undefined && !isString(value.series))
@@ -238,7 +238,7 @@ function readConnector(value: unknown, path: string, issues: string[]): Connecto
     id: value.id,
     name: value.name,
     ...(value.model === undefined ? {} : { model: value.model }),
-    manufacturer: value.manufacturer,
+    ...(value.supplierNo === undefined ? {} : { supplierNo: value.supplierNo }),
     ...(value.resourceGroup === undefined ? {} : { resourceGroup: value.resourceGroup }),
     ...(value.description === undefined ? {} : { description: value.description }),
     ...(value.series === undefined ? {} : { series: value.series }),

@@ -19,7 +19,6 @@ function realSeedCatalogRows(sql: string): unknown[] {
     code: match[3],
     name: match[3],
     model: match[3],
-    manufacturer: '',
     resource_group: '',
     description: '',
     image_path: null,
@@ -52,7 +51,7 @@ describe('minimal database schema', () => {
       'id', 'owner_id', 'document', 'updated_at',
     ]);
     expect(columns(catalog, 'catalog_items')).toEqual([
-      'id', 'kind', 'code', 'name', 'model', 'manufacturer', 'resource_group',
+      'id', 'kind', 'code', 'name', 'model', 'resource_group',
       'description', 'image_path', 'image_variants', 'sort_order', 'spec',
     ]);
   });

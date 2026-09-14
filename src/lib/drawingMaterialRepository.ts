@@ -84,7 +84,6 @@ export class DrawingMaterialRepository {
       code: legacyKey(normalized.code),
       name: normalized.nameAndSpecification,
       model: normalized.code,
-      manufacturer: '',
       resource_group: '绘图辅材',
       description: normalized.note,
       image_path: null,

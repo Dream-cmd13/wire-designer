@@ -146,7 +146,7 @@ describe('normalizeHarnessConfig', () => {
       updatedAt: 200,
       connectors: [{
         id: 'connector-instance', position: { x: 0, y: 0 }, label: 'J1', jumpers: [],
-        connector: { id: 'jst-xh-2', resourceItemId: 'connector-resource', name: 'JST XH 2P', manufacturer: 'JST', pinCount: 2, type: 'female', pinLabels: ['1', '2'] },
+        connector: { id: 'jst-xh-2', resourceItemId: 'connector-resource', name: 'JST XH 2P', supplierNo: 'A118', pinCount: 2, type: 'female', pinLabels: ['1', '2'] },
       }],
       materials: [{
         id: 'material-1', resourceItemId: 'wire-resource', resourceImageUrl: 'https://example.test/wire.png', name: 'W1', position: { x: 0, y: 0 }, width: 100,
@@ -180,7 +180,7 @@ describe('normalizeHarnessConfig', () => {
         id: 'connector-instance', position: { x: 0, y: 0 }, label: 'J1', jumpers: [],
         connector: {
           id: 'm12a04-07-068', resourceItemId: 'connector-real', name: 'M12A04-07-068',
-          manufacturer: '万连', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
+          supplierNo: 'A227', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
           housingMaterial: 'PA66+GF', contactMaterial: '黄铜镀金', nutMaterial: '黄铜镀镍',
           shielded: true, ratedVoltageV: 60, ratedCurrentA: 4,
           temperatureRangeC: { min: -40, max: 105 }, ingressProtection: 'IP67',

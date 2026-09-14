@@ -18,7 +18,7 @@ export interface Connector {
   resourceItemId?: string;
   name: string;
   model?: string;
-  manufacturer: string;
+  supplierNo?: string;
   resourceGroup?: string;
   description?: string;
   series?: string;
@@ -538,7 +538,7 @@ export interface BOMItem {
   partNumber?: string;
   model?: string;
   resourceItemId?: string;
-  manufacturer?: string;
+  supplierNo?: string;
   description: string;
   quantity: number;
   unitPrice?: number;

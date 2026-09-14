@@ -67,12 +67,12 @@ describe('productionDrawingImageScale', () => {
         connectors: [
           {
             id: 'c-left',
-            connector: { id: 'c1', name: 'C1', pinCount: 4, resourceItemId: 'r1', manufacturer: '', type: 'female' as const, pinLabels: [] },
+            connector: { id: 'c1', name: 'C1', pinCount: 4, resourceItemId: 'r1', type: 'female' as const, pinLabels: [] },
             position: { x: 100, y: 300 },
           },
           {
             id: 'c-right',
-            connector: { id: 'c2', name: 'C2', pinCount: 4, resourceItemId: 'r2', manufacturer: '', type: 'female' as const, pinLabels: [] },
+            connector: { id: 'c2', name: 'C2', pinCount: 4, resourceItemId: 'r2', type: 'female' as const, pinLabels: [] },
             position: { x: 700, y: 300 },
           },
         ],

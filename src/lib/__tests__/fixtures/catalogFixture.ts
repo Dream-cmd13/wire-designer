@@ -5,7 +5,7 @@ export const TEST_CONNECTORS: Connector[] = [
   {
     id: 'fixture-2p',
     name: 'Fixture 2P',
-    manufacturer: 'Fixture',
+    supplierNo: 'A118',
     pinCount: 2,
     type: 'female',
     pinLabels: ['1', '2'],
@@ -13,7 +13,7 @@ export const TEST_CONNECTORS: Connector[] = [
   {
     id: 'fixture-3p',
     name: 'Fixture 3P',
-    manufacturer: 'Fixture',
+    supplierNo: 'A118',
     pinCount: 3,
     type: 'female',
     pinLabels: ['1', '2', '3'],
@@ -21,7 +21,7 @@ export const TEST_CONNECTORS: Connector[] = [
   {
     id: 'fixture-4p',
     name: 'Fixture 4P',
-    manufacturer: 'Fixture',
+    supplierNo: 'A118',
     pinCount: 4,
     type: 'female',
     pinLabels: ['1', '2', '3', '4'],
@@ -32,7 +32,7 @@ export const TEST_DRAWING_CONNECTORS: Connector[] = [
   {
     id: 'a1008h-2x20p',
     name: 'A1008H 2x20P',
-    manufacturer: 'Fixture',
+    supplierNo: 'A118',
     pinCount: 40,
     pitch: 2.54,
     type: 'female',
@@ -41,7 +41,7 @@ export const TEST_DRAWING_CONNECTORS: Connector[] = [
   {
     id: 'fixture-none-2p',
     name: 'Fixture single-end 2P',
-    manufacturer: 'Fixture',
+    supplierNo: 'A118',
     pinCount: 2,
     pitch: 2.54,
     type: 'female',

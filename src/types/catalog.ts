@@ -45,7 +45,7 @@ export interface CatalogWire {
   name: string;
   /** Original catalog model and common metadata, when loaded from Supabase. */
   model?: string;
-  manufacturer?: string;
+  supplierNo?: string;
   resourceGroup?: string;
   description?: string;
   image?: string;

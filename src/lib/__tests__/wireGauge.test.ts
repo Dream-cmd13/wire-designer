@@ -26,7 +26,7 @@ describe('area-based wire specifications', () => {
 
   it('loads a database row without inventing AWG and rejects ambiguous units', () => {
     const row = { id: 'wire', kind: 'wire', code: 'area-wire', name: '真实线材', model: 'area-wire',
-      manufacturer: '', resource_group: '', description: '', sort_order: 0,
+      resource_group: '', description: '', sort_order: 0,
       image_path: null, image_variants: {}, spec: base };
     expect(parseCatalogItemRow(row).spec).toMatchObject(base);
     expect(() => parseCatalogItemRow({ ...row, spec: { ...base, awg: 24 } })).toThrow();

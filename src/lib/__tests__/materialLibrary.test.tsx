@@ -21,7 +21,7 @@ const mockSnapshot: CatalogSnapshot = {
       name: '测试连接器A',
       model: 'MODEL-A',
       series: 'SERIES-A',
-      manufacturer: 'TE',
+      supplierNo: 'A118',
       pinCount: 4,
       pinLabels: ['1', '2', '3', '4'],
       type: 'male',

@@ -75,7 +75,7 @@ describe('formatPinNetworkString in WiringDiagram', () => {
       id: 'c-type-1',
       name: 'M12-4P',
       pinCount: 4,
-      manufacturer: 'Generic',
+      supplierNo: 'A118',
       type: 'male',
       pinLabels: ['1', '2', '3', '4'],
     } as Connector,

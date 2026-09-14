@@ -97,7 +97,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
     partNumber: string;
     model?: string;
     resourceItemId?: string;
-    manufacturer: string;
+    supplierNo?: string;
     description: string;
     pinCount: number;
   }>();
@@ -115,7 +115,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
         partNumber,
         model: connector.model,
         resourceItemId: connector.resourceItemId,
-        manufacturer: connector.manufacturer,
+        supplierNo: connector.supplierNo,
         description: `${connector.name} (${connector.pinCount}P)`,
         pinCount: connector.pinCount,
       });
@@ -128,7 +128,7 @@ export function generateBOM(config: HarnessConfig): BOMItem[] {
       partNumber: info.partNumber,
       model: info.model,
       resourceItemId: info.resourceItemId,
-      manufacturer: info.manufacturer,
+      supplierNo: info.supplierNo,
       description: info.description,
       quantity: info.count,
     });

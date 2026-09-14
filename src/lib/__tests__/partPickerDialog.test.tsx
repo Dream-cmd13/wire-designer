@@ -51,7 +51,7 @@ describe('Dialogs catalogStore integration contracts', () => {
           resourceItemId: 'res-m12-1',
           name: 'M12 4芯公头连接器',
           model: 'M12A04-07-093',
-          manufacturer: 'Binder',
+          supplierNo: 'A227',
           series: 'M12-A',
           type: 'male' as const,
           pinCount: 4,
@@ -96,7 +96,7 @@ describe('Dialogs catalogStore integration contracts', () => {
     expect(html).toContain('选择连接器型号');
     expect(html).toContain('M12 4芯公头连接器');
     expect(html).toContain('M12A04-07-093');
-    expect(html).toContain('Binder');
+    expect(html).toContain('A227');
     expect(html).toContain('M12-A');
     expect(html).toContain('已屏蔽');
     expect(html).toContain('工程与电气规格');
@@ -118,7 +118,7 @@ describe('Dialogs catalogStore integration contracts', () => {
           resourceItemId: 'res-av-1',
           name: '航空插头 4芯公头',
           model: 'GX16-4P',
-          manufacturer: 'Standard',
+          supplierNo: 'A118',
           type: 'male' as const,
           pinCount: 4,
           pinLabels: ['A', 'B', 'C', 'D'],

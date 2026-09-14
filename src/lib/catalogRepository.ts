@@ -143,7 +143,7 @@ export class CatalogRepository {
       resourceItemId: item.id,
       name: item.name,
       model: item.model,
-      manufacturer: item.manufacturer,
+      supplierNo: item.supplier_no ?? undefined,
       resourceGroup: item.resource_group,
       description: item.description,
       series: item.spec.series,
@@ -176,7 +176,7 @@ export class CatalogRepository {
       resourceItemId: item.id,
       name: item.name,
       model: item.model,
-      manufacturer: item.manufacturer,
+      supplierNo: item.supplier_no ?? undefined,
       resourceGroup: item.resource_group,
       description: item.description,
       spec: wireSpec(item),
@@ -216,3 +216,6 @@ export class CatalogRepository {
 }
 
 export const catalogRepository = new CatalogRepository();
+
+
+

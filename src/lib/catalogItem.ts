@@ -8,7 +8,7 @@ import type {
 } from '@/types/harness';
 import type { CatalogWireEngineeringSpec } from '@/types/catalog';
 
-export const CATALOG_ITEM_COLUMNS = 'id,kind,code,name,model,manufacturer,resource_group,description,image_path,image_variants,sort_order,spec';
+export const CATALOG_ITEM_COLUMNS = 'id,kind,code,name,model,supplier_id,supplier:suppliers(supplier_no),resource_group,description,image_path,image_variants,sort_order,spec';
 
 export type CatalogItemKind =
   | 'connector'
@@ -83,7 +83,8 @@ type CatalogItemBase = {
   code: string;
   name: string;
   model: string;
-  manufacturer: string;
+  supplier_id?: string | null;
+  supplier_no?: string | null;
   resource_group: string;
   description: string;
   image_path: string | null;
@@ -427,7 +428,13 @@ export function parseCatalogItemRow(value: unknown): CatalogItemRow {
     code: requiredText(row.code, 'code'),
     name: requiredText(row.name, 'name'),
     model: requiredText(row.model, 'model'),
-    manufacturer: text(row.manufacturer, 'manufacturer'),
+    supplier_id: typeof row.supplier_id === 'string' ? row.supplier_id : null,
+    supplier_no: (typeof row.supplier_no === 'string' && row.supplier_no.trim())
+      ? row.supplier_no.trim()
+      : row.supplier && typeof row.supplier === 'object' && !Array.isArray(row.supplier)
+        && typeof (row.supplier as Record<string, unknown>).supplier_no === 'string'
+        ? ((row.supplier as Record<string, unknown>).supplier_no as string).trim()
+        : null,
     resource_group: text(row.resource_group, 'resource_group'),
     description: text(row.description, 'description'),
     image_path: typeof row.image_path === 'string' ? row.image_path : null,

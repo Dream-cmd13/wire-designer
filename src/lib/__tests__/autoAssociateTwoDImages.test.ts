@@ -8,7 +8,7 @@ describe('product image wire matching', () => {
   it('handles complete imageVariants (before + after + pinMap) correctly for unconnected and connected states', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-var-1', resourceItemId: 'res-var-1', name: 'M12-Full', manufacturer: 'M',
+        id: 'conn-var-1', resourceItemId: 'res-var-1', name: 'M12-Full', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         image: 'fallback-should-not-be-used.png',
         imageVariants: { before: 'before.png', after: 'after.png', pinMap: 'pin-map.png' },
@@ -18,7 +18,7 @@ describe('product image wire matching', () => {
     });
     const connector = {
       id: 'conn-inst', position: { x: 0, y: 0 }, label: 'P1', jumpers: [],
-      connector: { id: 'conn-var-1', resourceItemId: 'res-var-1', name: 'M12-Full', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'fallback-should-not-be-used.png' },
+      connector: { id: 'conn-var-1', resourceItemId: 'res-var-1', name: 'M12-Full', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'fallback-should-not-be-used.png' },
     };
 
     // 1. 未连接外模 -> 使用 before + pinMap
@@ -41,7 +41,7 @@ describe('product image wire matching', () => {
   it('handles missing pinMap: keeps before/after and does NOT fallback to plain image', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-var-2', resourceItemId: 'res-var-2', name: 'M12-NoPinMap', manufacturer: 'M',
+        id: 'conn-var-2', resourceItemId: 'res-var-2', name: 'M12-NoPinMap', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         image: 'plain-image.png',
         imageVariants: { before: 'before.png', after: 'after.png' },
@@ -50,7 +50,7 @@ describe('product image wire matching', () => {
     });
     const connector = {
       id: 'conn-inst', position: { x: 0, y: 0 }, label: 'P1', jumpers: [],
-      connector: { id: 'conn-var-2', resourceItemId: 'res-var-2', name: 'M12-NoPinMap', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
+      connector: { id: 'conn-var-2', resourceItemId: 'res-var-2', name: 'M12-NoPinMap', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
     };
     const config = { ...createDefaultConfig(), connectors: [connector], materials: [], models: [], protectiveSleeves: [] };
     const images = autoAssociateTwoDImages(config);
@@ -65,7 +65,7 @@ describe('product image wire matching', () => {
   it('handles missing before: does NOT generate body image and does NOT fallback to after or plain image', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-var-3', resourceItemId: 'res-var-3', name: 'M12-NoBefore', manufacturer: 'M',
+        id: 'conn-var-3', resourceItemId: 'res-var-3', name: 'M12-NoBefore', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         image: 'plain-image.png',
         imageVariants: { after: 'after.png', pinMap: 'pin-map.png' },
@@ -74,7 +74,7 @@ describe('product image wire matching', () => {
     });
     const connector = {
       id: 'conn-inst', position: { x: 0, y: 0 }, label: 'P1', jumpers: [],
-      connector: { id: 'conn-var-3', resourceItemId: 'res-var-3', name: 'M12-NoBefore', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
+      connector: { id: 'conn-var-3', resourceItemId: 'res-var-3', name: 'M12-NoBefore', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
     };
     const config = { ...createDefaultConfig(), connectors: [connector], materials: [], models: [], protectiveSleeves: [] };
     const images = autoAssociateTwoDImages(config);
@@ -88,7 +88,7 @@ describe('product image wire matching', () => {
   it('handles missing after: does NOT generate body image when connected and does NOT fallback to before or plain image', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-var-4', resourceItemId: 'res-var-4', name: 'M12-NoAfter', manufacturer: 'M',
+        id: 'conn-var-4', resourceItemId: 'res-var-4', name: 'M12-NoAfter', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         image: 'plain-image.png',
         imageVariants: { before: 'before.png', pinMap: 'pin-map.png' },
@@ -98,7 +98,7 @@ describe('product image wire matching', () => {
     });
     const connector = {
       id: 'conn-inst', position: { x: 0, y: 0 }, label: 'P1', jumpers: [],
-      connector: { id: 'conn-var-4', resourceItemId: 'res-var-4', name: 'M12-NoAfter', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
+      connector: { id: 'conn-var-4', resourceItemId: 'res-var-4', name: 'M12-NoAfter', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
     };
     const model = { id: 'm-1', kind: 'outer-box' as const, position: { x: 20, y: 0 }, width: 80, height: 60, overmoldSpecId: 'mold-1', resourceItemId: 'res-mold-1', includeInnerMold: false };
     const config = { ...createDefaultConfig(), connectors: [connector], materials: [], models: [model], protectiveSleeves: [] };
@@ -113,7 +113,7 @@ describe('product image wire matching', () => {
   it('handles only pinMap: displays only pinMap', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-only-pin', resourceItemId: 'res-only-pin', name: 'M12-OnlyPinMap', manufacturer: 'M',
+        id: 'conn-only-pin', resourceItemId: 'res-only-pin', name: 'M12-OnlyPinMap', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         image: 'plain-image.png',
         imageVariants: { pinMap: 'pin-map.png' },
@@ -122,7 +122,7 @@ describe('product image wire matching', () => {
     });
     const connector = {
       id: 'conn-inst', position: { x: 0, y: 0 }, label: 'P1', jumpers: [],
-      connector: { id: 'conn-only-pin', resourceItemId: 'res-only-pin', name: 'M12-OnlyPinMap', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
+      connector: { id: 'conn-only-pin', resourceItemId: 'res-only-pin', name: 'M12-OnlyPinMap', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
     };
     const config = { ...createDefaultConfig(), connectors: [connector], materials: [], models: [], protectiveSleeves: [] };
     const images = autoAssociateTwoDImages(config);
@@ -134,7 +134,7 @@ describe('product image wire matching', () => {
   it('handles imageVariants: {} (empty object): returns empty array and does NOT fallback to image_path or connector.image', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-var-5', resourceItemId: 'res-var-5', name: 'M12-EmptyVariants', manufacturer: 'M',
+        id: 'conn-var-5', resourceItemId: 'res-var-5', name: 'M12-EmptyVariants', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         image: 'plain-image.png',
         imageVariants: {},
@@ -143,7 +143,7 @@ describe('product image wire matching', () => {
     });
     const connector = {
       id: 'conn-inst', position: { x: 0, y: 0 }, label: 'P1', jumpers: [],
-      connector: { id: 'conn-var-5', resourceItemId: 'res-var-5', name: 'M12-EmptyVariants', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
+      connector: { id: 'conn-var-5', resourceItemId: 'res-var-5', name: 'M12-EmptyVariants', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
     };
     const config = { ...createDefaultConfig(), connectors: [connector], materials: [], models: [], protectiveSleeves: [] };
     const images = autoAssociateTwoDImages(config);
@@ -153,7 +153,7 @@ describe('product image wire matching', () => {
   it('handles completely missing imageVariants: returns empty array and does NOT fallback to plain image', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-no-var', resourceItemId: 'res-no-var', name: 'M12-NoVariants', manufacturer: 'M',
+        id: 'conn-no-var', resourceItemId: 'res-no-var', name: 'M12-NoVariants', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         image: 'plain-image.png',
       }],
@@ -161,7 +161,7 @@ describe('product image wire matching', () => {
     });
     const connector = {
       id: 'conn-inst', position: { x: 0, y: 0 }, label: 'P1', jumpers: [],
-      connector: { id: 'conn-no-var', resourceItemId: 'res-no-var', name: 'M12-NoVariants', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
+      connector: { id: 'conn-no-var', resourceItemId: 'res-no-var', name: 'M12-NoVariants', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'], image: 'plain-image.png' },
     };
     const config = { ...createDefaultConfig(), connectors: [connector], materials: [], models: [], protectiveSleeves: [] };
     const images = autoAssociateTwoDImages(config);
@@ -171,7 +171,7 @@ describe('product image wire matching', () => {
   it('rotates right-side connector to 180 degrees and bottom connector to -90 degrees', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'conn-1', resourceItemId: 'res-conn-1', name: 'CN-Right', manufacturer: 'M',
+        id: 'conn-1', resourceItemId: 'res-conn-1', name: 'CN-Right', supplierNo: 'A118',
         pinCount: 2, type: 'male', pinLabels: ['1', '2'],
         imageVariants: { before: 'https://assets.example/conn-before.png', after: 'https://assets.example/conn-after.png' },
       }],
@@ -183,11 +183,11 @@ describe('product image wire matching', () => {
     };
     const rightConnector = {
       id: 'conn-right', position: { x: 400, y: 100 }, label: 'P2', jumpers: [],
-      connector: { id: 'conn-1', resourceItemId: 'res-conn-1', name: 'CN-Right', manufacturer: 'M', pinCount: 2, type: 'male' as const, pinLabels: ['1', '2'] },
+      connector: { id: 'conn-1', resourceItemId: 'res-conn-1', name: 'CN-Right', supplierNo: 'A118', pinCount: 2, type: 'male' as const, pinLabels: ['1', '2'] },
     };
     const bottomConnector = {
       id: 'conn-bottom', position: { x: 150, y: 300 }, label: 'P3', jumpers: [],
-      connector: { id: 'conn-1', resourceItemId: 'res-conn-1', name: 'CN-Bottom', manufacturer: 'M', pinCount: 2, type: 'male' as const, pinLabels: ['1', '2'] },
+      connector: { id: 'conn-1', resourceItemId: 'res-conn-1', name: 'CN-Bottom', supplierNo: 'A118', pinCount: 2, type: 'male' as const, pinLabels: ['1', '2'] },
     };
 
     const configRight = { ...createDefaultConfig(), connectors: [rightConnector], materials: [leftWire], models: [], protectiveSleeves: [] };
@@ -206,7 +206,7 @@ describe('product image wire matching', () => {
   it('determines orientation from overmold outerForm: straight (0°/180°) vs bent (-90°)', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', manufacturer: 'M',
+        id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         imageVariants: { before: 'before.png', after: 'after.png', pinMap: 'pin-map.png' },
       }],
@@ -228,11 +228,11 @@ describe('product image wire matching', () => {
 
     const leftConn = {
       id: 'conn-left', position: { x: 100, y: 100 }, label: 'P1', jumpers: [],
-      connector: { id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'] },
+      connector: { id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'] },
     };
     const rightConn = {
       id: 'conn-right', position: { x: 600, y: 100 }, label: 'P2', jumpers: [],
-      connector: { id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'] },
+      connector: { id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'] },
     };
 
     // Scenario 1: 双直头 -> 左端 0°，右端 180°，均使用 connector-after
@@ -293,7 +293,7 @@ describe('product image wire matching', () => {
   it('refreshes catalog image URLs while preserving product-image layout position and applying orientation rotation', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'C1', resourceItemId: 'resource-1', name: 'C1', manufacturer: 'M', pinCount: 2, type: 'male', pinLabels: [],
+        id: 'C1', resourceItemId: 'resource-1', name: 'C1', supplierNo: 'A118', pinCount: 2, type: 'male', pinLabels: [],
         imageVariants: { before: 'https://new.example/c1-before.png', after: 'https://new.example/c1-after.png', pinMap: 'https://new.example/c1-pin.png' },
       }],
       wires: [],
@@ -303,7 +303,7 @@ describe('product image wire matching', () => {
     });
     const config = {
       ...createDefaultConfig(),
-      connectors: [{ id: 'instance-1', connector: { id: 'C1', resourceItemId: 'resource-1', name: 'C1', manufacturer: 'M', pinCount: 2, type: 'male' as const, pinLabels: [] }, position: { x: 0, y: 0 }, label: 'P1', jumpers: [] }],
+      connectors: [{ id: 'instance-1', connector: { id: 'C1', resourceItemId: 'resource-1', name: 'C1', supplierNo: 'A118', pinCount: 2, type: 'male' as const, pinLabels: [] }, position: { x: 0, y: 0 }, label: 'P1', jumpers: [] }],
       materials: [], protectiveSleeves: [], models: [], twoDImages: [{ id: 'stable-image', name: 'C1', dataUrl: 'https://old.example/c1-before.png', source: 'catalog' as const, elementKind: 'connector' as const, elementId: 'instance-1', imageRole: 'connector-before' as const, rotation: 0 as const, pos: { x: 120, y: 80 } }],
     };
 
@@ -315,7 +315,7 @@ describe('product image wire matching', () => {
   it('forces rotation refresh when overmold changes from straight to bent', () => {
     setCatalogSnapshot({
       connectors: [{
-        id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', manufacturer: 'M',
+        id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', supplierNo: 'A118',
         pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
         imageVariants: { before: 'before.png', after: 'after.png', pinMap: 'pin-map.png' },
       }],
@@ -329,7 +329,7 @@ describe('product image wire matching', () => {
 
     const leftConn = {
       id: 'conn-1', position: { x: 100, y: 100 }, label: 'P1', jumpers: [],
-      connector: { id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', manufacturer: 'M', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'] },
+      connector: { id: 'm12a04-07-093', resourceItemId: 'res-m12', name: 'M12', supplierNo: 'A118', pinCount: 4, type: 'male' as const, pinLabels: ['1', '2', '3', '4'] },
     };
     const bentModel = {
       id: 'm-1', kind: 'outer-box' as const, position: { x: 120, y: 100 }, width: 80, height: 60,
