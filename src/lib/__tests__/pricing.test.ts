@@ -4,6 +4,7 @@ import { calculatePrice, formatQuoteMoney } from '@/lib/pricing';
 import { formatMaterialSpecification, getPriceImportCandidates, getQuoteMaterials } from '@/lib/quoteMaterials';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
+import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { validatePrices, type MaterialPrice } from '@/repositories/priceRepository';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
@@ -199,7 +200,8 @@ describe('price workbook and repository', () => {
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(result.Sheets[result.SheetNames[0]])[0];
     expect(row).toMatchObject({ '产品名称': config.name, '连接器含税': 4, '线材含税': 4, '外模 黑色PVC 45P 含税': 2,
       '内模含税': 0, 'SR含税': 0, '材料损耗': 0.3, '加工损耗': 0.2175,
-      '产品含税成本': 14.8675, '含税含运费单价': 19.14, '订单总价': 1914 });
+      '产品含税成本': 14.8675, '含税含运费单价': 19.14, '订单总价': 1914, '交期': '7日' });
+    expect(row['交期']).toBe(DEFAULT_QUOTE_LEAD_TIME);
     expect(row['线材规格']).toContain('0.6m');
     expect(JSON.stringify(row)).not.toContain('wire-resource');
     config.materials[0].spec.lengthMm = 5001;

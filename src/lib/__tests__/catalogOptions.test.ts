@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_QUOTE_LEAD_TIME,
   LEAD_TIME_OPTIONS,
   PRICING_RULES,
   PROTECTION_OPTIONS,
@@ -10,11 +11,10 @@ import {
 
 describe('static catalog options', () => {
   it('keeps display options without demo prices or discounts', () => {
+    expect(DEFAULT_QUOTE_LEAD_TIME).toBe('7日');
     expect(WIRE_COLORS).toHaveLength(14);
     expect(LEAD_TIME_OPTIONS).toEqual([
-      { id: 'rush', name: '加急', days: '10个工作日', multiplier: 1 },
-      { id: 'standard', name: '标准', days: '20-30个工作日', multiplier: 1 },
-      { id: 'economy', name: '经济', days: '30-50个工作日', multiplier: 1 },
+      { id: 'standard', name: '标准', days: '7日', multiplier: 1 },
     ]);
     expect(PROTECTION_OPTIONS).toEqual([{ id: 'none', name: '无', price: 0, materialMultipliers: {} }]);
     expect(PRICING_RULES).toEqual([]);

@@ -53,7 +53,7 @@ describe('CatalogRepository', () => {
     expect(queries).toEqual(['catalog_items', 'catalog_items', 'catalog_items']);
     expect(snapshot.wireColors).toHaveLength(14);
     expect(snapshot.leadTimeOptions.map((option) => option.id))
-      .toEqual(['rush', 'standard', 'economy']);
+      .toEqual(['standard']);
     expect(snapshot).not.toHaveProperty('wireTypes');
     expect(snapshot).not.toHaveProperty('wireGauges');
   });

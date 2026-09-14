@@ -6,6 +6,7 @@ import { QuoteModal } from '@/components/panels/QuotePanel';
 import { BomModal } from '@/components/panels/BomPanel';
 import { BomPreviewModal, type BomPreviewItem } from '@/components/panels/BomPreviewModal';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { alignHarnessConfig } from '@/lib/canvasMaterials';
 
 describe('QuoteModal component & anti-jitter behavior', () => {
@@ -96,6 +97,13 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     };
     const aligned = alignHarnessConfig(initialConfig);
     expect(aligned.quotation?.processingEnds).toBe(2);
+  });
+
+  it('binds DEFAULT_QUOTE_LEAD_TIME in the total price card of QuotePanel', () => {
+    const source = readFileSync('src/components/panels/QuotePanel.tsx', 'utf8');
+    expect(source).toContain('交期：{DEFAULT_QUOTE_LEAD_TIME}');
+    expect(source).toContain('订单总价（{config.quantity} 件）');
+    expect(DEFAULT_QUOTE_LEAD_TIME).toBe('7日');
   });
 });
 

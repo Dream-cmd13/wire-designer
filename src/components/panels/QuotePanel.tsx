@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { calculatePrice, formatQuoteMoney, type QuoteLine } from '@/lib/pricing';
 import { safeFilename } from '@/lib/designFile';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
+import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
@@ -211,9 +212,14 @@ export function QuoteContent() {
               </span>
             </div>
             <div className="flex items-baseline justify-between pt-1 border-t border-blue-100/60">
-              <span className="text-sm font-semibold text-slate-800">
-                订单总价（{config.quantity} 件）
-              </span>
+              <div className="space-y-0.5">
+                <span className="text-sm font-semibold text-slate-800">
+                  订单总价（{config.quantity} 件）
+                </span>
+                <p className="text-xs text-slate-500 font-normal">
+                  交期：{DEFAULT_QUOTE_LEAD_TIME}
+                </p>
+              </div>
               <span className="text-xl font-bold text-blue-700 tabular-nums">
                 ¥{formatQuoteMoney(price.totalPrice)}
               </span>

@@ -23,10 +23,10 @@ export const WIRE_COLORS = [
   { id: 'blank', name: '空白', hex: '#F8FAFC' },
 ] satisfies readonly WireColor[];
 
+export const DEFAULT_QUOTE_LEAD_TIME = '7日';
+
 export const LEAD_TIME_OPTIONS = [
-  { id: 'rush', name: '加急', days: '10个工作日', multiplier: 1 },
-  { id: 'standard', name: '标准', days: '20-30个工作日', multiplier: 1 },
-  { id: 'economy', name: '经济', days: '30-50个工作日', multiplier: 1 },
+  { id: 'standard', name: '标准', days: DEFAULT_QUOTE_LEAD_TIME, multiplier: 1 },
 ] satisfies readonly LeadTimeOption[];
 
 export const PROTECTION_OPTIONS: readonly ProtectionOption[] = [
