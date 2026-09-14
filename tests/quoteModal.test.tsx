@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { QuoteModal } from '@/components/panels/QuotePanel';
 import { BomModal } from '@/components/panels/BomPanel';
+import { BomPreviewModal, type BomPreviewItem } from '@/components/panels/BomPreviewModal';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { alignHarnessConfig } from '@/lib/canvasMaterials';
 
@@ -97,3 +98,63 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     expect(aligned.quotation?.processingEnds).toBe(2);
   });
 });
+
+describe('BomPreviewModal component', () => {
+  it('does not render when isOpen is false', () => {
+    const html = renderToStaticMarkup(
+      <BomPreviewModal isOpen={false} onClose={() => {}} />,
+    );
+    expect(html).toBe('');
+  });
+
+  it('renders modal with left/right buttons when multiple images exist across items', () => {
+    const items: BomPreviewItem[] = [
+      {
+        itemName: 'M12-4P 公头',
+        files: [
+          { name: 'm12_front.png', url: 'https://example.com/m12_front.png', type: 'image' },
+          { name: 'm12_side.png', url: 'https://example.com/m12_side.png', type: 'image' },
+        ],
+      },
+      {
+        itemName: '22AWG 电子线',
+        files: [
+          { name: 'wire.png', url: 'https://example.com/wire.png', type: 'image' },
+        ],
+      },
+    ];
+
+    const html = renderToStaticMarkup(
+      <BomPreviewModal isOpen={true} onClose={() => {}} items={items} initialIndex={0} />,
+    );
+
+    expect(html).toContain('物料关联文件预览');
+    expect(html).toContain('上一张图片');
+    expect(html).toContain('下一张图片');
+    expect(html).toContain('1 / 3');
+    expect(html).toContain('M12-4P 公头');
+    expect(html).toContain('m12_front.png');
+    // Ensure image has object-contain without artificial white border padding card
+    expect(html).toContain('object-contain');
+    expect(html).not.toContain('p-2 rounded-lg bg-white shadow border border-slate-200');
+  });
+
+  it('supports single-item legacy files prop', () => {
+    const html = renderToStaticMarkup(
+      <BomPreviewModal
+        isOpen={true}
+        onClose={() => {}}
+        itemName="单项物料"
+        files={[
+          { name: 'single.png', url: 'https://example.com/single.png', type: 'image' },
+        ]}
+      />,
+    );
+
+    expect(html).toContain('物料关联文件预览');
+    expect(html).toContain('单项物料');
+    expect(html).toContain('single.png');
+    expect(html).not.toContain('上一张图片');
+  });
+});
+

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { generateBOM } from '@/lib/bom';
 import { ClipboardList, Plug, Cable, Shield, Download, FileSpreadsheet, Eye, EyeOff, X } from 'lucide-react';
-import { BomPreviewModal, type AssociatedFile } from './BomPreviewModal';
+import { BomPreviewModal, type AssociatedFile, type BomPreviewItem } from './BomPreviewModal';
 import type { BOMItem, HarnessConfig, TwoDImage } from '@/types/harness';
 
 /**
@@ -63,14 +63,31 @@ export function BomPanel() {
   const { config } = useHarnessStore();
   const bomItems = useMemo(() => generateBOM(config), [config]);
 
+  // 汇总所有关联文件的物料项列表（用于支持弹窗内左右切换跨物料图片）
+  const previewItems = useMemo<BomPreviewItem[]>(() => {
+    return bomItems
+      .map((item) => {
+        const files = getAssociatedFiles(item, config);
+        const name = item.description + (item.model ? ` (${item.model})` : '');
+        return {
+          id: `${item.type}-${item.partNumber || item.description}`,
+          itemName: name,
+          files,
+        };
+      })
+      .filter((entry) => entry.files.length > 0);
+  }, [bomItems, config]);
+
   // Modal state
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewItemName, setPreviewItemName] = useState('');
-  const [previewFiles, setPreviewFiles] = useState<AssociatedFile[]>([]);
+  const [previewIndex, setPreviewIndex] = useState(0);
 
-  const handleOpenPreview = (item: BOMItem, files: AssociatedFile[]) => {
-    setPreviewItemName(item.description);
-    setPreviewFiles(files);
+  const handleOpenPreview = (item: BOMItem) => {
+    const targetId = `${item.type}-${item.partNumber || item.description}`;
+    const idx = previewItems.findIndex(
+      (entry) => entry.id === targetId || entry.itemName.startsWith(item.description),
+    );
+    setPreviewIndex(idx >= 0 ? idx : 0);
     setPreviewOpen(true);
   };
 
@@ -217,7 +234,7 @@ export function BomPanel() {
                   <td className="whitespace-nowrap px-1 py-1.5 text-center">
                     {itemFiles.length > 0 ? (
                       <button
-                        onClick={() => handleOpenPreview(item, itemFiles)}
+                        onClick={() => handleOpenPreview(item)}
                         className="inline-flex items-center justify-center p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors cursor-pointer"
                         title={`查看 ${itemFiles.length} 个关联文件`}
                       >
@@ -252,8 +269,8 @@ export function BomPanel() {
       <BomPreviewModal
         isOpen={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        itemName={previewItemName}
-        files={previewFiles}
+        items={previewItems}
+        initialIndex={previewIndex}
       />
     </div>
   );
