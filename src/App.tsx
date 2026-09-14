@@ -20,6 +20,7 @@ import { projectRepository } from '@/repositories/projectRepository';
 import { useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { usePriceStore } from '@/stores/priceStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
@@ -137,6 +138,7 @@ export default function App() {
   const refreshCatalogIfStale = useCatalogStore((state) => state.refreshIfStale);
   const catalogStatus = useCatalogStore((state) => state.status);
   const catalogError = useCatalogStore((state) => state.error);
+  const loadPrices = usePriceStore((state) => state.load);
   const {
     currentProject,
     projects,
@@ -234,7 +236,10 @@ export default function App() {
     void initializeCatalog().catch(() => {
       // The catalog store exposes the error state to the shell; no mock fallback is used.
     });
-  }, [needsCatalog, initializeCatalog]);
+    void loadPrices().catch(() => {
+      // Background preload; QuoteModal handles loading/fallback gracefully.
+    });
+  }, [needsCatalog, initializeCatalog, loadPrices]);
 
   useEffect(() => {
     if (!needsCatalog) return;

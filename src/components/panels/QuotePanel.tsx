@@ -38,12 +38,16 @@ export function QuoteContent() {
   const config = typeof window === 'undefined' ? (useHarnessStore.getState().config ?? storeConfig) : storeConfig;
   const setConfig = useHarnessStore((state) => state.setConfig);
   const catalog = useCatalogStore((state) => state.snapshot);
-  const { book, loading, error, load } = usePriceStore();
+  const storePriceState = usePriceStore();
+  const priceState = typeof window === 'undefined' ? usePriceStore.getState() : storePriceState;
+  const { book, loading, error, load } = priceState;
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const isInitialLoading = loading && !book;
 
   // 自动根据图纸中的连接器数量推断加工端数（1个连接器对应单端/1端，2个连接器对应双端/2端）
   const autoEnds: (1 | 2) | null =
@@ -188,8 +192,40 @@ export function QuoteContent() {
         <span>内模/SR材料：¥0.00</span>
       </div>
 
-      {/* 缺价或未准备就绪提示 */}
-      {result.status !== 'ready' && (
+      {/* 初始加载中骨架占位（避免尺寸抖动） */}
+      {isInitialLoading && (
+        <div className="space-y-3 animate-pulse" role="status" aria-busy="true" aria-label="正在核算报价...">
+          <div className="rounded-lg bg-gradient-to-br from-slate-100 to-slate-50 p-3.5 border border-slate-200/80 space-y-3">
+            <div className="flex justify-between items-center">
+              <div className="h-3.5 w-24 bg-slate-200 rounded" />
+              <div className="h-5 w-16 bg-slate-200 rounded" />
+            </div>
+            <div className="flex justify-between items-end pt-2 border-t border-slate-200/60">
+              <div className="space-y-1">
+                <div className="h-4 w-32 bg-slate-200 rounded" />
+                <div className="h-3 w-16 bg-slate-200 rounded" />
+              </div>
+              <div className="h-7 w-24 bg-slate-200 rounded" />
+            </div>
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 space-y-2">
+            <div className="h-4 w-40 bg-slate-200 rounded" />
+            <div className="h-8 bg-slate-100/80 rounded" />
+            <div className="h-8 bg-slate-100/80 rounded" />
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3">
+            <div className="h-4 w-36 bg-slate-200 rounded" />
+          </div>
+          <div className="rounded-lg border border-slate-200 p-3 space-y-2.5 bg-slate-50/40">
+            <div className="flex justify-between"><div className="h-3 w-20 bg-slate-200 rounded" /><div className="h-3 w-14 bg-slate-200 rounded" /></div>
+            <div className="flex justify-between"><div className="h-3 w-20 bg-slate-200 rounded" /><div className="h-3 w-14 bg-slate-200 rounded" /></div>
+            <div className="flex justify-between"><div className="h-3 w-24 bg-slate-200 rounded" /><div className="h-3 w-14 bg-slate-200 rounded" /></div>
+          </div>
+        </div>
+      )}
+
+      {/* 缺价或未准备就绪提示（仅在非加载状态且未就绪时显示） */}
+      {!isInitialLoading && result.status !== 'ready' && (
         <div
           role="status"
           className="space-y-1 rounded-md border-l-4 border-amber-500 bg-amber-50/70 p-3 text-xs text-amber-900"
@@ -303,7 +339,7 @@ export function QuoteModal({
       }}
     >
       <div
-        className="relative flex max-h-[92vh] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-slate-200"
+        className="relative flex max-h-[92vh] min-h-[460px] sm:min-h-[520px] w-full max-w-xl flex-col rounded-xl bg-white shadow-2xl overflow-hidden border border-slate-200"
         role="dialog"
         aria-modal="true"
         aria-label="线束报价核算"

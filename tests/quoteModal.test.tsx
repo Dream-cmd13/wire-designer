@@ -6,6 +6,7 @@ import { QuoteModal } from '@/components/panels/QuotePanel';
 import { BomModal } from '@/components/panels/BomPanel';
 import { BomPreviewModal, type BomPreviewItem } from '@/components/panels/BomPreviewModal';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { usePriceStore } from '@/stores/priceStore';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { alignHarnessConfig } from '@/lib/canvasMaterials';
 
@@ -104,6 +105,30 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     expect(source).toContain('交期：{DEFAULT_QUOTE_LEAD_TIME}');
     expect(source).toContain('订单总价（{config.quantity} 件）');
     expect(DEFAULT_QUOTE_LEAD_TIME).toBe('7日');
+  });
+
+  it('applies anti-jitter minimum height classes to QuoteModal container', () => {
+    const html = renderToStaticMarkup(<QuoteModal isOpen={true} onClose={() => {}} />);
+    expect(html).toContain('min-h-[460px]');
+    expect(html).toContain('sm:min-h-[520px]');
+  });
+
+  it('renders loading skeleton and suppresses missing price warning during initial loading', () => {
+    usePriceStore.setState({ book: null, loading: true, error: null });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+    const html = renderToStaticMarkup(<QuoteModal isOpen={true} onClose={() => {}} />);
+    expect(html).toContain('正在核算报价');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).not.toContain('缺少');
+    // reset
+    usePriceStore.setState({ book: null, loading: false, error: null });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+  });
+
+  it('preloads price store alongside catalog initialization in App.tsx', () => {
+    const source = readFileSync('src/App.tsx', 'utf8');
+    expect(source).toContain('usePriceStore');
+    expect(source).toContain('loadPrices');
   });
 });
 
