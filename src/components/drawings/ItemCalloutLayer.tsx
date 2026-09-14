@@ -14,7 +14,7 @@ export interface ItemCalloutLayerProps {
   recalculateToken?: string | number;
 }
 
-interface TargetBox {
+export interface TargetBox {
   groupIdx: number;
   left: number;
   top: number;
@@ -24,6 +24,13 @@ interface TargetBox {
   height: number;
   centerX: number;
   centerY: number;
+}
+
+export interface GroupCalloutItem {
+  row: ProductionBomRow;
+  preferredX: number;
+  targetBoxes: TargetBox[];
+  subKey: string;
 }
 
 interface CalloutItem {
@@ -36,14 +43,14 @@ interface CalloutItem {
   }>;
 }
 
-const BALLOON_RADIUS = 11;
-const MIN_BALLOON_SPACING = 28;
+export const BALLOON_RADIUS = 11;
+export const MIN_BALLOON_SPACING = 28;
 
 /**
  * Calculates elbow point (ex, by) such that the turn angle from horizontal
  * shelf to diagonal leader is strictly OBTUSE (> 90°), matching standard CAD callout style.
  */
-function calculateElbowPoint(
+export function calculateElbowPoint(
   bx: number,
   by: number,
   tx: number,
@@ -74,6 +81,73 @@ function calculateElbowPoint(
     const balloonEdgeX = bx + radius;
     return { ex, balloonEdgeX };
   }
+}
+
+/**
+ * Partitions target boxes of a BOM row into callout items.
+ * When multiple identical connectors exist (e.g. at P1 and P2), each instance gets
+ * an independent balloon with short, local leader lines, sharing the same BOM itemNo,
+ * avoiding long cross-diagram leader lines.
+ */
+export function partitionTargetsIntoCalloutItems(
+  row: ProductionBomRow,
+  targetBoxes: TargetBox[],
+): GroupCalloutItem[] {
+  if (targetBoxes.length === 0) return [];
+
+  // Sort target boxes from left to right
+  const sortedBoxes = [...targetBoxes].sort((a, b) => a.centerX - b.centerX);
+
+  if (row.kind === 'connector') {
+    return sortedBoxes.map((box, bIdx) => ({
+      row,
+      preferredX: box.centerX < 400 ? box.centerX - 45 : box.centerX + 45,
+      targetBoxes: [box],
+      subKey: `t${bIdx}`,
+    }));
+  }
+
+  if ((row.kind === 'outer-mold' || row.kind === 'inner-mold') && sortedBoxes.length > 1) {
+    const isSpread = sortedBoxes.some((b, i) =>
+      sortedBoxes.some((b2, j) => i !== j && Math.abs(b.centerX - b2.centerX) > 100),
+    );
+
+    if (isSpread) {
+      return sortedBoxes.map((box, bIdx) => {
+        const isLeft = box.centerX < 400;
+        const offset = row.kind === 'outer-mold' ? (isLeft ? -30 : 40) : (isLeft ? -30 : 68);
+        return {
+          row,
+          preferredX: box.centerX + offset,
+          targetBoxes: [box],
+          subKey: `t${bIdx}`,
+        };
+      });
+    }
+  }
+
+  // Wires, accessories, or clustered items: single balloon pointing to target(s)
+  const avgCenterX = sortedBoxes.reduce((sum, b) => sum + b.centerX, 0) / sortedBoxes.length;
+  let preferredX = avgCenterX;
+
+  if (row.kind === 'outer-mold') {
+    preferredX = avgCenterX + 40;
+  } else if (row.kind === 'inner-mold') {
+    preferredX = avgCenterX + 68;
+  } else if (row.kind === 'wire') {
+    preferredX = avgCenterX + 60;
+  } else if (row.kind === 'accessory') {
+    preferredX = avgCenterX + 35;
+  }
+
+  return [
+    {
+      row,
+      preferredX,
+      targetBoxes: sortedBoxes,
+      subKey: 't0',
+    },
+  ];
 }
 
 export function ItemCalloutLayer({
@@ -121,14 +195,7 @@ export function ItemCalloutLayer({
     });
 
     // Find all target boxes by kind and id, partitioned by groupIdx
-    const itemsByGroup = new Map<
-      number,
-      Array<{
-        row: ProductionBomRow;
-        preferredX: number;
-        targetBoxes: TargetBox[];
-      }>
-    >();
+    const itemsByGroup = new Map<number, GroupCalloutItem[]>();
 
     for (const row of bomRows) {
       // Group targets of this row by groupIdx
@@ -170,33 +237,16 @@ export function ItemCalloutLayer({
         });
       }
 
-      // For each group where this row has targets, add an entry to itemsByGroup
+      // For each group where this row has targets, partition into callout items
       targetsByGroup.forEach((targetBoxes, groupIdx) => {
         if (targetBoxes.length === 0) return;
-
-        const avgCenterX = targetBoxes.reduce((sum, b) => sum + b.centerX, 0) / targetBoxes.length;
-        let preferredX = avgCenterX;
-
-        if (row.kind === 'connector') {
-          preferredX = avgCenterX < 400 ? avgCenterX - 45 : avgCenterX + 45;
-        } else if (row.kind === 'outer-mold') {
-          preferredX = avgCenterX + 40;
-        } else if (row.kind === 'inner-mold') {
-          preferredX = avgCenterX + 68;
-        } else if (row.kind === 'wire') {
-          preferredX = avgCenterX + 60;
-        } else if (row.kind === 'accessory') {
-          preferredX = avgCenterX + 35;
-        }
 
         if (!itemsByGroup.has(groupIdx)) {
           itemsByGroup.set(groupIdx, []);
         }
-        itemsByGroup.get(groupIdx)!.push({
-          row,
-          preferredX,
-          targetBoxes,
-        });
+
+        const partitioned = partitionTargetsIntoCalloutItems(row, targetBoxes);
+        itemsByGroup.get(groupIdx)!.push(...partitioned);
       });
     }
 
@@ -223,7 +273,7 @@ export function ItemCalloutLayer({
       groupItems.sort((a, b) => a.preferredX - b.preferredX);
 
       const placed = groupItems.map((item) => ({
-        key: `${item.row.key}-g${gIdx}`,
+        key: `${item.row.key}-g${gIdx}-${item.subKey}`,
         row: item.row,
         x: Math.max(50, Math.min(1150, item.preferredX)),
         y: bandY,
