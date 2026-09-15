@@ -177,6 +177,10 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('计价单位');
     expect(html).toContain('¥ 2.50');
     expect(html).toContain('元/个');
+
+    // 统一分页组件
+    expect(html).toContain('显示 1 - 1 条');
+    expect(html).toContain('20 条/页');
   });
 
   it('renders wires tab correctly with multi-tier price tags and per-strip unit', () => {
@@ -198,6 +202,10 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('1m:');
     expect(html).toContain('¥ 2.60');
     expect(html).toContain('元/条');
+
+    // 统一分页组件
+    expect(html).toContain('显示 1 - 1 条');
+    expect(html).toContain('20 条/页');
   });
 
   it('renders accessories tab correctly with overmolds and sleeves', () => {
@@ -214,6 +222,10 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('防护辅材 (系统配置标准价)');
     expect(html).toContain('¥ 1.80');
     expect(html).toContain('元/米');
+
+    // 统一分页组件
+    expect(html).toContain('显示 1 - 2 条');
+    expect(html).toContain('20 条/页');
   });
 
   it('generates price template rows containing unpriced catalog items for batch pricing', () => {
@@ -386,6 +398,10 @@ describe('MaterialLibraryPage', () => {
 
     // 列表不显示供应商名称（仅显示供应商编号）
     expect(html).not.toContain('万联');
+
+    // 统一分页组件（默认 20 条/页）
+    expect(html).toContain('显示 1 - 2 条');
+    expect(html).toContain('20 条/页');
   });
 
   it('renders finished harness detail dialog correctly with all fields and null fallbacks', () => {
@@ -469,5 +485,153 @@ describe('MaterialLibraryPage', () => {
     expect(mapped.file2d).toBeNull();
     expect(mapped.packing).toBeNull();
     expect(mapped.sonPriceLow).toBeNull();
+  });
+
+  it('automatically clamps connector page to 1 and prevents empty table when price import reduces unpriced items', () => {
+    // 构造 21 个测试连接器
+    const twentyOneConnectors = Array.from({ length: 21 }, (_, i) => ({
+      id: `conn-p-${i + 1}`,
+      resourceItemId: `res-conn-p-${i + 1}`,
+      name: `测试连接器-${i + 1}`,
+      model: `MODEL-${i + 1}`,
+      series: 'SERIES-P',
+      supplierNo: `SUP-${i + 1}`,
+      pinCount: 4,
+      pinLabels: ['1', '2', '3', '4'],
+      type: 'male' as const,
+      shielded: false,
+      pitch: 2.54,
+    }));
+
+    const dynamicSnapshot: CatalogSnapshot = {
+      ...mockSnapshot,
+      connectors: twentyOneConnectors,
+    };
+
+    setCatalogSnapshot(dynamicSnapshot);
+    useCatalogStore.setState({ status: 'ready', snapshot: dynamicSnapshot });
+    useCatalogStore.getInitialState = () => useCatalogStore.getState();
+
+    // 阶段 1：价格库为空，所有 21 项均待定价，用户浏览第 2 页（每页 20 条）
+    usePriceStore.setState({
+      book: { importedAt: new Date().toISOString(), sourceName: 'empty.xlsx', prices: [] },
+      loading: false,
+      error: null,
+    });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+
+    const htmlBeforeImport = renderToStaticMarkup(
+      <MaterialLibraryPage initialConnPriceStatus="unpriced" initialConnPage={2} />,
+    );
+
+    // 第 2 页正常展示第 21 条物料
+    expect(htmlBeforeImport).toContain('显示 21 - 21 条');
+    expect(htmlBeforeImport).toContain('2 / 2');
+    expect(htmlBeforeImport).toContain('测试连接器-21');
+
+    // 阶段 2：导入价格，为第 21 条连接器补充了价格
+    // 待定价物料数量从 21 条减少到 20 条（总页数从 2 页减少为 1 页）
+    usePriceStore.setState({
+      book: {
+        importedAt: new Date().toISOString(),
+        sourceName: 'imported.xlsx',
+        prices: [
+          {
+            kind: 'connector',
+            resourceId: 'res-conn-p-21',
+            name: '测试连接器-21',
+            specification: JSON.stringify(['MODEL-21', 'SERIES-P', 4, 'male']),
+            lengthMm: 0,
+            unit: '元/个',
+            taxIncludedPrice: '9.90',
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+
+    // 当用户仍在原本的第 2 页状态时，自动约束校正到当前最大有效页码（第 1 页），避免切片越界与空表
+    const htmlAfterImport = renderToStaticMarkup(
+      <MaterialLibraryPage initialConnPriceStatus="unpriced" initialConnPage={2} />,
+    );
+
+    expect(htmlAfterImport).toContain('显示 1 - 20 条');
+    expect(htmlAfterImport).toContain('1 / 1');
+    expect(htmlAfterImport).toContain('测试连接器-1');
+    expect(htmlAfterImport).not.toContain('测试连接器-21');
+    expect(htmlAfterImport).not.toContain('显示 21 - 20 条');
+    expect(htmlAfterImport).not.toContain('未找到匹配的连接器。');
+  });
+
+  it('automatically clamps wire page to 1 when price import reduces unpriced wires', () => {
+    const twentyOneWires = Array.from({ length: 21 }, (_, i) => ({
+      id: `wire-p-${i + 1}`,
+      resourceItemId: `res-wire-p-${i + 1}`,
+      name: `测试线缆-${i + 1}`,
+      model: `UL1007-AWG-${i + 1}`,
+      spec: {
+        kind: 'electronic' as const,
+        awg: 20,
+        color: '黑色',
+        ulNumber: '1007' as const,
+        ratedVoltageV: 300,
+      },
+    }));
+
+    const dynamicSnapshot: CatalogSnapshot = {
+      ...mockSnapshot,
+      wires: twentyOneWires,
+    };
+
+    setCatalogSnapshot(dynamicSnapshot);
+    useCatalogStore.setState({ status: 'ready', snapshot: dynamicSnapshot });
+    useCatalogStore.getInitialState = () => useCatalogStore.getState();
+
+    usePriceStore.setState({
+      book: { importedAt: new Date().toISOString(), sourceName: 'empty.xlsx', prices: [] },
+      loading: false,
+      error: null,
+    });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+
+    const htmlBeforeImport = renderToStaticMarkup(
+      <MaterialLibraryPage initialTab="wires" initialWirePriceStatus="unpriced" initialWirePage={2} />,
+    );
+    expect(htmlBeforeImport).toContain('显示 21 - 21 条');
+    expect(htmlBeforeImport).toContain('2 / 2');
+    expect(htmlBeforeImport).toContain('测试线缆-21');
+
+    // 导入第 21 条线缆的价格
+    usePriceStore.setState({
+      book: {
+        importedAt: new Date().toISOString(),
+        sourceName: 'imported.xlsx',
+        prices: [
+          {
+            kind: 'wire',
+            resourceId: 'res-wire-p-21',
+            name: '测试线缆-21',
+            specification: JSON.stringify(['electronic', 20, '黑色', '1007']),
+            lengthMm: 1000,
+            unit: '元/条',
+            taxIncludedPrice: '3.50',
+          },
+        ],
+      },
+      loading: false,
+      error: null,
+    });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+
+    const htmlAfterImport = renderToStaticMarkup(
+      <MaterialLibraryPage initialTab="wires" initialWirePriceStatus="unpriced" initialWirePage={2} />,
+    );
+    expect(htmlAfterImport).toContain('显示 1 - 20 条');
+    expect(htmlAfterImport).toContain('1 / 1');
+    expect(htmlAfterImport).toContain('测试线缆-1');
+    expect(htmlAfterImport).not.toContain('测试线缆-21');
+    expect(htmlAfterImport).not.toContain('未找到匹配的线材。');
   });
 });
