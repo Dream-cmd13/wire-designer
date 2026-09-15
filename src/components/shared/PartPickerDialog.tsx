@@ -90,7 +90,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
   if (!isOpen) return null;
 
   const getConnectorSupplier = (c: { supplierNo?: string }) =>
-    c.supplierNo || '未配置厂商编号';
+    c.supplierNo || '未配置供应商';
 
   // Extract filter options
   const supplierNos = [...new Set(connectors.map(getConnectorSupplier))]
@@ -208,7 +208,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索名称、型号、系列、厂商编号或 ID..."
+              placeholder="搜索名称、型号、系列、供应商或 ID..."
               className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -233,7 +233,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
 
             <FilterGroup label="系列" options={seriesOptions} selected={filters.series} onToggle={(v) => toggleFilter('series', v)} />
             <FilterGroup label="屏蔽状态" options={shieldOptions} selected={filters.shielded} onToggle={(v) => toggleFilter('shielded', v)} />
-            <FilterGroup label="厂商编号" options={supplierNos} selected={filters.supplierNo} onToggle={(v) => toggleFilter('supplierNo', v)} />
+            <FilterGroup label="供应商" options={supplierNos} selected={filters.supplierNo} onToggle={(v) => toggleFilter('supplierNo', v)} />
             <FilterGroup label="Pin 数" options={pinCounts.map(String)} selected={filters.pinCount} onToggle={(v) => toggleFilter('pinCount', v)} />
             <FilterGroup label="间距 (mm)" options={pitches.map(String)} selected={filters.pitch} onToggle={(v) => toggleFilter('pitch', v)} />
             <FilterGroup label="类型" options={types} selected={filters.type} onToggle={(v) => toggleFilter('type', v)} />
@@ -271,7 +271,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
                       {selectedId === conn.id && <Check className="w-4 h-4 text-blue-500 shrink-0" />}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {conn.supplierNo || '未配置厂商编号'} · {conn.model || conn.id} · {conn.pinCount}P
+                      {conn.supplierNo || '未配置供应商'} · {conn.model || conn.id} · {conn.pinCount}P
                       {conn.pitch && ` · ${conn.pitch}mm`} · {conn.type === 'male' ? '公头' : conn.type === 'female' ? '母头' : conn.type}
                       {conn.shielded !== undefined && (conn.shielded ? ' · 已屏蔽' : ' · 未屏蔽')}
                       {conn.series && ` · ${conn.series}`}
@@ -292,7 +292,7 @@ export function PartPickerDialog({ isOpen, onClose, onSelect, currentConnectorId
               <div className="space-y-1 text-xs">
                 <div><span className="text-slate-400">名称：</span><span className="text-slate-700">{selectedConnector.name}</span></div>
                 <div><span className="text-slate-400">型号：</span><span className="text-slate-700 font-medium">{selectedConnector.model || selectedConnector.id}</span></div>
-                <div><span className="text-slate-400">厂商编号：</span><span className="text-slate-700">{selectedConnector.supplierNo || '未配置厂商编号'}</span></div>
+                <div><span className="text-slate-400">供应商：</span><span className="text-slate-700">{selectedConnector.supplierNo || '未配置供应商'}</span></div>
                 {selectedConnector.series && <div><span className="text-slate-400">系列：</span><span className="text-slate-700">{selectedConnector.series}</span></div>}
                 <div><span className="text-slate-400">PIN 数：</span><span className="text-slate-700">{selectedConnector.pinCount}P</span></div>
                 {selectedConnector.rowCount && <div><span className="text-slate-400">排数：</span><span className="text-slate-700">{selectedConnector.rowCount}排</span></div>}

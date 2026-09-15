@@ -122,7 +122,7 @@ export function FinishedHarnessMaterialDetailDialog({
                 <span className="text-slate-800">{material.sonUnit || '暂无'}</span>
               </div>
               <div>
-                <span className="text-slate-500">供应商编号：</span>
+                <span className="text-slate-500">供应商：</span>
                 <span className="font-mono font-medium text-slate-800">
                   {supplierNo || '暂无编号'}
                 </span>

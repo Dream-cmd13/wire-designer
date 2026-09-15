@@ -133,9 +133,9 @@ export function ConnectorPropertiesDialog({
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">厂商编号:</span>
+                <span className="text-slate-400">供应商:</span>
                 <span className="text-slate-700">
-                  {instance.connector.supplierNo || '未配置厂商编号'}
+                  {instance.connector.supplierNo || '未配置供应商'}
                 </span>
               </div>
               {instance.connector.series && (

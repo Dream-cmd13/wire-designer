@@ -368,7 +368,7 @@ describe('MaterialLibraryPage', () => {
 
     // 搜索与筛选控件
     expect(html).toContain('搜索成品料号、物料名称');
-    expect(html).toContain('全部供应商编号');
+    expect(html).toContain('全部供应商');
     expect(html).toContain('全部图纸状态');
     expect(html).toContain('包含图纸');
     expect(html).toContain('暂无图纸');
@@ -376,7 +376,7 @@ describe('MaterialLibraryPage', () => {
     // 固定 6 列表头
     expect(html).toContain('料号');
     expect(html).toContain('物料名称');
-    expect(html).toContain('供应商编号');
+    expect(html).toContain('供应商');
     expect(html).toContain('图纸');
     expect(html).toContain('成本分析');
     expect(html).toContain('报价');
@@ -396,7 +396,7 @@ describe('MaterialLibraryPage', () => {
     // 成本分析与报价固定显示“暂无”
     expect(html).toContain('暂无');
 
-    // 列表不显示供应商名称（仅显示供应商编号）
+    // 列表不显示供应商名称
     expect(html).not.toContain('万联');
 
     // 统一分页组件（默认 20 条/页）

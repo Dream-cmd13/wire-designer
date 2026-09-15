@@ -240,7 +240,7 @@ export function MaterialLibraryPage({
     () =>
       Array.from(
         new Set(
-          connectors.map((c) => c.supplierNo || '未配置厂商编号'),
+          connectors.map((c) => c.supplierNo || '未配置供应商'),
         ),
       )
         .filter(Boolean)
@@ -260,7 +260,7 @@ export function MaterialLibraryPage({
   const filteredConnectors = useMemo(() => {
     const q = connQuery.trim().toLowerCase();
     return connectors.filter((c) => {
-      const supplierDisplay = c.supplierNo || '未配置厂商编号';
+      const supplierDisplay = c.supplierNo || '未配置供应商';
       const matchQ =
         !q ||
         c.name.toLowerCase().includes(q) ||
@@ -419,7 +419,7 @@ export function MaterialLibraryPage({
     return filteredAccessories.slice(start, start + accPageSize);
   }, [filteredAccessories, safeAccPage, accPageSize]);
 
-  // 现有成品线束供应商编号选项
+  // 现有成品线束供应商选项
   const finishedSupplierNos = useMemo(() => {
     return Array.from(
       new Set(
@@ -548,13 +548,6 @@ export function MaterialLibraryPage({
     }
   };
 
-  const totalItemCount =
-    connectors.length +
-    wires.length +
-    overmolds.length +
-    protectionOptions.length +
-    finishedHarnesses.length;
-
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-100 p-3 sm:p-4 gap-2.5 sm:gap-3">
       {/* 顶部标题与操作卡片 */}
@@ -564,9 +557,6 @@ export function MaterialLibraryPage({
             <div className="flex items-center gap-2">
               <Database className="h-5 w-5 text-blue-600" />
               <h2 className="text-base sm:text-lg font-bold text-slate-900">物料库</h2>
-              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
-                共 <strong className="font-semibold text-slate-800">{totalItemCount}</strong> 项
-              </span>
             </div>
             <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">
               标准元器件工程规格与采购价格总览，支持多品类规格检索与价格联动管理。
@@ -734,7 +724,7 @@ export function MaterialLibraryPage({
                       setConnQuery(e.target.value);
                       setConnPage(1);
                     }}
-                    placeholder="搜索连接器名称、型号、厂商编号、ID"
+                    placeholder="搜索连接器名称、型号、供应商、ID"
                     className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                   />
                 </label>
@@ -747,7 +737,7 @@ export function MaterialLibraryPage({
                   }}
                   className="h-8.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs outline-none transition focus:border-blue-400"
                 >
-                  <option value="all">全部厂商编号</option>
+                  <option value="all">全部供应商</option>
                   {connSupplierNos.map((m) => (
                     <option key={m} value={m}>
                       {m}
@@ -835,7 +825,7 @@ export function MaterialLibraryPage({
                   <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
                     <tr>
                       <th className="min-w-[180px] px-4 py-3 font-semibold">连接器与型号</th>
-                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">厂商编号与系列</th>
+                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">供应商与系列</th>
                       <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">类型 / 屏蔽</th>
                       <th className="w-[100px] min-w-[90px] px-4 py-3 font-semibold">PIN / 间距</th>
                       <th className="w-[140px] min-w-[130px] px-4 py-3 font-semibold">电气与防护规格</th>
@@ -857,7 +847,7 @@ export function MaterialLibraryPage({
                           </td>
                           <td className="px-4 py-3 text-slate-600">
                             <p className="text-slate-800 font-medium">
-                              {c.supplierNo || '未配置厂商编号'}
+                              {c.supplierNo || '未配置供应商'}
                             </p>
                             {c.series && <p className="text-[11px] text-slate-400">{c.series}</p>}
                           </td>
@@ -1337,7 +1327,7 @@ export function MaterialLibraryPage({
                   }}
                   className="h-8.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs outline-none transition focus:border-blue-400"
                 >
-                  <option value="all">全部供应商编号</option>
+                  <option value="all">全部供应商</option>
                   {finishedSupplierNos.map((s) => (
                     <option key={s} value={s}>
                       {s}
@@ -1380,7 +1370,7 @@ export function MaterialLibraryPage({
                     <tr>
                       <th className="w-[160px] min-w-[140px] px-4 py-3 font-semibold">料号</th>
                       <th className="min-w-[240px] px-4 py-3 font-semibold">物料名称</th>
-                      <th className="w-[130px] min-w-[110px] px-4 py-3 font-semibold">供应商编号</th>
+                      <th className="w-[130px] min-w-[110px] px-4 py-3 font-semibold">供应商</th>
                       <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">图纸</th>
                       <th className="w-[110px] min-w-[90px] px-4 py-3 font-semibold text-center">成本分析</th>
                       <th className="w-[110px] min-w-[90px] px-4 py-3 font-semibold text-center">报价</th>

@@ -28,7 +28,7 @@ export function createDrawingConnectorResources(
     view: 'front',
     gender: connector.type === 'male' ? 'male' : 'female',
     side,
-    category: connector.supplierNo || '未配置厂商编号',
+    category: connector.supplierNo || '未配置供应商',
     series: connector.name.split(' ')[0] || connector.name,
     pinCount: connector.pinCount,
     rowCount: connector.pinCount >= 20 ? 2 : 1,
