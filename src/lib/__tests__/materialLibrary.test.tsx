@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { MaterialLibraryPage } from '@/pages/MaterialLibraryPage';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
+import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
+import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
+import { mapFinishedHarnessMaterialRow } from '@/repositories/finishedHarnessMaterialRepository';
 import { setCatalogSnapshot } from '@/lib/catalogRuntime';
 import * as XLSX from 'xlsx';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
@@ -12,6 +15,44 @@ import {
 } from '@/lib/quoteMaterials';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { PriceBook } from '@/repositories/priceRepository';
+import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
+
+const mockFinishedHarnesses: FinishedHarnessMaterial[] = [
+  {
+    id: 'fh-1',
+    sourceMaterialId: 184387,
+    sourceGoodsId: 143341,
+    platformNo: 'WL-B21-001',
+    sonName: '3P 航插 双头护套线 L=1800MM',
+    supplierId: 'sup-1',
+    supplierNo: 'A118',
+    supplier: { supplier_no: 'A118' },
+    file2d: 'http://img.wanliango.com/Product/定制/WL-B21-001.pdf',
+    packingWay: '盒装',
+    packing: 1,
+    sonUnit: 'pcs',
+    sonPriceLow: 60,
+    createdAt: '2024-05-02T10:00:00Z',
+    updatedAt: '2024-05-02T10:00:00Z',
+  },
+  {
+    id: 'fh-2',
+    sourceMaterialId: 185371,
+    sourceGoodsId: null,
+    platformNo: 'WL-B21-005',
+    sonName: 'Cable-Power Vision-Buzzer',
+    supplierId: null,
+    supplierNo: null,
+    supplier: null,
+    file2d: null,
+    packingWay: null,
+    packing: null,
+    sonUnit: null,
+    sonPriceLow: null,
+    createdAt: '2024-05-03T10:00:00Z',
+    updatedAt: '2024-05-03T10:00:00Z',
+  },
+];
 
 const mockSnapshot: CatalogSnapshot = {
   connectors: [
@@ -127,6 +168,7 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('连接器');
     expect(html).toContain('线材');
     expect(html).toContain('模具与套管');
+    expect(html).toContain('现有成品线束方案');
 
     // 默认展示连接器列表和单价
     expect(html).toContain('测试连接器A');
@@ -295,5 +337,137 @@ describe('MaterialLibraryPage', () => {
     const parsedWire = parsedPrices.find((p) => p.resourceId === 'res-wire-1');
     expect(Number(parsedWire?.taxIncludedPrice)).toBe(3.5);
     expect(parsedWire?.name).toBe('测试电子线');
+  });
+
+  it('renders finished harnesses tab correctly with table columns, drawing link, and fallback labels', () => {
+    setCatalogSnapshot(mockSnapshot);
+    useCatalogStore.setState({ status: 'ready', snapshot: mockSnapshot });
+    useCatalogStore.getInitialState = () => useCatalogStore.getState();
+    usePriceStore.setState({ book: mockPriceBook, loading: false, error: null });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+    useFinishedHarnessStore.setState({
+      items: mockFinishedHarnesses,
+      loading: false,
+      error: null,
+    });
+    useFinishedHarnessStore.getInitialState = () => useFinishedHarnessStore.getState();
+
+    const html = renderToStaticMarkup(<MaterialLibraryPage initialTab="finished-harnesses" />);
+
+    // 搜索与筛选控件
+    expect(html).toContain('搜索成品料号、物料名称');
+    expect(html).toContain('全部供应商编号');
+    expect(html).toContain('全部图纸状态');
+    expect(html).toContain('包含图纸');
+    expect(html).toContain('暂无图纸');
+
+    // 固定 6 列表头
+    expect(html).toContain('料号');
+    expect(html).toContain('物料名称');
+    expect(html).toContain('供应商编号');
+    expect(html).toContain('图纸');
+    expect(html).toContain('成本分析');
+    expect(html).toContain('报价');
+
+    // 第一条物料数据展示
+    expect(html).toContain('WL-B21-001');
+    expect(html).toContain('3P 航插 双头护套线 L=1800MM');
+    expect(html).toContain('A118');
+    expect(html).toContain('打开图纸');
+
+    // 第二条物料数据（空字段回退展示）
+    expect(html).toContain('WL-B21-005');
+    expect(html).toContain('Cable-Power Vision-Buzzer');
+    expect(html).toContain('暂无编号');
+    expect(html).toContain('暂无图纸');
+
+    // 成本分析与报价固定显示“暂无”
+    expect(html).toContain('暂无');
+
+    // 列表不显示供应商名称（仅显示供应商编号）
+    expect(html).not.toContain('万联');
+  });
+
+  it('renders finished harness detail dialog correctly with all fields and null fallbacks', () => {
+    const htmlWithData = renderToStaticMarkup(
+      <FinishedHarnessMaterialDetailDialog
+        isOpen={true}
+        onClose={() => {}}
+        material={mockFinishedHarnesses[0]}
+      />,
+    );
+
+    expect(htmlWithData).toContain('成品线束物料详情');
+    expect(htmlWithData).toContain('基础信息');
+    expect(htmlWithData).toContain('包装信息');
+    expect(htmlWithData).toContain('价格信息');
+    expect(htmlWithData).toContain('图纸信息');
+    expect(htmlWithData).toContain('元数据');
+
+    // 基础信息
+    expect(htmlWithData).toContain('WL-B21-001');
+    expect(htmlWithData).toContain('3P 航插 双头护套线 L=1800MM');
+    expect(htmlWithData).toContain('184387');
+    expect(htmlWithData).toContain('143341');
+    expect(htmlWithData).toContain('pcs');
+    expect(htmlWithData).toContain('A118');
+
+    // 包装信息
+    expect(htmlWithData).toContain('盒装');
+    expect(htmlWithData).toContain('1');
+
+    // 价格信息
+    expect(htmlWithData).toContain('¥ 60.00');
+    expect(htmlWithData).toContain('成本分析：');
+    expect(htmlWithData).toContain('正式报价：');
+
+    // 图纸信息
+    expect(htmlWithData).toContain('打开图纸');
+    expect(htmlWithData).toContain('http://img.wanliango.com/Product/定制/WL-B21-001.pdf');
+
+    // 测试空值场景（保证空值显示“暂无”，不误显示为 0）
+    const htmlWithNulls = renderToStaticMarkup(
+      <FinishedHarnessMaterialDetailDialog
+        isOpen={true}
+        onClose={() => {}}
+        material={mockFinishedHarnesses[1]}
+      />,
+    );
+
+    expect(htmlWithNulls).toContain('WL-B21-005');
+    expect(htmlWithNulls).toContain('Cable-Power Vision-Buzzer');
+    expect(htmlWithNulls).toContain('暂无编号');
+    expect(htmlWithNulls).toContain('暂无图纸');
+    expect(htmlWithNulls).not.toContain('¥ 0.00');
+    expect(htmlWithNulls).not.toContain('>0<');
+  });
+
+  it('maps raw database row with null handling and validation correctly', () => {
+    const row = {
+      id: 'uuid-1',
+      source_material_id: '12345',
+      source_goods_id: null,
+      platform_no: 'WL-TEST-001',
+      son_name: '测试线束',
+      supplier_id: null,
+      supplier: { supplier_no: 'A999' },
+      file_2d: null,
+      packing_way: null,
+      packing: null,
+      son_unit: null,
+      son_price_low: null,
+      created_at: '2024-05-01T00:00:00Z',
+      updated_at: '2024-05-01T00:00:00Z',
+    };
+
+    const mapped = mapFinishedHarnessMaterialRow(row);
+    expect(mapped.id).toBe('uuid-1');
+    expect(mapped.sourceMaterialId).toBe(12345);
+    expect(mapped.sourceGoodsId).toBeNull();
+    expect(mapped.supplierNo).toBe('A999');
+    expect(mapped.supplier?.supplier_no).toBe('A999');
+    expect(mapped.file2d).toBeNull();
+    expect(mapped.packing).toBeNull();
+    expect(mapped.sonPriceLow).toBeNull();
   });
 });

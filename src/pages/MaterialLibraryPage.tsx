@@ -4,8 +4,10 @@ import {
   Check,
   Database,
   Download,
+  ExternalLink,
   FileSpreadsheet,
   Layers,
+  Package,
   Plug,
   Search,
   Upload,
@@ -14,6 +16,8 @@ import {
 import * as XLSX from 'xlsx';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
+import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
+import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
 import {
   getCatalogConnectors,
   getCatalogWires,
@@ -29,10 +33,11 @@ import {
 } from '@/lib/quoteMaterials';
 import { applyCatalogWireSpec } from '@/lib/wireCatalog';
 import type { MaterialPrice } from '@/repositories/priceRepository';
+import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
 import type { Connector, OvermoldSpec } from '@/types/harness';
 import type { CatalogWire } from '@/types/catalog';
 
-type MaterialTab = 'connectors' | 'wires' | 'accessories';
+type MaterialTab = 'connectors' | 'wires' | 'accessories' | 'finished-harnesses';
 
 const BASE_WIRE_SPEC = {
   kind: 'electronic' as const,
@@ -74,6 +79,13 @@ export function MaterialLibraryPage({
   const book = storeBook ?? usePriceStore.getState().book;
   const prices = useMemo(() => book?.prices ?? [], [book]);
 
+  const storeFinishedItems = useFinishedHarnessStore((state) => state.items);
+  const finishedHarnesses =
+    storeFinishedItems.length > 0 ? storeFinishedItems : useFinishedHarnessStore.getState().items;
+  const finishedLoading = useFinishedHarnessStore((state) => state.loading);
+  const finishedError = useFinishedHarnessStore((state) => state.error);
+  const loadFinishedHarnesses = useFinishedHarnessStore((state) => state.load);
+
   const [activeTab, setActiveTab] = useState<MaterialTab>(initialTab);
 
   // 连接器筛选
@@ -95,6 +107,14 @@ export function MaterialLibraryPage({
   // 辅材筛选
   const [accQuery, setAccQuery] = useState('');
 
+  // 现有成品线束方案筛选与分页
+  const [finishedQuery, setFinishedQuery] = useState('');
+  const [finishedSupplierNo, setFinishedSupplierNo] = useState('all');
+  const [finishedDrawingStatus, setFinishedDrawingStatus] = useState<'all' | 'has' | 'none'>('all');
+  const [finishedPage, setFinishedPage] = useState(1);
+  const [finishedPageSize, setFinishedPageSize] = useState(50);
+  const [selectedFinishedHarness, setSelectedFinishedHarness] = useState<FinishedHarnessMaterial | null>(null);
+
   // 价格导入/导出状态
   const [pendingImport, setPendingImport] = useState<{
     name: string;
@@ -106,10 +126,11 @@ export function MaterialLibraryPage({
   const [readingFile, setReadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 自动加载最新价格库
+  // 自动加载最新价格库与成品线束物料
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadFinishedHarnesses();
+  }, [load, loadFinishedHarnesses]);
 
   // 精准价格索引映射
   const priceIndex = useMemo(() => {
@@ -316,6 +337,53 @@ export function MaterialLibraryPage({
     );
   }, [protectionOptions, accQuery]);
 
+  // 现有成品线束供应商编号选项
+  const finishedSupplierNos = useMemo(() => {
+    return Array.from(
+      new Set(
+        finishedHarnesses
+          .map((h) => h.supplier?.supplier_no || h.supplierNo)
+          .filter(Boolean),
+      ),
+    ).sort() as string[];
+  }, [finishedHarnesses]);
+
+  // 过滤后的成品线束物料
+  const filteredFinishedHarnesses = useMemo(() => {
+    const q = finishedQuery.trim().toLowerCase();
+    return finishedHarnesses.filter((h) => {
+      const matchQ =
+        !q ||
+        h.platformNo.toLowerCase().includes(q) ||
+        h.sonName.toLowerCase().includes(q);
+
+      const supplierDisplay = h.supplier?.supplier_no || h.supplierNo || '';
+      const matchS = finishedSupplierNo === 'all' || supplierDisplay === finishedSupplierNo;
+
+      const hasDrawing = Boolean(h.file2d);
+      const matchD =
+        finishedDrawingStatus === 'all' ||
+        (finishedDrawingStatus === 'has' && hasDrawing) ||
+        (finishedDrawingStatus === 'none' && !hasDrawing);
+
+      return matchQ && matchS && matchD;
+    });
+  }, [finishedHarnesses, finishedQuery, finishedSupplierNo, finishedDrawingStatus]);
+
+  // 当筛选条件或页大小变化时重置页码
+  useEffect(() => {
+    setFinishedPage(1);
+  }, [finishedQuery, finishedSupplierNo, finishedDrawingStatus, finishedPageSize]);
+
+  const totalFinishedPages = Math.max(
+    1,
+    Math.ceil(filteredFinishedHarnesses.length / finishedPageSize),
+  );
+  const paginatedFinishedHarnesses = useMemo(() => {
+    const start = (finishedPage - 1) * finishedPageSize;
+    return filteredFinishedHarnesses.slice(start, start + finishedPageSize);
+  }, [filteredFinishedHarnesses, finishedPage, finishedPageSize]);
+
   // 导出价格模板（包含全量 catalog 物料以支持批量补价，并检查读取错误状态）
   const handleExportPrices = async () => {
     setFeedbackMessage(null);
@@ -399,7 +467,11 @@ export function MaterialLibraryPage({
   };
 
   const totalItemCount =
-    connectors.length + wires.length + overmolds.length + protectionOptions.length;
+    connectors.length +
+    wires.length +
+    overmolds.length +
+    protectionOptions.length +
+    finishedHarnesses.length;
 
   return (
     <div className="h-full overflow-y-auto bg-slate-100">
@@ -546,6 +618,22 @@ export function MaterialLibraryPage({
               <span>模具与套管</span>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
                 {overmolds.length + protectionOptions.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('finished-harnesses')}
+              className={`inline-flex cursor-pointer items-center gap-2 border-b-2 px-4 py-2.5 font-medium transition-colors ${
+                activeTab === 'finished-harnesses'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-900'
+              }`}
+            >
+              <Package className="h-4 w-4" />
+              <span>现有成品线束方案</span>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                {finishedHarnesses.length}
               </span>
             </button>
           </div>
@@ -1065,7 +1153,200 @@ export function MaterialLibraryPage({
             </section>
           </>
         )}
+
+        {/* Tab 4: 现有成品线束方案 */}
+        {activeTab === 'finished-harnesses' && (
+          <>
+            <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <label className="relative block sm:col-span-2">
+                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={finishedQuery}
+                    onChange={(e) => setFinishedQuery(e.target.value)}
+                    placeholder="搜索成品料号、物料名称"
+                    className="h-9 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+
+                <select
+                  value={finishedSupplierNo}
+                  onChange={(e) => setFinishedSupplierNo(e.target.value)}
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs outline-none transition focus:border-blue-400"
+                >
+                  <option value="all">全部供应商编号</option>
+                  {finishedSupplierNos.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={finishedDrawingStatus}
+                  onChange={(e) =>
+                    setFinishedDrawingStatus(e.target.value as 'all' | 'has' | 'none')
+                  }
+                  className="h-9 rounded-md border border-slate-200 bg-white px-2.5 text-xs outline-none transition focus:border-blue-400"
+                >
+                  <option value="all">全部图纸状态</option>
+                  <option value="has">包含图纸</option>
+                  <option value="none">暂无图纸</option>
+                </select>
+              </div>
+            </section>
+
+            {finishedError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-700 flex items-center justify-between">
+                <span>{finishedError}</span>
+                <button
+                  type="button"
+                  onClick={() => void loadFinishedHarnesses(true)}
+                  className="cursor-pointer rounded bg-red-600 px-2.5 py-1 text-white hover:bg-red-700"
+                >
+                  重试
+                </button>
+              </div>
+            )}
+
+            <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="min-w-[900px] w-full border-collapse text-left text-xs">
+                  <thead className="bg-slate-50 uppercase text-slate-500">
+                    <tr>
+                      <th className="w-[160px] min-w-[140px] px-4 py-3 font-semibold">料号</th>
+                      <th className="min-w-[240px] px-4 py-3 font-semibold">物料名称</th>
+                      <th className="w-[130px] min-w-[110px] px-4 py-3 font-semibold">供应商编号</th>
+                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">图纸</th>
+                      <th className="w-[110px] min-w-[90px] px-4 py-3 font-semibold text-center">成本分析</th>
+                      <th className="w-[110px] min-w-[90px] px-4 py-3 font-semibold text-center">报价</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedFinishedHarnesses.map((h) => {
+                      const supplierNo = h.supplier?.supplier_no || h.supplierNo;
+                      return (
+                        <tr key={h.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-3 font-mono">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedFinishedHarness(h)}
+                              className="cursor-pointer font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                              title="查看成品线束详情"
+                            >
+                              {h.platformNo}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-slate-800 font-medium">
+                            {h.sonName}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-slate-600">
+                            {supplierNo || '暂无编号'}
+                          </td>
+                          <td className="px-4 py-3">
+                            {h.file2d ? (
+                              <a
+                                href={h.file2d}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 transition"
+                                title="在新窗口中打开图纸"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                <span>打开图纸</span>
+                              </a>
+                            ) : (
+                              <span className="text-slate-400">暂无图纸</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-center text-slate-400">
+                            暂无
+                          </td>
+                          <td className="px-4 py-3 text-center text-slate-400">
+                            暂无
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {finishedLoading && (
+                <div className="py-14 text-center text-sm text-slate-500">
+                  正在加载成品线束物料...
+                </div>
+              )}
+
+              {!finishedLoading && filteredFinishedHarnesses.length === 0 && (
+                <div className="py-14 text-center text-sm text-slate-500">
+                  未找到匹配的成品线束方案。
+                </div>
+              )}
+
+              {/* 分页控制栏 */}
+              {!finishedLoading && filteredFinishedHarnesses.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3 text-xs text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <span>
+                      显示 {(finishedPage - 1) * finishedPageSize + 1} -{' '}
+                      {Math.min(
+                        finishedPage * finishedPageSize,
+                        filteredFinishedHarnesses.length,
+                      )}{' '}
+                      条，共{' '}
+                      <strong className="font-semibold text-slate-800">
+                        {filteredFinishedHarnesses.length}
+                      </strong>{' '}
+                      条
+                    </span>
+                    <select
+                      value={finishedPageSize}
+                      onChange={(e) => setFinishedPageSize(Number(e.target.value))}
+                      className="h-7 rounded border border-slate-200 bg-white px-1.5 text-xs text-slate-700 outline-none"
+                    >
+                      <option value={20}>20 条/页</option>
+                      <option value={50}>50 条/页</option>
+                      <option value={100}>100 条/页</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={finishedPage <= 1}
+                      onClick={() => setFinishedPage((p) => Math.max(1, p - 1))}
+                      className="cursor-pointer rounded border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      上一页
+                    </button>
+                    <span className="px-2 font-mono">
+                      {finishedPage} / {totalFinishedPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={finishedPage >= totalFinishedPages}
+                      onClick={() =>
+                        setFinishedPage((p) => Math.min(totalFinishedPages, p + 1))
+                      }
+                      className="cursor-pointer rounded border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      下一页
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </div>
+
+      <FinishedHarnessMaterialDetailDialog
+        isOpen={Boolean(selectedFinishedHarness)}
+        onClose={() => setSelectedFinishedHarness(null)}
+        material={selectedFinishedHarness}
+      />
     </div>
   );
 }
