@@ -25,7 +25,7 @@ describe('finished harness material SQL', () => {
   it('secures cost analyses schema and extends material table columns', () => {
     expect(costSchema).toContain('create table if not exists public.finished_harness_cost_analyses');
     expect(costSchema).toContain('revoke all on public.finished_harness_cost_analyses from anon, authenticated');
-    expect(costSchema).toContain('grant select on public.finished_harness_cost_analyses to authenticated');
+    expect(costSchema).toContain('alter column source_material_id drop not null');
     expect(costSchema).toContain('add column if not exists total_cost');
     expect(costSchema).toContain('add column if not exists sales_price');
     expect(costSchema).toContain('add column if not exists sample_price');

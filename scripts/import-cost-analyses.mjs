@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import XLSX from 'xlsx';
 
@@ -607,11 +608,170 @@ export function parseCostWorkbook(filePath) {
   return results;
 }
 
+export function toSafeStorageKey(fileName, index) {
+  const hash = crypto.createHash('md5').update(fileName).digest('hex').slice(0, 8);
+  const cleanBase = fileName
+    .replace(/\.xlsx$/i, '')
+    .replace(/[^\w-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 30);
+  const paddedIdx = String(index + 1).padStart(2, '0');
+  const safeName = cleanBase ? `${paddedIdx}_${cleanBase}_${hash}.xlsx` : `${paddedIdx}_${hash}.xlsx`;
+  return `cost-analyses/${safeName}`;
+}
+
+function sqlEscape(val) {
+  if (val == null) return 'null';
+  return `'${String(val).replace(/'/g, "''")}'`;
+}
+
+function sqlNum(val) {
+  if (val == null || val === '') return 'null';
+  const n = Number(val);
+  return Number.isFinite(n) ? String(n) : 'null';
+}
+
+function sqlJson(obj) {
+  if (obj == null) return "'{}'::jsonb";
+  return `'${JSON.stringify(obj).replace(/'/g, "''")}'::jsonb`;
+}
+
+export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
+  const lines = [];
+  lines.push('-- ==============================================================================');
+  lines.push('-- 06_finished_harness_cost_analyses.sql');
+  lines.push('-- 成品线束方案成本分析、定价公式推导明细与价格汇总基线数据');
+  lines.push(`-- 自动生成自 excel/ 目录下 20 个 Excel 文件，共 ${allAnalyses.length} 个成品方案`);
+  lines.push('-- ==============================================================================\n');
+  lines.push('begin;\n');
+
+  lines.push('-- 1. 扩充/建档成品线束主表核心价格指标');
+  lines.push('insert into public.finished_harness_materials (');
+  lines.push('  platform_no,');
+  lines.push('  son_name,');
+  lines.push('  son_unit,');
+  lines.push('  son_price_low,');
+  lines.push('  total_cost,');
+  lines.push('  sales_price,');
+  lines.push('  sample_price,');
+  lines.push('  quote_price,');
+  lines.push('  has_cost_analysis,');
+  lines.push('  source_excel_url');
+  lines.push(')');
+  lines.push('values');
+
+  const matValues = allAnalyses.map((item, idx) => {
+    const urlInfo = fileUrlMap.get(item.sourceExcelFile);
+    const sourceExcelUrl = urlInfo?.publicUrl || null;
+    const isLast = idx === allAnalyses.length - 1;
+    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName || item.platformNo)}, 'pcs', ${sqlNum(item.salesPrice)}, ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
+  });
+  lines.push(matValues.join('\n'));
+
+  lines.push('on conflict (platform_no) do update set');
+  lines.push('  son_name = coalesce(finished_harness_materials.son_name, excluded.son_name),');
+  lines.push('  son_unit = coalesce(finished_harness_materials.son_unit, excluded.son_unit),');
+  lines.push('  total_cost = excluded.total_cost,');
+  lines.push('  sales_price = excluded.sales_price,');
+  lines.push('  sample_price = excluded.sample_price,');
+  lines.push('  quote_price = excluded.quote_price,');
+  lines.push('  has_cost_analysis = true,');
+  lines.push('  source_excel_url = coalesce(excluded.source_excel_url, finished_harness_materials.source_excel_url),');
+  lines.push('  updated_at = now();\n');
+
+  lines.push('-- 2. 写入/更新成本分析与价格推导明细表');
+  lines.push('insert into public.finished_harness_cost_analyses (');
+  lines.push('  harness_material_id,');
+  lines.push('  platform_no,');
+  lines.push('  source_excel_file,');
+  lines.push('  source_sheet_name,');
+  lines.push('  source_excel_path,');
+  lines.push('  source_excel_url,');
+  lines.push('  customer_name,');
+  lines.push('  customer_part_no,');
+  lines.push('  material_cost,');
+  lines.push('  material_loss,');
+  lines.push('  labor_cost,');
+  lines.push('  labor_loss,');
+  lines.push('  total_cost,');
+  lines.push('  tax_cost,');
+  lines.push('  sales_price,');
+  lines.push('  sample_price,');
+  lines.push('  quote_price,');
+  lines.push('  formula_config,');
+  lines.push('  calculation_steps,');
+  lines.push('  bom_items,');
+  lines.push('  labor_items');
+  lines.push(')');
+  lines.push('values');
+
+  const costValues = allAnalyses.map((item, idx) => {
+    const urlInfo = fileUrlMap.get(item.sourceExcelFile);
+    const sourceExcelUrl = urlInfo?.publicUrl || null;
+    const sourceExcelPath = urlInfo?.storagePath || null;
+    const isLast = idx === allAnalyses.length - 1;
+
+    const row = [
+      `(select id from public.finished_harness_materials where platform_no = ${sqlEscape(item.platformNo)} limit 1)`,
+      sqlEscape(item.platformNo),
+      sqlEscape(item.sourceExcelFile),
+      sqlEscape(item.sourceSheetName),
+      sqlEscape(sourceExcelPath),
+      sqlEscape(sourceExcelUrl),
+      sqlEscape(item.customerName || null),
+      sqlEscape(item.customerPartNo || null),
+      sqlNum(item.materialCost || 0),
+      sqlNum(item.materialLoss || 0),
+      sqlNum(item.laborCost || 0),
+      sqlNum(item.laborLoss || 0),
+      sqlNum(item.totalCost || 0),
+      sqlNum(item.taxCost || 0),
+      sqlNum(item.salesPrice),
+      sqlNum(item.samplePrice),
+      sqlNum(item.quotePrice),
+      sqlJson(item.formulaConfig),
+      sqlJson(item.calculationSteps),
+      sqlJson(item.bomItems),
+      sqlJson(item.laborItems),
+    ];
+
+    return `  (${row.join(', ')})${isLast ? '' : ','}`;
+  });
+  lines.push(costValues.join('\n'));
+
+  lines.push('on conflict (platform_no) do update set');
+  lines.push('  harness_material_id = excluded.harness_material_id,');
+  lines.push('  source_excel_file = excluded.source_excel_file,');
+  lines.push('  source_sheet_name = excluded.source_sheet_name,');
+  lines.push('  source_excel_path = coalesce(excluded.source_excel_path, finished_harness_cost_analyses.source_excel_path),');
+  lines.push('  source_excel_url = coalesce(excluded.source_excel_url, finished_harness_cost_analyses.source_excel_url),');
+  lines.push('  customer_name = excluded.customer_name,');
+  lines.push('  customer_part_no = excluded.customer_part_no,');
+  lines.push('  material_cost = excluded.material_cost,');
+  lines.push('  material_loss = excluded.material_loss,');
+  lines.push('  labor_cost = excluded.labor_cost,');
+  lines.push('  labor_loss = excluded.labor_loss,');
+  lines.push('  total_cost = excluded.total_cost,');
+  lines.push('  tax_cost = excluded.tax_cost,');
+  lines.push('  sales_price = excluded.sales_price,');
+  lines.push('  sample_price = excluded.sample_price,');
+  lines.push('  quote_price = excluded.quote_price,');
+  lines.push('  formula_config = excluded.formula_config,');
+  lines.push('  calculation_steps = excluded.calculation_steps,');
+  lines.push('  bom_items = excluded.bom_items,');
+  lines.push('  labor_items = excluded.labor_items,');
+  lines.push('  updated_at = now();\n');
+
+  lines.push('commit;\n');
+  return lines.join('\n');
+}
+
 // 如果作为主脚本运行
 if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
   async function run() {
     const excelDir = path.resolve('excel');
-    const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx'));
+    const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx')).sort();
     console.log(`发现 ${files.length} 个 Excel 文件，开始解析...`);
 
     const allAnalyses = [];
@@ -641,6 +801,29 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
     }
 
     console.log(`解析完成！成功抽取 ${allAnalyses.length} 个成品方案。`);
+
+    // 映射云端 Storage 路径
+    const fileUrlMap = new Map();
+    const env = loadEnv();
+    const baseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || 'https://wioaznspvchiogdxvtun.supabase.co';
+    for (let i = 0; i < files.length; i++) {
+      const fileName = files[i];
+      const storagePath = toSafeStorageKey(fileName, i);
+      const publicUrl = `${baseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`;
+      fileUrlMap.set(fileName, { storagePath, publicUrl });
+    }
+
+    // 检查是否带 --export-sql 执行 SQL 文件生成
+    if (process.argv.includes('--export-sql')) {
+      const targetSqlPath = path.resolve('supabase/sql/40_seed/06_finished_harness_cost_analyses.sql');
+      const sqlContent = generateSeedSql(allAnalyses, fileUrlMap);
+      fs.writeFileSync(targetSqlPath, sqlContent, 'utf8');
+      const stats = fs.statSync(targetSqlPath);
+      console.log(`[SQL 导出成功] 文件: ${targetSqlPath}`);
+      console.log(`包含成品方案: ${allAnalyses.length} 个，文件大小: ${(stats.size / 1024).toFixed(1)} KB`);
+      return;
+    }
+
     console.log('示例第 1 个方案概要:');
     const s1 = allAnalyses[0];
     console.log({

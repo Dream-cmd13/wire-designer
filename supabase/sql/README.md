@@ -19,8 +19,9 @@
 11. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
 12. `40_seed/02_real_harness_catalog.sql`：写入 12 个真实连接器和 10 个真实线材。
 13. `40_seed/05_finished_harness_materials.sql`：写入外部系统导出的成品线束物料（可单独重复执行）。
+14. `40_seed/06_finished_harness_cost_analyses.sql`：写入 44 个成品方案成本分析、工序工时与定价公式推导基线数据（可单独重复执行）。
 
-新增成品线束表与成本分析也可以在已有数据库上单独执行第 6、7、8、13 步，无需执行 `drop all`。
+新增成品线束表与成本分析也可以在已有数据库上单独执行第 6、7、8、13、14 步，无需执行 `drop all`。若后续更新了 `excel/` 目录下的成本分析表格，可运行 `npm run supabase:export-cost-seed` 自动刷新第 14 步种子文件。
 
 完成 SQL 后，可在 CI、部署服务器或管理员工作站运行：
 
