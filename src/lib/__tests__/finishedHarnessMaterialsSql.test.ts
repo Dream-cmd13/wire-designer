@@ -16,5 +16,6 @@ describe('finished harness material SQL', () => {
     expect(seed).toContain('source_material_id');
     expect(seed).toContain('on conflict (source_material_id) do update');
     expect(seed).toContain('file_2d');
+    expect(seed).toContain('delete from public.finished_harness_materials where file_2d is null');
   });
 });

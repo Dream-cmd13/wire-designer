@@ -524,3 +524,6 @@ values
 ('197146', '149861', 'WL-B21-516-8000', '工控机外线(威浦连接器)-8米', (select id from public.suppliers where supplier_name='万连'), null, '箱', '1', 'pcs', '250.000000'),
 ('197152', '149867', 'WL-B21-635', 'DC输出线', (select id from public.suppliers where supplier_no='A563'), null, '箱', '1', 'pcs', '14.000000')
 on conflict (source_material_id) do update set source_goods_id=excluded.source_goods_id, platform_no=excluded.platform_no, son_name=excluded.son_name, supplier_id=excluded.supplier_id, file_2d=excluded.file_2d, packing_way=excluded.packing_way, packing=excluded.packing, son_unit=excluded.son_unit, son_price_low=excluded.son_price_low, updated_at=now();
+
+-- The finished-harness library only exposes materials that have a source drawing.
+delete from public.finished_harness_materials where file_2d is null;
