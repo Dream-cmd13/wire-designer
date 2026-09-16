@@ -1,7 +1,11 @@
 export interface CatalogStorageClient {
   storage: {
     from(bucket: string): {
-      createSignedUrl(path: string, expiresIn: number): PromiseLike<{
+      download?(path: string): PromiseLike<{
+        data: Blob | null;
+        error: { message: string } | null;
+      }>;
+      createSignedUrl?(path: string, expiresIn: number): PromiseLike<{
         data: { signedUrl?: string } | null;
         error: { message: string } | null;
       }>;
@@ -20,10 +24,29 @@ export interface CatalogImageSignResult {
 interface CacheEntry {
   signedUrl: string;
   expiresAt: number;
+  isBlob?: boolean;
 }
 
 const clientCaches = new WeakMap<object, Map<string, CacheEntry>>();
 const clientInFlight = new WeakMap<object, Map<string, Promise<CatalogImageSignResult>>>();
+const activeBlobUrls = new Set<string>();
+
+function createObjectUrlSafe(blob: Blob, path: string): string {
+  if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+    return URL.createObjectURL(blob);
+  }
+  return `blob:mock/${path}`;
+}
+
+function revokeObjectUrlSafe(url: string): void {
+  if (typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function' && url.startsWith('blob:')) {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // ignore
+    }
+  }
+}
 
 function getClientCache(client: CatalogStorageClient): Map<string, CacheEntry> {
   const target = client as object;
@@ -47,8 +70,22 @@ function getClientInFlight(client: CatalogStorageClient): Map<string, Promise<Ca
 
 export function clearCatalogImageCache(client?: CatalogStorageClient): void {
   if (client) {
+    const cache = clientCaches.get(client as object);
+    if (cache) {
+      for (const entry of cache.values()) {
+        if (entry.isBlob) {
+          revokeObjectUrlSafe(entry.signedUrl);
+          activeBlobUrls.delete(entry.signedUrl);
+        }
+      }
+    }
     clientCaches.delete(client as object);
     clientInFlight.delete(client as object);
+  } else {
+    for (const url of activeBlobUrls) {
+      revokeObjectUrlSafe(url);
+    }
+    activeBlobUrls.clear();
   }
 }
 
@@ -75,18 +112,37 @@ export async function signCatalogImageResult(
 
   const request = (async (): Promise<CatalogImageSignResult> => {
     try {
-      const { data, error } = await client.storage
-        .from(CATALOG_IMAGE_BUCKET)
-        .createSignedUrl(path, CATALOG_IMAGE_URL_TTL_SECONDS);
+      const bucket = client.storage.from(CATALOG_IMAGE_BUCKET);
 
-      if (error) {
-        return { error: error.message };
+      // 严格模式优先：使用鉴权 download 获取私有二进制流转为内存 Blob URL
+      if (typeof bucket.download === 'function') {
+        const { data, error } = await bucket.download(path);
+        if (error) {
+          return { error: error.message };
+        }
+        if (data) {
+          const blobUrl = createObjectUrlSafe(data, path);
+          activeBlobUrls.add(blobUrl);
+          const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+          cache.set(path, { signedUrl: blobUrl, expiresAt, isBlob: true });
+          return { signedUrl: blobUrl };
+        }
+        return { signedUrl: undefined };
       }
 
-      if (data?.signedUrl) {
-        const expiresAt = Date.now() + (CATALOG_IMAGE_URL_TTL_SECONDS * 1000) - 60000;
-        cache.set(path, { signedUrl: data.signedUrl, expiresAt });
-        return { signedUrl: data.signedUrl };
+      // 回退方案：兼容仅提供 createSignedUrl 的客户端/测试桩
+      if (typeof bucket.createSignedUrl === 'function') {
+        const { data, error } = await bucket.createSignedUrl(path, CATALOG_IMAGE_URL_TTL_SECONDS);
+
+        if (error) {
+          return { error: error.message };
+        }
+
+        if (data?.signedUrl) {
+          const expiresAt = Date.now() + (CATALOG_IMAGE_URL_TTL_SECONDS * 1000) - 60000;
+          cache.set(path, { signedUrl: data.signedUrl, expiresAt, isBlob: false });
+          return { signedUrl: data.signedUrl };
+        }
       }
 
       return { signedUrl: undefined };

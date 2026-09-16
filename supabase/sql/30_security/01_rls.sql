@@ -28,7 +28,7 @@ create policy "catalog accessory insert"
   with check (kind = 'accessory');
 
 create policy "catalog assets referenced read"
-  on storage.objects for select to anon, authenticated
+  on storage.objects for select to authenticated
   using (
     bucket_id = 'catalog-assets'
     and exists (
@@ -42,3 +42,10 @@ create policy "catalog assets referenced read"
         )
     )
   );
+
+create policy "cost analysis sources authenticated read"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'cost-analysis-sources'
+  );
+

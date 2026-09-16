@@ -56,4 +56,24 @@ describe('catalog image signed URLs', () => {
     expect(res2).toEqual({ signedUrl: 'https://assets.test/inflight.png' });
     expect(createSignedUrl).toHaveBeenCalledTimes(1);
   });
+
+  it('downloads image blob and caches object URL when download is available', async () => {
+    const fakeBlob = new Blob(['image-binary'], { type: 'image/png' });
+    const download = vi.fn().mockResolvedValue({ data: fakeBlob, error: null });
+    const client = {
+      storage: {
+        from: vi.fn(() => ({ download })),
+      },
+    };
+
+    const url1 = await signCatalogImage(client, 'catalog/connector/c2.png');
+    expect(url1).toBeDefined();
+    expect(download).toHaveBeenCalledWith('catalog/connector/c2.png');
+    expect(download).toHaveBeenCalledTimes(1);
+
+    const url2 = await signCatalogImage(client, 'catalog/connector/c2.png');
+    expect(url2).toBe(url1);
+    expect(download).toHaveBeenCalledTimes(1);
+  });
 });
+

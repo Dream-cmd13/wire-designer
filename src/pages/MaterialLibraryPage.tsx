@@ -144,6 +144,7 @@ export function MaterialLibraryPage({
   const [directPreviewExcel, setDirectPreviewExcel] = useState<{
     fileName: string;
     fileUrl: string | null;
+    filePath?: string | null;
   } | null>(null);
 
   // 价格导入/导出状态
@@ -1547,6 +1548,7 @@ export function MaterialLibraryPage({
           isOpen={Boolean(directPreviewExcel)}
           onClose={() => setDirectPreviewExcel(null)}
           fileName={directPreviewExcel.fileName}
+          filePath={directPreviewExcel.filePath}
           fileUrl={directPreviewExcel.fileUrl}
         />
       )}

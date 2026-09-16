@@ -658,6 +658,7 @@ export function FinishedHarnessMaterialDetailDialog({
           onClose={() => setShowExcelPreview(false)}
           fileName={costAnalysis.sourceExcelFile}
           initialSheetName={costAnalysis.sourceSheetName}
+          filePath={costAnalysis.sourceExcelPath}
           fileUrl={costAnalysis.sourceExcelUrl || material.sourceExcelUrl}
         />
       )}

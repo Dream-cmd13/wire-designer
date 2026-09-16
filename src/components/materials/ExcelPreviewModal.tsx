@@ -9,6 +9,46 @@ import {
   X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { supabase } from '@/lib/supabaseClient';
+
+const BUCKET_NAME = 'cost-analysis-sources';
+
+function resolveCostAnalysisStoragePath(filePathOrUrl: string): string {
+  if (!filePathOrUrl) return '';
+  const marker = `/${BUCKET_NAME}/`;
+  const idx = filePathOrUrl.indexOf(marker);
+  if (idx !== -1) {
+    return decodeURIComponent(filePathOrUrl.slice(idx + marker.length).split('?')[0]);
+  }
+  return filePathOrUrl.replace(/^\/+/, '').split('?')[0];
+}
+
+async function fetchProtectedExcelBlob(targetKey: string): Promise<Blob> {
+  const storagePath = resolveCostAnalysisStoragePath(targetKey);
+
+  if (supabase) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      throw new Error('请先登录系统以访问私有成本分析表');
+    }
+
+    const { data, error } = await supabase.storage
+      .from(BUCKET_NAME)
+      .download(storagePath);
+
+    if (error || !data) {
+      throw new Error(`无法获取 Excel 文件: ${error?.message || '未知错误'}`);
+    }
+
+    return data;
+  }
+
+  const res = await fetch(targetKey);
+  if (!res.ok) {
+    throw new Error(`无法获取 Excel 文件 (${res.status} ${res.statusText})`);
+  }
+  return await res.blob();
+}
 
 interface ExcelPreviewModalProps {
   isOpen: boolean;
@@ -16,6 +56,7 @@ interface ExcelPreviewModalProps {
   fileName: string | null;
   initialSheetName?: string | null;
   fileUrl?: string | null;
+  filePath?: string | null;
 }
 
 interface CellData {
@@ -36,8 +77,9 @@ export function ExcelPreviewModal({
   fileName,
   initialSheetName,
   fileUrl,
+  filePath,
 }: ExcelPreviewModalProps) {
-  const currentTargetKey = isOpen && fileName ? (fileUrl || null) : null;
+  const currentTargetKey = isOpen && fileName ? (filePath || fileUrl || null) : null;
 
   const [loadedState, setLoadedState] = useState<{
     targetKey: string;
@@ -80,15 +122,10 @@ export function ExcelPreviewModal({
     const downloadPath = currentTargetKey;
     let isCancelled = false;
 
-    fetch(downloadPath)
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`无法获取 Excel 文件 (${res.status} ${res.statusText})`);
-        }
-        return res.arrayBuffer();
-      })
-      .then((buffer) => {
+    fetchProtectedExcelBlob(downloadPath)
+      .then(async (blob) => {
         if (isCancelled) return;
+        const buffer = await blob.arrayBuffer();
         try {
           const wb = XLSX.read(buffer, { type: 'array', cellFormula: true, cellStyles: true });
           setLoadedState({
@@ -233,9 +270,7 @@ export function ExcelPreviewModal({
   const handleDownload = async () => {
     if (!currentTargetKey) return;
     try {
-      const res = await fetch(currentTargetKey);
-      if (!res.ok) throw new Error('下载失败');
-      const blob = await res.blob();
+      const blob = await fetchProtectedExcelBlob(currentTargetKey);
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = objectUrl;
@@ -244,8 +279,8 @@ export function ExcelPreviewModal({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(objectUrl);
-    } catch {
-      window.open(currentTargetKey, '_blank');
+    } catch (err) {
+      console.error('下载 Excel 失败:', err);
     }
   };
 

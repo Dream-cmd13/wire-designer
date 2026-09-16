@@ -67,17 +67,17 @@ async function main() {
 
   const exists = buckets.some((b) => b.id === BUCKET_NAME);
   if (!exists) {
-    console.log(`桶 ${BUCKET_NAME} 不存在，正在创建为公开桶 (public: true)...`);
+    console.log(`桶 ${BUCKET_NAME} 不存在，正在创建为私有桶 (public: false)...`);
     const { error: createErr } = await supabase.storage.createBucket(BUCKET_NAME, {
-      public: true,
+      public: false,
       fileSizeLimit: 52428800, // 50MB
     });
     if (createErr) throw new Error(`创建存储桶失败: ${createErr.message}`);
     console.log(`桶 ${BUCKET_NAME} 创建成功！`);
   } else {
-    console.log(`桶 ${BUCKET_NAME} 已存在，更新为 public: true...`);
+    console.log(`桶 ${BUCKET_NAME} 已存在，更新为 public: false...`);
     await supabase.storage.updateBucket(BUCKET_NAME, {
-      public: true,
+      public: false,
       fileSizeLimit: 52428800,
     });
   }

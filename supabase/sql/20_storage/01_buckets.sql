@@ -3,7 +3,7 @@ values ('catalog-assets', 'catalog-assets', false)
 on conflict (id) do update set public = excluded.public;
 
 insert into storage.buckets (id, name, public)
-values ('cost-analysis-sources', 'cost-analysis-sources', true)
+values ('cost-analysis-sources', 'cost-analysis-sources', false)
 on conflict (id) do update set public = excluded.public;
 
 create or replace function public.get_storage_bootstrap_status()
