@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import {
   Calculator,
   Calendar,
+  Check,
   ChevronRight,
+  Copy,
   DollarSign,
   ExternalLink,
   FileSpreadsheet,
@@ -55,6 +57,7 @@ export function FinishedHarnessMaterialDetailDialog({
   } | null>(null);
   const [activeTab, setActiveTab] = useState<'process' | 'bom' | 'labor'>('process');
   const [showExcelPreview, setShowExcelPreview] = useState<boolean>(false);
+  const [copiedReport, setCopiedReport] = useState<boolean>(false);
 
   // 渲染期派生状态：当前物料变化时自动判断加载状态与数据，无需在 effect 中同步 setState
   const loadingAnalysis = Boolean(currentPlatformNo && loadedData?.platformNo !== currentPlatformNo);
@@ -108,6 +111,60 @@ export function FinishedHarnessMaterialDetailDialog({
   const samplePrice = costAnalysis?.samplePrice ?? material.samplePrice;
   const quotePrice = costAnalysis?.quotePrice ?? material.quotePrice;
 
+  const handleCopyReport = async () => {
+    if (!material) return;
+    const lines: string[] = [
+      `【万连成品线束方案成本核算与报价报告】`,
+      `平台料号：${material.platformNo}`,
+      `物料名称：${material.sonName || '未命名'}`,
+      `供应商：${supplierNo || '未配置'}`,
+      costAnalysis?.customerName ? `客户名称：${costAnalysis.customerName}` : '',
+      costAnalysis?.customerPartNo ? `客户料号：${costAnalysis.customerPartNo}` : '',
+      `----------------------------------------`,
+      `【核心价格指标】`,
+      `• 综合总成本：¥ ${totalCost != null ? totalCost.toFixed(4) : '--'} 元`,
+      `• 销售定价：¥ ${salesPrice != null ? salesPrice.toFixed(4) : '--'} 元`,
+      `• 样品单价：¥ ${samplePrice != null ? samplePrice.toFixed(4) : '--'} 元`,
+      `• 建议对外报价：¥ ${quotePrice != null ? quotePrice.toFixed(4) : '--'} 元`,
+    ];
+
+    if (costAnalysis) {
+      lines.push(
+        `----------------------------------------`,
+        `【成本与损耗核算构成】`,
+        `• 原材料小计：¥ ${costAnalysis.materialCost.toFixed(4)} 元 (损耗金: ¥ ${costAnalysis.materialLoss.toFixed(4)} 元)`,
+        `• 人工工时小计：¥ ${costAnalysis.laborCost.toFixed(4)} 元 (损耗金: ¥ ${costAnalysis.laborLoss.toFixed(4)} 元)`,
+        `• 管理与税费：¥ ${costAnalysis.taxCost.toFixed(4)} 元`,
+      );
+
+      if (costAnalysis.calculationSteps && costAnalysis.calculationSteps.length > 0) {
+        lines.push(
+          `----------------------------------------`,
+          `【价格推导计算过程明细】`,
+        );
+        for (const s of costAnalysis.calculationSteps) {
+          lines.push(`• [${s.stepKey}] ${s.name}: ${s.expression} = ¥ ${s.result != null ? s.result.toFixed(4) : '--'}`);
+        }
+      }
+
+      if (costAnalysis.sourceExcelFile) {
+        lines.push(
+          `----------------------------------------`,
+          `来源原始文件：${costAnalysis.sourceExcelFile} (${costAnalysis.sourceSheetName})`,
+        );
+      }
+    }
+
+    const text = lines.filter(Boolean).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2500);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
+  };
+
   return (
     <div
       role="dialog"
@@ -142,14 +199,35 @@ export function FinishedHarnessMaterialDetailDialog({
               </span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-            title="关闭 (Esc)"
-          >
-            <X className="h-4 w-4" />
-          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCopyReport}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-blue-600 transition shadow-2xs"
+              title="一键复制格式化报价推导报告到剪贴板"
+            >
+              {copiedReport ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  <span className="text-emerald-700 font-medium">已复制报告</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5 text-slate-500" />
+                  <span>复制核算报告</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              title="关闭 (Esc)"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Content Body */}

@@ -18,6 +18,7 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
 import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
 import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
+import { ExcelPreviewModal } from '@/components/materials/ExcelPreviewModal';
 import { MaterialPagination } from '@/components/materials/MaterialPagination';
 import {
   getCatalogConnectors,
@@ -140,6 +141,10 @@ export function MaterialLibraryPage({
   const [finishedPage, setFinishedPage] = useState(initialFinishedPage);
   const [finishedPageSize, setFinishedPageSize] = useState(20);
   const [selectedFinishedHarness, setSelectedFinishedHarness] = useState<FinishedHarnessMaterial | null>(null);
+  const [directPreviewExcel, setDirectPreviewExcel] = useState<{
+    fileName: string;
+    fileUrl: string | null;
+  } | null>(null);
 
   // 价格导入/导出状态
   const [pendingImport, setPendingImport] = useState<{
@@ -1433,9 +1438,14 @@ export function MaterialLibraryPage({
                               {h.hasCostAnalysis ? (
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedFinishedHarness(h)}
+                                  onClick={() =>
+                                    setDirectPreviewExcel({
+                                      fileName: `${h.platformNo} 成本分析.xlsx`,
+                                      fileUrl: h.sourceExcelUrl || null,
+                                    })
+                                  }
                                   className="inline-flex cursor-pointer items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition"
-                                  title="查看成品线束成本核算详情与原始 Excel"
+                                  title="直接在线预览来源 Excel"
                                 >
                                   <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
                                   <span>预览Excel</span>
@@ -1531,6 +1541,15 @@ export function MaterialLibraryPage({
         onClose={() => setSelectedFinishedHarness(null)}
         material={selectedFinishedHarness}
       />
+
+      {directPreviewExcel && (
+        <ExcelPreviewModal
+          isOpen={Boolean(directPreviewExcel)}
+          onClose={() => setDirectPreviewExcel(null)}
+          fileName={directPreviewExcel.fileName}
+          fileUrl={directPreviewExcel.fileUrl}
+        />
+      )}
     </div>
   );
 }

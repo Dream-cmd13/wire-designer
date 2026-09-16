@@ -20,9 +20,14 @@ interface ExcelPreviewModalProps {
 
 interface CellData {
   address: string;
+  r: number;
+  c: number;
   value: string;
   formula?: string;
   isNumeric: boolean;
+  rowSpan?: number;
+  colSpan?: number;
+  isHidden?: boolean;
 }
 
 export function ExcelPreviewModal({
@@ -120,10 +125,10 @@ export function ExcelPreviewModal({
     };
   }, [isOpen, currentTargetKey, initialSheetName]);
 
-  // 解析当前 Sheet 的表格网格数据
-  const { grid, maxCol, maxRow } = useMemo(() => {
+  // 解析当前 Sheet 的表格网格数据、合并单元格与列宽
+  const { grid, maxCol, maxRow, colWidths } = useMemo(() => {
     if (!workbook || !activeSheet || !workbook.Sheets[activeSheet]) {
-      return { grid: [], maxCol: 0, maxRow: 0 };
+      return { grid: [], maxCol: 0, maxRow: 0, colWidths: [] };
     }
 
     const ws = workbook.Sheets[activeSheet];
@@ -134,6 +139,51 @@ export function ExcelPreviewModal({
     const endRow = Math.min(range.e.r, 120);
     const endCol = Math.min(range.e.c, 30);
 
+    // 1. 解析合并单元格
+    const rawMerges = ws['!merges'] || [];
+    const mergeStarts = new Map<string, { rowSpan: number; colSpan: number }>();
+    const hiddenCells = new Set<string>();
+
+    for (const m of rawMerges) {
+      const startR = m.s.r;
+      const startC = m.s.c;
+      const eR = Math.min(m.e.r, endRow);
+      const eC = Math.min(m.e.c, endCol);
+
+      if (startR > endRow || startC > endCol) continue;
+
+      const rowSpan = eR - startR + 1;
+      const colSpan = eC - startC + 1;
+
+      if (rowSpan > 1 || colSpan > 1) {
+        mergeStarts.set(`${startR},${startC}`, { rowSpan, colSpan });
+
+        for (let r = startR; r <= eR; r++) {
+          for (let c = startC; c <= eC; c++) {
+            if (r === startR && c === startC) continue;
+            hiddenCells.add(`${r},${c}`);
+          }
+        }
+      }
+    }
+
+    // 2. 解析列宽
+    const rawCols = ws['!cols'] || [];
+    const computedColWidths: number[] = [];
+    for (let c = 0; c <= endCol; c++) {
+      const col = rawCols[c];
+      let w = 85;
+      if (col) {
+        if (typeof col.wpx === 'number') {
+          w = Math.max(50, Math.min(col.wpx, 320));
+        } else if (typeof col.wch === 'number') {
+          w = Math.max(50, Math.min(Math.round(col.wch * 7.8 + 12), 320));
+        }
+      }
+      computedColWidths.push(w);
+    }
+
+    // 3. 构建单元格矩阵
     for (let r = 0; r <= endRow; r++) {
       const colList: CellData[] = [];
       for (let c = 0; c <= endCol; c++) {
@@ -151,11 +201,20 @@ export function ExcelPreviewModal({
           isNum = typeof cell.v === 'number';
         }
 
+        const coordKey = `${r},${c}`;
+        const isHidden = hiddenCells.has(coordKey);
+        const mergeInfo = mergeStarts.get(coordKey);
+
         colList.push({
           address,
+          r,
+          c,
           value: valStr,
           formula: cell ? cell.f : undefined,
           isNumeric: isNum,
+          rowSpan: mergeInfo?.rowSpan,
+          colSpan: mergeInfo?.colSpan,
+          isHidden,
         });
       }
       rowList.push(colList);
@@ -165,6 +224,7 @@ export function ExcelPreviewModal({
       grid: rowList,
       maxCol: endCol,
       maxRow: endRow,
+      colWidths: computedColWidths,
     };
   }, [workbook, activeSheet]);
 
@@ -357,14 +417,18 @@ export function ExcelPreviewModal({
                     <th className="w-10 min-w-10 border border-slate-300 bg-slate-200/80 p-1 text-center font-bold">
                       #
                     </th>
-                    {Array.from({ length: maxCol + 1 }).map((_, cIdx) => (
-                      <th
-                        key={cIdx}
-                        className="min-w-[70px] border border-slate-300 px-2 py-1 text-center font-semibold text-slate-600"
-                      >
-                        {XLSX.utils.encode_col(cIdx)}
-                      </th>
-                    ))}
+                    {Array.from({ length: maxCol + 1 }).map((_, cIdx) => {
+                      const width = colWidths[cIdx] ?? 80;
+                      return (
+                        <th
+                          key={cIdx}
+                          style={{ width: `${width}px`, minWidth: `${width}px` }}
+                          className="border border-slate-300 px-2 py-1 text-center font-semibold text-slate-600"
+                        >
+                          {XLSX.utils.encode_col(cIdx)}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -378,6 +442,8 @@ export function ExcelPreviewModal({
                         </td>
                         {/* 各列单元格 */}
                         {row.map((cell) => {
+                          if (cell.isHidden) return null;
+
                           const isSelected = selectedCell?.address === cell.address;
                           const hasFormula = Boolean(cell.formula);
                           const isMatch =
@@ -387,13 +453,15 @@ export function ExcelPreviewModal({
                           return (
                             <td
                               key={cell.address}
+                              rowSpan={cell.rowSpan}
+                              colSpan={cell.colSpan}
                               onClick={() => setSelectedCell(cell)}
                               title={
                                 hasFormula
                                   ? `坐标: ${cell.address}\n公式: =${cell.formula}\n数值: ${cell.value}`
                                   : `坐标: ${cell.address}\n值: ${cell.value}`
                               }
-                              className={`relative border border-slate-200 px-2 py-1 font-mono text-[11px] cursor-pointer transition-colors max-w-[260px] truncate ${
+                              className={`relative border border-slate-200 px-2 py-1 font-mono text-[11px] cursor-pointer transition-colors ${
                                 cell.isNumeric ? 'text-right' : 'text-left'
                               } ${
                                 isSelected
@@ -407,7 +475,7 @@ export function ExcelPreviewModal({
                               {hasFormula && (
                                 <span className="absolute top-0 right-0 h-1.5 w-1.5 border-t-[6px] border-l-[6px] border-t-emerald-500 border-l-transparent" />
                               )}
-                              <span>{cell.value}</span>
+                              <span className="break-words">{cell.value}</span>
                             </td>
                           );
                         })}
