@@ -65,6 +65,16 @@ describe('FinishedHarnessMaterialRepository', () => {
     expect(valid.quotePrice).toBe(16);
     expect(valid.hasCostAnalysis).toBe(true);
     expect(valid.sourceExcelUrl).toBe('https://example.com/storage/cost.xlsx');
+
+    const withNullSourceId = mapFinishedHarnessMaterialRow({
+      id: 'uuid-456',
+      source_material_id: null,
+      source_goods_id: null,
+      platform_no: 'WL-B',
+      son_name: '成品线束B',
+    });
+    expect(withNullSourceId.sourceMaterialId).toBeNull();
+    expect(withNullSourceId.sourceGoodsId).toBeNull();
   });
 
   it('handles database table not exist error (42P01)', async () => {

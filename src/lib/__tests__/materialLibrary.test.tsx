@@ -496,6 +496,12 @@ describe('MaterialLibraryPage', () => {
     expect(mapped.file2d).toBeNull();
     expect(mapped.packing).toBeNull();
     expect(mapped.sonPriceLow).toBeNull();
+
+    const mappedWithNull = mapFinishedHarnessMaterialRow({
+      ...row,
+      source_material_id: null,
+    });
+    expect(mappedWithNull.sourceMaterialId).toBeNull();
   });
 
   it('automatically clamps connector page to 1 and prevents empty table when price import reduces unpriced items', () => {

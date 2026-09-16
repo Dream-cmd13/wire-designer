@@ -427,7 +427,9 @@ export function FinishedHarnessMaterialDetailDialog({
                 </div>
                 <div>
                   <span className="text-slate-500">源物料 ID：</span>
-                  <span className="font-mono text-slate-700">{material.sourceMaterialId}</span>
+                  <span className="font-mono text-slate-700">
+                    {material.sourceMaterialId != null ? material.sourceMaterialId : '暂无'}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-500">源产品 ID：</span>

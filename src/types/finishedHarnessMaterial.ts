@@ -61,7 +61,7 @@ export interface FinishedHarnessCostAnalysis {
 
 export interface FinishedHarnessMaterial {
   id: string;
-  sourceMaterialId: number;
+  sourceMaterialId: number | null;
   sourceGoodsId: number | null;
   platformNo: string;
   sonName: string;

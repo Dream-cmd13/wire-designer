@@ -3,8 +3,9 @@
 -- 成品线束物料主表扩展与成本分析、定价公式推导明细表
 -- ==============================================================================
 
--- 1. 扩充成品线束主表核心价格汇总字段与来源 Excel
+-- 1. 扩充成品线束主表核心价格汇总字段与来源 Excel，并将 source_material_id 调整为可空
 alter table public.finished_harness_materials
+  alter column source_material_id drop not null,
   add column if not exists total_cost numeric(12, 4),
   add column if not exists sales_price numeric(12, 4),
   add column if not exists sample_price numeric(12, 4),

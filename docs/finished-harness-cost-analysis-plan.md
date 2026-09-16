@@ -30,7 +30,7 @@ erDiagram
 
     finished_harness_materials {
         uuid id PK "系统主键 UUID"
-        bigint source_material_id "源系统物料ID (自动建档时生成唯一值)"
+        bigint source_material_id "源系统物料ID (可为空)"
         bigint source_goods_id "源系统产品ID (可为空)"
         text platform_no UK "平台料号 (唯一，如 WL-B21-534)"
         text son_name "物料名称"
@@ -267,7 +267,7 @@ flowchart TD
    - 使用 PostgreSQL 的 `ON CONFLICT (platform_no) DO UPDATE`；
    - 脚本支持重复运行，不会产生脏数据。
 3. **主表自动建档**：
-   - 对于主表 `finished_harness_materials` 中尚不存在的成品料号，自动生成不冲突的 `source_material_id`，写入料号 `platform_no`、物料名称 `son_name`（从 Excel 表头提取）、单位、包装规格等，并置 `has_cost_analysis = true`。
+   - 对于主表 `finished_harness_materials` 中尚不存在的成品料号，自动建档（`source_material_id` 允许为空），写入料号 `platform_no`、物料名称 `son_name`（从 Excel 表头提取）、单位、包装规格等，并置 `has_cost_analysis = true`。
 
 ---
 

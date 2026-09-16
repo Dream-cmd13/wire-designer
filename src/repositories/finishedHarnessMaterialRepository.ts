@@ -48,7 +48,7 @@ export function mapFinishedHarnessMaterialRow(value: unknown): FinishedHarnessMa
 
   return {
     id: row.id,
-    sourceMaterialId: Number(row.source_material_id),
+    sourceMaterialId: row.source_material_id == null ? null : Number(row.source_material_id),
     sourceGoodsId: row.source_goods_id == null ? null : Number(row.source_goods_id),
     platformNo: row.platform_no,
     sonName: row.son_name,

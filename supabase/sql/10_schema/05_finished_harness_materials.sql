@@ -1,6 +1,6 @@
 create table if not exists public.finished_harness_materials (
   id uuid primary key default gen_random_uuid(),
-  source_material_id bigint not null unique,
+  source_material_id bigint unique,
   source_goods_id bigint,
   platform_no text not null,
   son_name text not null,
