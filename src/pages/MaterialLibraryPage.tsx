@@ -136,6 +136,7 @@ export function MaterialLibraryPage({
   const [finishedQuery, setFinishedQuery] = useState('');
   const [finishedSupplierNo, setFinishedSupplierNo] = useState('all');
   const [finishedDrawingStatus, setFinishedDrawingStatus] = useState<'all' | 'has' | 'none'>('all');
+  const [finishedCostStatus, setFinishedCostStatus] = useState<'all' | 'has' | 'none'>('all');
   const [finishedPage, setFinishedPage] = useState(initialFinishedPage);
   const [finishedPageSize, setFinishedPageSize] = useState(20);
   const [selectedFinishedHarness, setSelectedFinishedHarness] = useState<FinishedHarnessMaterial | null>(null);
@@ -448,9 +449,14 @@ export function MaterialLibraryPage({
         (finishedDrawingStatus === 'has' && hasDrawing) ||
         (finishedDrawingStatus === 'none' && !hasDrawing);
 
-      return matchQ && matchS && matchD;
+      const matchC =
+        finishedCostStatus === 'all' ||
+        (finishedCostStatus === 'has' && h.hasCostAnalysis) ||
+        (finishedCostStatus === 'none' && !h.hasCostAnalysis);
+
+      return matchQ && matchS && matchD && matchC;
     });
-  }, [finishedHarnesses, finishedQuery, finishedSupplierNo, finishedDrawingStatus]);
+  }, [finishedHarnesses, finishedQuery, finishedSupplierNo, finishedDrawingStatus, finishedCostStatus]);
 
   const totalFinishedPages = Math.max(
     1,
@@ -1304,7 +1310,7 @@ export function MaterialLibraryPage({
         {activeTab === 'finished-harnesses' && (
           <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
             <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
-              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
                 <label className="relative block sm:col-span-2">
                   <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
@@ -1347,6 +1353,19 @@ export function MaterialLibraryPage({
                   <option value="has">包含图纸</option>
                   <option value="none">暂无图纸</option>
                 </select>
+
+                <select
+                  value={finishedCostStatus}
+                  onChange={(e) => {
+                    setFinishedCostStatus(e.target.value as 'all' | 'has' | 'none');
+                    setFinishedPage(1);
+                  }}
+                  className="h-8.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs outline-none transition focus:border-blue-400"
+                >
+                  <option value="all">全部成本状态</option>
+                  <option value="has">已核算成本</option>
+                  <option value="none">未核算成本</option>
+                </select>
               </div>
             </section>
 
@@ -1371,9 +1390,9 @@ export function MaterialLibraryPage({
                       <th className="w-[160px] min-w-[140px] px-4 py-3 font-semibold">料号</th>
                       <th className="min-w-[240px] px-4 py-3 font-semibold">物料名称</th>
                       <th className="w-[130px] min-w-[110px] px-4 py-3 font-semibold">供应商</th>
-                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">图纸</th>
-                      <th className="w-[110px] min-w-[90px] px-4 py-3 font-semibold text-center">成本分析</th>
-                      <th className="w-[110px] min-w-[90px] px-4 py-3 font-semibold text-center">报价</th>
+                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">图纸/附件</th>
+                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold text-center">成本分析</th>
+                      <th className="w-[150px] min-w-[130px] px-4 py-3 font-semibold">价格/报价</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1398,26 +1417,78 @@ export function MaterialLibraryPage({
                             {supplierNo || '暂无编号'}
                           </td>
                           <td className="px-4 py-3">
-                            {h.file2d ? (
-                              <a
-                                href={h.file2d}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 transition"
-                                title="在新窗口中打开图纸"
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {h.file2d ? (
+                                <a
+                                  href={h.file2d}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600 hover:bg-blue-100 transition"
+                                  title="在新窗口中打开2D图纸"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  <span>打开图纸</span>
+                                </a>
+                              ) : null}
+                              {h.hasCostAnalysis ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedFinishedHarness(h)}
+                                  className="inline-flex cursor-pointer items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition"
+                                  title="查看成品线束成本核算详情与原始 Excel"
+                                >
+                                  <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
+                                  <span>预览Excel</span>
+                                </button>
+                              ) : null}
+                              {!h.file2d && !h.hasCostAnalysis && (
+                                <span className="text-slate-400">暂无</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {h.hasCostAnalysis && h.totalCost != null ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFinishedHarness(h)}
+                                className="inline-flex cursor-pointer items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 font-mono text-xs font-semibold text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition"
+                                title="查看价格计算公式与明细"
                               >
-                                <ExternalLink className="h-3 w-3" />
-                                <span>打开图纸</span>
-                              </a>
+                                ¥ {h.totalCost.toFixed(2)}
+                              </button>
                             ) : (
-                              <span className="text-slate-400">暂无图纸</span>
+                              <span className="text-slate-400">未核算</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-center text-slate-400">
-                            暂无
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-400">
-                            暂无
+                          <td className="px-4 py-3">
+                            {h.salesPrice != null ? (
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1 font-mono">
+                                  <span className="text-[10px] text-slate-400">售价:</span>
+                                  <span className="font-semibold text-slate-900">
+                                    ¥ {h.salesPrice.toFixed(2)}
+                                  </span>
+                                </div>
+                                {h.samplePrice != null && (
+                                  <div className="flex items-center gap-1 font-mono text-[11px] text-amber-700">
+                                    <span className="text-[10px] text-slate-400">样品:</span>
+                                    <span>¥ {h.samplePrice.toFixed(2)}</span>
+                                  </div>
+                                )}
+                                {h.quotePrice != null && (
+                                  <div className="flex items-center gap-1 font-mono text-[11px] text-indigo-700">
+                                    <span className="text-[10px] text-slate-400">报价:</span>
+                                    <span className="font-medium">¥ {h.quotePrice.toFixed(2)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : h.sonPriceLow != null ? (
+                              <span className="font-mono text-slate-700">
+                                ¥ {Number(h.sonPriceLow).toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">暂无</span>
+                            )}
                           </td>
                         </tr>
                       );

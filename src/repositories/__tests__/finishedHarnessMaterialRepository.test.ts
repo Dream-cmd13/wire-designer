@@ -36,6 +36,12 @@ describe('FinishedHarnessMaterialRepository', () => {
       packing: '10',
       son_unit: 'pcs',
       son_price_low: '12.500000',
+      total_cost: '10.5000',
+      sales_price: '15.0000',
+      sample_price: '21.0000',
+      quote_price: '16.0000',
+      has_cost_analysis: true,
+      source_excel_url: 'https://example.com/storage/cost.xlsx',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-02T00:00:00Z',
     });
@@ -53,6 +59,12 @@ describe('FinishedHarnessMaterialRepository', () => {
     expect(valid.packing).toBe(10);
     expect(valid.sonUnit).toBe('pcs');
     expect(valid.sonPriceLow).toBe(12.5);
+    expect(valid.totalCost).toBe(10.5);
+    expect(valid.salesPrice).toBe(15);
+    expect(valid.samplePrice).toBe(21);
+    expect(valid.quotePrice).toBe(16);
+    expect(valid.hasCostAnalysis).toBe(true);
+    expect(valid.sourceExcelUrl).toBe('https://example.com/storage/cost.xlsx');
   });
 
   it('handles database table not exist error (42P01)', async () => {
