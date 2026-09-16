@@ -42,6 +42,56 @@ function getCellFormula(ws, addr) {
   return cell ? cell.f : undefined;
 }
 
+export function resolvePriceDerivation(formula, baseValue, targetValue, defaultLabel) {
+  if (formula) {
+    // 匹配除法，如 /0.8, /0.7, /0.85
+    const divMatch = formula.match(/\/([0-9.]+)/);
+    if (divMatch) {
+      const divisor = parseFloat(divMatch[1]);
+      const marginPercent = Math.round((1 - divisor) * 100);
+      return {
+        formula: `公式: ${formula} (目标毛利率 ${marginPercent}%)`,
+        expression: `${baseValue} ÷ ${divisor}`,
+      };
+    }
+    // 匹配乘法，如 *1.2, *1.03
+    const multMatch = formula.match(/\*([0-9.]+)/);
+    if (multMatch) {
+      const mult = parseFloat(multMatch[1]);
+      const markupPercent = Math.round((mult - 1) * 100);
+      return {
+        formula: `公式: ${formula} (成本加成 ${markupPercent}%)`,
+        expression: `${baseValue} × ${mult}`,
+      };
+    }
+    return {
+      formula: `公式: ${formula}`,
+      expression: `${baseValue} 依公式计算`,
+    };
+  }
+
+  // 无源公式但有数值时，依据实际数值比推算代入轨迹，杜绝硬编码固定比例
+  if (baseValue != null && targetValue != null && baseValue > 0 && targetValue > 0) {
+    const ratio = Number((baseValue / targetValue).toFixed(4));
+    const marginPercent = Math.round((1 - ratio) * 100);
+    if (marginPercent > 0 && marginPercent < 90) {
+      return {
+        formula: `${defaultLabel} ÷ (1 - 目标毛利率 ${marginPercent}%)`,
+        expression: `${baseValue} ÷ ${ratio}`,
+      };
+    }
+    return {
+      formula: `${defaultLabel} 核定折算`,
+      expression: `${targetValue}`,
+    };
+  }
+
+  return {
+    formula: formula ? `公式: ${formula}` : '录入数值',
+    expression: targetValue != null ? `${targetValue}` : '--',
+  };
+}
+
 export function parseCostWorkbook(filePath) {
   const fileName = path.basename(filePath);
   const wb = XLSX.readFile(filePath, { cellFormula: true });
@@ -257,7 +307,7 @@ export function parseCostWorkbook(filePath) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             materialCost = foundVal;
-            materialCostFormula = getCellFormula(ws, targetAddr) || 'SUM(BOM材料总价)';
+            materialCostFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
 
@@ -266,7 +316,7 @@ export function parseCostWorkbook(filePath) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             materialLoss = foundVal;
-            materialLossFormula = getCellFormula(ws, targetAddr) || '材料总价*0.03';
+            materialLossFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
 
@@ -275,7 +325,7 @@ export function parseCostWorkbook(filePath) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             laborCost = foundVal;
-            laborCostFormula = getCellFormula(ws, targetAddr) || '∑工序工时费';
+            laborCostFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
 
@@ -284,7 +334,7 @@ export function parseCostWorkbook(filePath) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             laborLoss = foundVal;
-            laborLossFormula = getCellFormula(ws, targetAddr) || '工时费用*0.05';
+            laborLossFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
 
@@ -293,7 +343,7 @@ export function parseCostWorkbook(filePath) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             totalCost = foundVal;
-            totalCostFormula = getCellFormula(ws, targetAddr) || '材料总价+材料损耗+工时费用+工时损耗';
+            totalCostFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
 
@@ -304,27 +354,36 @@ export function parseCostWorkbook(filePath) {
             const nextCheck = cName + (r + 1);
             if (getCellVal(ws, check) != null && typeof getCellVal(ws, check) === 'number') {
               taxCost = cleanNumber(getCellVal(ws, check)) ?? 0;
-              taxCostFormula = getCellFormula(ws, check) || '总成本*1.03';
+              taxCostFormula = getCellFormula(ws, check) || '';
               break;
             } else if (getCellVal(ws, nextCheck) != null && typeof getCellVal(ws, nextCheck) === 'number') {
               taxCost = cleanNumber(getCellVal(ws, nextCheck)) ?? 0;
-              taxCostFormula = getCellFormula(ws, nextCheck) || '总成本*1.03';
+              taxCostFormula = getCellFormula(ws, nextCheck) || '';
               break;
             }
           }
         }
 
         if (val === '样品价') {
-          // 通常在下方一行单元格
+          // 检查下方单元格或右侧单元格
           const nextRowAddr = XLSX.utils.encode_col(c) + (r + 1);
-          samplePrice = cleanNumber(getCellVal(ws, nextRowAddr));
-          samplePriceFormula = getCellFormula(ws, nextRowAddr) || '含税成本/0.5';
+          const rightAddr = XLSX.utils.encode_col(c + 1) + r;
+          const found = cleanNumber(getCellVal(ws, nextRowAddr)) ?? cleanNumber(getCellVal(ws, rightAddr));
+          if (found != null) {
+            samplePrice = found;
+            samplePriceFormula = getCellFormula(ws, nextRowAddr) || getCellFormula(ws, rightAddr) || '';
+          }
         }
 
         if (val === '售价' || val === '最低售价') {
+          // 检查下方单元格或右侧单元格
           const nextRowAddr = XLSX.utils.encode_col(c) + (r + 1);
-          salesPrice = cleanNumber(getCellVal(ws, nextRowAddr));
-          salesPriceFormula = getCellFormula(ws, nextRowAddr) || '含税成本/0.7';
+          const rightAddr = XLSX.utils.encode_col(c + 1) + r;
+          const found = cleanNumber(getCellVal(ws, nextRowAddr)) ?? cleanNumber(getCellVal(ws, rightAddr));
+          if (found != null) {
+            salesPrice = found;
+            salesPriceFormula = getCellFormula(ws, nextRowAddr) || getCellFormula(ws, rightAddr) || '';
+          }
         }
 
         if (val.includes('报价') && !val.includes('不含') && !val.includes('原有') && !val.includes('公式')) {
@@ -338,33 +397,21 @@ export function parseCostWorkbook(filePath) {
       }
     }
 
-    // 容错补充：若部分汇总值为0但有明细，自动求和补偿
+    // 容错补充：若部分汇总值为0但有明细，自动求和补偿（绝不擅自强塞假数据）
     if (materialCost === 0 && bomItems.length > 0) {
       materialCost = cleanNumber(bomItems.reduce((acc, cur) => acc + cur.totalPrice, 0)) || 0;
     }
     if (laborCost === 0 && laborItems.length > 0) {
       laborCost = cleanNumber(laborItems.reduce((acc, cur) => acc + cur.cost, 0)) || 0;
     }
-    if (materialLoss === 0 && materialCost > 0) {
-      materialLoss = cleanNumber(materialCost * 0.03) || 0;
-    }
-    if (laborLoss === 0 && laborCost > 0) {
-      laborLoss = cleanNumber(laborCost * 0.05) || 0;
-    }
     if (totalCost === 0) {
       totalCost = cleanNumber(materialCost + materialLoss + laborCost + laborLoss) || 0;
     }
     if (taxCost === 0) {
-      taxCost = cleanNumber(totalCost * 1.03) || totalCost;
-    }
-    if (salesPrice == null && taxCost > 0) {
-      salesPrice = cleanNumber(taxCost / 0.7);
-    }
-    if (samplePrice == null && taxCost > 0) {
-      samplePrice = cleanNumber(taxCost / 0.5);
+      taxCost = totalCost;
     }
 
-    // 5. 组装标准 calculation_steps 推导链（完整列出全部物料与工序，杜绝省略号）
+    // 5. 组装标准 calculation_steps 推导链（根据各表格真实公式与数值动态生成，杜绝硬编码固定常量）
     const bomExpr =
       bomItems.length > 0
         ? bomItems.map((b) => `${b.totalPrice}(${b.type})`).join(' + ')
@@ -375,11 +422,56 @@ export function parseCostWorkbook(filePath) {
         ? laborItems.map((l) => `${l.cost}(${l.name})`).join(' + ')
         : '0';
 
+    // 材料损耗动态提取与代入轨迹
+    let matLossRate = 0.03;
+    if (materialLossFormula) {
+      const match = materialLossFormula.match(/\*([0-9.]+)/);
+      if (match) matLossRate = parseFloat(match[1]);
+    } else if (materialCost > 0 && materialLoss > 0) {
+      matLossRate = Number((materialLoss / materialCost).toFixed(4));
+    }
+    const matLossFormulaText = materialLossFormula
+      ? `公式: ${materialLossFormula}`
+      : materialLoss > 0
+        ? `材料费用小计 × 材料损耗率 (${(matLossRate * 100).toFixed(1)}%)`
+        : '未计提材料损耗';
+    const matLossExpr = materialLoss > 0 ? `${materialCost} × ${matLossRate}` : '0';
+
+    // 工时损耗动态提取与代入轨迹
+    let labLossRate = 0.05;
+    if (laborLossFormula) {
+      const match = laborLossFormula.match(/\*([0-9.]+)/);
+      if (match) labLossRate = parseFloat(match[1]);
+    } else if (laborCost > 0 && laborLoss > 0) {
+      labLossRate = Number((laborLoss / laborCost).toFixed(4));
+    }
+    const labLossFormulaText = laborLossFormula
+      ? `公式: ${laborLossFormula}`
+      : laborLoss > 0
+        ? `工时费用小计 × 工时损耗率 (${(labLossRate * 100).toFixed(1)}%)`
+        : '未计提工时损耗';
+    const labLossExpr = laborLoss > 0 ? `${laborCost} × ${labLossRate}` : '0';
+
+    // 含税总成本动态提取与代入轨迹
+    let taxMultiplier = 1.03;
+    if (taxCostFormula) {
+      const match = taxCostFormula.match(/\*([0-9.]+)/);
+      if (match) taxMultiplier = parseFloat(match[1]);
+    } else if (totalCost > 0 && taxCost > totalCost) {
+      taxMultiplier = Number((taxCost / totalCost).toFixed(4));
+    }
+    const taxCostFormulaText = taxCostFormula
+      ? `公式: ${taxCostFormula}`
+      : taxCost > totalCost
+        ? `基础生产总成本 × 综合税赋加成 (${taxMultiplier})`
+        : '含税总成本 (与基础生产总成本一致)';
+    const taxCostExpr = taxCost > totalCost ? `${totalCost} × ${taxMultiplier}` : `${totalCost}`;
+
     const steps = [
       {
         stepKey: 'material_cost',
         name: '材料费用小计',
-        formula: '∑(各BOM物料用量 × 单价)',
+        formula: materialCostFormula ? `公式: ${materialCostFormula}` : '∑(各BOM物料用量 × 单价)',
         expression: bomExpr,
         result: materialCost,
         unit: '元',
@@ -388,8 +480,8 @@ export function parseCostWorkbook(filePath) {
       {
         stepKey: 'material_loss',
         name: '材料加工损耗',
-        formula: '材料费用小计 × 材料损耗率(3%)',
-        expression: `${materialCost} × 0.03`,
+        formula: matLossFormulaText,
+        expression: matLossExpr,
         result: materialLoss,
         unit: '元',
         description: '计提裁线、压接、组装损耗费用',
@@ -397,7 +489,7 @@ export function parseCostWorkbook(filePath) {
       {
         stepKey: 'labor_cost',
         name: '工时加工费小计',
-        formula: '∑(工序点数 × 效率单价)',
+        formula: laborCostFormula ? `公式: ${laborCostFormula}` : '∑(工序点数 × 效率单价)',
         expression: laborExpr,
         result: laborCost,
         unit: '元',
@@ -406,8 +498,8 @@ export function parseCostWorkbook(filePath) {
       {
         stepKey: 'labor_loss',
         name: '工时准备损耗',
-        formula: '工时费用小计 × 工时损耗率(5%)',
-        expression: `${laborCost} × 0.05`,
+        formula: labLossFormulaText,
+        expression: labLossExpr,
         result: laborLoss,
         unit: '元',
         description: '计提首件调机、工模治具调试与工时损耗',
@@ -415,7 +507,7 @@ export function parseCostWorkbook(filePath) {
       {
         stepKey: 'total_cost',
         name: '基础生产总成本',
-        formula: '材料小计 + 材料损耗 + 工时小计 + 工时损耗',
+        formula: totalCostFormula ? `公式: ${totalCostFormula}` : '材料小计 + 材料损耗 + 工时小计 + 工时损耗',
         expression: `${materialCost} + ${materialLoss} + ${laborCost} + ${laborLoss}`,
         result: totalCost,
         unit: '元',
@@ -424,29 +516,44 @@ export function parseCostWorkbook(filePath) {
       {
         stepKey: 'tax_cost',
         name: '含税总成本',
-        formula: taxCostFormula ? `公式: ${taxCostFormula}` : '基础生产总成本 × 1.03 (综合税赋加成)',
-        expression: `${totalCost} × 1.03`,
+        formula: taxCostFormulaText,
+        expression: taxCostExpr,
         result: taxCost,
         unit: '元',
         description: '包含增值税赋与综合财务保本成本',
       },
-      {
+    ];
+
+    if (salesPrice != null) {
+      const salesDeriv = resolvePriceDerivation(
+        salesPriceFormula,
+        taxCost,
+        salesPrice,
+        '含税总成本'
+      );
+      steps.push({
         stepKey: 'sales_price',
         name: '建议售价 (最低售价)',
-        formula: salesPriceFormula ? `公式: ${salesPriceFormula}` : '含税总成本 ÷ (1 - 目标毛利率30%)',
-        expression: `${taxCost} ÷ 0.7`,
+        formula: salesDeriv.formula,
+        expression: salesDeriv.expression,
         result: salesPrice,
         unit: '元',
         description: '核定批量供货最低出厂销售价',
-      },
-    ];
+      });
+    }
 
-    if (samplePrice != null) {
+    if (samplePrice != null && samplePrice > 0) {
+      const sampleDeriv = resolvePriceDerivation(
+        samplePriceFormula,
+        taxCost,
+        samplePrice,
+        '含税总成本'
+      );
       steps.push({
         stepKey: 'sample_price',
         name: '打样样品价',
-        formula: samplePriceFormula ? `公式: ${samplePriceFormula}` : '含税总成本 ÷ (1 - 样品毛利率50%)',
-        expression: `${taxCost} ÷ 0.5`,
+        formula: sampleDeriv.formula,
+        expression: sampleDeriv.expression,
         result: samplePrice,
         unit: '元',
         description: '小批量试产或打样核定价格',
@@ -586,16 +693,14 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
           );
           updatedCount++;
         } else {
-          // 自动建档新成品物料
-          // 生成一个伪 source_material_id（确保唯一）
-          const fakeSourceId = 900000 + Math.floor(Math.random() * 800000) + createdCount;
+          // 自动建档新成品物料（成本分析建档物料 source_material_id 为空）
           const insertRes = await client.query(
             `insert into public.finished_harness_materials 
              (source_material_id, platform_no, son_name, son_unit, son_price_low, total_cost, sales_price, sample_price, quote_price, has_cost_analysis)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
              returning id`,
             [
-              fakeSourceId,
+              null,
               item.platformNo,
               item.productName,
               'pcs',
