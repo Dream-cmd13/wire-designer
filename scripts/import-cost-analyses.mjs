@@ -213,13 +213,9 @@ export function parseCostWorkbook(filePath, options = {}) {
       if (sheetName.startsWith('WL-')) {
         platformNo = sheetName.trim();
       } else {
-        // 看文件名是否包含 WL-
+        // sheet 无规范命名时，优先取文件名中的规范料号
         const fileMatch = fileName.match(/WL-B[0-9]{2}-[0-9A-Za-z_-]+/);
-        if (fileMatch) {
-          platformNo = `${fileMatch[0]}-${sheetName.trim().replace(/\s+/g, '')}`;
-        } else {
-          platformNo = sheetName.trim();
-        }
+        platformNo = fileMatch ? fileMatch[0] : sheetName.trim();
       }
     }
 
@@ -684,6 +680,20 @@ export function parseCostWorkbook(filePath, options = {}) {
     });
   }
 
+  // 同一文件内多个非规范 sheet 共用一个料号（如 2米/15米、涨价前/后）时，统一追加 sheet 名以区分
+  const platformCounts = new Map();
+  for (const item of results) {
+    platformCounts.set(item.platformNo, (platformCounts.get(item.platformNo) ?? 0) + 1);
+  }
+  for (const item of results) {
+    const sheetKey = item.sourceSheetName.trim();
+    if ((platformCounts.get(item.platformNo) ?? 0) > 1 && !sheetKey.startsWith('WL-')) {
+      item.platformNo = `${item.platformNo}-${sheetKey}`
+        .replace(/\s+/g, '')
+        .replace(/[\/\\:*?"<>|]/g, '-');
+    }
+  }
+
   return results;
 }
 
@@ -716,6 +726,27 @@ function sqlJson(obj) {
   return `'${JSON.stringify(obj).replace(/'/g, "''")}'::jsonb`;
 }
 
+// 清理当前 Excel 解析结果之外的旧命名残留：先删成本分析，再删已无分析引用的自动建档物料。
+// 保证种子/同步脚本可单独重复执行，直接替换旧命名结果而无需清库；CRM 来源物料（source_material_id 非空）不受影响。
+export function buildStaleCleanupStatements(platformNos) {
+  const lines = [];
+  lines.push('delete from public.finished_harness_cost_analyses');
+  lines.push('where platform_no not in (');
+  for (let i = 0; i < platformNos.length; i += 5) {
+    const chunk = platformNos.slice(i, i + 5).map((no) => sqlEscape(no)).join(', ');
+    lines.push(`  ${chunk}${i + 5 < platformNos.length ? ',' : ''}`);
+  }
+  lines.push(');');
+  lines.push('');
+  lines.push('delete from public.finished_harness_materials as m');
+  lines.push('where m.source_material_id is null');
+  lines.push('  and not exists (');
+  lines.push('    select 1 from public.finished_harness_cost_analyses as c');
+  lines.push('    where c.harness_material_id = m.id');
+  lines.push('  );');
+  return lines;
+}
+
 export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
   const lines = [];
   lines.push('-- ==============================================================================');
@@ -724,6 +755,10 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
   lines.push(`-- 自动生成自 excel/ 目录下 20 个 Excel 文件，共 ${allAnalyses.length} 个成品方案`);
   lines.push('-- ==============================================================================\n');
   lines.push('begin;\n');
+
+  lines.push('-- 0. 清理历史命名与过期文件残留：直接替换旧命名结果，保证本种子可单独重复执行');
+  lines.push(...buildStaleCleanupStatements(allAnalyses.map((item) => item.platformNo)));
+  lines.push('');
 
   lines.push('-- 1. 扩充/建档成品线束主表核心价格指标');
   lines.push('-- 注意：不写入 son_price_low（CRM 平台最低售价，有值即保留、缺失保持 null）；');
@@ -938,6 +973,11 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
 
       console.log('正在连接数据库执行批量写入...');
       await client.connect();
+
+      // 直接替换旧命名结果：清理当前解析结果之外的历史成本分析与自动建档物料
+      await client.query(
+        buildStaleCleanupStatements(allAnalyses.map((item) => item.platformNo)).join('\n')
+      );
 
       let createdCount = 0;
       let updatedCount = 0;

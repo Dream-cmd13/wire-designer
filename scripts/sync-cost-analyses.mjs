@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createClient } from '@supabase/supabase-js';
-import { parseCostWorkbook } from './import-cost-analyses.mjs';
+import { parseCostWorkbook, buildStaleCleanupStatements } from './import-cost-analyses.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -165,6 +165,12 @@ async function main() {
   });
 
   await dbClient.connect();
+
+  // 直接替换旧命名结果：清理当前解析结果之外的历史成本分析与自动建档物料
+  await dbClient.query(
+    buildStaleCleanupStatements(allAnalyses.map((item) => item.platformNo)).join('\n')
+  );
+
   let updatedCount = 0;
   let createdCount = 0;
 
