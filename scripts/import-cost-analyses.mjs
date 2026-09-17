@@ -43,8 +43,59 @@ function getCellFormula(ws, addr) {
   return cell ? cell.f : undefined;
 }
 
-export function resolvePriceDerivation(formula, baseValue, targetValue, defaultLabel) {
+function formatFormulaExpression(formula, ws) {
+  const cellReferencePattern = /\$?([A-Z]{1,3})\$?(\d+)/g;
+  const substituted = formula.replace(
+    cellReferencePattern,
+    (reference, column, row, offset, source) => {
+      // 跳过区间（SUM(I5:I16)）与函数名（LOG10( 等）中的引用，避免把区间端点替换成数值
+      const before = source[offset - 1];
+      const after = source[offset + reference.length];
+      if (before === ':' || after === ':' || after === '(') return reference;
+      const value = cleanNumber(getCellVal(ws, `${column}${row}`));
+      return value == null ? reference : String(value);
+    },
+  );
+
+  return substituted
+    .replace(/\s*\/\s*/g, ' ÷ ')
+    .replace(/\s*\*\s*/g, ' × ')
+    .replace(/\s*\+\s*/g, ' + ')
+    .replace(/\s*-\s*/g, ' - ')
+    .trim();
+}
+
+export function resolvePriceDerivation(formula, baseValue, targetValue, defaultLabel, ws) {
   if (formula) {
+    if (ws) {
+      const expression = formatFormulaExpression(formula, ws);
+      const divMatch = formula.match(/\/\s*([0-9.]+)/);
+      const multMatch = formula.match(/\*\s*([0-9.]+)/);
+
+      if (divMatch) {
+        const divisor = parseFloat(divMatch[1]);
+        const marginPercent = Math.round((1 - divisor) * 100);
+        return {
+          formula: `公式: ${formula} (目标毛利率 ${marginPercent}%)`,
+          expression,
+        };
+      }
+
+      if (multMatch) {
+        const mult = parseFloat(multMatch[1]);
+        const markupPercent = Math.round((mult - 1) * 100);
+        return {
+          formula: `公式: ${formula} (成本加成 ${markupPercent}%)`,
+          expression,
+        };
+      }
+
+      return {
+        formula: `公式: ${formula}`,
+        expression,
+      };
+    }
+
     // 匹配除法，如 /0.8, /0.7, /0.85
     const divMatch = formula.match(/\/([0-9.]+)/);
     if (divMatch) {
@@ -530,7 +581,8 @@ export function parseCostWorkbook(filePath) {
         salesPriceFormula,
         taxCost,
         salesPrice,
-        '含税总成本'
+        '含税总成本',
+        ws,
       );
       steps.push({
         stepKey: 'sales_price',
@@ -548,7 +600,8 @@ export function parseCostWorkbook(filePath) {
         samplePriceFormula,
         taxCost,
         samplePrice,
-        '含税总成本'
+        '含税总成本',
+        ws,
       );
       steps.push({
         stepKey: 'sample_price',
