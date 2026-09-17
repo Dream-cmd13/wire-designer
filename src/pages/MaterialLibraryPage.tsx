@@ -9,6 +9,7 @@ import {
   Layers,
   Package,
   Plug,
+  RefreshCw,
   Search,
   Upload,
   X,
@@ -65,6 +66,9 @@ function formatWireTierLength(lengthMm: number): string {
   return `${lengthMm}mm`;
 }
 
+// 离开浏览器一段时间判定阈值（30秒）
+const STALE_LEAVE_THRESHOLD_MS = 30 * 1000;
+
 export interface MaterialLibraryPageProps {
   initialTab?: MaterialTab;
   initialConnPage?: number;
@@ -85,20 +89,42 @@ export function MaterialLibraryPage({
   initialWirePriceStatus = 'all',
 }: MaterialLibraryPageProps = {}) {
   const storeSnapshot = useCatalogStore((state) => state.snapshot);
-  const snapshot = storeSnapshot ?? getCatalogSnapshot();
+  const rawCatalogStatus = useCatalogStore((state) => state.status);
+  const rawCatalogRefreshing = useCatalogStore((state) => state.refreshing);
+  const initializeCatalog = useCatalogStore((state) => state.initialize);
+
+  const currentCatalogState = useCatalogStore.getState();
+  const catalogStatus = rawCatalogStatus !== 'idle' ? rawCatalogStatus : currentCatalogState.status;
+  const catalogRefreshing = rawCatalogRefreshing || currentCatalogState.refreshing;
+  const snapshot = storeSnapshot ?? currentCatalogState.snapshot ?? getCatalogSnapshot();
+
   const connectors = useMemo(() => getCatalogConnectors(snapshot), [snapshot]);
   const wires = useMemo(() => getCatalogWires(snapshot), [snapshot]);
   const overmolds = useMemo(() => getCatalogOvermolds(snapshot), [snapshot]);
   const protectionOptions = useMemo(() => getCatalogProtectionOptions(snapshot), [snapshot]);
 
-  const { book: storeBook, loading, error, load, merge } = usePriceStore();
-  const book = storeBook ?? usePriceStore.getState().book;
+  const {
+    book: storeBook,
+    loading: rawLoading,
+    refreshing: rawPriceRefreshing,
+    error,
+    load,
+    merge,
+  } = usePriceStore();
+  const currentPriceState = usePriceStore.getState();
+  const book = storeBook ?? currentPriceState.book;
+  const loading = rawLoading || currentPriceState.loading;
+  const priceRefreshing = rawPriceRefreshing || currentPriceState.refreshing;
   const prices = useMemo(() => book?.prices ?? [], [book]);
 
   const storeFinishedItems = useFinishedHarnessStore((state) => state.items);
+  const currentFinishedState = useFinishedHarnessStore.getState();
   const finishedHarnesses =
-    storeFinishedItems.length > 0 ? storeFinishedItems : useFinishedHarnessStore.getState().items;
-  const finishedLoading = useFinishedHarnessStore((state) => state.loading);
+    storeFinishedItems.length > 0 ? storeFinishedItems : currentFinishedState.items;
+  const finishedLoading =
+    useFinishedHarnessStore((state) => state.loading) || currentFinishedState.loading;
+  const finishedRefreshing =
+    useFinishedHarnessStore((state) => state.refreshing) || currentFinishedState.refreshing;
   const finishedError = useFinishedHarnessStore((state) => state.error);
   const loadFinishedHarnesses = useFinishedHarnessStore((state) => state.load);
 
@@ -162,11 +188,87 @@ export function MaterialLibraryPage({
   const accTableRef = useRef<HTMLDivElement>(null);
   const finishedTableRef = useRef<HTMLDivElement>(null);
 
-  // 自动加载最新价格库与成品线束物料
+  // 离开浏览器一段时间判定与刷新反馈状态
+  const leaveTimeRef = useRef<number | null>(null);
+  const syncedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'synced'>('idle');
+
+  const isRefreshing =
+    catalogRefreshing ||
+    priceRefreshing ||
+    finishedRefreshing ||
+    syncStatus === 'syncing';
+
+  const handleRefreshAll = useCallback(async () => {
+    if (syncedTimerRef.current) {
+      clearTimeout(syncedTimerRef.current);
+      syncedTimerRef.current = null;
+    }
+    setSyncStatus('syncing');
+    try {
+      await Promise.allSettled([
+        useCatalogStore.getState().reload(),
+        usePriceStore.getState().load({ forceRefresh: true }),
+        useFinishedHarnessStore.getState().load(true),
+      ]);
+      setSyncStatus('synced');
+      syncedTimerRef.current = setTimeout(() => {
+        setSyncStatus('idle');
+        syncedTimerRef.current = null;
+      }, 2500);
+    } catch {
+      setSyncStatus('idle');
+    }
+  }, []);
+
+  // 自动初始化元器件目录、价格库与成品线束物料
   useEffect(() => {
+    void initializeCatalog();
     void load();
     void loadFinishedHarnesses();
-  }, [load, loadFinishedHarnesses]);
+  }, [initializeCatalog, load, loadFinishedHarnesses]);
+
+  // 监听离开浏览器（切Tab或切到其他软件），离开超过30秒切回时自动触发重新拉取
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        leaveTimeRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        const leftAt = leaveTimeRef.current;
+        leaveTimeRef.current = null;
+        if (leftAt && Date.now() - leftAt >= STALE_LEAVE_THRESHOLD_MS) {
+          void handleRefreshAll();
+        }
+      }
+    };
+
+    const handleWindowBlur = () => {
+      if (leaveTimeRef.current == null) {
+        leaveTimeRef.current = Date.now();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      const leftAt = leaveTimeRef.current;
+      leaveTimeRef.current = null;
+      if (leftAt && Date.now() - leftAt >= STALE_LEAVE_THRESHOLD_MS) {
+        void handleRefreshAll();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
+      if (syncedTimerRef.current) {
+        clearTimeout(syncedTimerRef.current);
+      }
+    };
+  }, [handleRefreshAll]);
 
   // 精准价格索引映射
   const priceIndex = useMemo(() => {
@@ -566,9 +668,27 @@ export function MaterialLibraryPage({
       <section className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 pt-3 pb-0 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <Database className="h-5 w-5 text-blue-600" />
               <h2 className="text-base sm:text-lg font-bold text-slate-900">物料库</h2>
+              {isRefreshing && (
+                <span
+                  data-testid="material-syncing-badge"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 animate-pulse"
+                >
+                  <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
+                  <span>正在同步最新物料与价格...</span>
+                </span>
+              )}
+              {!isRefreshing && syncStatus === 'synced' && (
+                <span
+                  data-testid="material-synced-badge"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700"
+                >
+                  <Check className="h-3 w-3 text-emerald-600" />
+                  <span>数据已同步</span>
+                </span>
+              )}
             </div>
             <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">
               标准元器件工程规格与采购价格总览，支持多品类规格检索与价格联动管理。
@@ -576,6 +696,19 @@ export function MaterialLibraryPage({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="material-refresh-btn"
+              disabled={isRefreshing || loading || readingFile}
+              onClick={() => void handleRefreshAll()}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs hover:bg-slate-50 disabled:opacity-50"
+              title="刷新物料、价格与成品线束数据"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`}
+              />
+              <span>{isRefreshing ? '同步中...' : '刷新'}</span>
+            </button>
             <button
               type="button"
               disabled={loading || readingFile}
@@ -831,7 +964,15 @@ export function MaterialLibraryPage({
               </div>
             </section>
 
-            <section className="flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+              {isRefreshing && (
+                <div
+                  data-testid="conn-syncing-progress"
+                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
+                >
+                  <div className="h-full w-full bg-blue-600 animate-pulse" />
+                </div>
+              )}
               <div ref={connTableRef} className="flex-1 min-h-0 overflow-auto">
                 <table className="min-w-[1000px] w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
@@ -929,7 +1070,13 @@ export function MaterialLibraryPage({
                   </tbody>
                 </table>
 
-                {filteredConnectors.length === 0 && (
+                {catalogStatus === 'loading' && connectors.length === 0 && (
+                  <div className="py-14 text-center text-sm text-slate-500">
+                    正在加载连接器物料...
+                  </div>
+                )}
+
+                {filteredConnectors.length === 0 && (catalogStatus !== 'loading' || connectors.length > 0) && (
                   <div className="py-14 text-center text-sm text-slate-500">
                     未找到匹配的连接器。
                   </div>
@@ -1027,7 +1174,15 @@ export function MaterialLibraryPage({
               </div>
             </section>
 
-            <section className="flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+              {isRefreshing && (
+                <div
+                  data-testid="wire-syncing-progress"
+                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
+                >
+                  <div className="h-full w-full bg-blue-600 animate-pulse" />
+                </div>
+              )}
               <div ref={wireTableRef} className="flex-1 min-h-0 overflow-auto">
                 <table className="min-w-[1060px] w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
@@ -1165,7 +1320,13 @@ export function MaterialLibraryPage({
                   </tbody>
                 </table>
 
-                {filteredWires.length === 0 && (
+                {catalogStatus === 'loading' && wires.length === 0 && (
+                  <div className="py-14 text-center text-sm text-slate-500">
+                    正在加载线缆物料...
+                  </div>
+                )}
+
+                {filteredWires.length === 0 && (catalogStatus !== 'loading' || wires.length > 0) && (
                   <div className="py-14 text-center text-sm text-slate-500">
                     未找到匹配的线缆规格。
                   </div>
@@ -1206,7 +1367,15 @@ export function MaterialLibraryPage({
               </label>
             </section>
 
-            <section className="flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+              {isRefreshing && (
+                <div
+                  data-testid="acc-syncing-progress"
+                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
+                >
+                  <div className="h-full w-full bg-blue-600 animate-pulse" />
+                </div>
+              )}
               <div ref={accTableRef} className="flex-1 min-h-0 overflow-auto">
                 <table className="min-w-[920px] w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
@@ -1290,11 +1459,18 @@ export function MaterialLibraryPage({
                   </tbody>
                 </table>
 
-                {filteredAccessories.length === 0 && (
+                {catalogStatus === 'loading' && overmolds.length === 0 && protectionOptions.length === 0 && (
                   <div className="py-14 text-center text-sm text-slate-500">
-                    未找到匹配的模具或辅材。
+                    正在加载模具与辅材物料...
                   </div>
                 )}
+
+                {filteredAccessories.length === 0 &&
+                  (catalogStatus !== 'loading' || overmolds.length > 0 || protectionOptions.length > 0) && (
+                    <div className="py-14 text-center text-sm text-slate-500">
+                      未找到匹配的模具或辅材。
+                    </div>
+                  )}
               </div>
 
               <MaterialPagination
@@ -1388,7 +1564,15 @@ export function MaterialLibraryPage({
               </div>
             )}
 
-            <section className="flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
+              {isRefreshing && (
+                <div
+                  data-testid="finished-syncing-progress"
+                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
+                >
+                  <div className="h-full w-full bg-blue-600 animate-pulse" />
+                </div>
+              )}
               <div ref={finishedTableRef} className="flex-1 min-h-0 overflow-auto">
                 <table className="min-w-[900px] w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">

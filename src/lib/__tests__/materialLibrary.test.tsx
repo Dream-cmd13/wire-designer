@@ -651,4 +651,58 @@ describe('MaterialLibraryPage', () => {
     expect(htmlAfterImport).not.toContain('测试线缆-21');
     expect(htmlAfterImport).not.toContain('未找到匹配的线材。');
   });
+
+  it('在物料库后台刷新数据时展示正在同步提示与各表格进度条', () => {
+    setCatalogSnapshot(mockSnapshot);
+    useCatalogStore.setState({ status: 'ready', snapshot: mockSnapshot, refreshing: true });
+    useCatalogStore.getInitialState = () => useCatalogStore.getState();
+
+    usePriceStore.setState({
+      book: mockPriceBook,
+      loading: false,
+      refreshing: false,
+      error: null,
+    });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+
+    useFinishedHarnessStore.setState({
+      items: mockFinishedHarnesses,
+      loading: false,
+      refreshing: false,
+      error: null,
+    });
+    useFinishedHarnessStore.getInitialState = () => useFinishedHarnessStore.getState();
+
+    const html = renderToStaticMarkup(<MaterialLibraryPage initialTab="connectors" />);
+    expect(html).toContain('正在同步最新物料与价格...');
+    expect(html).toContain('data-testid="material-syncing-badge"');
+    expect(html).toContain('data-testid="conn-syncing-progress"');
+    expect(html).toContain('同步中...');
+  });
+
+  it('在初次加载且数据为空时展示友好的正在加载提示', () => {
+    const emptySnapshot: CatalogSnapshot = {
+      connectors: [],
+      wires: [],
+      wireColors: [],
+      overmolds: [],
+      leadTimeOptions: [],
+      protectionOptions: [],
+      pricingRules: [],
+      quantityDiscountRules: [],
+      loadedAt: Date.now(),
+    };
+    setCatalogSnapshot(emptySnapshot);
+    useCatalogStore.setState({ status: 'loading', snapshot: emptySnapshot, refreshing: false });
+    useCatalogStore.getInitialState = () => useCatalogStore.getState();
+
+    const htmlConn = renderToStaticMarkup(<MaterialLibraryPage initialTab="connectors" />);
+    expect(htmlConn).toContain('正在加载连接器物料...');
+
+    const htmlWire = renderToStaticMarkup(<MaterialLibraryPage initialTab="wires" />);
+    expect(htmlWire).toContain('正在加载线缆物料...');
+
+    const htmlAcc = renderToStaticMarkup(<MaterialLibraryPage initialTab="accessories" />);
+    expect(htmlAcc).toContain('正在加载模具与辅材物料...');
+  });
 });

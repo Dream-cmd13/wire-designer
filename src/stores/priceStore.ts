@@ -3,16 +3,22 @@ import { priceRepository, type MaterialPrice, type PriceBook } from '@/repositor
 interface PriceState {
   book: PriceBook | null;
   loading: boolean;
+  refreshing: boolean;
   error: string | null;
-  load: () => Promise<void>;
+  load: (options?: { forceRefresh?: boolean }) => Promise<void>;
   merge: (prices: MaterialPrice[], source: string) => Promise<void>;
 }
 export const usePriceStore = create<PriceState>((set, get) => ({
-  book: null, loading: false, error: null,
-  async load() {
+  book: null,
+  loading: false,
+  refreshing: false,
+  error: null,
+  async load(options = {}) {
     const hasExisting = Boolean(get().book);
     if (!hasExisting) {
       set({ loading: true });
+    } else if (options.forceRefresh) {
+      set({ refreshing: true });
     }
     try {
       const book = await priceRepository.load();
@@ -23,7 +29,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
       }
       set({ error: error instanceof Error ? error.message : '读取共享价格失败' });
     } finally {
-      set({ loading: false });
+      set({ loading: false, refreshing: false });
     }
   },
   async merge(prices, source) {
