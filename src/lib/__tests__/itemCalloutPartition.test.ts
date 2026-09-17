@@ -4,7 +4,7 @@ import {
   calculateElbowPoint,
   BALLOON_RADIUS,
   type TargetBox,
-} from '@/components/drawings/ItemCalloutLayer';
+} from '@/lib/itemCalloutLayout';
 import type { ProductionBomRow } from '@/lib/productionBomRows';
 
 describe('partitionTargetsIntoCalloutItems', () => {

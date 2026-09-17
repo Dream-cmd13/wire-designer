@@ -22,14 +22,21 @@ interface BomPreviewModalProps {
   files?: AssociatedFile[];
 }
 
-export function BomPreviewModal({
-  isOpen,
+interface BomPreviewModalContentProps {
+  onClose: () => void;
+  items?: BomPreviewItem[];
+  initialIndex?: number;
+  itemName?: string;
+  files?: AssociatedFile[];
+}
+
+function BomPreviewModalContent({
   onClose,
   items,
   initialIndex = 0,
   itemName = '关联文件',
   files,
-}: BomPreviewModalProps) {
+}: BomPreviewModalContentProps) {
   // 标准化物料项列表
   const resolvedItems = useMemo<BomPreviewItem[]>(() => {
     if (items && items.length > 0) return items;
@@ -64,21 +71,15 @@ export function BomPreviewModal({
     return list;
   }, [resolvedItems]);
 
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-
-  // 当弹窗打开或 initialIndex 变化时，定位到对应物料的首张图片
-  useEffect(() => {
-    if (isOpen) {
-      if (initialIndex >= 0) {
-        const targetFlatIndex = allImages.findIndex((img) => img.itemIndex === initialIndex);
-        if (targetFlatIndex >= 0) {
-          setCurrentImageIndex(targetFlatIndex);
-          return;
-        }
-      }
-      setCurrentImageIndex(0);
+  const initialFlatIndex = useMemo(() => {
+    if (initialIndex >= 0) {
+      const targetFlatIndex = allImages.findIndex((img) => img.itemIndex === initialIndex);
+      if (targetFlatIndex >= 0) return targetFlatIndex;
     }
-  }, [isOpen, initialIndex, allImages]);
+    return 0;
+  }, [allImages, initialIndex]);
+
+  const [currentImageIndex, setCurrentImageIndex] = useState(initialFlatIndex);
 
   const canPrev = currentImageIndex > 0;
   const canNext = currentImageIndex < allImages.length - 1;
@@ -93,7 +94,6 @@ export function BomPreviewModal({
 
   // 键盘快捷键监听：Escape 关闭，左右方向键切换
   useEffect(() => {
-    if (!isOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         onClose();
@@ -107,9 +107,7 @@ export function BomPreviewModal({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, allImages.length]);
-
-  if (!isOpen) return null;
+  }, [onClose, allImages.length]);
 
   const currentEntry = allImages[currentImageIndex] ?? null;
   const currentFile = currentEntry?.file ?? null;
@@ -317,5 +315,15 @@ export function BomPreviewModal({
         </div>
       </section>
     </div>
+  );
+}
+
+export function BomPreviewModal({ isOpen, ...props }: BomPreviewModalProps) {
+  if (!isOpen) return null;
+  return (
+    <BomPreviewModalContent
+      key={`${props.initialIndex ?? 0}-${props.items?.length ?? 0}-${props.files?.length ?? 0}`}
+      {...props}
+    />
   );
 }
