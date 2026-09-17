@@ -129,10 +129,13 @@ export function resolvePriceDerivation(formula, baseValue, targetValue, defaultL
   };
 }
 
-export function parseCostWorkbook(filePath) {
+export function parseCostWorkbook(filePath, options = {}) {
   const fileName = path.basename(filePath);
   const wb = XLSX.readFile(filePath, { cellFormula: true });
   const results = [];
+  const warn = (sheetName, message) => {
+    options.onWarning?.(`${fileName} [${sheetName}]: ${message}`);
+  };
 
   for (const sheetName of wb.SheetNames) {
     const ws = wb.Sheets[sheetName];
@@ -237,12 +240,14 @@ export function parseCostWorkbook(filePath) {
 
     const bomItems = [];
     if (bomStartRow > 0) {
+      let bomEndFound = false;
       for (let r = bomStartRow; r <= 35; r++) {
         const aVal = String(getCellVal(ws, 'A' + r) || '').trim();
         const gVal = String(getCellVal(ws, 'G' + r) || '').trim();
         const hVal = String(getCellVal(ws, 'H' + r) || '').trim();
         if (hVal.includes('材料总价') || gVal.includes('材料总价') || hVal.includes('总成本') || aVal.includes('总成本')) {
           bomEndRow = r - 1;
+          bomEndFound = true;
           break;
         }
 
@@ -267,6 +272,14 @@ export function parseCostWorkbook(filePath) {
           });
         }
       }
+      if (!bomEndFound) {
+        warn(sheetName, 'BOM 明细未找到结束标志（材料总价/总成本），可能被截断');
+      }
+      if (bomItems.length === 0) {
+        warn(sheetName, 'BOM 明细为空');
+      }
+    } else {
+      warn(sheetName, '未找到 BOM 明细表头（序号/类型）');
     }
 
     // 3. 截取 工序工时明细
@@ -282,10 +295,12 @@ export function parseCostWorkbook(filePath) {
 
     const laborItems = [];
     if (laborStartRow > 0) {
+      let laborEndFound = false;
       for (let r = laborStartRow; r <= 65; r++) {
         const cVal = String(getCellVal(ws, 'C' + r) || '').trim();
         const hVal = String(getCellVal(ws, 'H' + r) || '').trim();
         if (cVal.includes('计划总工时') || hVal.includes('合计') || cVal.includes('核准') || cVal.includes('审核')) {
+          laborEndFound = true;
           break;
         }
 
@@ -306,6 +321,14 @@ export function parseCostWorkbook(filePath) {
           });
         }
       }
+      if (!laborEndFound) {
+        warn(sheetName, '工序明细未找到结束标志（计划总工时/合计），可能被截断');
+      }
+      if (laborItems.length === 0) {
+        warn(sheetName, '工序明细为空');
+      }
+    } else {
+      warn(sheetName, '未找到工序明细表头（序号/工序名称）');
     }
 
     // 4. 扫描定位核心指标与公式（原表缺失即 null，绝不回退造数）
@@ -456,6 +479,11 @@ export function parseCostWorkbook(filePath) {
         taxCostFormula = totalCostFormula;
       }
     }
+
+    if (materialCost == null) warn(sheetName, '未定位到“材料总价”汇总值');
+    if (laborCost == null) warn(sheetName, '未定位到“工时费用”汇总值');
+    if (totalCost == null) warn(sheetName, '未定位到“总成本”汇总值');
+    if (salesPrice == null) warn(sheetName, '未定位到“售价/最低售价”');
 
     // 5. 组装标准 calculation_steps 推导链（缺失即 null，公式与代入轨迹只允许来自原表）
     const bomExpr =
@@ -698,12 +726,11 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
   lines.push('begin;\n');
 
   lines.push('-- 1. 扩充/建档成品线束主表核心价格指标');
-  lines.push('-- 注意：不写入 son_price_low。该列为 CRM 平台最低售价，有值即保留、缺失保持 null，');
-  lines.push('-- 成本分析/Excel 推导结果一律禁止回填或覆盖该列。');
+  lines.push('-- 注意：不写入 son_price_low（CRM 平台最低售价，有值即保留、缺失保持 null）；');
+  lines.push('-- 也不写入 son_unit（外部导入字段，缺失保持 null），成本分析/Excel 推导结果一律禁止回填这些列。');
   lines.push('insert into public.finished_harness_materials (');
   lines.push('  platform_no,');
   lines.push('  son_name,');
-  lines.push('  son_unit,');
   lines.push('  total_cost,');
   lines.push('  sales_price,');
   lines.push('  sample_price,');
@@ -717,13 +744,12 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
     const urlInfo = fileUrlMap.get(item.sourceExcelFile);
     const sourceExcelUrl = urlInfo?.publicUrl || null;
     const isLast = idx === allAnalyses.length - 1;
-    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName || item.platformNo)}, 'pcs', ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
+    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName || item.platformNo)}, ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
   });
   lines.push(matValues.join('\n'));
 
   lines.push('on conflict (platform_no) do update set');
   lines.push('  son_name = coalesce(finished_harness_materials.son_name, excluded.son_name),');
-  lines.push('  son_unit = coalesce(finished_harness_materials.son_unit, excluded.son_unit),');
   lines.push('  total_cost = excluded.total_cost,');
   lines.push('  sales_price = excluded.sales_price,');
   lines.push('  sample_price = excluded.sample_price,');
@@ -828,11 +854,14 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
 
     const allAnalyses = [];
     const platformNoSet = new Set();
+    const parseWarnings = [];
 
     for (const file of files) {
       const filePath = path.join(excelDir, file);
       try {
-        const analyses = parseCostWorkbook(filePath);
+        const analyses = parseCostWorkbook(filePath, {
+          onWarning: (message) => parseWarnings.push(message),
+        });
         for (const a of analyses) {
           if (!platformNoSet.has(a.platformNo)) {
             platformNoSet.add(a.platformNo);
@@ -853,6 +882,10 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
     }
 
     console.log(`解析完成！成功抽取 ${allAnalyses.length} 个成品方案。`);
+    if (parseWarnings.length > 0) {
+      console.warn(`解析告警 ${parseWarnings.length} 条：`);
+      parseWarnings.forEach((message) => console.warn(`  - ${message}`));
+    }
 
     // 映射云端 Storage 路径
     const fileUrlMap = new Map();
@@ -929,17 +962,16 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
           updatedCount++;
         } else {
           // 自动建档新成品物料（成本分析建档物料 source_material_id 为空）
-          // 注意：不写入 son_price_low（CRM 平台最低售价，有则有、无则 null，禁止由成本分析回填）
+          // 不写入 son_price_low（CRM 平台最低售价）与 son_unit（外部导入单位），缺失即保持 null
           const insertRes = await client.query(
             `insert into public.finished_harness_materials 
-             (source_material_id, platform_no, son_name, son_unit, total_cost, sales_price, sample_price, quote_price, has_cost_analysis)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, true)
+             (source_material_id, platform_no, son_name, total_cost, sales_price, sample_price, quote_price, has_cost_analysis)
+             values ($1, $2, $3, $4, $5, $6, $7, true)
              returning id`,
             [
               null,
               item.platformNo,
               item.productName || item.platformNo,
-              'pcs',
               item.totalCost,
               item.salesPrice,
               item.samplePrice,

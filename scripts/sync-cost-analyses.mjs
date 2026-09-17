@@ -117,16 +117,23 @@ async function main() {
 
   // 4. 解析全量成本分析数据
   const allAnalyses = [];
+  const parseWarnings = [];
   for (const fileName of files) {
     const filePath = path.join(excelDir, fileName);
     try {
-      const res = parseCostWorkbook(filePath);
+      const res = parseCostWorkbook(filePath, {
+        onWarning: (message) => parseWarnings.push(message),
+      });
       allAnalyses.push(...res);
     } catch (err) {
       console.error(`解析失败 ${fileName}:`, err);
     }
   }
   console.log(`[Parser] 共解析出 ${allAnalyses.length} 个成品方案。`);
+  if (parseWarnings.length > 0) {
+    console.warn(`[Parser] 解析告警 ${parseWarnings.length} 条：`);
+    parseWarnings.forEach((message) => console.warn(`  - ${message}`));
+  }
 
   if (!isCommit) {
     console.log('\n[Preview] 抽样前 2 个解析结果:');
@@ -183,18 +190,17 @@ async function main() {
       );
       updatedCount++;
     } else {
-      // 自动建档新成品物料：不写入 son_price_low
-      // son_price_low 为 CRM 平台最低售价，有值即保留、缺失保持 null，禁止由成本分析/Excel 推导回填
+      // 自动建档新成品物料：不写入 son_price_low 与 son_unit
+      // son_price_low 为 CRM 平台最低售价、son_unit 为外部导入单位，有值即保留、缺失保持 null，禁止由成本分析/Excel 推导回填
       const insertRes = await dbClient.query(
         `insert into public.finished_harness_materials 
-         (source_material_id, platform_no, son_name, son_unit, total_cost, sales_price, sample_price, quote_price, has_cost_analysis, source_excel_url)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)
+         (source_material_id, platform_no, son_name, total_cost, sales_price, sample_price, quote_price, has_cost_analysis, source_excel_url)
+         values ($1, $2, $3, $4, $5, $6, $7, true, $8)
          returning id`,
         [
           null,
           item.platformNo,
           item.productName || item.platformNo,
-          'pcs',
           item.totalCost,
           item.salesPrice,
           item.samplePrice,

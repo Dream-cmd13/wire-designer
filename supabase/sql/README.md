@@ -45,6 +45,9 @@ npm run supabase:bootstrap-storage
 - 目录公共字段和按 `kind` 区分的 `spec` 存在 `catalog_items`。
 - `02_real_harness_catalog.sql` 是真实 Excel 目录的唯一 seed 责任文件；同一 `kind + code` 不得在基线 seed 中重复维护。
 - `finished_harness_materials.son_price_low` 是 CRM 平台最低售价，只随外部导入写入：有值即保留，缺失保持 null；成本分析、Excel 导入与同步脚本一律禁止回填或覆盖该列。
+- `finished_harness_materials.son_unit` 是外部导入单位，成本分析建档不写入、缺失保持 null；`son_name` 在无来源名称时以 `platform_no` 作为系统约定名称。
+- 成本分析的来源定位以 `source_excel_path`（私有桶 `cost-analysis-sources` 内对象路径）为准；`source_excel_url` 仅作 URL 形式的展示/兼容定位，私有桶下不可匿名访问。
+- 成本分析解析器（`parseCostWorkbook`）在找不到 BOM/工序表头或汇总标签时输出告警摘要；导出的种子与数据库核对使用 `npm run supabase:verify-cost-analyses`。
 - 真实线材的原始描述保存在 `description`，工程字段保存在 `spec`；当来源文本与结构化值冲突时，两者都保留。
 - `kind = 'overmold'` 的目录项只允许黑色 PVC 45P / 黑色 TPE 与直头 / 弯头四种组合；可用内模固定为低密度透明 PE，且内模外型必须与外模一致。
 - 不创建只有内模、没有外模的独立 `overmold` 目录项；内模是外模目录项的可选属性。

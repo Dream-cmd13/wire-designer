@@ -13,6 +13,9 @@ alter table public.finished_harness_materials
   add column if not exists has_cost_analysis boolean not null default false,
   add column if not exists source_excel_url text;
 
+comment on column public.finished_harness_materials.source_excel_url is
+  '来源 Excel 的 URL 形式展示/兼容定位（前端从中解析 path 后认证下载）；私有桶下不可匿名访问，非公开链接。';
+
 -- 确保 platform_no 具备全局唯一约束
 do $$
 begin
@@ -75,6 +78,36 @@ alter table public.finished_harness_cost_analyses
   alter column total_cost drop default,
   alter column tax_cost drop not null,
   alter column tax_cost drop default;
+
+-- 核心数值不得为负（缺失允许 null）
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'finished_cost_non_negative_check'
+  ) then
+    alter table public.finished_harness_cost_analyses
+      add constraint finished_cost_non_negative_check check (
+        (material_cost is null or material_cost >= 0)
+        and (material_loss is null or material_loss >= 0)
+        and (labor_cost is null or labor_cost >= 0)
+        and (labor_loss is null or labor_loss >= 0)
+        and (total_cost is null or total_cost >= 0)
+        and (tax_cost is null or tax_cost >= 0)
+        and (sales_price is null or sales_price >= 0)
+        and (sample_price is null or sample_price >= 0)
+        and (quote_price is null or quote_price >= 0)
+      );
+  end if;
+end $$;
+
+-- 来源 Excel 定位约定：
+-- source_excel_path 是私有桶 cost-analysis-sources 内的对象路径，为唯一权威定位；
+-- source_excel_url 仅作为“URL 形式”的展示/兼容定位（前端会从中解析出 path 后走认证下载），
+-- 私有桶下不可匿名访问，禁止把它当作可直接打开的公开链接。
+comment on column public.finished_harness_cost_analyses.source_excel_path is
+  '私有桶 cost-analysis-sources 内的对象路径，来源 Excel 的唯一权威定位。';
+comment on column public.finished_harness_cost_analyses.source_excel_url is
+  '来源 Excel 的 URL 形式展示/兼容定位（前端从中解析 path 后认证下载）；私有桶下不可匿名访问，非公开链接。';
 
 -- RLS 权限配置
 alter table public.finished_harness_cost_analyses enable row level security;

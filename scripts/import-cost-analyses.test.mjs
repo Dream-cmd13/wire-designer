@@ -251,3 +251,20 @@ describe('generated cost analysis seed', () => {
     },
   );
 });
+
+describe('parser warnings', () => {
+  it.skipIf(!existsSync('excel'))(
+    'parses every workbook without unresolved structure warnings',
+    () => {
+      const excelDir = 'excel';
+      const warnings = [];
+      for (const fileName of readdirSync(excelDir).filter((file) => file.endsWith('.xlsx'))) {
+        parseCostWorkbook(path.join(excelDir, fileName), {
+          onWarning: (message) => warnings.push(message),
+        });
+      }
+
+      expect(warnings).toEqual([]);
+    },
+  );
+});

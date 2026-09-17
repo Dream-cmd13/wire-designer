@@ -3,11 +3,13 @@ create table if not exists public.finished_harness_materials (
   source_material_id bigint unique,
   source_goods_id bigint,
   platform_no text not null,
+  -- son_name 必填：外部导入提供名称；成本分析建档无来源名称时，以 platform_no 作为系统约定名称。
   son_name text not null,
   supplier_id uuid references public.suppliers(id),
   file_2d text,
   packing_way text,
   packing integer,
+  -- son_unit 为外部导入单位：有值即保留，缺失保持 null；成本分析建档不写入（前端展示时按 pcs 兜底）。
   son_unit text,
   -- son_price_low 是 CRM 平台同步过来的“最低售价”：有值即原样保留，缺失保持 null。
   -- 禁止任何脚本、种子或成本分析/Excel 推导流程回填、覆盖或删除该列。
@@ -21,6 +23,10 @@ create table if not exists public.finished_harness_materials (
 );
 comment on column public.finished_harness_materials.son_price_low is
   'CRM 平台最低售价（外部导入）：有值即保留，缺失保持 null；禁止由成本分析/Excel 推导回填或覆盖。';
+comment on column public.finished_harness_materials.son_unit is
+  '外部导入单位：有值即保留，缺失保持 null；成本分析建档不写入该列。';
+comment on column public.finished_harness_materials.son_name is
+  '成品名称：外部导入提供；成本分析建档无来源名称时以 platform_no 作为系统约定名称。';
 create index if not exists finished_harness_platform_no_idx on public.finished_harness_materials(platform_no);
 create index if not exists finished_harness_supplier_id_idx on public.finished_harness_materials(supplier_id);
 alter table public.finished_harness_materials enable row level security;

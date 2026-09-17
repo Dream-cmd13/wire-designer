@@ -49,6 +49,10 @@ function formatAmount(value: number | null | undefined, digits: number): string 
   return value != null ? value.toFixed(digits) : '原表未提供';
 }
 
+function formatTableCell(value: number | null | undefined, digits: number): string {
+  return value != null ? value.toFixed(digits) : '-';
+}
+
 export function FinishedHarnessMaterialDetailDialog({
   isOpen,
   onClose,
@@ -116,6 +120,15 @@ export function FinishedHarnessMaterialDetailDialog({
     : material.salesPrice ?? material.sonPriceLow;
   const samplePrice = costAnalysis ? costAnalysis.samplePrice : material.samplePrice;
   const quotePrice = costAnalysis ? costAnalysis.quotePrice : material.quotePrice;
+
+  // 售价口径提示按原表实际公式动态显示，避免写死“30% 毛利”
+  const salesPriceHint = (() => {
+    if (!costAnalysis) return '目录/CRM 基础价';
+    const step = costAnalysis.calculationSteps.find((s) => s.stepKey === 'sales_price');
+    const margin = step?.formula?.match(/目标毛利率\s*(\d+)%/);
+    if (margin) return `目标毛利率 ${margin[1]}%`;
+    return '按原表公式推导';
+  })();
 
   const handleCopyReport = async () => {
     if (!material) return;
@@ -269,7 +282,7 @@ export function FinishedHarnessMaterialDetailDialog({
                 <div className="mt-1 font-mono text-base font-bold text-emerald-700">
                   {salesPrice != null ? `¥ ${salesPrice.toFixed(2)}` : '暂无'}
                 </div>
-                <span className="text-[10px] text-emerald-600/80 mt-0.5 block">通常按 30% 毛利核算</span>
+                <span className="text-[10px] text-emerald-600/80 mt-0.5 block">{salesPriceHint}</span>
               </div>
 
               {/* 打样样品价 */}
@@ -426,10 +439,10 @@ export function FinishedHarnessMaterialDetailDialog({
                               </td>
                               <td className="py-2 px-2.5 text-center text-slate-500">{item.unit || '-'}</td>
                               <td className="py-2 px-2.5 text-right font-mono text-slate-600">
-                                {formatAmount(item.unitPrice, 4)}
+                                {formatTableCell(item.unitPrice, 4)}
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono font-semibold text-slate-900">
-                                {formatAmount(item.totalPrice, 4)}
+                                {formatTableCell(item.totalPrice, 4)}
                               </td>
                             </tr>
                           ))}
@@ -468,13 +481,13 @@ export function FinishedHarnessMaterialDetailDialog({
                               <td className="py-2 px-2.5 text-center text-slate-400">{item.index}</td>
                               <td className="py-2 px-2.5 font-medium text-slate-800">{item.name}</td>
                               <td className="py-2 px-2.5 text-right font-mono text-slate-600">
-                                {formatAmount(item.ratePerPoint, 2)}
+                                {formatTableCell(item.ratePerPoint, 2)}
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono">
                                 {item.points != null ? item.points : '-'}
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono font-semibold text-slate-900">
-                                {formatAmount(item.cost, 2)}
+                                {formatTableCell(item.cost, 2)}
                               </td>
                               <td className="py-2 px-2.5 text-slate-500">{item.note || '-'}</td>
                             </tr>
