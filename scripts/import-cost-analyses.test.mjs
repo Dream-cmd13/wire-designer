@@ -75,6 +75,59 @@ describe('resolvePriceDerivation', () => {
   );
 });
 
+describe('tax embedded in total cost cell', () => {
+  const workbookPath = 'excel/WL-B21-592 593 成本分析.xlsx';
+  it.skipIf(!existsSync(workbookPath))(
+    'splits a tax-inclusive total cell into base total and tax cost',
+    () => {
+      const byPlatform = new Map(
+        parseCostWorkbook(workbookPath).map((item) => [item.platformNo, item]),
+      );
+      const item = byPlatform.get('WL-B21-592');
+
+      expect(item.totalCost).toBe(18.0055);
+      expect(item.taxCost).toBe(18.5457);
+      expect(item.formulaConfig.totalCostFormula).toBe('SUM(I11:I14)');
+      expect(item.formulaConfig.taxCostFormula).toBe('SUM(I11:I14)*1.03');
+      expect(item.calculationSteps).toContainEqual(
+        expect.objectContaining({
+          stepKey: 'total_cost',
+          expression: '13.801 + 0.414 + 3.61 + 0.1805',
+          result: 18.0055,
+        }),
+      );
+      expect(item.calculationSteps).toContainEqual(
+        expect.objectContaining({
+          stepKey: 'tax_cost',
+          expression: '18.0055 × 1.03',
+          result: 18.5457,
+        }),
+      );
+    },
+  );
+
+  const plainPath = 'excel/WL-B21-534-成本分析.xlsx';
+  it.skipIf(!existsSync(plainPath))(
+    'keeps tax equal to the base total when the sheet has no tax cell',
+    () => {
+      const byPlatform = new Map(
+        parseCostWorkbook(plainPath).map((item) => [item.platformNo, item]),
+      );
+      const item = byPlatform.get('WL-B21-534');
+
+      expect(item.formulaConfig.taxCostFormula).toBe('');
+      expect(item.taxCost).toBe(item.totalCost);
+      expect(item.calculationSteps).toContainEqual(
+        expect.objectContaining({
+          stepKey: 'total_cost',
+          expression: '28.039 + 0.8412 + 5.42 + 0.271',
+          result: 34.5712,
+        }),
+      );
+    },
+  );
+});
+
 describe('generated cost analysis seed', () => {
   it('stores the corrected substitution expressions for both affected harnesses', () => {
     const seed = readFileSync(

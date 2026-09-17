@@ -459,8 +459,31 @@ export function parseCostWorkbook(filePath) {
     if (totalCost === 0) {
       totalCost = cleanNumber(materialCost + materialLoss + laborCost + laborLoss) || 0;
     }
+
+    // 部分表格把税赋直接乘进“总成本”单元格（如 SUM(I11:I14)*1.03），此时该格为含税总成本
+    let embeddedTaxMultiplier = 1;
+    if (totalCostFormula) {
+      const embeddedMatch = totalCostFormula.match(/\*\s*([0-9.]+)\s*$/);
+      if (embeddedMatch) {
+        const mult = parseFloat(embeddedMatch[1]);
+        if (mult > 1 && mult < 2) embeddedTaxMultiplier = mult;
+      }
+    }
+    const totalCostIncludesTax = embeddedTaxMultiplier > 1;
+
+    // total_cost 统一为不含税基础生产成本；tax_cost 统一为含税总成本
+    let baseTotalCost = totalCost;
+    let baseTotalCostFormula = totalCostFormula;
+    if (totalCostIncludesTax) {
+      baseTotalCost = cleanNumber(totalCost / embeddedTaxMultiplier) || totalCost;
+      baseTotalCostFormula = totalCostFormula.replace(/\*\s*[0-9.]+\s*$/, '').trim();
+      if (taxCost === 0) {
+        taxCost = totalCost;
+        taxCostFormula = totalCostFormula;
+      }
+    }
     if (taxCost === 0) {
-      taxCost = totalCost;
+      taxCost = baseTotalCost;
     }
 
     // 5. 组装标准 calculation_steps 推导链（根据各表格真实公式与数值动态生成，杜绝硬编码固定常量）
@@ -505,19 +528,19 @@ export function parseCostWorkbook(filePath) {
     const labLossExpr = laborLoss > 0 ? `${laborCost} × ${labLossRate}` : '0';
 
     // 含税总成本动态提取与代入轨迹
-    let taxMultiplier = 1.03;
+    let taxMultiplier = embeddedTaxMultiplier > 1 ? embeddedTaxMultiplier : 1.03;
     if (taxCostFormula) {
-      const match = taxCostFormula.match(/\*([0-9.]+)/);
+      const match = taxCostFormula.match(/\*\s*([0-9.]+)/);
       if (match) taxMultiplier = parseFloat(match[1]);
-    } else if (totalCost > 0 && taxCost > totalCost) {
-      taxMultiplier = Number((taxCost / totalCost).toFixed(4));
+    } else if (baseTotalCost > 0 && taxCost > baseTotalCost) {
+      taxMultiplier = Number((taxCost / baseTotalCost).toFixed(4));
     }
     const taxCostFormulaText = taxCostFormula
       ? `公式: ${taxCostFormula}`
-      : taxCost > totalCost
+      : taxCost > baseTotalCost
         ? `基础生产总成本 × 综合税赋加成 (${taxMultiplier})`
         : '含税总成本 (与基础生产总成本一致)';
-    const taxCostExpr = taxCost > totalCost ? `${totalCost} × ${taxMultiplier}` : `${totalCost}`;
+    const taxCostExpr = taxCost > baseTotalCost ? `${baseTotalCost} × ${taxMultiplier}` : `${baseTotalCost}`;
 
     const steps = [
       {
@@ -559,9 +582,9 @@ export function parseCostWorkbook(filePath) {
       {
         stepKey: 'total_cost',
         name: '基础生产总成本',
-        formula: totalCostFormula ? `公式: ${totalCostFormula}` : '材料小计 + 材料损耗 + 工时小计 + 工时损耗',
+        formula: baseTotalCostFormula ? `公式: ${baseTotalCostFormula}` : '材料小计 + 材料损耗 + 工时小计 + 工时损耗',
         expression: `${materialCost} + ${materialLoss} + ${laborCost} + ${laborLoss}`,
-        result: totalCost,
+        result: baseTotalCost,
         unit: '元',
         description: '不含税直接综合制造成本',
       },
@@ -637,7 +660,7 @@ export function parseCostWorkbook(filePath) {
       materialLoss,
       laborCost,
       laborLoss,
-      totalCost,
+      totalCost: baseTotalCost,
       taxCost,
       salesPrice,
       samplePrice,
@@ -647,7 +670,7 @@ export function parseCostWorkbook(filePath) {
         materialLossFormula,
         laborCostFormula,
         laborLossFormula,
-        totalCostFormula,
+        totalCostFormula: baseTotalCostFormula,
         taxCostFormula,
         salesPriceFormula,
         samplePriceFormula,
