@@ -62,16 +62,29 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // 1. 确保 Storage 桶
+  // 1. 确保 Storage 桶为私有
   const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
   if (listErr) throw new Error(`查询桶失败: ${listErr.message}`);
 
   const exists = buckets.some((b) => b.id === BUCKET_NAME);
   if (!exists) {
     if (isCommit) {
-      await supabase.storage.createBucket(BUCKET_NAME, { public: true, fileSizeLimit: 52428800 });
-      console.log(`[Storage] 成功创建公开桶 ${BUCKET_NAME}`);
+      const { error: createErr } = await supabase.storage.createBucket(BUCKET_NAME, {
+        public: false,
+        fileSizeLimit: 52428800,
+      });
+      if (createErr) throw new Error(`创建存储桶失败: ${createErr.message}`);
+      console.log(`[Storage] 成功创建私有桶 ${BUCKET_NAME}`);
+    } else {
+      console.log(`[Storage] 桶 ${BUCKET_NAME} 缺失（将在 --commit 时创建为私有桶）`);
     }
+  } else if (isCommit) {
+    const { error: updateErr } = await supabase.storage.updateBucket(BUCKET_NAME, {
+      public: false,
+      fileSizeLimit: 52428800,
+    });
+    if (updateErr) throw new Error(`更新存储桶为私有失败: ${updateErr.message}`);
+    console.log(`[Storage] 成功确认/更新桶 ${BUCKET_NAME} 为私有桶`);
   }
 
   // 2. 扫描本地 Excel
