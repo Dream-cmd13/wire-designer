@@ -111,7 +111,8 @@ async function main() {
   // 3. 上传 Excel 文件到 Storage
   console.log('\n3. 正在上传 20 个 Excel 文件到 Storage 并生成公网 URL...');
   const excelDir = path.resolve('excel');
-  const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx'));
+  // 必须排序，保证与 seed 生成使用一致的序号->存储路径映射
+  const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx')).sort();
   console.log(`扫描到 ${files.length} 个 Excel 文件。`);
 
   const fileUrlMap = new Map();

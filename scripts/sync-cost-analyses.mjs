@@ -87,9 +87,9 @@ async function main() {
     console.log(`[Storage] 成功确认/更新桶 ${BUCKET_NAME} 为私有桶`);
   }
 
-  // 2. 扫描本地 Excel
+  // 2. 扫描本地 Excel（必须排序，保证与 seed 生成使用一致的序号->存储路径映射）
   const excelDir = path.resolve('excel');
-  const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx'));
+  const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx')).sort();
   console.log(`[Local] 扫描到 ${files.length} 个 Excel 文件。`);
 
   // 3. 上传/获取 Storage 公网 URL 映射

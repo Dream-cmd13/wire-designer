@@ -23,6 +23,14 @@
 
 新增成品线束表与成本分析也可以在已有数据库上单独执行第 6、7、8、13、14 步，无需执行 `drop all`。若后续更新了 `excel/` 目录下的成本分析表格，可运行 `npm run supabase:export-cost-seed` 自动刷新第 14 步种子文件。
 
+完成第 13、14 步或刷新种子后，可运行只读核对命令验证数据库与原始 Excel、种子的一致性：
+
+```powershell
+npm run supabase:verify-cost-analyses
+```
+
+该命令逐字段比对解析结果与数据库、独立核对原始单元格与公式、校验推导步骤自洽性、核对 BOM/工序明细的缺失值语义，并守卫 `son_price_low` 的 CRM 导入值不被改动；发现差异时以非 0 退出码结束。
+
 完成 SQL 后，可在 CI、部署服务器或管理员工作站运行：
 
 ```powershell

@@ -1,6 +1,35 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseCostWorkbook, resolvePriceDerivation } from './import-cost-analyses.mjs';
+import {
+  generateSeedSql,
+  parseCostWorkbook,
+  resolvePriceDerivation,
+  toSafeStorageKey,
+} from './import-cost-analyses.mjs';
+
+function resolveSeedBaseUrl() {
+  const envPath = '.env';
+  if (existsSync(envPath)) {
+    for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx <= 0) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      if (key !== 'VITE_SUPABASE_URL' && key !== 'SUPABASE_URL') continue;
+      let value = trimmed.slice(eqIdx + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      if (value) return value;
+    }
+  }
+  return 'https://wioaznspvchiogdxvtun.supabase.co';
+}
 
 describe('resolvePriceDerivation', () => {
   it('substitutes referenced cells and preserves trailing constants', () => {
@@ -176,4 +205,49 @@ describe('generated cost analysis seed', () => {
     expect(seed).toContain('"expression":"7.9565 ÷ 0.7 + 2.646"');
     expect(seed).not.toContain('"expression":"15.7989 ÷ 0.7","result":19.1982');
   });
+
+  it.skipIf(!existsSync('excel'))(
+    'regenerates the committed seed exactly from the current excel directory',
+    () => {
+      const excelDir = 'excel';
+      const files = readdirSync(excelDir)
+        .filter((file) => file.endsWith('.xlsx'))
+        .sort();
+      const seen = new Set();
+      const allAnalyses = [];
+      for (const fileName of files) {
+        for (const item of parseCostWorkbook(path.join(excelDir, fileName))) {
+          if (!seen.has(item.platformNo)) {
+            seen.add(item.platformNo);
+            allAnalyses.push(item);
+          } else {
+            const altNo = `${item.platformNo}-${item.sourceSheetName.replace(/\s+/g, '')}`;
+            if (!seen.has(altNo)) {
+              item.platformNo = altNo;
+              seen.add(altNo);
+              allAnalyses.push(item);
+            }
+          }
+        }
+      }
+
+      const baseUrl = resolveSeedBaseUrl();
+      const fileUrlMap = new Map();
+      for (let i = 0; i < files.length; i += 1) {
+        const storagePath = toSafeStorageKey(files[i], i);
+        fileUrlMap.set(files[i], {
+          storagePath,
+          publicUrl: `${baseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`,
+        });
+      }
+
+      const expected = generateSeedSql(allAnalyses, fileUrlMap);
+      const committed = readFileSync(
+        'supabase/sql/40_seed/06_finished_harness_cost_analyses.sql',
+        'utf8',
+      ).replace(/\r\n/g, '\n');
+
+      expect(committed).toBe(expected);
+    },
+  );
 });

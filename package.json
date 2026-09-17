@@ -13,6 +13,7 @@
     "supabase:upload-m12-pin-maps": "node scripts/upload-m12-pin-maps.mjs",
     "supabase:reset-project-assets": "node scripts/reset-project-assets.mjs",
     "supabase:export-cost-seed": "node scripts/import-cost-analyses.mjs --export-sql",
+    "supabase:verify-cost-analyses": "node scripts/verify-cost-analyses.mjs",
     "user:create": "node scripts/create-user.mjs",
     "test": "vitest run --exclude \".worktrees/**\"",
     "test:watch": "vitest --exclude \".worktrees/**\""
