@@ -36,6 +36,7 @@ npm run supabase:bootstrap-storage
 - 项目和制作图纸直接保存完整 JSON 文档；数据库不保留版本历史。
 - 目录公共字段和按 `kind` 区分的 `spec` 存在 `catalog_items`。
 - `02_real_harness_catalog.sql` 是真实 Excel 目录的唯一 seed 责任文件；同一 `kind + code` 不得在基线 seed 中重复维护。
+- `finished_harness_materials.son_price_low` 是 CRM 平台最低售价，只随外部导入写入：有值即保留，缺失保持 null；成本分析、Excel 导入与同步脚本一律禁止回填或覆盖该列。
 - 真实线材的原始描述保存在 `description`，工程字段保存在 `spec`；当来源文本与结构化值冲突时，两者都保留。
 - `kind = 'overmold'` 的目录项只允许黑色 PVC 45P / 黑色 TPE 与直头 / 弯头四种组合；可用内模固定为低密度透明 PE，且内模外型必须与外模一致。
 - 不创建只有内模、没有外模的独立 `overmold` 目录项；内模是外模目录项的可选属性。

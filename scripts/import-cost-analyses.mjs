@@ -698,11 +698,12 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
   lines.push('begin;\n');
 
   lines.push('-- 1. 扩充/建档成品线束主表核心价格指标');
+  lines.push('-- 注意：不写入 son_price_low。该列为 CRM 平台最低售价，有值即保留、缺失保持 null，');
+  lines.push('-- 成本分析/Excel 推导结果一律禁止回填或覆盖该列。');
   lines.push('insert into public.finished_harness_materials (');
   lines.push('  platform_no,');
   lines.push('  son_name,');
   lines.push('  son_unit,');
-  lines.push('  son_price_low,');
   lines.push('  total_cost,');
   lines.push('  sales_price,');
   lines.push('  sample_price,');
@@ -716,7 +717,7 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
     const urlInfo = fileUrlMap.get(item.sourceExcelFile);
     const sourceExcelUrl = urlInfo?.publicUrl || null;
     const isLast = idx === allAnalyses.length - 1;
-    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName || item.platformNo)}, 'pcs', ${sqlNum(item.salesPrice)}, ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
+    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName || item.platformNo)}, 'pcs', ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
   });
   lines.push(matValues.join('\n'));
 
@@ -928,17 +929,17 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
           updatedCount++;
         } else {
           // 自动建档新成品物料（成本分析建档物料 source_material_id 为空）
+          // 注意：不写入 son_price_low（CRM 平台最低售价，有则有、无则 null，禁止由成本分析回填）
           const insertRes = await client.query(
             `insert into public.finished_harness_materials 
-             (source_material_id, platform_no, son_name, son_unit, son_price_low, total_cost, sales_price, sample_price, quote_price, has_cost_analysis)
-             values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+             (source_material_id, platform_no, son_name, son_unit, total_cost, sales_price, sample_price, quote_price, has_cost_analysis)
+             values ($1, $2, $3, $4, $5, $6, $7, $8, true)
              returning id`,
             [
               null,
               item.platformNo,
               item.productName || item.platformNo,
               'pcs',
-              item.salesPrice,
               item.totalCost,
               item.salesPrice,
               item.samplePrice,

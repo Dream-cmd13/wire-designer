@@ -183,17 +183,18 @@ async function main() {
       );
       updatedCount++;
     } else {
+      // 自动建档新成品物料：不写入 son_price_low
+      // son_price_low 为 CRM 平台最低售价，有值即保留、缺失保持 null，禁止由成本分析/Excel 推导回填
       const insertRes = await dbClient.query(
         `insert into public.finished_harness_materials 
-         (source_material_id, platform_no, son_name, son_unit, son_price_low, total_cost, sales_price, sample_price, quote_price, has_cost_analysis, source_excel_url)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10)
+         (source_material_id, platform_no, son_name, son_unit, total_cost, sales_price, sample_price, quote_price, has_cost_analysis, source_excel_url)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, true, $9)
          returning id`,
         [
           null,
           item.platformNo,
           item.productName || item.platformNo,
           'pcs',
-          item.salesPrice,
           item.totalCost,
           item.salesPrice,
           item.samplePrice,
