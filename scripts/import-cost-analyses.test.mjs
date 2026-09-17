@@ -50,6 +50,12 @@ describe('resolvePriceDerivation', () => {
     expect(result.expression).toBe('SUM(I5:I16) ÷ 0.7');
   });
 
+  it('does not fabricate a derivation when the sheet has no formula', () => {
+    const result = resolvePriceDerivation('', 10.7908, 14.0124, '含税总成本');
+
+    expect(result).toEqual({ formula: '源表未提供公式', expression: '14.0124' });
+  });
+
   const workbookPath = 'excel/成本分析-WL-B21-499,500.xlsx';
   it.skipIf(!existsSync(workbookPath))(
     'uses the source sheet values when parsing the affected workbooks',
@@ -108,7 +114,7 @@ describe('tax embedded in total cost cell', () => {
 
   const plainPath = 'excel/WL-B21-534-成本分析.xlsx';
   it.skipIf(!existsSync(plainPath))(
-    'keeps tax equal to the base total when the sheet has no tax cell',
+    'keeps tax null when the sheet has no tax cell',
     () => {
       const byPlatform = new Map(
         parseCostWorkbook(plainPath).map((item) => [item.platformNo, item]),
@@ -116,12 +122,43 @@ describe('tax embedded in total cost cell', () => {
       const item = byPlatform.get('WL-B21-534');
 
       expect(item.formulaConfig.taxCostFormula).toBe('');
-      expect(item.taxCost).toBe(item.totalCost);
+      expect(item.taxCost).toBeNull();
+      expect(item.calculationSteps).toContainEqual(
+        expect.objectContaining({
+          stepKey: 'tax_cost',
+          formula: '源表未提供公式',
+          expression: '源表未提供含税成本',
+          result: null,
+        }),
+      );
       expect(item.calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'total_cost',
           expression: '28.039 + 0.8412 + 5.42 + 0.271',
           result: 34.5712,
+        }),
+      );
+    },
+  );
+
+  const zeroPath = 'excel/成本分析-WL-B21-126.xlsx';
+  it.skipIf(!existsSync(zeroPath))(
+    'preserves explicit zero loss values and keeps missing tax as null',
+    () => {
+      const byPlatform = new Map(
+        parseCostWorkbook(zeroPath).map((item) => [item.platformNo, item]),
+      );
+      const item = byPlatform.get('WL-B21-126-A1版本，物料涨价前');
+
+      expect(item.materialLoss).toBe(0);
+      expect(item.laborLoss).toBe(0);
+      expect(item.taxCost).toBeNull();
+      expect(item.calculationSteps).toContainEqual(
+        expect.objectContaining({
+          stepKey: 'material_loss',
+          formula: '源表未提供公式',
+          expression: '0',
+          result: 0,
         }),
       );
     },

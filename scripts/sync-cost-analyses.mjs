@@ -191,7 +191,7 @@ async function main() {
         [
           null,
           item.platformNo,
-          item.productName,
+          item.productName || item.platformNo,
           'pcs',
           item.salesPrice,
           item.totalCost,

@@ -35,13 +35,13 @@ create table if not exists public.finished_harness_cost_analyses (
   customer_name text,
   customer_part_no text,
 
-  -- 核心汇总数值
-  material_cost numeric(12, 4) not null default 0,
-  material_loss numeric(12, 4) not null default 0,
-  labor_cost numeric(12, 4) not null default 0,
-  labor_loss numeric(12, 4) not null default 0,
-  total_cost numeric(12, 4) not null default 0,
-  tax_cost numeric(12, 4) not null default 0,
+  -- 核心汇总数值（原表缺失即 null，不做任何回退推算）
+  material_cost numeric(12, 4),
+  material_loss numeric(12, 4),
+  labor_cost numeric(12, 4),
+  labor_loss numeric(12, 4),
+  total_cost numeric(12, 4),
+  tax_cost numeric(12, 4),
   sales_price numeric(12, 4),
   sample_price numeric(12, 4),
   quote_price numeric(12, 4),
@@ -60,6 +60,21 @@ create table if not exists public.finished_harness_cost_analyses (
 
 create index if not exists idx_finished_cost_analyses_harness_id on public.finished_harness_cost_analyses(harness_material_id);
 create index if not exists idx_finished_cost_analyses_platform_no on public.finished_harness_cost_analyses(platform_no);
+
+-- 兼容已建库：移除历史默认值与非空约束，确保原表缺失值可以如实存为 null
+alter table public.finished_harness_cost_analyses
+  alter column material_cost drop not null,
+  alter column material_cost drop default,
+  alter column material_loss drop not null,
+  alter column material_loss drop default,
+  alter column labor_cost drop not null,
+  alter column labor_cost drop default,
+  alter column labor_loss drop not null,
+  alter column labor_loss drop default,
+  alter column total_cost drop not null,
+  alter column total_cost drop default,
+  alter column tax_cost drop not null,
+  alter column tax_cost drop default;
 
 -- RLS 权限配置
 alter table public.finished_harness_cost_analyses enable row level security;

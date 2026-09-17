@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   FinishedHarnessMaterialRepository,
   FinishedHarnessMaterialRepositoryError,
+  mapFinishedHarnessCostAnalysisRow,
   mapFinishedHarnessMaterialRow,
 } from '@/repositories/finishedHarnessMaterialRepository';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -75,6 +76,31 @@ describe('FinishedHarnessMaterialRepository', () => {
     });
     expect(withNullSourceId.sourceMaterialId).toBeNull();
     expect(withNullSourceId.sourceGoodsId).toBeNull();
+  });
+
+  it('keeps missing cost analysis numbers as null instead of coercing to zero', () => {
+    const mapped = mapFinishedHarnessCostAnalysisRow({
+      id: 'ca-1',
+      platform_no: 'WL-C',
+      source_excel_file: 'x.xlsx',
+      source_sheet_name: 'S1',
+      material_cost: null,
+      material_loss: '0',
+      labor_cost: null,
+      labor_loss: null,
+      total_cost: '12.3400',
+      tax_cost: null,
+      sales_price: null,
+      sample_price: null,
+      quote_price: null,
+    });
+
+    expect(mapped.materialCost).toBeNull();
+    expect(mapped.materialLoss).toBe(0);
+    expect(mapped.laborCost).toBeNull();
+    expect(mapped.laborLoss).toBeNull();
+    expect(mapped.totalCost).toBe(12.34);
+    expect(mapped.taxCost).toBeNull();
   });
 
   it('handles database table not exist error (42P01)', async () => {

@@ -14,22 +14,22 @@ export interface CalculationStepItem {
 
 export interface BomItem {
   index: number;
-  type: string;
-  spec: string;
-  brand?: string;
-  qty: number;
-  unit: string;
-  unitPrice: number;
-  totalPrice: number;
+  type: string | null;
+  spec: string | null;
+  brand?: string | null;
+  qty: number | null;
+  unit: string | null;
+  unitPrice: number | null;
+  totalPrice: number | null;
 }
 
 export interface LaborItem {
   index: number;
   name: string;
-  ratePerPoint: number;
-  points: number;
-  cost: number;
-  note?: string;
+  ratePerPoint: number | null;
+  points: number | null;
+  cost: number | null;
+  note?: string | null;
 }
 
 export interface FinishedHarnessCostAnalysis {
@@ -40,12 +40,12 @@ export interface FinishedHarnessCostAnalysis {
   sourceSheetName: string;
   customerName: string | null;
   customerPartNo: string | null;
-  materialCost: number;
-  materialLoss: number;
-  laborCost: number;
-  laborLoss: number;
-  totalCost: number;
-  taxCost: number;
+  materialCost: number | null;
+  materialLoss: number | null;
+  laborCost: number | null;
+  laborLoss: number | null;
+  totalCost: number | null;
+  taxCost: number | null;
   salesPrice: number | null;
   samplePrice: number | null;
   quotePrice: number | null;
