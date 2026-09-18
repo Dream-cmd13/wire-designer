@@ -31,7 +31,7 @@ const mockFinishedHarnesses: FinishedHarnessMaterial[] = [
     packingWay: '盒装',
     packing: 1,
     sonUnit: 'pcs',
-    sonPriceLow: 60,
+    sonPriceLow: 45,
     totalCost: 35.0,
     salesPrice: 60.0,
     samplePrice: 80.0,
@@ -384,13 +384,16 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('包含图纸');
     expect(html).toContain('暂无图纸');
 
-    // 固定 6 列表头
+    // 固定 7 列表头，CRM 最低售价独立展示
     expect(html).toContain('料号');
     expect(html).toContain('物料名称');
     expect(html).toContain('供应商');
     expect(html).toContain('图纸');
     expect(html).toContain('成本分析');
     expect(html).toContain('报价');
+    expect(html).toContain('最低售价');
+    expect(html).toContain('45.00');
+    expect(html).toContain('60.00');
 
     expect(html).toContain('35.00');
     expect(html).not.toContain('35.000000');
@@ -448,6 +451,9 @@ describe('MaterialLibraryPage', () => {
 
     // 价格信息
     expect(htmlWithData).toContain('¥ 60.00');
+    expect(htmlWithData).toContain('¥ 45.00');
+    expect(htmlWithData).toContain('最低售价：');
+    expect(htmlWithData).toContain('>售价：');
     expect(htmlWithData).toContain('¥ 35.00');
     expect(htmlWithData).toContain('成本分析：');
     expect(htmlWithData).toContain('正式报价：');
@@ -484,6 +490,22 @@ describe('MaterialLibraryPage', () => {
     );
     expect(htmlWithEmptyName).toContain('未命名');
     expect(htmlWithEmptyName).toContain('text-slate-400 italic');
+  });
+
+  it.each([
+    { sonPriceLow: 45, salesPrice: null, minimum: '¥ 45.00', sales: '暂无' },
+    { sonPriceLow: null, salesPrice: 60, minimum: '暂无', sales: '¥ 60.00' },
+    { sonPriceLow: 0, salesPrice: 0, minimum: '¥ 0.00', sales: '¥ 0.00' },
+  ])('keeps CRM and Excel prices independent: $sonPriceLow / $salesPrice', ({ sonPriceLow, salesPrice, minimum, sales }) => {
+    const html = renderToStaticMarkup(
+      <FinishedHarnessMaterialDetailDialog
+        isOpen={true}
+        onClose={() => {}}
+        material={{ ...mockFinishedHarnesses[0], sonPriceLow, salesPrice }}
+      />,
+    );
+    expect(html.match(/>最低售价：<\/span><div[^>]*>([^<]*)<\/div>/)?.[1]).toBe(minimum);
+    expect(html.match(/>售价：<\/span><div[^>]*>([^<]*)<\/div>/)?.[1]).toBe(sales);
   });
 
   it('maps raw database row with null handling and validation correctly', () => {

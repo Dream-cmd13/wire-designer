@@ -46,6 +46,9 @@ npm run supabase:bootstrap-storage
 - 目录公共字段和按 `kind` 区分的 `spec` 存在 `catalog_items`。
 - `02_real_harness_catalog.sql` 是真实 Excel 目录的唯一 seed 责任文件；同一 `kind + code` 不得在基线 seed 中重复维护。
 - `finished_harness_materials.son_price_low` 是 CRM 平台最低售价，只随外部导入写入：有值即保留，缺失保持 null；成本分析、Excel 导入与同步脚本一律禁止回填或覆盖该列。
+- `finished_harness_materials.sales_price` 与 `finished_harness_cost_analyses.sales_price` 仅保存 Excel 成本分析表的售价，必须能追溯到对应文件、工作表和原表数值/公式；CRM 导入不得写入或回填这两列。
+- 全部页面和复制报告中，“最低售价”专指 CRM `son_price_low`，“售价”专指 Excel `sales_price`。列表和详情独立展示两者，禁止互相兜底；缺失保持 null，零价格正常展示。Excel 原表标签即使写作“最低售价”，系统生成的名称也统一为“售价”，原表预览保留原文。
+- 历史 Excel 误写到 `son_price_low` 的数据不能作为 CRM 价格继续保留。须先备份并结合来源 ID、原始 CRM 数据、历史导入代码及旧 Excel 值确认误写范围，再事务清理并验证真实 CRM 价格和 Excel 价格均未改变；不得只按价格相同或来源 ID 为空判断。完整规则见[成品方案成本分析文档](../../docs/finished-harness-cost-analysis-plan.md#售价与最低售价来源规则2026-09-18-确认)。
 - `finished_harness_materials.son_unit` 是外部导入单位，成本分析建档不写入、缺失保持 null；`son_name` 只写 Excel 来源名称（如 B2 描述），无来源名称时保持 null，界面以“未命名”兜底，CRM 已有名称不被覆盖。
 - 成本分析的来源定位以 `source_excel_path`（私有桶 `cost-analysis-sources` 内对象路径）为准；`source_excel_url` 仅作 URL 形式的展示/兼容定位，私有桶下不可匿名访问。
 - 成本分析 `platform_no` 直接取规范命名的 Sheet 名（`WL-*`，长度统一为 mm 数字后缀，如 `WL-B21-414-2000`）；Sheet 无规范命名时取来源文件名中的规范料号；同一 Excel 内多个非规范 sheet 共用一个料号时，统一追加 sheet 名后缀以区分。重新执行第 14 步种子（或同步脚本）会直接清理替换旧命名残留，无需清库重建。

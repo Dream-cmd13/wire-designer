@@ -1584,6 +1584,7 @@ export function MaterialLibraryPage({
                       <th className="w-[130px] min-w-[110px] px-4 py-3 font-semibold">供应商</th>
                       <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">图纸/附件</th>
                       <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold text-center">成本分析</th>
+                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold" title="CRM 平台 son_price_low">最低售价</th>
                       <th className="w-[150px] min-w-[130px] px-4 py-3 font-semibold">价格/报价</th>
                     </tr>
                   </thead>
@@ -1662,14 +1663,23 @@ export function MaterialLibraryPage({
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {h.salesPrice != null ? (
+                            {h.sonPriceLow != null ? (
+                              <span className="font-mono text-slate-700">¥ {h.sonPriceLow.toFixed(2)}</span>
+                            ) : (
+                              <span className="text-slate-400">暂无</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {h.salesPrice != null || h.samplePrice != null || h.quotePrice != null ? (
                               <div className="flex flex-col gap-0.5">
+                                {h.salesPrice != null && (
                                 <div className="flex items-center gap-1 font-mono">
                                   <span className="text-[10px] text-slate-400">售价:</span>
                                   <span className="font-semibold text-slate-900">
                                     ¥ {h.salesPrice.toFixed(2)}
                                   </span>
                                 </div>
+                                )}
                                 {h.samplePrice != null && (
                                   <div className="flex items-center gap-1 font-mono text-[11px] text-amber-700">
                                     <span className="text-[10px] text-slate-400">样品:</span>
@@ -1683,10 +1693,6 @@ export function MaterialLibraryPage({
                                   </div>
                                 )}
                               </div>
-                            ) : h.sonPriceLow != null ? (
-                              <span className="font-mono text-slate-700">
-                                ¥ {Number(h.sonPriceLow).toFixed(2)}
-                              </span>
                             ) : (
                               <span className="text-slate-400">暂无</span>
                             )}

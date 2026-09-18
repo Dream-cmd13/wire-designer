@@ -14,6 +14,25 @@
 
 ---
 
+## 售价与最低售价来源规则（2026-09-18 确认）
+
+本节为当前成品方案的价格规则，适用于全部页面、列表、详情、复制报告及系统生成的计算步骤名称。
+
+| 展示名称 | 字段 | 唯一来源 |
+|---|---|---|
+| 最低售价 | `finished_harness_materials.son_price_low`（前端 `sonPriceLow`） | CRM 平台导入值 |
+| 售价 | `finished_harness_materials.sales_price`、`finished_harness_cost_analyses.sales_price`（前端 `salesPrice`） | 对应料号的 Excel 成本分析表 |
+
+- 列表独立展示“最低售价”列；详情独立展示“最低售价”和“售价”卡片。两者同时有值时均展示，不互相覆盖或兜底。
+- 缺失值保留 `null`，独立字段显示“暂无”；列表的价格/报价组合区域可省略缺失项。数值 `0` 是有效价格，不能当作缺失值。
+- CRM 导入只维护 `son_price_low`，不得用它生成或回填 `sales_price`；Excel 导入、同步和种子生成只维护 Excel 价格字段，不得回填或覆盖 `son_price_low`。仅由 Excel 自动建档的物料没有 CRM 来源价格时，`son_price_low` 必须保持 `null`。
+- Excel 原表即使使用“最低售价”标签，解析后也写入 `sales_price`，系统展示名称统一为“售价”；原始 Excel 文件及原表预览保留原文，不改写来源证据。
+- 详情可以读取成本分析明细的 `sales_price`，也可以读取主表同步保存的 Excel `sales_price`，但禁止读取 CRM `son_price_low` 作为售价。
+- 每个非空 `sales_price` 应能追溯到对应 Excel 文件、工作表及单元格数值/公式；不得用 CRM 价格或固定毛利率补算缺失售价。
+- 历史误写数据需结合 CRM 来源 ID、原始 CRM 数据、历史导入逻辑和旧 Excel 值确认。清理前备份，只清空已确认误写的 `son_price_low`；不得仅凭两个价格相同或来源 ID 为空就批量清空。保留真实 CRM 价格及所有 Excel 价格，并在事务内核对修改范围、清理后复查。
+
+验收至少覆盖：两种价格同时有值、仅 CRM 有值、仅 Excel 有值、两者均为空及零价格；任何场景均不得互相兜底。
+
 ## 二、 数据库设计方案（修改现有表 + 新增分析明细表）
 
 ### 2.1 架构取向与决策
@@ -36,7 +55,7 @@ erDiagram
         text son_name "物料名称"
         uuid supplier_id FK "关联供应商"
         text file_2d "2D图纸链接"
-        numeric son_price_low "原最低售价"
+        numeric son_price_low "CRM 平台最低售价"
         numeric total_cost "【新增】核算总成本"
         numeric sales_price "【新增】计算售价"
         numeric sample_price "【新增】计算样品价"
@@ -203,7 +222,7 @@ create policy "finished harness cost analyses read" on public.finished_harness_c
   },
   {
     "stepKey": "sales_price",
-    "name": "建议售价 (最低售价)",
+    "name": "售价",
     "formula": "含税总成本 ÷ (1 - 目标毛利率30%)",
     "expression": "35.61 ÷ 0.7",
     "result": 50.87,
@@ -283,12 +302,14 @@ flowchart TD
 2. **“价格” 列**（原“报价”占位列）：
    - 展示：`售价: ¥ 50.87`，小字标注 `样品: ¥ 71.22`；
    - 若存在正式报价，高亮标注 `报价: ¥ 55.00`。
+3. **“最低售价”列**：独立读取 CRM `son_price_low`，有值展示金额，缺失显示“暂无”，不受 Excel 售价是否存在影响。
 
 ### 5.2 成品物料详情弹窗（`FinishedHarnessMaterialDetailDialog.tsx`）
 在弹窗内新增**【成本定价与推导过程】**专区：
-1. **四大价格卡片**：
+1. **五个独立价格卡片**：
+   - CRM 最低售价（`son_price_low`）
    - 基础总成本（Total Cost）
-   - 建议售价 / 最低售价（Sales Price）
+   - Excel 售价（Sales Price）
    - 打样价格（Sample Price）
    - 正式报价（Quote Price）
 2. **价格推导链条看板（Calculation Trajectory）**：

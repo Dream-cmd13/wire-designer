@@ -652,7 +652,7 @@ export function parseCostWorkbook(filePath, options = {}) {
       );
       steps.push({
         stepKey: 'sales_price',
-        name: '建议售价 (最低售价)',
+        name: '售价',
         formula: salesDeriv.formula,
         expression: salesDeriv.expression,
         result: salesPrice,
