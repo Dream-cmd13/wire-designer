@@ -6,6 +6,8 @@ const costSchema = readFileSync('supabase/sql/10_schema/06_finished_harness_cost
 const seed = readFileSync('supabase/sql/40_seed/05_finished_harness_materials.sql', 'utf8');
 const resetSql = readFileSync('supabase/sql/00_reset/01_drop_all_tables.sql', 'utf8');
 const readme = readFileSync('supabase/sql/README.md', 'utf8');
+const bucketsSql = readFileSync('supabase/sql/20_storage/01_buckets.sql', 'utf8');
+const drawingsSeed = readFileSync('supabase/sql/40_seed/07_finished_harness_drawings.sql', 'utf8');
 
 describe('finished harness material SQL', () => {
   it('keeps the table readable only by authenticated users', () => {
@@ -43,6 +45,16 @@ describe('finished harness material SQL', () => {
   it('includes 06_finished_harness_cost_analyses in README execution sequence', () => {
     expect(readme).toContain('10_schema/06_finished_harness_cost_analyses.sql');
     expect(readme).toContain('40_seed/06_finished_harness_cost_analyses.sql');
+    expect(readme).toContain('40_seed/07_finished_harness_drawings.sql');
+  });
+
+  it('supplements drawings only when file_2d is empty', () => {
+    expect(bucketsSql).toContain("'finished-harness-drawings'");
+    expect(drawingsSeed).toContain('finished-harness-drawings');
+    const updates = (drawingsSeed.match(/update public\.finished_harness_materials/g) || []).length;
+    const guards = (drawingsSeed.match(/file_2d is null/g) || []).length;
+    expect(updates).toBeGreaterThan(0);
+    expect(guards).toBe(updates);
   });
 
   it('provides an idempotent seed for cost analyses and price rollups', () => {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createClient } from '@supabase/supabase-js';
+import { listExcelWorkbooks } from './import-cost-analyses.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -111,15 +112,14 @@ async function main() {
   // 3. 上传 Excel 文件到 Storage
   console.log('\n3. 正在上传 20 个 Excel 文件到 Storage 并生成公网 URL...');
   const excelDir = path.resolve('excel');
-  // 必须排序，保证与 seed 生成使用一致的序号->存储路径映射
-  const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx')).sort();
+  // 递归扫描（每个 xlsx 可放在同名子文件夹中），按文件名排序，保证与 seed 生成使用一致的序号->存储路径映射
+  const files = listExcelWorkbooks(excelDir);
   console.log(`扫描到 ${files.length} 个 Excel 文件。`);
 
   const fileUrlMap = new Map();
 
   for (let i = 0; i < files.length; i++) {
-    const fileName = files[i];
-    const localFilePath = path.join(excelDir, fileName);
+    const { fileName, filePath: localFilePath } = files[i];
     const fileBuffer = fs.readFileSync(localFilePath);
     const storagePath = toSafeStorageKey(fileName, i);
 

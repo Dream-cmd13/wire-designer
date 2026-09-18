@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import XLSX from 'xlsx';
-import { parseCostWorkbook, toSafeStorageKey } from './import-cost-analyses.mjs';
+import { parseCostWorkbook, toSafeStorageKey, listExcelWorkbooks } from './import-cost-analyses.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -141,10 +141,10 @@ function parseSeedMaterialCrmPrices(sql) {
 
 function parseAllExcel(platformSet) {
   const excelDir = path.resolve('excel');
-  const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx')).sort();
+  const files = listExcelWorkbooks(excelDir);
   const analyses = [];
-  for (const fileName of files) {
-    for (const item of parseCostWorkbook(path.join(excelDir, fileName))) {
+  for (const { filePath } of files) {
+    for (const item of parseCostWorkbook(filePath)) {
       if (!platformSet.has(item.platformNo)) {
         platformSet.add(item.platformNo);
         analyses.push(item);
@@ -173,8 +173,9 @@ async function main() {
 
   const urlMap = new Map();
   for (let i = 0; i < files.length; i++) {
-    const storagePath = toSafeStorageKey(files[i], i);
-    urlMap.set(files[i], {
+    const { fileName } = files[i];
+    const storagePath = toSafeStorageKey(fileName, i);
+    urlMap.set(fileName, {
       storagePath,
       publicUrl: `${supabaseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`,
     });
@@ -227,8 +228,9 @@ async function main() {
   }
 
   const wbCache = new Map();
+  const filePathByName = new Map(files.map((entry) => [entry.fileName, entry.filePath]));
   const getSheet = (file, sheetName) => {
-    if (!wbCache.has(file)) wbCache.set(file, XLSX.readFile(path.join('excel', file), { cellFormula: true }));
+    if (!wbCache.has(file)) wbCache.set(file, XLSX.readFile(filePathByName.get(file) ?? path.join('excel', file), { cellFormula: true }));
     return wbCache.get(file).Sheets[sheetName];
   };
 

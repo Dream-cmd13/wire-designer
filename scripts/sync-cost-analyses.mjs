@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createClient } from '@supabase/supabase-js';
-import { parseCostWorkbook, buildStaleCleanupStatements, NO_DRAWING_MATERIAL_CLEANUP_SQL } from './import-cost-analyses.mjs';
+import { parseCostWorkbook, buildStaleCleanupStatements, listExcelWorkbooks, NO_DRAWING_MATERIAL_CLEANUP_SQL } from './import-cost-analyses.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -87,16 +87,15 @@ async function main() {
     console.log(`[Storage] 成功确认/更新桶 ${BUCKET_NAME} 为私有桶`);
   }
 
-  // 2. 扫描本地 Excel（必须排序，保证与 seed 生成使用一致的序号->存储路径映射）
+  // 2. 递归扫描本地 Excel（每个 xlsx 可放在同名子文件夹中；按文件名排序，保证与 seed 生成使用一致的序号->存储路径映射）
   const excelDir = path.resolve('excel');
-  const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx')).sort();
+  const files = listExcelWorkbooks(excelDir);
   console.log(`[Local] 扫描到 ${files.length} 个 Excel 文件。`);
 
   // 3. 上传/获取 Storage 公网 URL 映射
   const fileUrlMap = new Map();
   for (let i = 0; i < files.length; i++) {
-    const fileName = files[i];
-    const localFilePath = path.join(excelDir, fileName);
+    const { fileName, filePath: localFilePath } = files[i];
     const fileBuffer = fs.readFileSync(localFilePath);
     const storagePath = toSafeStorageKey(fileName, i);
 
@@ -118,8 +117,7 @@ async function main() {
   // 4. 解析全量成本分析数据
   const allAnalyses = [];
   const parseWarnings = [];
-  for (const fileName of files) {
-    const filePath = path.join(excelDir, fileName);
+  for (const { fileName, filePath } of files) {
     try {
       const res = parseCostWorkbook(filePath, {
         onWarning: (message) => parseWarnings.push(message),

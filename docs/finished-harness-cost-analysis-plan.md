@@ -4,7 +4,7 @@
 
 本项目已在“物料库 - 现有成品线束方案”中维护了成品物料基本信息（表 `finished_harness_materials`），但原有界面的“成本分析”与“报价”仅为占位“暂无”。
 
-在项目根目录 `excel/` 下共有 20 个 Excel 文件（涵盖 40+ 个成品料号），记录了各成品线束详细的 BOM 材料明细、工序工时清单、材料/工时损耗、税金加成以及最终售价、样品价和报价推导。
+在项目根目录 `excel/` 下共有 20 个 Excel 文件（涵盖 40+ 个成品料号），每个 xlsx 存放在同名子文件夹中（从 xlsx 提取的 2D 图纸校对图片与 `2d-drawings-manifest.csv` 清单入口同目录），记录了各成品线束详细的 BOM 材料明细、工序工时清单、材料/工时损耗、税金加成以及最终售价、样品价和报价推导。
 
 本次方案的目标是：
 1. **完整保留价格推导链条**：不仅记录最终价格，更完整记录每个料号**各个价格是怎么一步步算出来的（计算公式、数值代入轨迹、基础单价）**。
@@ -243,7 +243,7 @@ create policy "finished harness cost analyses read" on public.finished_harness_c
 
 ```mermaid
 flowchart TD
-    A[扫描 excel/ 目录下 20 个 .xlsx 文件] --> B[遍历工作表 Sheet]
+    A[递归扫描 excel/ 目录下 20 个 .xlsx 文件（每个 xlsx 位于同名子文件夹）] --> B[遍历工作表 Sheet]
     B --> C{是否有效分析表?}
     C -- 否(接线图/空白) --> B
     C -- 是 --> D[定位平台料号 platform_no]

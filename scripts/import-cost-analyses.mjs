@@ -27,6 +27,21 @@ function loadEnv() {
   return env;
 }
 
+// 递归收集 excel/ 下的工作簿（每个 xlsx 可与提取的图纸图片一起放在同名子文件夹中），按文件名排序保证存储路径稳定。
+export function listExcelWorkbooks(excelDir) {
+  const results = [];
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(fullPath);
+      else if (entry.name.endsWith('.xlsx') && !entry.name.startsWith('~$')) results.push({ fileName: entry.name, filePath: fullPath });
+    }
+  };
+  walk(excelDir);
+  results.sort((a, b) => (a.fileName < b.fileName ? -1 : a.fileName > b.fileName ? 1 : 0));
+  return results;
+}
+
 function cleanNumber(val) {
   if (val == null || val === '') return null;
   const n = Number(val);
@@ -898,15 +913,14 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
 if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
   async function run() {
     const excelDir = path.resolve('excel');
-    const files = fs.readdirSync(excelDir).filter((f) => f.endsWith('.xlsx')).sort();
+    const files = listExcelWorkbooks(excelDir);
     console.log(`发现 ${files.length} 个 Excel 文件，开始解析...`);
 
     const allAnalyses = [];
     const platformNoSet = new Set();
     const parseWarnings = [];
 
-    for (const file of files) {
-      const filePath = path.join(excelDir, file);
+    for (const { fileName, filePath } of files) {
       try {
         const analyses = parseCostWorkbook(filePath, {
           onWarning: (message) => parseWarnings.push(message),
@@ -926,7 +940,7 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
           }
         }
       } catch (err) {
-        console.error(`解析文件 ${file} 失败:`, err.message);
+        console.error(`解析文件 ${fileName} 失败:`, err.message);
       }
     }
 
@@ -941,7 +955,7 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
     const env = loadEnv();
     const baseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || 'https://wioaznspvchiogdxvtun.supabase.co';
     for (let i = 0; i < files.length; i++) {
-      const fileName = files[i];
+      const { fileName } = files[i];
       const storagePath = toSafeStorageKey(fileName, i);
       const publicUrl = `${baseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`;
       fileUrlMap.set(fileName, { storagePath, publicUrl });

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   generateSeedSql,
+  listExcelWorkbooks,
   parseCostWorkbook,
   resolvePriceDerivation,
   toSafeStorageKey,
@@ -85,7 +86,7 @@ describe('resolvePriceDerivation', () => {
     expect(result).toEqual({ formula: '源表未提供公式', expression: '14.0124' });
   });
 
-  const workbookPath = 'excel/成本分析-WL-B21-499,500.xlsx';
+  const workbookPath = 'excel/成本分析-WL-B21-499,500/成本分析-WL-B21-499,500.xlsx';
   it.skipIf(!existsSync(workbookPath))(
     'uses the source sheet values when parsing the affected workbooks',
     () => {
@@ -111,7 +112,7 @@ describe('resolvePriceDerivation', () => {
 });
 
 describe('tax embedded in total cost cell', () => {
-  const workbookPath = 'excel/WL-B21-592 593 成本分析.xlsx';
+  const workbookPath = 'excel/WL-B21-592 593 成本分析/WL-B21-592 593 成本分析.xlsx';
   it.skipIf(!existsSync(workbookPath))(
     'splits a tax-inclusive total cell into base total and tax cost',
     () => {
@@ -141,7 +142,7 @@ describe('tax embedded in total cost cell', () => {
     },
   );
 
-  const plainPath = 'excel/WL-B21-534-成本分析.xlsx';
+  const plainPath = 'excel/WL-B21-534-成本分析/WL-B21-534-成本分析.xlsx';
   it.skipIf(!existsSync(plainPath))(
     'keeps tax null when the sheet has no tax cell',
     () => {
@@ -170,7 +171,7 @@ describe('tax embedded in total cost cell', () => {
     },
   );
 
-  const zeroPath = 'excel/成本分析-WL-B21-126.xlsx';
+  const zeroPath = 'excel/成本分析-WL-B21-126/成本分析-WL-B21-126.xlsx';
   it.skipIf(!existsSync(zeroPath))(
     'preserves explicit zero loss values and keeps missing tax as null',
     () => {
@@ -210,13 +211,11 @@ describe('generated cost analysis seed', () => {
     'regenerates the committed seed exactly from the current excel directory',
     () => {
       const excelDir = 'excel';
-      const files = readdirSync(excelDir)
-        .filter((file) => file.endsWith('.xlsx'))
-        .sort();
+      const files = listExcelWorkbooks(excelDir);
       const seen = new Set();
       const allAnalyses = [];
-      for (const fileName of files) {
-        for (const item of parseCostWorkbook(path.join(excelDir, fileName))) {
+      for (const { filePath } of files) {
+        for (const item of parseCostWorkbook(filePath)) {
           if (!seen.has(item.platformNo)) {
             seen.add(item.platformNo);
             allAnalyses.push(item);
@@ -234,8 +233,8 @@ describe('generated cost analysis seed', () => {
       const baseUrl = resolveSeedBaseUrl();
       const fileUrlMap = new Map();
       for (let i = 0; i < files.length; i += 1) {
-        const storagePath = toSafeStorageKey(files[i], i);
-        fileUrlMap.set(files[i], {
+        const storagePath = toSafeStorageKey(files[i].fileName, i);
+        fileUrlMap.set(files[i].fileName, {
           storagePath,
           publicUrl: `${baseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`,
         });
@@ -258,8 +257,8 @@ describe('parser warnings', () => {
     () => {
       const excelDir = 'excel';
       const warnings = [];
-      for (const fileName of readdirSync(excelDir).filter((file) => file.endsWith('.xlsx'))) {
-        parseCostWorkbook(path.join(excelDir, fileName), {
+      for (const { filePath } of listExcelWorkbooks(excelDir)) {
+        parseCostWorkbook(filePath, {
           onWarning: (message) => warnings.push(message),
         });
       }
