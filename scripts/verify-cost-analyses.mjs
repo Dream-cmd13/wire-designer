@@ -32,10 +32,6 @@ const close = (a, b, tol = 0.001) => {
 const cellVal = (ws, addr) => (ws[addr] ? ws[addr].v : undefined);
 const cellFormula = (ws, addr) => (ws[addr] ? ws[addr].f : undefined);
 const text = (ws, addr) => String(cellVal(ws, addr) || '').trim();
-const round4 = (v) => {
-  const n = num(v);
-  return n == null ? null : Math.round(n * 10000) / 10000;
-};
 const isNote = (s) => s.length > 15 || s.includes('管销') || s.includes('请不要') || s.includes('插入行');
 
 function canonical(v) {
@@ -261,7 +257,7 @@ async function main() {
     for (const [field, expectedValue] of Object.entries(expected)) {
       stats.fields++;
       if (NUM_FIELDS.has(field)) {
-        if (!close(expectedValue, db[field], 1e-9)) {
+        if (!close(expectedValue, db[field], 1e-12)) {
           addProblem('字段', `${platformNo} ${field}: 解析=${expectedValue} 数据库=${db[field]}`);
         }
       } else if ((expectedValue ?? null) !== (db[field] ?? null)) {
@@ -295,10 +291,10 @@ async function main() {
       addProblem('主表', `${platformNo} 缺少 finished_harness_materials 行`);
     } else {
       if (db.harness_material_id !== mat.id) addProblem('主表', `${platformNo} harness_material_id 关联错误`);
-      if (!close(mat.total_cost, db.total_cost, 1e-9)) addProblem('主表', `${platformNo} total_cost=${mat.total_cost} 与成本分析 ${db.total_cost} 不一致`);
-      if (!close(mat.sales_price, db.sales_price, 1e-9)) addProblem('主表', `${platformNo} sales_price=${mat.sales_price} 与成本分析 ${db.sales_price} 不一致`);
-      if (!close(mat.sample_price, db.sample_price, 1e-9)) addProblem('主表', `${platformNo} sample_price=${mat.sample_price} 与成本分析 ${db.sample_price} 不一致`);
-      if (!close(mat.quote_price, db.quote_price, 1e-9)) addProblem('主表', `${platformNo} quote_price=${mat.quote_price} 与成本分析 ${db.quote_price} 不一致`);
+      if (!close(mat.total_cost, db.total_cost, 1e-12)) addProblem('主表', `${platformNo} total_cost=${mat.total_cost} 与成本分析 ${db.total_cost} 不一致`);
+      if (!close(mat.sales_price, db.sales_price, 1e-12)) addProblem('主表', `${platformNo} sales_price=${mat.sales_price} 与成本分析 ${db.sales_price} 不一致`);
+      if (!close(mat.sample_price, db.sample_price, 1e-12)) addProblem('主表', `${platformNo} sample_price=${mat.sample_price} 与成本分析 ${db.sample_price} 不一致`);
+      if (!close(mat.quote_price, db.quote_price, 1e-12)) addProblem('主表', `${platformNo} quote_price=${mat.quote_price} 与成本分析 ${db.quote_price} 不一致`);
       if (mat.has_cost_analysis !== true) addProblem('主表', `${platformNo} has_cost_analysis 应为 true`);
     }
 
@@ -351,12 +347,12 @@ async function main() {
     const embeddedMult = embeddedMatch ? parseFloat(embeddedMatch[1]) : 1;
     const usesEmbeddedTax = embeddedMult > 1 && embeddedMult < 2;
     const expectedTotal = usesEmbeddedTax
-      ? round4(rawCells.total_cost.value / embeddedMult)
-      : round4(rawCells.total_cost?.value);
+      ? num(rawCells.total_cost.value / embeddedMult)
+      : num(rawCells.total_cost?.value);
     const expectedTotalFormula = usesEmbeddedTax
       ? totalFormula.replace(/\*\s*[0-9.]+\s*$/, '').trim()
       : totalFormula;
-    const expectedTax = usesEmbeddedTax ? round4(rawCells.total_cost.value) : round4(taxLabel?.value);
+    const expectedTax = usesEmbeddedTax ? num(rawCells.total_cost.value) : num(taxLabel?.value);
     const expectedTaxFormula = usesEmbeddedTax ? totalFormula : (taxLabel?.formula || '');
 
     const rawChecks = [
@@ -367,7 +363,7 @@ async function main() {
     ];
     for (const [field, formulaField, raw] of rawChecks) {
       stats.rawCells++;
-      if (!close(round4(raw?.value), db[field], 0.00011)) {
+      if (!close(num(raw?.value), db[field], 1e-12)) {
         addProblem('原始表', `${platformNo} ${field}: 原始单元格=${raw?.value} 数据库=${db[field]}`);
       }
       if ((item.formulaConfig[formulaField] || '') !== (raw?.formula || '')) {
@@ -375,11 +371,11 @@ async function main() {
       }
     }
     stats.rawCells++;
-    if (!close(expectedTotal, db.total_cost, 0.00011)) {
+    if (!close(expectedTotal, db.total_cost, 1e-12)) {
       addProblem('原始表', `${platformNo} total_cost: 原始单元格推算=${expectedTotal} 数据库=${db.total_cost}`);
     }
     stats.rawCells++;
-    if (!close(expectedTax, db.tax_cost, 0.00011)) {
+    if (!close(expectedTax, db.tax_cost, 1e-12)) {
       addProblem('原始表', `${platformNo} tax_cost: 原始表含税=${expectedTax} 数据库=${db.tax_cost}`);
     }
     if ((item.formulaConfig.totalCostFormula || '') !== expectedTotalFormula) {
@@ -407,7 +403,7 @@ async function main() {
       const actual = db[field];
       if (actual == null) return;
       const candidates = collectCandidates(labels);
-      const hit = candidates.find((x) => close(x.value, actual, 0.00011));
+      const hit = candidates.find((x) => close(x.value, actual, 1e-12));
       if (!hit) {
         addProblem('原始表', `${platformNo} ${field}=${actual} 不在原始表候选值 [${candidates.map((x) => x.value).join(', ')}] 中`);
       } else if ((db.formula_config?.[formulaField] || '') !== (hit.formula || '')) {
@@ -433,10 +429,10 @@ async function main() {
           type: text(ws, 'B' + r) || null,
           spec: text(ws, 'D' + r) || null,
           brand: text(ws, 'C' + r) || null,
-          qty: round4(cellVal(ws, 'F' + r)),
+          qty: num(cellVal(ws, 'F' + r)),
           unit: text(ws, 'G' + r) || null,
-          unitPrice: round4(cellVal(ws, 'H' + r)),
-          totalPrice: round4(cellVal(ws, 'I' + r)),
+          unitPrice: num(cellVal(ws, 'H' + r)),
+          totalPrice: num(cellVal(ws, 'I' + r)),
         };
         if (rowItem.type || rowItem.spec || rowItem.qty != null || rowItem.unitPrice != null) rawBom.push(rowItem);
       }
@@ -453,7 +449,7 @@ async function main() {
           }
         }
         for (const key of ['qty', 'unitPrice', 'totalPrice']) {
-          if (!close(rawBom[i][key], dbBom[i][key], 0.00011)) {
+          if (!close(rawBom[i][key], dbBom[i][key], 1e-12)) {
             addProblem('BOM', `${platformNo} 第${i + 1}行 ${key}: 原始=${rawBom[i][key]} 数据库=${dbBom[i][key]}`);
           }
         }
@@ -474,9 +470,9 @@ async function main() {
         if (!name) continue;
         rawLabor.push({
           name,
-          ratePerPoint: round4(cellVal(ws, 'D' + r)),
-          points: round4(cellVal(ws, 'H' + r)),
-          cost: round4(cellVal(ws, 'I' + r)),
+          ratePerPoint: num(cellVal(ws, 'D' + r)),
+          points: num(cellVal(ws, 'H' + r)),
+          cost: num(cellVal(ws, 'I' + r)),
           note: text(ws, 'K' + r) || null,
         });
       }
@@ -491,7 +487,7 @@ async function main() {
           addProblem('工序', `${platformNo} 第${i + 1}行 名称/说明不一致`);
         }
         for (const key of ['ratePerPoint', 'points', 'cost']) {
-          if (!close(rawLabor[i][key], dbLabor[i][key], 0.00011)) {
+          if (!close(rawLabor[i][key], dbLabor[i][key], 1e-12)) {
             addProblem('工序', `${platformNo} 第${i + 1}行 ${key}: 原始=${rawLabor[i][key]} 数据库=${dbLabor[i][key]}`);
           }
         }
@@ -507,7 +503,7 @@ async function main() {
       const mat = dbMatMap.get(platformNo);
       if (!mat) continue;
       stats.crmRows++;
-      if (!close(crm.crmPriceLow, mat.son_price_low, 1e-9)) {
+      if (!close(crm.crmPriceLow, mat.son_price_low, 1e-12)) {
         addProblem('CRM价格', `${platformNo} son_price_low: CRM导入=${crm.crmPriceLow} 数据库=${mat.son_price_low}`);
       }
     }

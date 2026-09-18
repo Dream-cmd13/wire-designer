@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import XLSX from 'xlsx';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -8,6 +10,45 @@ import {
   resolvePriceDerivation,
   toSafeStorageKey,
 } from './import-cost-analyses.mjs';
+
+describe('Excel source precision', () => {
+  it('keeps raw numbers and individual cell formats throughout the parsed analysis', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'cost-precision-'));
+    try {
+      const ws = XLSX.utils.aoa_to_sheet([['BOM'], ['万连料号', 'WL-TEST']]);
+      Object.assign(ws, {
+        A4: { t: 's', v: '序号' }, B4: { t: 's', v: '类型' },
+        B5: { t: 's', v: '导线' }, F5: { t: 'n', v: 1.2, z: '0.00' },
+        H5: { t: 'n', v: 0.123456789, z: '0.000000' },
+        I5: { t: 'n', v: 0.0000833333333333333, z: 'General' },
+        H15: { t: 's', v: '材料总价' }, I15: { t: 'n', v: 0.1481481468, z: '0.000000' },
+        H16: { t: 's', v: '工时费用' }, I16: { t: 'n', v: 1.2, z: '0.00' },
+        H17: { t: 's', v: '总成本' }, I17: { t: 'n', v: 1.3481481468, z: '0.000000' },
+        K17: { t: 's', v: '最低售价' }, K18: { t: 'n', v: 2.3, z: '0.00', f: 'I5+2.3' },
+        M17: { t: 's', v: '报价3.400000' },
+        A25: { t: 's', v: '序号' }, C25: { t: 's', v: '工序名称' },
+        C26: { t: 's', v: '组装' }, D26: { t: 'n', v: 0.123456, z: '0.000000' },
+        H26: { t: 'n', v: 1.2, z: '0.00' }, I26: { t: 'n', v: 1.2, z: '0.00' },
+        C27: { t: 's', v: '计划总工时' }, '!ref': 'A1:M27',
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'WL-TEST');
+      const file = path.join(dir, 'precision.xlsx');
+      XLSX.writeFile(wb, file);
+      const [item] = parseCostWorkbook(file);
+      expect(item.totalCost).toBe(1.3481481468);
+      expect(item.calculationSteps.find(s => s.stepKey === 'total_cost')).toMatchObject({ displayExpression: '1.348148' });
+      expect(item.calculationSteps.find(s => s.stepKey === 'material_cost').displayExpression).toBe('0.000083(导线)');
+      expect(item.calculationSteps.find(s => s.stepKey === 'sales_price').displayExpression).toBe('0.000083 + 2.3');
+      expect(item.formulaConfig.numberFormats).toMatchObject({ total_cost: '0.000000', sales_price: '0.00', quote_price: '0.000000' });
+      expect(item.bomItems[0]).toMatchObject({ unitPrice: 0.123456789, numberFormats: { qty: '0.00', unitPrice: '0.000000' } });
+      expect(item.laborItems[0]).toMatchObject({ ratePerPoint: 0.123456, numberFormats: { ratePerPoint: '0.000000', points: '0.00' } });
+      expect(item.calculationSteps.find(s => s.stepKey === 'total_cost')).toMatchObject({ result: 1.3481481468, numberFormat: '0.000000' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 function resolveSeedBaseUrl() {
   const envPath = '.env';
@@ -46,7 +87,7 @@ describe('resolvePriceDerivation', () => {
 
     expect(result).toEqual({
       formula: '公式: K23/0.7+7 (目标毛利率 30%)',
-      expression: '8.5388 ÷ 0.7 + 7',
+      expression: '8.53876744583333 ÷ 0.7 + 7',
     });
   });
 
@@ -62,7 +103,7 @@ describe('resolvePriceDerivation', () => {
       },
     );
 
-    expect(result.expression).toBe('7.9565 ÷ 0.7 + 2.646');
+    expect(result.expression).toBe('7.95646744583333 ÷ 0.7 + 2.646');
   });
 
   it('keeps range references untouched instead of corrupting SUM ranges', () => {
@@ -96,15 +137,15 @@ describe('resolvePriceDerivation', () => {
       expect(byPlatform.get('WL-B21-499-A').calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'sales_price',
-          expression: '8.5388 ÷ 0.7 + 7',
-          result: 19.1982,
+          expression: '8.53876744583333 ÷ 0.7 + 7',
+          result: 19.1982392083333,
         }),
       );
       expect(byPlatform.get('WL-B21-500-A').calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'sales_price',
-          expression: '7.9565 ÷ 0.7 + 2.646',
-          result: 14.0124,
+          expression: '7.95646744583333 ÷ 0.7 + 2.646',
+          result: 14.0123820654762,
         }),
       );
     },
@@ -121,22 +162,22 @@ describe('tax embedded in total cost cell', () => {
       );
       const item = byPlatform.get('WL-B21-592');
 
-      expect(item.totalCost).toBe(18.0055);
-      expect(item.taxCost).toBe(18.5457);
+      expect(item.totalCost).toBe(18.0055424458333);
+      expect(item.taxCost).toBe(18.5457087192083);
       expect(item.formulaConfig.totalCostFormula).toBe('SUM(I11:I14)');
       expect(item.formulaConfig.taxCostFormula).toBe('SUM(I11:I14)*1.03');
       expect(item.calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'total_cost',
-          expression: '13.801 + 0.414 + 3.61 + 0.1805',
-          result: 18.0055,
+          expression: '13.8010120833333 + 0.4140303625 + 3.61 + 0.1805',
+          result: 18.0055424458333,
         }),
       );
       expect(item.calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'tax_cost',
-          expression: '18.0055 × 1.03',
-          result: 18.5457,
+          expression: '18.0055424458333 × 1.03',
+          result: 18.5457087192083,
         }),
       );
     },
@@ -164,8 +205,8 @@ describe('tax embedded in total cost cell', () => {
       expect(item.calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'total_cost',
-          expression: '28.039 + 0.8412 + 5.42 + 0.271',
-          result: 34.5712,
+          expression: '28.0390120833333 + 0.8411703625 + 5.42 + 0.271',
+          result: 34.5711824458333,
         }),
       );
     },
@@ -202,8 +243,8 @@ describe('generated cost analysis seed', () => {
       'utf8',
     );
 
-    expect(seed).toContain('"expression":"8.5388 ÷ 0.7 + 7"');
-    expect(seed).toContain('"expression":"7.9565 ÷ 0.7 + 2.646"');
+    expect(seed).toContain('"expression":"8.53876744583333 ÷ 0.7 + 7"');
+    expect(seed).toContain('"expression":"7.95646744583333 ÷ 0.7 + 2.646"');
     expect(seed).not.toContain('"expression":"15.7989 ÷ 0.7","result":19.1982');
   });
 

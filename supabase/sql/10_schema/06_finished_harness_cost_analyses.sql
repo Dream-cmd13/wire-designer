@@ -7,10 +7,10 @@
 alter table public.finished_harness_materials
   alter column source_material_id drop not null,
   alter column son_name drop not null,
-  add column if not exists total_cost numeric(12, 4),
-  add column if not exists sales_price numeric(12, 4),
-  add column if not exists sample_price numeric(12, 4),
-  add column if not exists quote_price numeric(12, 4),
+  add column if not exists total_cost numeric,
+  add column if not exists sales_price numeric,
+  add column if not exists sample_price numeric,
+  add column if not exists quote_price numeric,
   add column if not exists has_cost_analysis boolean not null default false,
   add column if not exists source_excel_url text;
 
@@ -40,15 +40,15 @@ create table if not exists public.finished_harness_cost_analyses (
   customer_part_no text,
 
   -- 核心汇总数值（原表缺失即 null，不做任何回退推算）
-  material_cost numeric(12, 4),
-  material_loss numeric(12, 4),
-  labor_cost numeric(12, 4),
-  labor_loss numeric(12, 4),
-  total_cost numeric(12, 4),
-  tax_cost numeric(12, 4),
-  sales_price numeric(12, 4),
-  sample_price numeric(12, 4),
-  quote_price numeric(12, 4),
+  material_cost numeric,
+  material_loss numeric,
+  labor_cost numeric,
+  labor_loss numeric,
+  total_cost numeric,
+  tax_cost numeric,
+  sales_price numeric,
+  sample_price numeric,
+  quote_price numeric,
 
   -- 结构化 JSONB 字段
   formula_config jsonb not null default '{}'::jsonb,
@@ -116,3 +116,20 @@ revoke all on public.finished_harness_cost_analyses from anon, authenticated;
 grant select on public.finished_harness_cost_analyses to authenticated;
 drop policy if exists "finished harness cost analyses read" on public.finished_harness_cost_analyses;
 create policy "finished harness cost analyses read" on public.finished_harness_cost_analyses for select to authenticated using (true);
+
+-- 数值保留 Excel 原始精度，显示格式保存在 formula_config / 明细 JSON 中。
+alter table public.finished_harness_materials
+  alter column total_cost type numeric,
+  alter column sales_price type numeric,
+  alter column sample_price type numeric,
+  alter column quote_price type numeric;
+alter table public.finished_harness_cost_analyses
+  alter column material_cost type numeric,
+  alter column material_loss type numeric,
+  alter column labor_cost type numeric,
+  alter column labor_loss type numeric,
+  alter column total_cost type numeric,
+  alter column tax_cost type numeric,
+  alter column sales_price type numeric,
+  alter column sample_price type numeric,
+  alter column quote_price type numeric;

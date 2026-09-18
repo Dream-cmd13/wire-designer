@@ -392,6 +392,9 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('成本分析');
     expect(html).toContain('报价');
 
+    expect(html).toContain('35.00');
+    expect(html).not.toContain('35.000000');
+
     // 第一条物料数据展示
     expect(html).toContain('WL-B21-001');
     expect(html).toContain('3P 航插 双头护套线 L=1800MM');
@@ -445,6 +448,7 @@ describe('MaterialLibraryPage', () => {
 
     // 价格信息
     expect(htmlWithData).toContain('¥ 60.00');
+    expect(htmlWithData).toContain('¥ 35.00');
     expect(htmlWithData).toContain('成本分析：');
     expect(htmlWithData).toContain('正式报价：');
 

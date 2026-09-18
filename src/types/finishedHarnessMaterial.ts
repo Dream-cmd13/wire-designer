@@ -4,15 +4,18 @@ export interface FinishedHarnessMaterialSupplier {
 
 export interface CalculationStepItem {
   stepKey: string;
+  numberFormat?: string;
   name: string;
   formula: string;
   expression: string;
+  displayExpression?: string;
   result: number | null;
   unit?: string;
   description?: string;
 }
 
 export interface BomItem {
+  numberFormats?: Record<string, string>;
   index: number;
   type: string | null;
   spec: string | null;
@@ -24,6 +27,7 @@ export interface BomItem {
 }
 
 export interface LaborItem {
+  numberFormats?: Record<string, string>;
   index: number;
   name: string;
   ratePerPoint: number | null;

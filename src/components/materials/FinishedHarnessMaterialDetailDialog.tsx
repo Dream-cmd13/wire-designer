@@ -1,3 +1,4 @@
+import { costNumberFormats, formatCostNumber } from '@/lib/costNumberFormat';
 import { useEffect, useState } from 'react';
 import {
   Calculator,
@@ -43,14 +44,6 @@ function formatDate(isoString: string | null | undefined): string {
   } catch {
     return isoString;
   }
-}
-
-function formatAmount(value: number | null | undefined, digits: number): string {
-  return value != null ? value.toFixed(digits) : '原表未提供';
-}
-
-function formatTableCell(value: number | null | undefined, digits: number): string {
-  return value != null ? value.toFixed(digits) : '-';
 }
 
 export function FinishedHarnessMaterialDetailDialog({
@@ -121,6 +114,10 @@ export function FinishedHarnessMaterialDetailDialog({
   const samplePrice = costAnalysis ? costAnalysis.samplePrice : material.samplePrice;
   const quotePrice = costAnalysis ? costAnalysis.quotePrice : material.quotePrice;
 
+  const formats = costAnalysis ? costNumberFormats(costAnalysis.formulaConfig) : {};
+  const formatAmount = (value: number | null | undefined, key: string) =>
+    formatCostNumber(value, formats[key] ?? '0.00', '原表未提供');
+
   // 售价口径提示按原表实际公式动态显示，避免写死“30% 毛利”
   const salesPriceHint = (() => {
     if (!costAnalysis) return '目录/CRM 基础价';
@@ -141,19 +138,19 @@ export function FinishedHarnessMaterialDetailDialog({
       costAnalysis?.customerPartNo ? `客户料号：${costAnalysis.customerPartNo}` : '',
       `----------------------------------------`,
       `【核心价格指标】`,
-      `• 综合总成本：¥ ${formatAmount(totalCost, 4)} 元`,
-      `• 销售定价：¥ ${formatAmount(salesPrice, 4)} 元`,
-      `• 样品单价：¥ ${formatAmount(samplePrice, 4)} 元`,
-      `• 建议对外报价：¥ ${formatAmount(quotePrice, 4)} 元`,
+      `• 综合总成本：¥ ${formatAmount(totalCost, 'total_cost')} 元`,
+      `• 销售定价：¥ ${formatAmount(salesPrice, 'sales_price')} 元`,
+      `• 样品单价：¥ ${formatAmount(samplePrice, 'sample_price')} 元`,
+      `• 建议对外报价：¥ ${formatAmount(quotePrice, 'quote_price')} 元`,
     ];
 
     if (costAnalysis) {
       lines.push(
         `----------------------------------------`,
         `【成本与损耗核算构成】`,
-        `• 原材料小计：¥ ${formatAmount(costAnalysis.materialCost, 4)} 元 (损耗金: ¥ ${formatAmount(costAnalysis.materialLoss, 4)} 元)`,
-        `• 人工工时小计：¥ ${formatAmount(costAnalysis.laborCost, 4)} 元 (损耗金: ¥ ${formatAmount(costAnalysis.laborLoss, 4)} 元)`,
-        `• 管理与税费：¥ ${formatAmount(costAnalysis.taxCost, 4)} 元`,
+        `• 原材料小计：¥ ${formatAmount(costAnalysis.materialCost, 'material_cost')} 元 (损耗金: ¥ ${formatAmount(costAnalysis.materialLoss, 'material_loss')} 元)`,
+        `• 人工工时小计：¥ ${formatAmount(costAnalysis.laborCost, 'labor_cost')} 元 (损耗金: ¥ ${formatAmount(costAnalysis.laborLoss, 'labor_loss')} 元)`,
+        `• 管理与税费：¥ ${formatAmount(costAnalysis.taxCost, 'tax_cost')} 元`,
       );
 
       if (costAnalysis.calculationSteps && costAnalysis.calculationSteps.length > 0) {
@@ -163,7 +160,7 @@ export function FinishedHarnessMaterialDetailDialog({
         );
         for (const s of costAnalysis.calculationSteps) {
           lines.push(
-            `• [${s.stepKey}] ${s.name}: ${s.expression} = ¥ ${formatAmount(s.result, 4)}`,
+            `• [${s.stepKey}] ${s.name}: ${s.displayExpression ?? s.expression} = ¥ ${formatCostNumber(s.result, s.numberFormat, '原表未提供')}`,
           );
         }
       }
@@ -275,7 +272,7 @@ export function FinishedHarnessMaterialDetailDialog({
               <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-3">
                 <span className="text-slate-500 text-[11px] block">成本分析：</span>
                 <div className="mt-1 font-mono text-base font-bold text-slate-800">
-                  {totalCost != null ? `¥ ${totalCost.toFixed(2)}` : '暂无'}
+                  {totalCost != null ? `¥ ${formatAmount(totalCost, 'total_cost')}` : '暂无'}
                 </div>
                 <span className="text-[10px] text-slate-400 mt-0.5 block">材料+工时及损耗</span>
               </div>
@@ -284,7 +281,7 @@ export function FinishedHarnessMaterialDetailDialog({
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
                 <span className="text-emerald-700 text-[11px] font-medium block">最低售价：</span>
                 <div className="mt-1 font-mono text-base font-bold text-emerald-700">
-                  {salesPrice != null ? `¥ ${salesPrice.toFixed(2)}` : '暂无'}
+                  {salesPrice != null ? `¥ ${formatAmount(salesPrice, 'sales_price')}` : '暂无'}
                 </div>
                 <span className="text-[10px] text-emerald-600/80 mt-0.5 block">{salesPriceHint}</span>
               </div>
@@ -293,7 +290,7 @@ export function FinishedHarnessMaterialDetailDialog({
               <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
                 <span className="text-amber-700 text-[11px] font-medium block">样品价：</span>
                 <div className="mt-1 font-mono text-base font-bold text-amber-800">
-                  {samplePrice != null ? `¥ ${samplePrice.toFixed(2)}` : '暂无'}
+                  {samplePrice != null ? `¥ ${formatAmount(samplePrice, 'sample_price')}` : '暂无'}
                 </div>
                 <span className="text-[10px] text-amber-600/80 mt-0.5 block">通常按保本成本 2 倍核算</span>
               </div>
@@ -302,7 +299,7 @@ export function FinishedHarnessMaterialDetailDialog({
               <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3">
                 <span className="text-indigo-700 text-[11px] font-medium block">正式报价：</span>
                 <div className="mt-1 font-mono text-base font-bold text-indigo-800">
-                  {quotePrice != null ? `¥ ${quotePrice.toFixed(2)}` : '暂无'}
+                  {quotePrice != null ? `¥ ${formatAmount(quotePrice, 'quote_price')}` : '暂无'}
                 </div>
                 <span className="text-[10px] text-indigo-600/80 mt-0.5 block">速通或客户核定报价</span>
               </div>
@@ -395,7 +392,7 @@ export function FinishedHarnessMaterialDetailDialog({
                                   </code>
                                 </div>
                                 <div className="mt-1 text-[11px] text-slate-500">
-                                  代入: <span className="font-mono text-slate-700">{step.expression}</span>
+                                  代入: <span className="font-mono text-slate-700">{step.displayExpression ?? step.expression}</span>
                                   {step.description && (
                                     <span className="ml-2 text-slate-400">({step.description})</span>
                                   )}
@@ -406,7 +403,7 @@ export function FinishedHarnessMaterialDetailDialog({
                             <div className="flex items-center gap-1.5 sm:text-right shrink-0 pl-8 sm:pl-0">
                               <ChevronRight className="hidden sm:block h-3.5 w-3.5 text-slate-300" />
                               <span className="font-mono font-bold text-sm text-slate-900">
-                                {step.result != null ? `¥ ${Number(step.result).toFixed(2)}` : '未核定'}
+                                {step.result != null ? `¥ ${formatCostNumber(step.result, step.numberFormat)}` : '未核定'}
                               </span>
                             </div>
                           </div>
@@ -439,14 +436,14 @@ export function FinishedHarnessMaterialDetailDialog({
                               <td className="py-2 px-2.5 font-mono text-slate-800">{item.spec || '-'}</td>
                               <td className="py-2 px-2.5 text-slate-500">{item.brand || '-'}</td>
                               <td className="py-2 px-2.5 text-right font-mono">
-                                {item.qty != null ? item.qty : '-'}
+                                {formatCostNumber(item.qty, item.numberFormats?.qty)}
                               </td>
                               <td className="py-2 px-2.5 text-center text-slate-500">{item.unit || '-'}</td>
                               <td className="py-2 px-2.5 text-right font-mono text-slate-600">
-                                {formatTableCell(item.unitPrice, 4)}
+                                {formatCostNumber(item.unitPrice, item.numberFormats?.unitPrice)}
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono font-semibold text-slate-900">
-                                {formatTableCell(item.totalPrice, 4)}
+                                {formatCostNumber(item.totalPrice, item.numberFormats?.totalPrice)}
                               </td>
                             </tr>
                           ))}
@@ -457,7 +454,7 @@ export function FinishedHarnessMaterialDetailDialog({
                               材料总价小计:
                             </td>
                             <td className="py-2 px-2.5 text-right font-mono text-blue-600">
-                              ¥ {formatAmount(costAnalysis.materialCost, 4)}
+                              ¥ {formatAmount(costAnalysis.materialCost, 'material_cost')}
                             </td>
                           </tr>
                         </tfoot>
@@ -485,13 +482,13 @@ export function FinishedHarnessMaterialDetailDialog({
                               <td className="py-2 px-2.5 text-center text-slate-400">{item.index}</td>
                               <td className="py-2 px-2.5 font-medium text-slate-800">{item.name}</td>
                               <td className="py-2 px-2.5 text-right font-mono text-slate-600">
-                                {formatTableCell(item.ratePerPoint, 2)}
+                                {formatCostNumber(item.ratePerPoint, item.numberFormats?.ratePerPoint)}
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono">
-                                {item.points != null ? item.points : '-'}
+                                {formatCostNumber(item.points, item.numberFormats?.points)}
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono font-semibold text-slate-900">
-                                {formatTableCell(item.cost, 2)}
+                                {formatCostNumber(item.cost, item.numberFormats?.cost)}
                               </td>
                               <td className="py-2 px-2.5 text-slate-500">{item.note || '-'}</td>
                             </tr>
@@ -503,7 +500,7 @@ export function FinishedHarnessMaterialDetailDialog({
                               工时费用小计:
                             </td>
                             <td className="py-2 px-2.5 text-right font-mono text-blue-600">
-                              ¥ {formatAmount(costAnalysis.laborCost, 2)}
+                              ¥ {formatAmount(costAnalysis.laborCost, 'labor_cost')}
                             </td>
                             <td></td>
                           </tr>

@@ -45,7 +45,7 @@ export function listExcelWorkbooks(excelDir) {
 function cleanNumber(val) {
   if (val == null || val === '') return null;
   const n = Number(val);
-  return Number.isFinite(n) ? Math.round(n * 10000) / 10000 : null;
+  return Number.isFinite(n) ? n : null;
 }
 
 function getCellVal(ws, addr) {
@@ -58,7 +58,17 @@ function getCellFormula(ws, addr) {
   return cell ? cell.f : undefined;
 }
 
-function formatFormulaExpression(formula, ws) {
+function displayNumber(value, format) {
+  if (value == null) return '--';
+  if (!format || format.trim().toLowerCase() === 'general') {
+    const text = value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 6 });
+    if (value !== 0 && Number(text) === 0) return value > 0 ? '<0.000001' : '>-0.000001';
+    return text;
+  }
+  return XLSX.SSF.format(format, value).trim();
+}
+
+function formatFormulaExpression(formula, ws, display = false) {
   const cellReferencePattern = /\$?([A-Z]{1,3})\$?(\d+)/g;
   const substituted = formula.replace(
     cellReferencePattern,
@@ -68,7 +78,7 @@ function formatFormulaExpression(formula, ws) {
       const after = source[offset + reference.length];
       if (before === ':' || after === ':' || after === '(') return reference;
       const value = cleanNumber(getCellVal(ws, `${column}${row}`));
-      return value == null ? reference : String(value);
+      return value == null ? reference : display ? displayNumber(value, ws[`${column}${row}`]?.z) : String(value);
     },
   );
 
@@ -146,7 +156,7 @@ export function resolvePriceDerivation(formula, baseValue, targetValue, defaultL
 
 export function parseCostWorkbook(filePath, options = {}) {
   const fileName = path.basename(filePath);
-  const wb = XLSX.readFile(filePath, { cellFormula: true });
+  const wb = XLSX.readFile(filePath, { cellFormula: true, cellNF: true });
   const results = [];
   const warn = (sheetName, message) => {
     options.onWarning?.(`${fileName} [${sheetName}]: ${message}`);
@@ -249,6 +259,9 @@ export function parseCostWorkbook(filePath, options = {}) {
       }
     }
 
+    const numberFormats = {};
+    const cellFormat = (addr) => ws[addr]?.z || 'General';
+
     const bomItems = [];
     if (bomStartRow > 0) {
       let bomEndFound = false;
@@ -280,6 +293,7 @@ export function parseCostWorkbook(filePath, options = {}) {
             unit: unit || null,
             unitPrice,
             totalPrice,
+            numberFormats: { qty: cellFormat('F' + r), unitPrice: cellFormat('H' + r), totalPrice: cellFormat('I' + r) },
           });
         }
       }
@@ -329,6 +343,7 @@ export function parseCostWorkbook(filePath, options = {}) {
             points,
             cost,
             note: note || null,
+            numberFormats: { ratePerPoint: cellFormat('D' + r), points: cellFormat('H' + r), cost: cellFormat('I' + r) },
           });
         }
       }
@@ -378,6 +393,7 @@ export function parseCostWorkbook(filePath, options = {}) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             materialCost = foundVal;
+            numberFormats.material_cost = cellFormat(targetAddr);
             materialCostFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
@@ -387,6 +403,7 @@ export function parseCostWorkbook(filePath, options = {}) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             materialLoss = foundVal;
+            numberFormats.material_loss = cellFormat(targetAddr);
             materialLossFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
@@ -396,6 +413,7 @@ export function parseCostWorkbook(filePath, options = {}) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             laborCost = foundVal;
+            numberFormats.labor_cost = cellFormat(targetAddr);
             laborCostFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
@@ -405,6 +423,7 @@ export function parseCostWorkbook(filePath, options = {}) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             laborLoss = foundVal;
+            numberFormats.labor_loss = cellFormat(targetAddr);
             laborLossFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
@@ -414,6 +433,7 @@ export function parseCostWorkbook(filePath, options = {}) {
           const foundVal = cleanNumber(getCellVal(ws, targetAddr));
           if (foundVal != null) {
             totalCost = foundVal;
+            numberFormats.total_cost = cellFormat(targetAddr);
             totalCostFormula = getCellFormula(ws, targetAddr) || '';
           }
         }
@@ -425,10 +445,12 @@ export function parseCostWorkbook(filePath, options = {}) {
             const nextCheck = cName + (r + 1);
             if (getCellVal(ws, check) != null && typeof getCellVal(ws, check) === 'number') {
               taxCost = cleanNumber(getCellVal(ws, check)) ?? 0;
+              numberFormats.tax_cost = cellFormat(check);
               taxCostFormula = getCellFormula(ws, check) || '';
               break;
             } else if (getCellVal(ws, nextCheck) != null && typeof getCellVal(ws, nextCheck) === 'number') {
               taxCost = cleanNumber(getCellVal(ws, nextCheck)) ?? 0;
+              numberFormats.tax_cost = cellFormat(nextCheck);
               taxCostFormula = getCellFormula(ws, nextCheck) || '';
               break;
             }
@@ -442,7 +464,9 @@ export function parseCostWorkbook(filePath, options = {}) {
           const found = cleanNumber(getCellVal(ws, nextRowAddr)) ?? cleanNumber(getCellVal(ws, rightAddr));
           if (found != null) {
             samplePrice = found;
-            samplePriceFormula = getCellFormula(ws, nextRowAddr) || getCellFormula(ws, rightAddr) || '';
+            const sourceAddr = cleanNumber(getCellVal(ws, nextRowAddr)) != null ? nextRowAddr : rightAddr;
+            numberFormats.sample_price = cellFormat(sourceAddr);
+            samplePriceFormula = getCellFormula(ws, sourceAddr) || '';
           }
         }
 
@@ -453,7 +477,9 @@ export function parseCostWorkbook(filePath, options = {}) {
           const found = cleanNumber(getCellVal(ws, nextRowAddr)) ?? cleanNumber(getCellVal(ws, rightAddr));
           if (found != null) {
             salesPrice = found;
-            salesPriceFormula = getCellFormula(ws, nextRowAddr) || getCellFormula(ws, rightAddr) || '';
+            const sourceAddr = cleanNumber(getCellVal(ws, nextRowAddr)) != null ? nextRowAddr : rightAddr;
+            numberFormats.sales_price = cellFormat(sourceAddr);
+            salesPriceFormula = getCellFormula(ws, sourceAddr) || '';
           }
         }
 
@@ -462,6 +488,8 @@ export function parseCostWorkbook(filePath, options = {}) {
           const m = val.match(/([0-9]+(\.[0-9]+)?)/);
           if (m) {
             quotePrice = cleanNumber(m[1]);
+            const decimals = m[1].split('.')[1]?.length || 0;
+            numberFormats.quote_price = decimals ? '0.' + '0'.repeat(decimals) : '0';
             quoteNote = val;
           }
         }
@@ -487,6 +515,7 @@ export function parseCostWorkbook(filePath, options = {}) {
       baseTotalCostFormula = totalCostFormula.replace(/\*\s*[0-9.]+\s*$/, '').trim();
       if (taxCost == null) {
         taxCost = totalCost;
+        numberFormats.tax_cost = numberFormats.total_cost;
         taxCostFormula = totalCostFormula;
       }
     }
@@ -663,6 +692,21 @@ export function parseCostWorkbook(filePath, options = {}) {
       });
     }
 
+    // 展示轨迹使用来源格式，原始 expression 保持完整精度供数值校验。
+    const displayField = (value, key) => displayNumber(value, numberFormats[key]);
+    const displayExpressions = {
+      material_cost: bomItems.length ? bomItems.map(b => `${displayNumber(b.totalPrice, b.numberFormats.totalPrice)}(${b.type || '未标注类型'})`).join(' + ') : displayField(materialCost, 'material_cost'),
+      labor_cost: laborItems.length ? laborItems.map(l => `${displayNumber(l.cost, l.numberFormats.cost)}(${l.name})`).join(' + ') : displayField(laborCost, 'labor_cost'),
+      material_loss: matLossRate != null && materialCost != null ? `${displayField(materialCost, 'material_cost')} × ${matLossRate}` : displayField(materialLoss, 'material_loss'),
+      labor_loss: labLossRate != null && laborCost != null ? `${displayField(laborCost, 'labor_cost')} × ${labLossRate}` : displayField(laborLoss, 'labor_loss'),
+      total_cost: [materialCost, materialLoss, laborCost, laborLoss].every(v => v != null)
+        ? [[materialCost, 'material_cost'], [materialLoss, 'material_loss'], [laborCost, 'labor_cost'], [laborLoss, 'labor_loss']].map(([v, k]) => displayField(v, k)).join(' + ')
+        : displayField(baseTotalCost, 'total_cost'),
+      tax_cost: taxMultiplier != null && baseTotalCost != null && taxCost > baseTotalCost ? `${displayField(baseTotalCost, 'total_cost')} × ${taxMultiplier}` : displayField(taxCost, 'tax_cost'),
+      sales_price: salesPriceFormula ? formatFormulaExpression(salesPriceFormula, ws, true) : displayField(salesPrice, 'sales_price'),
+      sample_price: samplePriceFormula ? formatFormulaExpression(samplePriceFormula, ws, true) : displayField(samplePrice, 'sample_price'),
+    };
+
     results.push({
       platformNo,
       productName: productName || null,
@@ -680,6 +724,7 @@ export function parseCostWorkbook(filePath, options = {}) {
       samplePrice,
       quotePrice,
       formulaConfig: {
+        numberFormats,
         materialCostFormula,
         materialLossFormula,
         laborCostFormula,
@@ -689,7 +734,7 @@ export function parseCostWorkbook(filePath, options = {}) {
         salesPriceFormula,
         samplePriceFormula,
       },
-      calculationSteps: steps,
+      calculationSteps: steps.map((step) => ({ ...step, numberFormat: numberFormats[step.stepKey] || 'General', displayExpression: step.result == null ? step.expression : displayExpressions[step.stepKey] || step.expression })),
       bomItems,
       laborItems,
     });
