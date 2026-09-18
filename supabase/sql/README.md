@@ -18,7 +18,7 @@
 10. `30_security/01_rls.sql`：安装项目、图纸、目录与目录图片读取策略。
 11. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
 12. `40_seed/02_real_harness_catalog.sql`：写入 12 个真实连接器和 10 个真实线材。
-13. `40_seed/05_finished_harness_materials.sql`：写入外部系统导出的成品线束物料（可单独重复执行）。
+13. `40_seed/05_finished_harness_materials.sql`：写入外部系统导出的成品线束物料（已剔除无图纸且未被成本分析引用的记录，可单独重复执行）。
 14. `40_seed/06_finished_harness_cost_analyses.sql`：写入 44 个成品方案成本分析、工序工时与定价公式推导基线数据（可单独重复执行）。
 
 新增成品线束表与成本分析也可以在已有数据库上单独执行第 6、7、8、13、14 步，无需执行 `drop all`。若后续更新了 `excel/` 目录下的成本分析表格（含料号命名变化），运行 `npm run supabase:export-cost-seed` 刷新第 14 步种子后只需重新执行该文件：种子会先清理当前解析结果之外的历史成本分析与无分析引用的自动建档物料，再写入最新结果，直接替换旧命名，无需清库或重建。
@@ -45,9 +45,10 @@ npm run supabase:bootstrap-storage
 - 目录公共字段和按 `kind` 区分的 `spec` 存在 `catalog_items`。
 - `02_real_harness_catalog.sql` 是真实 Excel 目录的唯一 seed 责任文件；同一 `kind + code` 不得在基线 seed 中重复维护。
 - `finished_harness_materials.son_price_low` 是 CRM 平台最低售价，只随外部导入写入：有值即保留，缺失保持 null；成本分析、Excel 导入与同步脚本一律禁止回填或覆盖该列。
-- `finished_harness_materials.son_unit` 是外部导入单位，成本分析建档不写入、缺失保持 null；`son_name` 在无来源名称时以 `platform_no` 作为系统约定名称。
+- `finished_harness_materials.son_unit` 是外部导入单位，成本分析建档不写入、缺失保持 null；`son_name` 只写 Excel 来源名称（如 B2 描述），无来源名称时保持 null，界面以“未命名”兜底，CRM 已有名称不被覆盖。
 - 成本分析的来源定位以 `source_excel_path`（私有桶 `cost-analysis-sources` 内对象路径）为准；`source_excel_url` 仅作 URL 形式的展示/兼容定位，私有桶下不可匿名访问。
-- 成本分析 `platform_no` 优先取 Sheet 名（`WL-*`）；Sheet 无规范命名时取来源文件名中的规范料号；同一 Excel 内多个非规范 sheet 共用一个料号时，统一追加 sheet 名后缀以区分。重新执行第 14 步种子（或同步脚本）会直接清理替换旧命名残留，无需清库重建。
+- 成本分析 `platform_no` 直接取规范命名的 Sheet 名（`WL-*`，长度统一为 mm 数字后缀，如 `WL-B21-414-2000`）；Sheet 无规范命名时取来源文件名中的规范料号；同一 Excel 内多个非规范 sheet 共用一个料号时，统一追加 sheet 名后缀以区分。重新执行第 14 步种子（或同步脚本）会直接清理替换旧命名残留，无需清库重建。
+- 成品库只展示有来源图纸或被成本分析引用的物料；第 13 步种子已剔除无图纸且未被引用的记录，第 14 步种子（或同步脚本）会在成本分析写入完成后对已有库执行同样的清理。
 - 成本分析解析器（`parseCostWorkbook`）在找不到 BOM/工序表头或汇总标签时输出告警摘要；导出的种子与数据库核对使用 `npm run supabase:verify-cost-analyses`。
 - 真实线材的原始描述保存在 `description`，工程字段保存在 `spec`；当来源文本与结构化值冲突时，两者都保留。
 - `kind = 'overmold'` 的目录项只允许黑色 PVC 45P / 黑色 TPE 与直头 / 弯头四种组合；可用内模固定为低密度透明 PE，且内模外型必须与外模一致。

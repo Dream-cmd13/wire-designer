@@ -35,8 +35,7 @@ export function mapFinishedHarnessMaterialRow(value: unknown): FinishedHarnessMa
   const row = value as Row;
   if (
     typeof row.id !== 'string' ||
-    typeof row.platform_no !== 'string' ||
-    typeof row.son_name !== 'string'
+    typeof row.platform_no !== 'string'
   ) {
     throw new FinishedHarnessMaterialRepositoryError('成品线束物料缺少必填字段。');
   }
@@ -51,7 +50,7 @@ export function mapFinishedHarnessMaterialRow(value: unknown): FinishedHarnessMa
     sourceMaterialId: row.source_material_id == null ? null : Number(row.source_material_id),
     sourceGoodsId: row.source_goods_id == null ? null : Number(row.source_goods_id),
     platformNo: row.platform_no,
-    sonName: row.son_name,
+    sonName: typeof row.son_name === 'string' ? row.son_name : '',
     supplierId: typeof row.supplier_id === 'string' ? row.supplier_id : null,
     supplierNo,
     supplier: supplierNo ? { supplier_no: supplierNo } : null,

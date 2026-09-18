@@ -6,6 +6,7 @@
 -- 1. 扩充成品线束主表核心价格汇总字段与来源 Excel，并将 source_material_id 调整为可空
 alter table public.finished_harness_materials
   alter column source_material_id drop not null,
+  alter column son_name drop not null,
   add column if not exists total_cost numeric(12, 4),
   add column if not exists sales_price numeric(12, 4),
   add column if not exists sample_price numeric(12, 4),

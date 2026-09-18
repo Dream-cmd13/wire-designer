@@ -21,8 +21,11 @@ describe('FinishedHarnessMaterialRepository', () => {
       FinishedHarnessMaterialRepositoryError,
     );
     expect(() =>
-      mapFinishedHarnessMaterialRow({ id: '1', platform_no: 'WL-01' }),
+      mapFinishedHarnessMaterialRow({ id: '1' }),
     ).toThrow('成品线束物料缺少必填字段。');
+    expect(
+      mapFinishedHarnessMaterialRow({ id: '1', platform_no: 'WL-01', son_name: null }).sonName,
+    ).toBe('');
 
     const valid = mapFinishedHarnessMaterialRow({
       id: 'uuid-123',

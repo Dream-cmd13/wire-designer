@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createClient } from '@supabase/supabase-js';
-import { parseCostWorkbook, buildStaleCleanupStatements } from './import-cost-analyses.mjs';
+import { parseCostWorkbook, buildStaleCleanupStatements, NO_DRAWING_MATERIAL_CLEANUP_SQL } from './import-cost-analyses.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -190,9 +190,10 @@ async function main() {
       await dbClient.query(
         `update public.finished_harness_materials 
          set total_cost = $1, sales_price = $2, sample_price = $3, quote_price = $4, 
-             has_cost_analysis = true, source_excel_url = $5, updated_at = now()
+             has_cost_analysis = true, source_excel_url = $5,
+             son_name = case when source_material_id is null then $7 else son_name end, updated_at = now()
          where id = $6`,
-        [item.totalCost, item.salesPrice, item.samplePrice, item.quotePrice, sourceExcelUrl, harnessMaterialId]
+        [item.totalCost, item.salesPrice, item.samplePrice, item.quotePrice, sourceExcelUrl, harnessMaterialId, item.productName || null]
       );
       updatedCount++;
     } else {
@@ -206,7 +207,7 @@ async function main() {
         [
           null,
           item.platformNo,
-          item.productName || item.platformNo,
+          item.productName || null,
           item.totalCost,
           item.salesPrice,
           item.samplePrice,
@@ -271,6 +272,9 @@ async function main() {
       ]
     );
   }
+
+  // 成本分析写入完成后再隐藏无图纸且未被引用的物料
+  await dbClient.query(NO_DRAWING_MATERIAL_CLEANUP_SQL);
 
   console.log(`[Database] 同步完成！更新关联: ${updatedCount} 个，新建档: ${createdCount} 个。`);
   await dbClient.end();

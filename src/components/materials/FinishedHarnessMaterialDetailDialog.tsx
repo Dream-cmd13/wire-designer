@@ -215,8 +215,12 @@ export function FinishedHarnessMaterialDetailDialog({
               <span className="font-mono text-xs font-semibold text-blue-600">
                 {material.platformNo}
               </span>
-              <span className="text-xs text-slate-500 font-medium truncate max-w-[360px]">
-                {material.sonName}
+              <span
+                className={`text-xs truncate max-w-[360px] ${
+                  material.sonName ? 'text-slate-500 font-medium' : 'text-slate-400 italic'
+                }`}
+              >
+                {material.sonName || '未命名'}
               </span>
             </div>
           </div>
@@ -526,7 +530,11 @@ export function FinishedHarnessMaterialDetailDialog({
                 </div>
                 <div>
                   <span className="text-slate-500">物料名称：</span>
-                  <span className="font-medium text-slate-900">{material.sonName}</span>
+                  {material.sonName ? (
+                    <span className="font-medium text-slate-900">{material.sonName}</span>
+                  ) : (
+                    <span className="text-slate-400 italic">未命名</span>
+                  )}
                 </div>
                 <div>
                   <span className="text-slate-500">源物料 ID：</span>

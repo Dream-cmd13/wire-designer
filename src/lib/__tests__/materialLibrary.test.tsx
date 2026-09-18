@@ -467,6 +467,19 @@ describe('MaterialLibraryPage', () => {
     expect(htmlWithNulls).toContain('暂无图纸');
     expect(htmlWithNulls).not.toContain('¥ 0.00');
     expect(htmlWithNulls).not.toContain('>0<');
+
+    const htmlWithEmptyName = renderToStaticMarkup(
+      <FinishedHarnessMaterialDetailDialog
+        isOpen={true}
+        onClose={() => {}}
+        material={{
+          ...mockFinishedHarnesses[1],
+          sonName: '',
+        }}
+      />,
+    );
+    expect(htmlWithEmptyName).toContain('未命名');
+    expect(htmlWithEmptyName).toContain('text-slate-400 italic');
   });
 
   it('maps raw database row with null handling and validation correctly', () => {

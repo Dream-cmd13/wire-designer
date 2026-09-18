@@ -543,12 +543,14 @@ export function MaterialLibraryPage({
   const filteredFinishedHarnesses = useMemo(() => {
     const q = finishedQuery.trim().toLowerCase();
     return finishedHarnesses.filter((h) => {
+      const displayName = h.sonName || '未命名';
+      const supplierDisplay = h.supplier?.supplier_no || h.supplierNo || '';
       const matchQ =
         !q ||
         h.platformNo.toLowerCase().includes(q) ||
-        h.sonName.toLowerCase().includes(q);
+        displayName.toLowerCase().includes(q) ||
+        supplierDisplay.toLowerCase().includes(q);
 
-      const supplierDisplay = h.supplier?.supplier_no || h.supplierNo || '';
       const matchS = finishedSupplierNo === 'all' || supplierDisplay === finishedSupplierNo;
 
       const hasDrawing = Boolean(h.file2d);
@@ -1600,8 +1602,12 @@ export function MaterialLibraryPage({
                               {h.platformNo}
                             </button>
                           </td>
-                          <td className="px-4 py-3 text-slate-800 font-medium">
-                            {h.sonName}
+                          <td className="px-4 py-3">
+                            {h.sonName ? (
+                              <span className="font-medium text-slate-800">{h.sonName}</span>
+                            ) : (
+                              <span className="text-slate-400 italic">未命名</span>
+                            )}
                           </td>
                           <td className="px-4 py-3 font-mono text-slate-600">
                             {supplierNo || '暂无编号'}

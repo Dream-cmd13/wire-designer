@@ -19,7 +19,7 @@ describe('finished harness material SQL', () => {
     expect(seed).toContain('source_material_id');
     expect(seed).toContain('on conflict (source_material_id) do update');
     expect(seed).toContain('file_2d');
-    expect(seed).toContain('delete from public.finished_harness_materials where file_2d is null');
+    expect(seed).not.toContain('delete from public.finished_harness_materials');
   });
 
   it('secures cost analyses schema and extends material table columns', () => {
@@ -52,6 +52,7 @@ describe('finished harness material SQL', () => {
     expect(costSeed).toContain('on conflict (platform_no) do update');
     expect(costSeed).toContain('WL-B21-577');
     expect(costSeed).toContain('WL-B21-534');
+    expect(costSeed).toContain('where m.file_2d is null');
   });
 });
 

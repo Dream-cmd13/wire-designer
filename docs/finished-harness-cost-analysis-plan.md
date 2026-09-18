@@ -260,16 +260,16 @@ flowchart TD
 
 ### 关键导入逻辑说明：
 1. **平台料号智能提取**：
-   - 优先比对 Sheet 名称（如 `WL-B21-534`）；
-   - Sheet 为非规范命名时，取文件名中的规范料号（如 `成本分析-WL-B21-467.xlsx` → `WL-B21-467`）；
-   - 同一文件内多个非规范 sheet 共用一个料号时（如 `2米`/`15米`、涨价前/后），统一追加 sheet 名后缀以区分；
+   - 优先取 Sheet 名称，源表 Sheet 已按规范料号命名（如 `WL-B21-534`；长度变体统一为 mm 数字后缀，如 `WL-B21-414-2000`/`WL-B21-414-15000`）；
+   - Sheet 为非规范命名时，取文件名中的规范料号兜底；
+   - 同一文件内多个非规范 sheet 共用一个料号时，统一追加 sheet 名后缀以区分；
    - 对带有规格后缀的独立物料（如 `WL-B21-499-A`），将其作为独立料号建档。
 2. **料号唯一与幂等性**：
    - 使用 PostgreSQL 的 `ON CONFLICT (platform_no) DO UPDATE`；
    - 写入前先清理当前解析结果之外的历史成本分析与已无分析引用的自动建档物料（`source_material_id` 为空的记录），因此第 14 步种子或同步脚本可单独重复执行，直接替换旧命名结果，无需清库或重建数据库；
    - 脚本支持重复运行，不会产生脏数据。
 3. **主表自动建档**：
-   - 对于主表 `finished_harness_materials` 中尚不存在的成品料号，自动建档（`source_material_id` 允许为空），写入料号 `platform_no`、物料名称 `son_name`（从 Excel 表头提取）、单位、包装规格等，并置 `has_cost_analysis = true`。
+   - 对于主表 `finished_harness_materials` 中尚不存在的成品料号，自动建档（`source_material_id` 允许为空），写入料号 `platform_no`、物料名称 `son_name`（仅取 Excel 来源名称，缺失保持 null，界面显示“未命名”）、单位、包装规格等，并置 `has_cost_analysis = true`。
 
 ---
 

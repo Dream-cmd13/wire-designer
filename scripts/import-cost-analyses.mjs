@@ -747,6 +747,16 @@ export function buildStaleCleanupStatements(platformNos) {
   return lines;
 }
 
+// 无来源图纸的物料仅在被成本分析引用时保留，否则隐藏；需在成本分析写入完成后执行。
+export const NO_DRAWING_MATERIAL_CLEANUP_SQL = [
+  'delete from public.finished_harness_materials as m',
+  'where m.file_2d is null',
+  '  and not exists (',
+  '    select 1 from public.finished_harness_cost_analyses as c',
+  '    where c.harness_material_id = m.id',
+  '  );',
+].join('\n');
+
 export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
   const lines = [];
   lines.push('-- ==============================================================================');
@@ -779,12 +789,12 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
     const urlInfo = fileUrlMap.get(item.sourceExcelFile);
     const sourceExcelUrl = urlInfo?.publicUrl || null;
     const isLast = idx === allAnalyses.length - 1;
-    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName || item.platformNo)}, ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
+    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName)}, ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
   });
   lines.push(matValues.join('\n'));
 
   lines.push('on conflict (platform_no) do update set');
-  lines.push('  son_name = coalesce(finished_harness_materials.son_name, excluded.son_name),');
+  lines.push('  son_name = case when finished_harness_materials.source_material_id is null then excluded.son_name else finished_harness_materials.son_name end,');
   lines.push('  total_cost = excluded.total_cost,');
   lines.push('  sales_price = excluded.sales_price,');
   lines.push('  sample_price = excluded.sample_price,');
@@ -875,6 +885,10 @@ export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
   lines.push('  bom_items = excluded.bom_items,');
   lines.push('  labor_items = excluded.labor_items,');
   lines.push('  updated_at = now();\n');
+
+  lines.push('-- 3. 隐藏无来源图纸且未被成本分析引用的物料，保持成品库只展示有图纸或已核算成本的物料');
+  lines.push(...NO_DRAWING_MATERIAL_CLEANUP_SQL.split('\n'));
+  lines.push('');
 
   lines.push('commit;\n');
   return lines.join('\n');
@@ -992,12 +1006,13 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
         let harnessMaterialId = null;
         if (existRes.rows.length > 0) {
           harnessMaterialId = existRes.rows[0].id;
-          // 更新主表价格
+          // 更新主表价格；自动建档物料（source_material_id 为空）无来源名称时同步置空，CRM 来源物料名称永不覆盖
           await client.query(
             `update public.finished_harness_materials 
-             set total_cost = $1, sales_price = $2, sample_price = $3, quote_price = $4, has_cost_analysis = true, updated_at = now()
-             where id = $5`,
-            [item.totalCost, item.salesPrice, item.samplePrice, item.quotePrice, harnessMaterialId]
+             set total_cost = $1, sales_price = $2, sample_price = $3, quote_price = $4, has_cost_analysis = true,
+                 son_name = case when source_material_id is null then $5 else son_name end, updated_at = now()
+             where id = $6`,
+            [item.totalCost, item.salesPrice, item.samplePrice, item.quotePrice, item.productName || null, harnessMaterialId]
           );
           updatedCount++;
         } else {
@@ -1011,7 +1026,7 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
             [
               null,
               item.platformNo,
-              item.productName || item.platformNo,
+              item.productName || null,
               item.totalCost,
               item.salesPrice,
               item.samplePrice,
@@ -1072,6 +1087,9 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
           ]
         );
       }
+
+      // 成本分析写入完成后再隐藏无图纸且未被引用的物料
+      await client.query(NO_DRAWING_MATERIAL_CLEANUP_SQL);
 
       console.log(`入库成功！关联更新已有成品: ${updatedCount} 个，自动建档新成品: ${createdCount} 个。`);
       await client.end();

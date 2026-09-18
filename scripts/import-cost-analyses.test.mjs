@@ -92,14 +92,14 @@ describe('resolvePriceDerivation', () => {
       const analyses = parseCostWorkbook(workbookPath);
       const byPlatform = new Map(analyses.map((item) => [item.platformNo, item]));
 
-      expect(byPlatform.get('WL-B21-499-A耐高温').calculationSteps).toContainEqual(
+      expect(byPlatform.get('WL-B21-499-A').calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'sales_price',
           expression: '8.5388 ÷ 0.7 + 7',
           result: 19.1982,
         }),
       );
-      expect(byPlatform.get('WL-B21-500-A耐高温').calculationSteps).toContainEqual(
+      expect(byPlatform.get('WL-B21-500-A').calculationSteps).toContainEqual(
         expect.objectContaining({
           stepKey: 'sales_price',
           expression: '7.9565 ÷ 0.7 + 2.646',
@@ -177,7 +177,7 @@ describe('tax embedded in total cost cell', () => {
       const byPlatform = new Map(
         parseCostWorkbook(zeroPath).map((item) => [item.platformNo, item]),
       );
-      const item = byPlatform.get('WL-B21-126-A1版本，物料涨价前');
+      const item = byPlatform.get('WL-B21-126');
 
       expect(item.materialLoss).toBe(0);
       expect(item.laborLoss).toBe(0);
