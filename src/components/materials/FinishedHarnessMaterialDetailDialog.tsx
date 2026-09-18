@@ -73,7 +73,7 @@ export function FinishedHarnessMaterialDetailDialog({
     loadedData && loadedData.platformNo === currentPlatformNo ? loadedData.analysis : null;
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || showExcelPreview) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -81,7 +81,7 @@ export function FinishedHarnessMaterialDetailDialog({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, showExcelPreview]);
 
   // 加载该成品料号的成本分析数据
   useEffect(() => {

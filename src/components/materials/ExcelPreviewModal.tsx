@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Download,
   FileSpreadsheet,
+  Image as ImageIcon,
   Maximize2,
   Minimize2,
   RefreshCw,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabaseClient';
+import { extractSheetImages, type SheetEmbeddedImage } from '@/lib/excelEmbeddedImages';
 
 const BUCKET_NAME = 'cost-analysis-sources';
 
@@ -91,6 +93,7 @@ export function ExcelPreviewModal({
   const [selectedCell, setSelectedCell] = useState<CellData | null>(null);
   const [filterQuery, setFilterQuery] = useState<string>('');
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
+  const [lightboxImage, setLightboxImage] = useState<SheetEmbeddedImage | null>(null);
 
   // 渲染期派生状态：当当前文件变化时自动派生 loading，无需在 effect 中同步 setState
   const loading = Boolean(currentTargetKey && loadedState?.targetKey !== currentTargetKey);
@@ -106,12 +109,13 @@ export function ExcelPreviewModal({
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onClose();
+        if (lightboxImage) setLightboxImage(null);
+        else onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, lightboxImage]);
 
   // 加载 Excel 文件
   useEffect(() => {
@@ -127,7 +131,7 @@ export function ExcelPreviewModal({
         if (isCancelled) return;
         const buffer = await blob.arrayBuffer();
         try {
-          const wb = XLSX.read(buffer, { type: 'array', cellFormula: true, cellStyles: true });
+          const wb = XLSX.read(buffer, { type: 'array', cellFormula: true, cellStyles: true, bookFiles: true });
           setLoadedState({
             targetKey: downloadPath,
             workbook: wb,
@@ -264,6 +268,11 @@ export function ExcelPreviewModal({
       colWidths: computedColWidths,
     };
   }, [workbook, activeSheet]);
+
+  const sheetImages = useMemo(
+    () => (workbook && activeSheet ? extractSheetImages(workbook, activeSheet) : []),
+    [workbook, activeSheet],
+  );
 
   if (!isOpen || !fileName) return null;
 
@@ -521,6 +530,36 @@ export function ExcelPreviewModal({
               </table>
             </div>
           )}
+
+          {!loading && !error && sheetImages.length > 0 && (
+            <div className="mt-3 rounded border border-slate-300 bg-white shadow-xs">
+              <div className="flex items-center gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                <ImageIcon className="h-3.5 w-3.5 text-emerald-600" />
+                <span>本表内嵌图片（{sheetImages.length}）</span>
+                <span className="text-[11px] font-normal text-slate-400">点击缩略图可放大查看</span>
+              </div>
+              <div className="flex flex-wrap gap-3 p-3">
+                {sheetImages.map((image) => (
+                  <button
+                    key={image.mediaPath}
+                    type="button"
+                    onClick={() => setLightboxImage(image)}
+                    className="flex w-[200px] cursor-zoom-in flex-col gap-1.5 rounded-md border border-slate-200 bg-white p-1.5 text-left transition hover:border-emerald-400 hover:shadow-sm"
+                    title={`${image.mediaPath}（${(image.bytes / 1024).toFixed(1)} KB）`}
+                  >
+                    <img
+                      src={image.dataUrl}
+                      alt={image.fileName}
+                      className="h-32 w-full rounded bg-slate-50 object-contain"
+                    />
+                    <span className="truncate font-mono text-[10px] text-slate-500">
+                      {image.fileName} · {(image.bytes / 1024).toFixed(0)} KB
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -547,6 +586,35 @@ export function ExcelPreviewModal({
           </div>
         </div>
       </div>
+
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-900/90 p-4"
+          onClick={() => setLightboxImage(null)}
+        >
+          <img
+            src={lightboxImage.dataUrl}
+            alt={lightboxImage.fileName}
+            className="max-h-[86vh] max-w-full rounded-lg bg-white object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div
+            className="flex items-center gap-3 text-xs text-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="font-mono">
+              {lightboxImage.mediaPath} · {(lightboxImage.bytes / 1024).toFixed(0)} KB
+            </span>
+            <button
+              type="button"
+              onClick={() => setLightboxImage(null)}
+              className="cursor-pointer rounded-md border border-slate-500 bg-slate-800/80 px-3 py-1 font-medium text-slate-100 transition hover:bg-slate-700"
+            >
+              关闭 (Esc)
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
