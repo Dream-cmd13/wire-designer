@@ -113,6 +113,8 @@ export function FinishedHarnessMaterialDetailDialog({
     : material.salesPrice ?? material.sonPriceLow;
   const samplePrice = costAnalysis ? costAnalysis.samplePrice : material.samplePrice;
   const quotePrice = costAnalysis ? costAnalysis.quotePrice : material.quotePrice;
+  const isCrmSalesPrice = !costAnalysis && material.salesPrice == null && material.sonPriceLow != null;
+  const salesPriceLabel = isCrmSalesPrice ? '最低售价' : '售价';
 
   const formats = costAnalysis ? costNumberFormats(costAnalysis.formulaConfig) : {};
   const formatAmount = (value: number | null | undefined, key: string) =>
@@ -120,7 +122,8 @@ export function FinishedHarnessMaterialDetailDialog({
 
   // 售价口径提示按原表实际公式动态显示，避免写死“30% 毛利”
   const salesPriceHint = (() => {
-    if (!costAnalysis) return '目录/CRM 基础价';
+    if (isCrmSalesPrice) return 'CRM 平台最低售价';
+    if (!costAnalysis) return 'Excel 成本分析售价';
     const step = costAnalysis.calculationSteps.find((s) => s.stepKey === 'sales_price');
     const margin = step?.formula?.match(/目标毛利率\s*(\d+)%/);
     if (margin) return `目标毛利率 ${margin[1]}%`;
@@ -139,7 +142,7 @@ export function FinishedHarnessMaterialDetailDialog({
       `----------------------------------------`,
       `【核心价格指标】`,
       `• 综合总成本：¥ ${formatAmount(totalCost, 'total_cost')} 元`,
-      `• 销售定价：¥ ${formatAmount(salesPrice, 'sales_price')} 元`,
+      `• ${salesPriceLabel}：¥ ${formatAmount(salesPrice, 'sales_price')} 元`,
       `• 样品单价：¥ ${formatAmount(samplePrice, 'sample_price')} 元`,
       `• 建议对外报价：¥ ${formatAmount(quotePrice, 'quote_price')} 元`,
     ];
@@ -160,7 +163,7 @@ export function FinishedHarnessMaterialDetailDialog({
         );
         for (const s of costAnalysis.calculationSteps) {
           lines.push(
-            `• [${s.stepKey}] ${s.name}: ${s.displayExpression ?? s.expression} = ¥ ${formatCostNumber(s.result, s.numberFormat, '原表未提供')}`,
+            `• [${s.stepKey}] ${s.stepKey === 'sales_price' ? '售价' : s.name}: ${s.displayExpression ?? s.expression} = ¥ ${formatCostNumber(s.result, s.numberFormat, '原表未提供')}`,
           );
         }
       }
@@ -279,7 +282,7 @@ export function FinishedHarnessMaterialDetailDialog({
 
               {/* 建议售价 */}
               <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
-                <span className="text-emerald-700 text-[11px] font-medium block">最低售价：</span>
+                <span className="text-emerald-700 text-[11px] font-medium block">{salesPriceLabel}：</span>
                 <div className="mt-1 font-mono text-base font-bold text-emerald-700">
                   {salesPrice != null ? `¥ ${formatAmount(salesPrice, 'sales_price')}` : '暂无'}
                 </div>
@@ -386,7 +389,7 @@ export function FinishedHarnessMaterialDetailDialog({
                               </span>
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <span className="font-semibold text-slate-800">{step.name}</span>
+                                  <span className="font-semibold text-slate-800">{step.stepKey === 'sales_price' ? '售价' : step.name}</span>
                                   <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-600">
                                     {step.formula}
                                   </code>
