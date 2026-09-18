@@ -1,4 +1,4 @@
--- Generated from B21_gyx_shop_goods_son.sql; rerunnable by source_material_id.
+-- Synced from gyx_shop_goods_son.sql (2026-09-18, 362 CRM records); rerunnable by source_material_id.
 insert into public.finished_harness_materials (source_material_id, source_goods_id, platform_no, son_name, supplier_id, file_2d, packing_way, packing, son_unit, son_price_low)
 values
 ('184387', '143341', 'WL-B21-001', '3P 航插 双头护套线 L=1800MM', (select id from public.suppliers where supplier_no='A118'), 'http://img.wanliango.com/Product/定制/WL-B21-001.pdf', null, '1', 'pcs', '60.000000'),
@@ -353,10 +353,15 @@ values
 ('196961', '149708', 'WL-B21-493-200', 'M8-8P公弯头转M12-5P公弯头 PVC屏蔽线-0.2米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-493-200(版本X0).pdf', '箱', '1', 'pcs', '50.500000'),
 ('196967', '149714', 'WL-B21-615', 'M12母直头成型式线束A编码 4Pin PVC屏蔽 线长10m', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-615(版本X0).pdf', null, '1', 'pcs', '50.200000'),
 ('196968', '149715', 'WL-B21-616', 'M12母弯头成型式线束A编码 4Pin PVC屏蔽 线长10m', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-616(版本X0).pdf', null, '1', 'pcs', '50.200000'),
-('197030', '149764', 'WL-B21-499-A', 'M12成型A编码5芯公头 to SR&5P-Housing 带屏蔽护套线(耐高温105度) L=1.72米', (select id from public.suppliers where supplier_name='万连'), null, '箱', '1', 'pcs', '19.200000'),
-('197031', '149765', 'WL-B21-500-A', 'M12成型A编码5芯母头 to 尾部剥皮沾锡 带屏蔽护套线(耐高温105度) L=0.63米', (select id from public.suppliers where supplier_name='万连'), null, '箱', '1', 'pcs', '13.500000'),
+('197030', '149764', 'WL-B21-499-A', 'M12成型A编码5芯公头 to SR&5P-Housing 带屏蔽护套线(耐高温105度) L=1.72米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-499-A(版本X1).pdf', '箱', '1', 'pcs', '19.200000'),
+('197031', '149765', 'WL-B21-500-A', 'M12成型A编码5芯母头 to 尾部剥皮沾锡 带屏蔽护套线(耐高温105度) L=0.63米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-500-A(版本X1).pdf', '箱', '1', 'pcs', '13.500000'),
 ('197074', '149806', 'WL-B21-621', 'M12-8P X编码公直头 TO RJ45 8P8C 屏蔽连接线-5米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-621(版本X0).pdf', '箱', '1', 'pcs', '56.300000'),
 ('197075', '149807', 'WL-B21-622', 'M12-8P X编码公直头 TO RJ45 8P8C 屏蔽连接线-10米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-622(版本X0).pdf', '箱', '1', 'pcs', '87.900000'),
-('197076', '149808', 'WL-B21-623', 'M12-8P X编码公直头 TO RJ45 8P8C 屏蔽连接线-20米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-623(版本X0).pdf', '箱', '1', 'pcs', '152.000000')
+('197076', '149808', 'WL-B21-623', 'M12-8P X编码公直头 TO RJ45 8P8C 屏蔽连接线-20米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-623(版本X0).pdf', '箱', '1', 'pcs', '152.000000'),
+('197028', '149762', 'WL-B21-455-A', 'M8成型3芯公头 to 尾部剥皮沾锡 带屏蔽护套线(耐高温105度) L=0.65米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-455-A(版本X1).pdf', '箱', '1', 'pcs', '12.300000'),
+('197029', '149763', 'WL-B21-456-A', 'M8成型3芯母头 to SR&5P-Housing 带屏蔽护套线(耐高温105度) L=1.72米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-456-A(版本X1).pdf', '箱', '1', 'pcs', '16.800000'),
+('197114', '149839', 'WL-B21-627', 'DB9母头转GX16-8P母头-60M', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-627(版本X0).pdf', null, '1', 'pcs', '765.000000'),
+('197116', '149841', 'WL-B21-510-B', 'M12成型A编码5芯母头 带20AWG*5C黑色护套 拖链线L=10米', (select id from public.suppliers where supplier_name='万连'), 'http://img.wanliango.com/Product/定制/WL-B21-510-B(版本X0).pdf', '箱', '1', 'pcs', '125.000000'),
+('197152', '149867', 'WL-B21-635', 'DC输出线', (select id from public.suppliers where supplier_no='A563'), 'http://img.wanliango.com/Product/定制/WL-B21-635(版本X0).pdf', '箱', '1', 'pcs', '14.000000')
 on conflict (source_material_id) do update set source_goods_id=excluded.source_goods_id, platform_no=excluded.platform_no, son_name=excluded.son_name, supplier_id=excluded.supplier_id, file_2d=excluded.file_2d, packing_way=excluded.packing_way, packing=excluded.packing, son_unit=excluded.son_unit, son_price_low=excluded.son_price_low, updated_at=now();
 
