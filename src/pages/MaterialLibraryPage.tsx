@@ -12,10 +12,10 @@ import {
   RefreshCw,
   Search,
   Upload,
-  X,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { dismissNotice, notify } from '@/stores/noticeStore';
 import { usePriceStore } from '@/stores/priceStore';
 import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
 import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
@@ -35,6 +35,7 @@ import {
   materialPriceTierKey,
 } from '@/lib/quoteMaterials';
 import { applyCatalogWireSpec } from '@/lib/wireCatalog';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
 import type { Connector, OvermoldSpec } from '@/types/harness';
@@ -178,9 +179,9 @@ export function MaterialLibraryPage({
     name: string;
     prices: MaterialPrice[];
   } | null>(null);
-  const [feedbackMessage, setFeedbackMessage] = useState<{ text: string; isError?: boolean } | null>(
-    null,
-  );
+  const pendingImportRef = useRef<{ name: string; prices: MaterialPrice[] } | null>(null);
+  const importFailureNoticeRef = useRef<number | null>(null);
+  const importMergeInFlightRef = useRef(false);
   const [readingFile, setReadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const connTableRef = useRef<HTMLDivElement>(null);
@@ -582,16 +583,32 @@ export function MaterialLibraryPage({
     return filteredFinishedHarnesses.slice(start, start + finishedPageSize);
   }, [filteredFinishedHarnesses, safeFinishedPage, finishedPageSize]);
 
+  // 导入任务切换（取消、换文件、成功）时同步撤销旧的导入失败通知，避免重试提交已废弃的价格数据
+  const clearImportFailureNotice = () => {
+    const noticeId = importFailureNoticeRef.current;
+    if (noticeId === null) return;
+    dismissNotice(noticeId);
+    importFailureNoticeRef.current = null;
+  };
+
+  const applyPendingImport = (next: { name: string; prices: MaterialPrice[] } | null) => {
+    pendingImportRef.current = next;
+    setPendingImport(next);
+    clearImportFailureNotice();
+  };
+
   // 导出价格模板（包含全量 catalog 物料以支持批量补价，并检查读取错误状态）
   const handleExportPrices = async () => {
-    setFeedbackMessage(null);
     try {
       await load();
       const latest = usePriceStore.getState();
       if (latest.error) {
-        setFeedbackMessage({
-          text: `加载共享价格失败：${latest.error}，无法导出价格表`,
-          isError: true,
+        notify({
+          tone: 'danger',
+          title: '价格表导出失败',
+          message: '物料价格暂时无法加载，请稍后重试；如持续出现，请联系管理员。',
+          action: { label: '重试导出', onClick: () => void handleExportPrices() },
+          dedupeKey: 'price-export-failed',
         });
         return;
       }
@@ -600,20 +617,31 @@ export function MaterialLibraryPage({
       const templateRows = buildCatalogPriceTemplateRows(snapshot, shared);
 
       if (!templateRows.length) {
-        throw new Error('物料目录尚未加载，暂时无法生成价格模板');
+        notify({
+          tone: 'danger',
+          title: '价格表导出失败',
+          message: '物料目录尚未加载完成，暂时无法生成价格模板，请稍后重试。',
+        });
+        return;
       }
 
       XLSX.writeFile(
         createPriceTemplate(templateRows, shared),
         shared.length ? '物料采购价格表.xlsx' : '物料价格模板.xlsx',
       );
-      setFeedbackMessage({
-        text: `已成功导出 ${templateRows.length} 项物料价格数据（包含未定价物料以供补价）`,
+      notify({
+        tone: 'success',
+        message: `价格表已导出，共 ${templateRows.length} 项物料（含未定价物料）。`,
+        dedupeKey: 'price-export-result',
       });
     } catch (cause) {
-      setFeedbackMessage({
-        text: cause instanceof Error ? cause.message : '导出价格失败',
-        isError: true,
+      console.error('导出价格表失败:', cause);
+      notify({
+        tone: 'danger',
+        title: '价格表导出失败',
+        message: getUserErrorMessage(cause, '价格表导出失败，请检查网络后重试。'),
+        action: { label: '重试导出', onClick: () => void handleExportPrices() },
+        dedupeKey: 'price-export-failed',
       });
     }
   };
@@ -622,8 +650,8 @@ export function MaterialLibraryPage({
   const handleSelectFile = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    clearImportFailureNotice();
     setReadingFile(true);
-    setFeedbackMessage(null);
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -631,11 +659,16 @@ export function MaterialLibraryPage({
         const buffer = e.target?.result as ArrayBuffer;
         const candidates = getCatalogPriceCandidates(snapshot);
         const parsed = parsePriceWorkbook(buffer, candidates);
-        setPendingImport({ name: file.name, prices: parsed });
+        applyPendingImport({ name: file.name, prices: parsed });
       } catch (cause) {
-        setFeedbackMessage({
-          text: cause instanceof Error ? cause.message : '解析文件失败，请确保格式与模板一致',
-          isError: true,
+        console.error('解析价格文件失败:', cause);
+        importFailureNoticeRef.current = notify({
+          tone: 'danger',
+          title: '价格文件无法导入',
+          message: getUserErrorMessage(cause, '价格文件解析失败，请使用系统导出的价格模板并检查格式。'),
+          durationMs: null,
+          action: { label: '重新选择文件', onClick: () => fileInputRef.current?.click() },
+          dedupeKey: 'price-import-parse-failed',
         });
       } finally {
         setReadingFile(false);
@@ -643,24 +676,44 @@ export function MaterialLibraryPage({
       }
     };
     reader.onerror = () => {
+      console.error('读取价格文件失败:', reader.error);
       setReadingFile(false);
-      setFeedbackMessage({ text: '读取文件异常', isError: true });
+      importFailureNoticeRef.current = notify({
+        tone: 'danger',
+        title: '价格文件无法读取',
+        message: '价格文件读取失败，请重新选择文件；如持续出现，请检查文件是否损坏。',
+        durationMs: null,
+        action: { label: '重新选择文件', onClick: () => fileInputRef.current?.click() },
+        dedupeKey: 'price-import-read-failed',
+      });
     };
     reader.readAsArrayBuffer(file);
   };
 
   // 确认导入价格
   const handleConfirmMerge = async () => {
-    if (!pendingImport) return;
+    const task = pendingImportRef.current;
+    if (!task || importMergeInFlightRef.current) return;
+    importMergeInFlightRef.current = true;
     try {
-      await merge(pendingImport.prices, pendingImport.name);
-      setPendingImport(null);
-      setFeedbackMessage({ text: `成功导入并更新了 ${pendingImport.prices.length} 项物料价格` });
-    } catch (cause) {
-      setFeedbackMessage({
-        text: cause instanceof Error ? cause.message : '保存至共享价格库失败',
-        isError: true,
+      await merge(task.prices, task.name);
+      applyPendingImport(null);
+      notify({
+        tone: 'success',
+        message: `已成功导入并更新 ${task.prices.length} 项物料价格。`,
+        dedupeKey: 'price-import-result',
       });
+    } catch (cause) {
+      console.error('保存至共享价格库失败:', cause);
+      importFailureNoticeRef.current = notify({
+        tone: 'danger',
+        title: '价格未能保存',
+        message: getUserErrorMessage(cause, '价格保存失败，请保持页面打开并重试。'),
+        action: { label: '重试保存', onClick: () => void handleConfirmMerge() },
+        dedupeKey: 'price-import-save-failed',
+      });
+    } finally {
+      importMergeInFlightRef.current = false;
     }
   };
 
@@ -736,22 +789,19 @@ export function MaterialLibraryPage({
           </div>
         </div>
 
-        {/* 操作提示与状态反馈 */}
-        {(feedbackMessage || error) && (
+        {/* 价格数据加载失败时保持可见，避免用户误以为价格是最新的 */}
+        {error && (
           <div
-            className={`mt-2.5 flex items-center justify-between rounded-md px-3 py-2 text-xs ${
-              feedbackMessage?.isError || error
-                ? 'border border-red-200 bg-red-50 text-red-700'
-                : 'border border-emerald-200 bg-emerald-50 text-emerald-800'
-            }`}
+            role="alert"
+            className="mt-2.5 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
           >
-            <span>{feedbackMessage?.text || error}</span>
+            <span>{error}</span>
             <button
               type="button"
-              onClick={() => setFeedbackMessage(null)}
-              className="cursor-pointer text-slate-400 hover:text-slate-600"
+              onClick={() => void load()}
+              className="cursor-pointer rounded bg-red-600 px-2.5 py-1 font-medium text-white hover:bg-red-700"
             >
-              <X className="h-3.5 w-3.5" />
+              重试
             </button>
           </div>
         )}
@@ -779,7 +829,7 @@ export function MaterialLibraryPage({
                 <button
                   type="button"
                   disabled={loading}
-                  onClick={() => setPendingImport(null)}
+                  onClick={() => applyPendingImport(null)}
                   className="cursor-pointer rounded border border-slate-300 bg-white px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-50"
                 >
                   取消

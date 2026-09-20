@@ -61,7 +61,9 @@ describe('drawing workbench UI contract', () => {
   });
 
   it('reports PDF export failures instead of dropping rejected promises', () => {
-    expect(pageSource).toContain('exportError');
+    expect(pageSource).toContain('notify({');
+    expect(pageSource).toContain('图纸导出失败');
+    expect(pageSource).toContain('重试导出');
     expect(pageSource).toContain('await downloadDrawingPdf');
     expect(pageSource).toContain('DrawingPdfExportDialog');
     expect(pdfDialogSource).toContain('导出 PDF');

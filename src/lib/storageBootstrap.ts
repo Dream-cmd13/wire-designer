@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 const REQUIRED_STORAGE_BUCKETS = ['catalog-assets'] as const;
 const STORAGE_STATUS_ERROR_MESSAGE =
-  '无法确认远程存储状态，请检查网络、Supabase 配置和 Storage SQL 初始化。';
+  '文件服务状态暂时无法确认，请检查网络后重试；如持续出现，请联系管理员。';
 
 interface StorageBootstrapRow {
   bucket_id: string;

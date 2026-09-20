@@ -20,6 +20,8 @@ interface ActionToastProps {
   onClose: () => void;
   position?: 'top' | 'center';
   backdrop?: boolean;
+  /** 由统一通知容器负责定位与排列时使用，避免多个提示重叠。 */
+  stacked?: boolean;
 }
 
 const TONE_STYLES: Record<NonNullable<ActionToastProps['tone']>, string> = {
@@ -79,6 +81,7 @@ export function ActionToast({
   onClose,
   position = 'center',
   backdrop,
+  stacked = false,
 }: ActionToastProps) {
   const config = TONE_DEFAULTS[tone];
   const shouldShowBackdrop = backdrop ?? (role === 'alertdialog');
@@ -87,7 +90,7 @@ export function ActionToast({
     <div
       role={role}
       aria-live={role === 'status' ? 'polite' : 'assertive'}
-      className={`fixed z-[75] flex min-w-[340px] max-w-[min(92vw,560px)] items-center gap-3.5 rounded-xl border p-4 shadow-xl backdrop-blur-md ${POSITION_STYLES[position]} ${TONE_STYLES[tone]}`}
+      className={`z-[75] flex min-w-[340px] max-w-[min(92vw,560px)] items-center gap-3.5 rounded-xl border p-4 shadow-xl backdrop-blur-md ${stacked ? 'pointer-events-auto relative w-full animate-toast-in' : `fixed ${POSITION_STYLES[position]}`} ${TONE_STYLES[tone]}`}
     >
       <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${config.iconClass}`}>
         {config.icon}

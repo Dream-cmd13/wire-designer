@@ -391,7 +391,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
               ) : connectors.length === 0 && catalogStatus === 'error' ? (
                 <div className="py-10 text-center text-slate-600">
                   <AlertCircle className="mx-auto mb-2 h-8 w-8 text-amber-500" />
-                  <p className="text-sm">连接器目录加载失败：{catalogError || '请稍后重试'}</p>
+                  <p className="text-sm">{catalogError || '物料暂时无法加载，请联系管理员处理。'}</p>
                   <button
                     type="button"
                     onClick={() => void useCatalogStore.getState().reload().catch(() => {})}

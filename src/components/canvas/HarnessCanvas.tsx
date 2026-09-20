@@ -731,12 +731,6 @@ function HarnessCanvasInner() {
   }, [deletionNotice]);
 
   useEffect(() => {
-    if (!deleteConfirmToast) return;
-    const timer = window.setTimeout(() => setDeleteConfirmToast(null), 8000);
-    return () => window.clearTimeout(timer);
-  }, [deleteConfirmToast]);
-
-  useEffect(() => {
     setMaterialAccessoryDialogHandler((request) => {
       if (!isInteractiveRef.current) return;
       setAccessoryDialog(request);

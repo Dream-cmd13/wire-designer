@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { priceRepository, type MaterialPrice, type PriceBook } from '@/repositories/priceRepository';
 interface PriceState {
   book: PriceBook | null;
@@ -24,10 +25,11 @@ export const usePriceStore = create<PriceState>((set, get) => ({
       const book = await priceRepository.load();
       set({ book, error: null });
     } catch (error) {
+      console.error('读取共享价格失败:', error);
       if (!hasExisting) {
         set({ book: null });
       }
-      set({ error: error instanceof Error ? error.message : '读取共享价格失败' });
+      set({ error: getUserErrorMessage(error, '物料价格暂时无法加载，请稍后重试。') });
     } finally {
       set({ loading: false, refreshing: false });
     }
@@ -36,7 +38,8 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     set({ loading: true });
     try { set({ book: await priceRepository.merge(prices, source), error: null }); }
     catch (error) {
-      set({ error: error instanceof Error ? error.message : '保存共享价格失败' });
+      console.error('保存共享价格失败:', error);
+      set({ error: getUserErrorMessage(error, '价格保存失败，请保持页面打开并重试。') });
       throw error;
     } finally { set({ loading: false }); }
   },

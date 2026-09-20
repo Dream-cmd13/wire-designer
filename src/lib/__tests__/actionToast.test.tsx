@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { ActionToast } from '@/components/shared/ActionToast';
@@ -86,5 +87,34 @@ describe('Toast unified top positioning and backdrop behavior', () => {
     expect(html).not.toContain('toast-backdrop');
     expect(html).toContain('撤销');
     expect(html).toContain('已删除 1 个对象');
+  });
+
+  it('stacks multiple notices in one container so they never overlap', () => {
+    const html = renderToStaticMarkup(
+      <>
+        <ActionToast stacked tone="success" message="第一条提示" onClose={() => undefined} />
+        <ActionToast
+          stacked
+          tone="danger"
+          message="第二条提示"
+          primaryAction={{ label: '重试', onClick: () => undefined }}
+          onClose={() => undefined}
+        />
+      </>,
+    );
+
+    expect(html).toContain('第一条提示');
+    expect(html).toContain('第二条提示');
+    expect(html).toContain('重试');
+    expect(html.match(/animate-toast-in /g)).toHaveLength(2);
+    expect(html).not.toContain('animate-toast-in-top');
+    expect(html).not.toContain('fixed top-6');
+  });
+
+  it('routes floating notices through the shared NoticeHost container', () => {
+    const hostSource = readFileSync('src/components/shared/NoticeHost.tsx', 'utf8');
+    expect(hostSource).toContain('notices.map');
+    expect(hostSource).toContain('stacked');
+    expect(hostSource).toContain('flex-col');
   });
 });

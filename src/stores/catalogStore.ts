@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { catalogRepository } from '@/lib/catalogRepository';
 import { setCatalogSnapshot } from '@/lib/catalogRuntime';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { CatalogSnapshot } from '@/types/catalog';
 
 type CatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -31,7 +32,8 @@ async function load(
     setCatalogSnapshot(snapshot);
     set({ snapshot, status: 'ready', refreshing: false, error: null });
   } catch (error) {
-    const message = error instanceof Error ? error.message : '目录数据加载失败。';
+    console.error('目录数据加载失败:', error);
+    const message = getUserErrorMessage(error, '物料暂时无法加载，请联系管理员处理。');
     set({ status: 'error', refreshing: false, error: message });
     throw error instanceof Error ? error : new Error(message);
   }

@@ -60,7 +60,7 @@ describe('checkStorageBootstrap', () => {
 
     await expect(checkStorageBootstrap(client)).resolves.toEqual({
       status: 'error',
-      message: '无法确认远程存储状态，请检查网络、Supabase 配置和 Storage SQL 初始化。',
+      message: '文件服务状态暂时无法确认，请检查网络后重试；如持续出现，请联系管理员。',
     });
   });
 
@@ -73,7 +73,7 @@ describe('checkStorageBootstrap', () => {
 
     await expect(checkStorageBootstrap(client)).resolves.toEqual({
       status: 'error',
-      message: '无法确认远程存储状态，请检查网络、Supabase 配置和 Storage SQL 初始化。',
+      message: '文件服务状态暂时无法确认，请检查网络后重试；如持续出现，请联系管理员。',
     });
   });
 
@@ -86,7 +86,7 @@ describe('checkStorageBootstrap', () => {
   ])('rejects malformed or incomplete RPC data %#', async (data) => {
     await expect(checkStorageBootstrap(fakeClient(data))).resolves.toEqual({
       status: 'error',
-      message: '无法确认远程存储状态，请检查网络、Supabase 配置和 Storage SQL 初始化。',
+      message: '文件服务状态暂时无法确认，请检查网络后重试；如持续出现，请联系管理员。',
     });
   });
 });

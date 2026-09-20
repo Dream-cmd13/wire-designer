@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Calculator, Download, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { calculatePrice, formatQuoteMoney, type QuoteLine } from '@/lib/pricing';
 import { safeFilename } from '@/lib/designFile';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { notify } from '@/stores/noticeStore';
 import { usePriceStore } from '@/stores/priceStore';
 
 function AmountRow({ name, amount }: { name: string; amount: string }) {
@@ -41,7 +43,6 @@ export function QuoteContent() {
   const storePriceState = usePriceStore();
   const priceState = typeof window === 'undefined' ? usePriceStore.getState() : storePriceState;
   const { book, loading, error, load } = priceState;
-  const [message, setMessage] = useState('');
 
   useEffect(() => {
     void load();
@@ -97,7 +98,16 @@ export function QuoteContent() {
     if (!price) return;
     await load();
     const latest = usePriceStore.getState();
-    if (latest.error) return;
+    if (latest.error) {
+      notify({
+        tone: 'danger',
+        title: '成本分析表导出失败',
+        message: '物料价格暂时无法加载，请稍后重试；如持续出现，请联系管理员。',
+        action: { label: '重试导出', onClick: () => void exportQuote() },
+        dedupeKey: 'quote-export-failed',
+      });
+      return;
+    }
     try {
       const current = useHarnessStore.getState().config;
       const effectiveCurrent = (autoEnds && (!current.quotation || current.quotation.processingEnds !== autoEnds))
@@ -107,8 +117,20 @@ export function QuoteContent() {
         createQuoteWorkbook(effectiveCurrent, latest.book?.prices ?? [], useCatalogStore.getState().snapshot),
         `${safeFilename(current.name)}_成本分析.xlsx`,
       );
+      notify({
+        tone: 'success',
+        message: '成本分析表已导出。',
+        dedupeKey: 'quote-export-result',
+      });
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : '导出报价失败');
+      console.error('导出报价失败:', cause);
+      notify({
+        tone: 'danger',
+        title: '成本分析表导出失败',
+        message: getUserErrorMessage(cause, '成本分析表导出失败，请检查网络后重试。'),
+        action: { label: '重试导出', onClick: () => void exportQuote() },
+        dedupeKey: 'quote-export-failed',
+      });
     }
   };
 
@@ -301,12 +323,16 @@ export function QuoteContent() {
         <span>导出报价 Excel (成本分析)</span>
       </button>
 
-      {(error || message) && (
-        <p
-          role="status"
-          className={`mt-2 text-xs ${error ? 'text-red-600' : 'text-emerald-700'}`}
-        >
-          {error || message}
+      {error && (
+        <p role="alert" className="mt-2 flex items-center justify-between gap-2 text-xs text-red-600">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="shrink-0 cursor-pointer rounded bg-red-50 px-2 py-0.5 font-medium text-red-700 hover:bg-red-100"
+          >
+            重试
+          </button>
         </p>
       )}
     </div>

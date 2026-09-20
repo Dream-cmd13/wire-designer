@@ -5,6 +5,7 @@ import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { NoticeHost } from '@/components/shared/NoticeHost';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
@@ -32,6 +33,7 @@ import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
 import { useHistoryStore } from '@/stores/historyStore';
+import { notify } from '@/stores/noticeStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import type { Project } from '@/types/user';
@@ -196,6 +198,8 @@ export default function App() {
   } | null>(null);
   const [corruptDrafts, setCorruptDrafts] = useState<CorruptWorkspaceDraft[]>([]);
   const [draftBackupError, setDraftBackupError] = useState<string | null>(null);
+  const [switchConfirmOpen, setSwitchConfirmOpen] = useState(false);
+  const switchConfirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const restoreFailed = Boolean(projectId && failedProjectId === projectId);
 
   const currentUser = useUserStore((state) => state.currentUser);
@@ -341,7 +345,11 @@ export default function App() {
       baseUpdatedAt: project.updatedAt,
       document: harness.config,
     });
-    setDraftBackupError(result.ok ? null : result.error ?? '本地草稿备份失败。');
+    setDraftBackupError(
+      result.ok
+        ? null
+        : result.error ?? '未能在此设备上备份最新修改，请保持页面打开并尝试保存。',
+    );
   }, [saveBlocked]);
 
   const doSave = useCallback(async (options?: { retry?: boolean }) => {
@@ -412,20 +420,48 @@ export default function App() {
     }
   }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig]);
 
+  const requestSwitchConfirmation = useCallback((): Promise<boolean> => (
+    new Promise<boolean>((resolve) => {
+      switchConfirmResolverRef.current = resolve;
+      setSwitchConfirmOpen(true);
+    })
+  ), []);
+
+  const resolveSwitchConfirmation = useCallback((confirmed: boolean) => {
+    setSwitchConfirmOpen(false);
+    const resolve = switchConfirmResolverRef.current;
+    switchConfirmResolverRef.current = null;
+    resolve?.(confirmed);
+  }, []);
+
+  const retryProjectSave = useCallback(() => {
+    void doSave({ retry: true });
+  }, [doSave]);
+
   const saveBeforeLeavingWorkspace = useCallback(async (): Promise<boolean> => {
     const project = useProjectStore.getState().currentProject;
     if (!project || useHarnessStore.getState().saveState.status === 'saved') return true;
     if (saveBlocked) {
-      window.alert('当前项目无法保存，请先处理保存错误后再切换项目。');
+      notify({
+        tone: 'danger',
+        title: '暂时无法切换项目',
+        message: '当前项目未能保存，请先处理保存错误后再切换项目。',
+      });
       return false;
     }
 
     writeProjectDraft();
     await doSave({ retry: true });
     if (useHarnessStore.getState().saveState.status === 'saved') return true;
-    window.alert('当前项目保存失败，已取消切换，请重试。');
+    notify({
+      tone: 'danger',
+      title: '项目未能保存',
+      message: '项目保存失败，已取消切换。请保持页面打开并重试。',
+      action: { label: '重试保存', onClick: retryProjectSave },
+      dedupeKey: 'project-save-failed',
+    });
     return false;
-  }, [doSave, saveBlocked, writeProjectDraft]);
+  }, [doSave, retryProjectSave, saveBlocked, writeProjectDraft]);
 
   const prepareForUserSwitch = useCallback(async () => {
     const hasUnsavedProject = Boolean(currentProject && saveState.status !== 'saved');
@@ -433,17 +469,27 @@ export default function App() {
 
     if (!hasUnsavedProject && !hasUnsavedDrawing) return true;
     if (hasUnsavedProject && saveBlocked) {
-      window.alert('当前项目无法保存，请先处理保存错误后再切换用户。');
+      notify({
+        tone: 'danger',
+        title: '暂时无法切换账号',
+        message: '当前项目未能保存，请先处理保存错误后再切换账号。',
+      });
       return false;
     }
 
-    const shouldSave = window.confirm('当前工作区有未保存修改。确定保存后切换用户吗？');
+    const shouldSave = await requestSwitchConfirmation();
     if (!shouldSave) return false;
 
     if (hasUnsavedProject) {
       await doSave({ retry: true });
       if (useHarnessStore.getState().saveState.status !== 'saved') {
-        window.alert('项目保存失败，已取消用户切换。');
+        notify({
+          tone: 'danger',
+          title: '项目未能保存',
+          message: '项目保存失败，已取消账号切换。请保持页面打开并重试。',
+          action: { label: '重试保存', onClick: retryProjectSave },
+          dedupeKey: 'project-save-failed',
+        });
         return false;
       }
     }
@@ -453,12 +499,20 @@ export default function App() {
         await saveActiveDrawing();
       } catch (error) {
         console.error('图纸保存失败:', error);
-        window.alert('图纸保存失败，已取消用户切换。');
+        notify({
+          tone: 'danger',
+          title: '图纸未能保存',
+          message: '图纸保存失败，已取消账号切换。请保持页面打开并重试。',
+          action: {
+            label: '重试保存',
+            onClick: () => void saveActiveDrawing().catch(() => undefined),
+          },
+        });
         return false;
       }
     }
     return true;
-  }, [currentProject, doSave, drawingSaveState, saveActiveDrawing, saveBlocked, saveState.status]);
+  }, [currentProject, doSave, drawingSaveState, requestSwitchConfirmation, retryProjectSave, saveActiveDrawing, saveBlocked, saveState.status]);
 
   const resetWorkspaceForUser = useCallback((destinationPath = appRoutes.home.path) => {
     if (saveTimerRef.current) {
@@ -858,7 +912,13 @@ export default function App() {
       await doSave({ retry: true });
       if (!isCloseCurrent()) return;
       if (useHarnessStore.getState().saveState.status !== 'saved') {
-        window.alert('项目保存失败，已取消关闭，请重试。');
+        notify({
+          tone: 'danger',
+          title: '项目未能保存',
+          message: '项目保存失败，已取消关闭。请保持页面打开并重试。',
+          action: { label: '重试保存', onClick: retryProjectSave },
+          dedupeKey: 'project-save-failed',
+        });
         return;
       }
     }
@@ -883,12 +943,26 @@ export default function App() {
   };
 
   const handleUpdateProjectName = useCallback((nextName: string) => {
-    if (!currentProject) return;
+    const project = useProjectStore.getState().currentProject;
+    if (!project) return;
     const trimmed = nextName.trim();
-    if (!trimmed || trimmed === currentProject.name) return;
+    if (!trimmed || trimmed === project.name) return;
     useHarnessStore.getState().setConfig({ name: trimmed });
-    void updateProject(currentProject.id, { name: trimmed });
-  }, [currentProject, updateProject]);
+
+    const attemptRename: () => void = () => {
+      void useProjectStore.getState().updateProject(project.id, { name: trimmed }).catch((error) => {
+        console.error('项目重命名失败:', error);
+        notify({
+          tone: 'danger',
+          title: '项目重命名失败',
+          message: getUserErrorMessage(error, '项目重命名失败，请保持页面打开后重试。'),
+          action: { label: '重试重命名', onClick: attemptRename },
+          dedupeKey: `project-rename-failed:${project.id}`,
+        });
+      });
+    };
+    attemptRename();
+  }, []);
 
   const saveStatusLabel =
     saveState.status === 'saved'
@@ -983,12 +1057,12 @@ export default function App() {
         />
         {catalogStatus === 'error' && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-            目录数据暂时不可用：{catalogError ?? '请检查云端服务配置后重试。'}
+            {catalogError ?? '物料暂时无法加载，请联系管理员处理。'}
           </div>
         )}
         {draftBackupError && (
           <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-700">
-            本地草稿备份失败：{draftBackupError}。请保持页面打开，或重试保存。
+            {draftBackupError}
           </div>
         )}
         <ErrorBoundary fallback={<ModuleLoadErrorState />}>
@@ -997,6 +1071,19 @@ export default function App() {
           </Suspense>
         </ErrorBoundary>
       </AdminShell>
+
+      <NoticeHost />
+
+      {switchConfirmOpen && (
+        <ActionToast
+          role="alertdialog"
+          title="有未保存的修改"
+          message="当前工作区有未保存修改。确定保存后切换账号吗？"
+          secondaryAction={{ label: '取消', onClick: () => resolveSwitchConfirmation(false) }}
+          primaryAction={{ label: '保存并切换', onClick: () => resolveSwitchConfirmation(true) }}
+          onClose={() => resolveSwitchConfirmation(false)}
+        />
+      )}
 
       {draftRecovery && (
         <ActionToast

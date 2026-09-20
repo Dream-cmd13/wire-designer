@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 
 describe('StorageSetupBanner', () => {
-  it('shows missing and public buckets with the bootstrap command', () => {
+  it('explains the impact in plain language without bucket names or deploy commands', () => {
     const html = renderToStaticMarkup(
       <StorageSetupBanner
         state={{
@@ -16,25 +16,27 @@ describe('StorageSetupBanner', () => {
       />,
     );
 
-    expect(html).toContain('缺少存储桶');
-    expect(html).toContain('catalog-assets');
-    expect(html).toContain('不是私有桶');
-    expect(html).not.toContain('project-assets');
-    expect(html).toContain('npm run supabase:bootstrap-storage');
-    expect(html).toContain('aria-label="重新检测存储状态"');
+    expect(html).toContain('图片和附件功能暂时不可用');
+    expect(html).toContain('请联系管理员完成系统配置');
+    expect(html).not.toContain('存储桶');
+    expect(html).not.toContain('catalog-assets');
+    expect(html).not.toContain('npm run supabase:bootstrap-storage');
+    expect(html).toContain('重新检测文件服务状态');
   });
 
-  it('shows a safe health-check error', () => {
+  it('shows a safe health-check error with the retry action', () => {
     const html = renderToStaticMarkup(
       <StorageSetupBanner
-        state={{ status: 'error', message: '无法确认远程存储状态。' }}
+        state={{ status: 'error', message: '文件服务状态暂时无法确认，请检查网络后重试；如持续出现，请联系管理员。' }}
         checking={false}
         onRetry={() => undefined}
       />,
     );
 
-    expect(html).toContain('无法确认远程存储状态。');
-    expect(html).toContain('aria-label="重新检测存储状态"');
+    expect(html).toContain('文件服务状态暂时无法确认');
+    expect(html).not.toContain('Supabase');
+    expect(html).not.toContain('SQL');
+    expect(html).toContain('重新检测文件服务状态');
   });
 
   it.each([

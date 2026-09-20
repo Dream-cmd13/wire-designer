@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { finishedHarnessMaterialRepository } from '@/repositories/finishedHarnessMaterialRepository';
 import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
 
@@ -34,11 +35,12 @@ export const useFinishedHarnessStore = create<FinishedHarnessState>((set, get) =
       const items = await finishedHarnessMaterialRepository.list();
       set({ items, error: null });
     } catch (cause) {
+      console.error('加载成品线束物料失败:', cause);
       if (existing.length === 0) {
         set({ items: [] });
       }
       set({
-        error: cause instanceof Error ? cause.message : '加载成品线束物料失败',
+        error: getUserErrorMessage(cause, '成品线束物料暂时无法加载，请稍后重试。'),
       });
     } finally {
       set({ loading: false, refreshing: false });

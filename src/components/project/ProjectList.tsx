@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   AlertCircle,
   Download,
@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { createDesignFile, downloadTextFile, safeFilename, type DesignFilePreview } from '@/lib/designFile';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
-import { ActionToast } from '@/components/shared/ActionToast';
+import { notify } from '@/stores/noticeStore';
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { ImportProjectDialog } from '@/components/project/ImportProjectDialog';
 import { projectRepository } from '@/repositories/projectRepository';
@@ -67,12 +67,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [importOpen, setImportOpen] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const [deleteToast, setDeleteToast] = useState<Project | null>(null);
-  const [statusToast, setStatusToast] = useState<{
-    tone: 'success' | 'danger';
-    message: string;
-  } | null>(null);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
 
   const userProjects = projects
@@ -82,18 +77,6 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
   const isLoading = !authReady || (projectsStatus === 'loading' && userProjects.length === 0);
   const hasErrorWithNoData = projectsStatus === 'error' && userProjects.length === 0;
   const hasErrorWithData = projectsStatus === 'error' && userProjects.length > 0;
-
-  useEffect(() => {
-    if (!deleteToast) return;
-    const timer = window.setTimeout(() => setDeleteToast(null), 8000);
-    return () => window.clearTimeout(timer);
-  }, [deleteToast]);
-
-  useEffect(() => {
-    if (!statusToast) return;
-    const timer = window.setTimeout(() => setStatusToast(null), 4000);
-    return () => window.clearTimeout(timer);
-  }, [statusToast]);
 
   const handleRetry = () => {
     if (currentUser?.id) {
@@ -110,15 +93,19 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     setDeletingProjectId(project.id);
     try {
       await deleteProject(project.id);
-      setStatusToast({
+      notify({
         tone: 'success',
-        message: `已删除项目“${project.name}”`,
+        message: `已删除项目“${project.name}”。`,
+        dedupeKey: `project-delete-result:${project.id}`,
       });
     } catch (error) {
       console.error('项目删除失败:', error);
-      setStatusToast({
+      notify({
         tone: 'danger',
-        message: getUserErrorMessage(error, '删除失败，请重试。'),
+        title: '项目未能删除',
+        message: getUserErrorMessage(error, '项目删除失败，请检查网络后重试。'),
+        action: { label: '重试删除', onClick: () => void handleDelete(project) },
+        dedupeKey: `project-delete-failed:${project.id}`,
       });
     } finally {
       setDeletingProjectId(null);
@@ -137,36 +124,66 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     }
     const newName = editName.trim();
 
-    // Update project metadata
-    await updateProject(projectId, { name: newName });
+    try {
+      // Update project metadata
+      await updateProject(projectId, { name: newName });
 
-    // Sync to config.name
-    const result = await projectRepository.load(projectId);
-    if (result.status === 'ok' && result.config.name !== newName) {
-      await projectRepository.save(projectId, {
-        ...result.config,
-        name: newName,
-        updatedAt: getTimestamp(),
+      // Sync to config.name
+      const result = await projectRepository.load(projectId);
+      if (result.status === 'ok' && result.config.name !== newName) {
+        await projectRepository.save(projectId, {
+          ...result.config,
+          name: newName,
+          updatedAt: getTimestamp(),
+        });
+      }
+
+      setEditingId(null);
+    } catch (error) {
+      console.error('项目重命名失败:', error);
+      notify({
+        tone: 'danger',
+        title: '项目重命名失败',
+        message: getUserErrorMessage(error, '项目重命名失败，请保持页面打开后在输入框中重试。'),
+        dedupeKey: `project-rename-failed:${projectId}`,
       });
     }
-
-    setEditingId(null);
   };
 
   const handleExport = async (project: Project) => {
-    const result = await projectRepository.load(project.id);
-    if (result.status !== 'ok') {
-      setNotice(result.status === 'invalid'
-        ? '项目结构已损坏，原始内容已保留为恢复副本，无法作为有效设计导出。'
-        : '未找到项目设计数据。');
-      return;
+    try {
+      const result = await projectRepository.load(project.id);
+      if (result.status !== 'ok') {
+        notify({
+          tone: 'danger',
+          title: '项目导出失败',
+          message: result.status === 'invalid'
+            ? '项目结构已损坏，原始内容已保留为恢复副本，无法作为有效设计导出。'
+            : '未找到项目设计数据，无法导出。',
+          dedupeKey: `project-export-failed:${project.id}`,
+        });
+        return;
+      }
+      const file = createDesignFile(project, result.config);
+      downloadTextFile(
+        JSON.stringify(file, null, 2),
+        `${safeFilename(project.name)}.wire-harness.json`,
+      );
+      notify({
+        tone: 'success',
+        message: `已导出项目“${project.name}”。`,
+        dedupeKey: `project-export-result:${project.id}`,
+      });
+    } catch (error) {
+      console.error('项目导出失败:', error);
+      notify({
+        tone: 'danger',
+        title: '项目导出失败',
+        message: getUserErrorMessage(error, '项目导出失败，请检查网络后重试。'),
+        action: { label: '重试导出', onClick: () => void handleExport(project) },
+        dedupeKey: `project-export-failed:${project.id}`,
+      });
     }
-    const file = createDesignFile(project, result.config);
-    downloadTextFile(
-      JSON.stringify(file, null, 2),
-      `${safeFilename(project.name)}.wire-harness.json`,
-    );
-    setNotice(`已导出项目“${project.name}”`);
   };
 
   const handleImport = async (preview: DesignFilePreview) => {
@@ -183,7 +200,11 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
       { activate: false },
     );
     if (!project || useUserStore.getState().currentUser?.id !== project.userId) return;
-    setNotice(`已从设计文件创建项目“${project.name}”，可在项目列表中打开。`);
+    notify({
+      tone: 'success',
+      message: `已从设计文件创建项目“${project.name}”，可在项目列表中打开。`,
+      dedupeKey: `project-import-result:${project.id}`,
+    });
   };
 
   const formatDate = (timestamp: number) => {
@@ -244,13 +265,6 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
             >
               <RefreshCw className="h-3 w-3" /> 重试
             </button>
-          </div>
-        )}
-
-        {notice && (
-          <div className="mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm">
-            <span>{notice}</span>
-            <button type="button" onClick={() => setNotice(null)} className="text-slate-400 hover:text-slate-700">✕</button>
           </div>
         )}
 
@@ -380,13 +394,6 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
             message={`删除项目“${deleteToast.name}”？此操作不可撤销。`}
             onConfirm={() => void handleDelete(deleteToast)}
             onCancel={() => setDeleteToast(null)}
-          />
-        )}
-        {statusToast && (
-          <ActionToast
-            tone={statusToast.tone}
-            message={statusToast.message}
-            onClose={() => setStatusToast(null)}
           />
         )}
       </div>

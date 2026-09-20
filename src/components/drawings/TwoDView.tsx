@@ -45,6 +45,8 @@ import {
   calculateWiringDiagramWidth,
 } from '@/lib/wiringDiagramLayout';
 import { buildProductionBomRows, type ProductionBomRow } from '@/lib/productionBomRows';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import { notify } from '@/stores/noticeStore';
 import { ItemCalloutLayer } from './ItemCalloutLayer';
 
 // ── constants ──────────────────────────────────────────────────────────────────
@@ -1119,8 +1121,13 @@ export function TwoDView() {
       }
     } catch (err) {
       console.error('导出成品图失败', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      alert(`导出成品图失败: ${msg}`);
+      notify({
+        tone: 'danger',
+        title: '成品图导出失败',
+        message: getUserErrorMessage(err, '成品图导出失败，请检查网络后重试。'),
+        action: { label: '重试导出', onClick: () => void handleExport(format) },
+        dedupeKey: 'product-drawing-export-failed',
+      });
     } finally {
       setIsExporting(false);
     }

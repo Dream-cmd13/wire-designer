@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { MaterialLibraryPage } from '@/pages/MaterialLibraryPage';
@@ -743,5 +744,19 @@ describe('MaterialLibraryPage', () => {
 
     const htmlAcc = renderToStaticMarkup(<MaterialLibraryPage initialTab="accessories" />);
     expect(htmlAcc).toContain('正在加载模具与辅材物料...');
+  });
+
+  it('撤销过期的“重试保存”通知，避免重试已取消或已替换的价格文件', () => {
+    const source = readFileSync('src/pages/MaterialLibraryPage.tsx', 'utf8');
+
+    // 重试读取当前任务引用，而不是失败时闭包中的旧数据
+    expect(source).toContain('pendingImportRef');
+    expect(source).toContain('const task = pendingImportRef.current');
+    // 取消、换文件、导入成功时撤销旧通知
+    expect(source).toContain('clearImportFailureNotice');
+    expect(source).toContain('dismissNotice');
+    expect(source).toContain('applyPendingImport(null)');
+    // 取消按钮不得只清空界面状态而遗留可重试的旧任务通知
+    expect(source).not.toContain('onClick={() => setPendingImport(null)}');
   });
 });

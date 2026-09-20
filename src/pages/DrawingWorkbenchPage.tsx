@@ -32,6 +32,7 @@ import {
   type WorkspaceDraft,
 } from '@/lib/workspaceDraftCache';
 import { hasPendingDrawingChanges, hydrateDrawingStore, restoreDrawingDraft, useDrawingStore } from '@/stores/drawingStore';
+import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
 
@@ -112,7 +113,6 @@ export function DrawingWorkbenchPage() {
   const [iconLibraryOpen, setIconLibraryOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState('');
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [exportFilename, setExportFilename] = useState('');
   const [selectionWarning, setSelectionWarning] = useState(false);
@@ -379,16 +379,27 @@ export function DrawingWorkbenchPage() {
   const requestPdfExport = () => {
     const defaultFilename = drawing?.titleBlock.drawingNo || drawing?.name || 'drawing';
     setExportFilename(defaultFilename);
-    setExportError('');
     setPdfDialogOpen(true);
   };
   const exportPdf = async (requestedFilename = exportFilename) => {
     if (!drawing || exporting) return;
     setExportFilename(requestedFilename);
-    setExporting(true); setExportError('');
-    try { await downloadDrawingPdf(drawing, requestedFilename); setPdfDialogOpen(false); }
-    catch (reason) { console.error('PDF 导出失败:', reason); setExportError(getUserErrorMessage(reason, 'PDF 导出失败，请重试。')); }
-    finally { setExporting(false); }
+    setExporting(true);
+    try {
+      await downloadDrawingPdf(drawing, requestedFilename);
+      setPdfDialogOpen(false);
+    } catch (reason) {
+      console.error('PDF 导出失败:', reason);
+      notify({
+        tone: 'danger',
+        title: '图纸导出失败',
+        message: getUserErrorMessage(reason, '图纸 PDF 导出失败，请检查网络后重试。'),
+        action: { label: '重试导出', onClick: () => void exportPdf(requestedFilename) },
+        dedupeKey: 'drawing-pdf-export-failed',
+      });
+    } finally {
+      setExporting(false);
+    }
   };
   const changeTool = (mode: DrawingToolMode) => {
     if (toolMode !== 'select') breakDrawingPath();
@@ -562,13 +573,12 @@ export function DrawingWorkbenchPage() {
       }}
       onClose={() => setCorruptDrafts([])}
     />}
-    {draftError && <div role="alert" className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">本地草稿备份失败：{draftError}。请保持页面打开并重试保存。</div>}
+    {draftError && <div role="alert" className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">{draftError}</div>}
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
     {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
     <DrawingTableCreateDialog open={tableDialogOpen} onClose={() => setTableDialogOpen(false)} onConfirm={addTable}/>
     {materialTableObject && <DrawingMaterialTableDialog drawing={drawing} table={materialTableObject} onAddCurrent={addCurrentMaterial} onClose={() => setMaterialTableObjectId(null)}/>}
     {lineEditorObject && <DrawingLinePropertiesDialog object={lineEditorObject} defaultName={lineEditorObject.name || fallbackLineName(drawing, lineEditorObject.id)} onClose={() => setLineEditorObjectId(null)} onConfirm={updateLineProperties}/>}
-    {exportError && <div role="alert" className="absolute bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded border border-red-200 bg-white px-4 py-2 text-sm text-red-700 shadow-lg"><span>{exportError}</span><button type="button" onClick={() => void exportPdf(exportFilename)} className="font-medium underline">重试</button><button type="button" aria-label="关闭导出错误" onClick={() => setExportError('')}>×</button></div>}
     <StandaloneDrawingWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
   </div>;
 }

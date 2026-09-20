@@ -12,6 +12,8 @@ import {
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabaseClient';
 import { extractSheetImages, type SheetEmbeddedImage } from '@/lib/excelEmbeddedImages';
+import { getUserErrorMessage, UserFacingError } from '@/lib/userErrorMessage';
+import { notify } from '@/stores/noticeStore';
 
 const BUCKET_NAME = 'cost-analysis-sources';
 
@@ -31,7 +33,7 @@ async function fetchProtectedExcelBlob(targetKey: string): Promise<Blob> {
   if (supabase) {
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData?.session) {
-      throw new Error('请先登录系统以访问私有成本分析表');
+      throw new UserFacingError('请先登录系统，再查看成本分析表。');
     }
 
     const { data, error } = await supabase.storage
@@ -39,7 +41,7 @@ async function fetchProtectedExcelBlob(targetKey: string): Promise<Blob> {
       .download(storagePath);
 
     if (error || !data) {
-      throw new Error(`无法获取 Excel 文件: ${error?.message || '未知错误'}`);
+      throw new Error(`下载成本分析表失败: ${error?.message || '未知错误'}`);
     }
 
     return data;
@@ -47,7 +49,7 @@ async function fetchProtectedExcelBlob(targetKey: string): Promise<Blob> {
 
   const res = await fetch(targetKey);
   if (!res.ok) {
-    throw new Error(`无法获取 Excel 文件 (${res.status} ${res.statusText})`);
+    throw new Error(`下载成本分析表失败 (${res.status} ${res.statusText})`);
   }
   return await res.blob();
 }
@@ -145,10 +147,8 @@ export function ExcelPreviewModal({
             setActiveSheet(wb.SheetNames[0]);
           }
         } catch (parseErr) {
-          throw new Error(
-            `解析 Excel 内容失败: ${parseErr instanceof Error ? parseErr.message : '未知错误'}`,
-            { cause: parseErr },
-          );
+          console.error('解析 Excel 内容失败:', parseErr);
+          throw new UserFacingError('成本分析表内容无法解析，文件可能已损坏。');
         }
       })
       .catch((err) => {
@@ -157,7 +157,7 @@ export function ExcelPreviewModal({
         setLoadedState({
           targetKey: downloadPath,
           workbook: null,
-          error: err instanceof Error ? err.message : '加载 Excel 失败',
+          error: getUserErrorMessage(err, '成本分析表加载失败，请检查网络后重试。'),
         });
       });
 
@@ -288,8 +288,20 @@ export function ExcelPreviewModal({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(objectUrl);
+      notify({
+        tone: 'success',
+        message: '成本分析表已开始下载。',
+        dedupeKey: 'excel-download-result',
+      });
     } catch (err) {
       console.error('下载 Excel 失败:', err);
+      notify({
+        tone: 'danger',
+        title: '成本分析表下载失败',
+        message: getUserErrorMessage(err, '成本分析表下载失败，请检查网络后重试。'),
+        action: { label: '重试下载', onClick: () => void handleDownload() },
+        dedupeKey: 'excel-download-failed',
+      });
     }
   };
 

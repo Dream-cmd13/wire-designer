@@ -99,7 +99,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
         });
       } catch (error) {
         if (!isCurrentSession(userId, generation)) return;
-        const message = getUserErrorMessage(error, '获取项目列表失败');
+        const message = getUserErrorMessage(error, '项目列表暂时无法加载，请检查网络后重试。');
         set({
           projectsStatus: 'error',
           projectsError: message,

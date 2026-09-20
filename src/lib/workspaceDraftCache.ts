@@ -1,4 +1,5 @@
 import { isDrawingDocument } from '@/lib/drawingDocumentSchema';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { DrawingDocument } from '@/types/drawing';
 import type { HarnessConfig } from '@/types/harness';
 
@@ -256,9 +257,10 @@ export function writeWorkspaceDraft(
     localStorage.setItem(workspaceDraftKey(draft.ownerId, draft.kind, draft.documentId), JSON.stringify(payload));
     return { ok: true };
   } catch (error) {
+    console.error('本地草稿写入失败:', error);
     return {
       ok: false,
-      error: error instanceof Error ? error.message : '本地草稿写入失败。',
+      error: getUserErrorMessage(error, '未能在此设备上备份最新修改，请保持页面打开并尝试保存。'),
     };
   }
 }

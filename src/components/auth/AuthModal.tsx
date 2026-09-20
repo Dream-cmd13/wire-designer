@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { LogIn, LogOut, X } from 'lucide-react';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { useUserStore } from '@/stores/userStore';
 
 interface AuthModalProps {
@@ -26,7 +27,8 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
       await signIn(email.trim(), password);
       onClose();
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : '登录失败，请稍后重试。');
+      console.error('登录失败:', authError);
+      setError(getUserErrorMessage(authError, '登录失败，请稍后重试。'));
     } finally {
       setSubmitting(false);
     }
@@ -41,7 +43,8 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
       await signOut();
       onClose();
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : '退出登录失败，请稍后重试。');
+      console.error('退出登录失败:', authError);
+      setError(getUserErrorMessage(authError, '退出登录失败，请稍后重试。'));
     } finally {
       setSubmitting(false);
     }

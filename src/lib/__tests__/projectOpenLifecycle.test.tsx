@@ -84,6 +84,7 @@ vi.mock('@/lib/supabaseClient', () => ({
 import App from '@/App';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { useHistoryStore } from '@/stores/historyStore';
+import { useNoticeStore } from '@/stores/noticeStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 
@@ -202,6 +203,7 @@ describe('project open lifecycle', () => {
     signIn('user-a');
     useProjectStore.getState().resetProjects();
     useHistoryStore.getState().clear();
+    useNoticeStore.getState().clear();
     useHarnessStore.getState().replaceDocument(createFallbackConfig(), { markSaved: true });
     initialConfigId = useHarnessStore.getState().config.id;
     historyMock = installWindow('/home');
@@ -473,7 +475,11 @@ describe('project open lifecycle', () => {
     expect(useProjectStore.getState().currentProject?.id).toBe('p1');
     expect(useHarnessStore.getState().config.id).toBe('p1');
     expect(useHarnessStore.getState().saveState.status).toBe('error');
-    expect(window.alert).toHaveBeenCalledTimes(1);
+    const notices = useNoticeStore.getState().notices;
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.tone).toBe('danger');
+    expect(notices[0]?.message).toContain('已取消切换');
+    expect(notices[0]?.action?.label).toBe('重试保存');
     expect(readWorkspaceDraft('user-a', 'project', 'p1')).not.toBeNull();
   });
 

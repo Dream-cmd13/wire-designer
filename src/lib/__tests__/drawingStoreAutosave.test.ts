@@ -318,7 +318,7 @@ describe('drawing autosave reliability', () => {
     const result = flushDrawingDrafts();
 
     expect(result.ok).toBe(false);
-    expect(useDrawingStore.getState().draftError).toContain('QuotaExceededError');
+    expect(useDrawingStore.getState().draftError).toContain('本地存储空间不足');
   });
 
   it('marks the document dirty immediately after an edit', async () => {

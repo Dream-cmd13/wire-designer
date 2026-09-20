@@ -188,7 +188,20 @@ describe('workspace draft cache', () => {
     const result = writeWorkspaceDraft(drawingDraft('user-a', 'doc-1', 1));
 
     expect(result.ok).toBe(false);
-    expect(result.error).toContain('QuotaExceededError');
+    expect(result.error).toContain('本地存储空间不足');
+    expect(result.error).not.toContain('QuotaExceededError');
+  });
+
+  it('converts browser storage denial into a Chinese user message', () => {
+    vi.spyOn(storageMock, 'setItem').mockImplementation(() => {
+      throw new Error('Access is denied for this document');
+    });
+
+    const result = writeWorkspaceDraft(drawingDraft('user-a', 'doc-1', 1));
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('浏览器阻止了本机存储');
+    expect(result.error).not.toContain('Access is denied');
   });
 
   it('keeps a newer draft when an older revision is confirmed', () => {

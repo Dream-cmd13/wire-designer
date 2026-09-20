@@ -1,4 +1,5 @@
 import { materialPriceKey, type QuoteMaterial } from '@/lib/quoteMaterials';
+import { UserFacingError } from '@/lib/userErrorMessage';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -8,7 +9,7 @@ export interface MaterialPrice extends Omit<QuoteMaterial, 'quantity'> {
 export interface PriceBook { importedAt: string; sourceName: string; prices: MaterialPrice[] }
 
 export function validatePrices(value: unknown): MaterialPrice[] {
-  if (!Array.isArray(value) || !value.length || value.length > 10000) throw new Error('价格记录必须为 1 至 10000 行');
+  if (!Array.isArray(value) || !value.length || value.length > 10000) throw new UserFacingError('价格记录必须为 1 至 10000 行');
   const keys = new Set<string>();
   return value.map((raw, index) => {
     const row = raw as MaterialPrice;
@@ -20,10 +21,10 @@ export function validatePrices(value: unknown): MaterialPrice[] {
       || (row.kind === 'wire' ? row.lengthMm <= 0 || row.unit !== '元/条' : row.lengthMm !== 0 || row.unit !== '元/个')
       || typeof row.taxIncludedPrice !== 'string'
       || !/^\d{1,9}(\.\d{1,6})?$/.test(row.taxIncludedPrice)) {
-      throw new Error(`第 ${index + 2} 行价格、单位、长度或物料信息无效（单价最多 6 位小数）`);
+      throw new UserFacingError(`第 ${index + 2} 行价格、单位、长度或物料信息无效（单价最多 6 位小数）`);
     }
     const key = materialPriceKey(row);
-    if (keys.has(key)) throw new Error(`第 ${index + 2} 行与前面记录重复`);
+    if (keys.has(key)) throw new UserFacingError(`第 ${index + 2} 行与前面记录重复`);
     keys.add(key);
     return { ...row };
   });
@@ -61,14 +62,14 @@ export function createDatabasePriceRepository(client: SupabaseClient | null): Pr
   };
   return { load, async merge(prices, sourceName) {
     const incoming = validatePrices(prices);
-    if (!sourceName.trim() || sourceName.length > 255) throw new Error('价格文件名无效');
+    if (!sourceName.trim() || sourceName.length > 255) throw new UserFacingError('价格文件名无效');
     const { error } = await requireClient().from('material_prices').upsert(incoming.map((row) => ({
       kind: row.kind, resource_id: row.resourceId, name: row.name, specification: row.specification,
       length_mm: row.lengthMm, unit: row.unit, tax_included_price: row.taxIncludedPrice, source_name: sourceName,
     })), { onConflict: 'kind,resource_id,specification,length_mm,unit' });
     if (error) throw new Error(`导入共享价格失败：${error.message}`);
     const book = await load();
-    if (!book) throw new Error('价格已提交，但未能读取共享价格，请刷新重试');
+    if (!book) throw new UserFacingError('价格已提交，但未能读取共享价格，请刷新重试');
     return book;
   } };
 }
