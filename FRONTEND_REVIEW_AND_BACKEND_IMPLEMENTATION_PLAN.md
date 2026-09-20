@@ -2,8 +2,8 @@
 
 > [!IMPORTANT]
 > 本文保留后端架构研究和历史实施记录，不再作为当前前端缺陷清单。
-> 最新风险分级、浏览器走查结果和“是否可暂缓后端”的结论请以
-> `CURRENT_SYSTEM_RISK_AND_FRONTEND_MVP_PLAN.md`（2026-07-03）为准。
+> 前端风险分级与浏览器走查的历史结论见 `CURRENT_SYSTEM_RISK_AND_FRONTEND_MVP_PLAN.md` 的“现状更新（2026-09-20）”；
+> 当前架构、数据模型与权限见 `README.md` 和 `docs/supabase-backend-database-integration.md`。
 
 > 文档日期：2026-07-02  
 > 项目：`wire-harness-designer`  

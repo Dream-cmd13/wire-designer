@@ -1,5 +1,10 @@
 # 线材连接模型重构与交互修改执行方案
 
+> [!NOTE]
+> 本次重构已在 `schemaVersion: 3` 落地：业务对象收敛为连接器、线材、保护套，旧 `Wire/Connection/WireBundle` 已从业务模型移除，
+> 第 2 节的 R1–R10 与第 15 节的扩展规则均已实施；旧项目按测试阶段约定不迁移、直接清空重建。
+> 当前数据模型与权限见 `README.md` 和 `docs/supabase-backend-database-integration.md`。
+
 > 文档日期：2026-07-02  
 > 适用项目：`wire-harness-designer`  
 > 文档目的：把本次需求整理为可直接执行、可验证、可回滚的数据与交互修改方案。本文档只描述修改计划，不包含本轮代码实现。

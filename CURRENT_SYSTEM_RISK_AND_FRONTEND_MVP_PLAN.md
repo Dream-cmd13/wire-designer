@@ -1,10 +1,45 @@
 # 线束设计器当前系统审计与前端 MVP 完善计划
 
+> [!IMPORTANT]
+> 本文是 2026-07-03 的阶段审计，当时系统仍是“纯前端 + localStorage”的单体，本文不再作为当前架构基线。
+> 当前数据模型、权限与验收口径以 `README.md` 和 [Supabase 集成说明](docs/supabase-backend-database-integration.md) 为准。
+> 下方“现状更新（2026-09-20）”记录与本文结论的差异和仍未闭环事项。
+
 > 审计日期：2026-07-03
 > 审计对象：`wire-harness-designer` 当前工作区
-> 结论适用范围：当前 `schemaVersion: 3` 前端单体
+> 结论适用范围：2026-07-03 时的 `schemaVersion: 3` 前端单体与本地持久化实现
 > 审计方法：源码与文档交叉审查、ESLint、单元测试、生产构建、`http://localhost:5173/` 实际页面走查
-> 本文是当前决策基线；2026-06-29 的旧系统分析仅保留历史参考价值。
+> 2026-06-29 的旧系统分析仅保留历史参考价值。
+
+---
+
+## 现状更新（2026-09-20）
+
+截至 2026-09-20，本文第 1–8 章的“本地单机 MVP”前提已不再成立。本次核对结论如下。
+
+### 已落地的变化
+
+- 认证与持久化：Supabase Auth 取代本地明文登录；`projects`、`drawings` 云端保存并带 RLS 账号隔离；本机仅保留按账号隔离的恢复草稿（`wh_draft_v1:<ownerId>:<kind>:<documentId>`），保存契约见 `SAVE_CONCURRENCY_AND_REALTIME_STRATEGY.md` 的实施更新。
+- 共享数据：物料库（七类物料）、材料价格、供应商、成品线束物料与成本分析已迁入 Supabase 共享表，目录数据不再写死在前端数组。
+- 新增模块：制作图纸工作台（新建、编辑、PDF 导出）、物料库页面、来源 Excel 与内嵌图片预览、成品方案成本分析。
+- 质量基线（2026-09-20 实测）：`npx eslint .` 0 错误 0 告警；`npx tsc -b` 通过；`npm test` 为 87 个测试文件、658 个用例全部通过。
+
+### 本文风险条目的当前状态
+
+- 4.1 本地登录不是认证：已由 Supabase Auth 解决。
+- 4.2 备份与恢复：已由云端保存 + 本地草稿恢复 + 损坏草稿隔离解决。
+- 4.5–4.7、4.11、4.12：已按本文方案落地（原子弹窗事务、输入框撤销、状态收敛、删除反馈、按需加载）。
+- 4.8 目录数据可信度：已脱离前端演示数组并导入真实物料，生产可用性仍需业务复核。
+- 4.9 测试覆盖：已有 658 个单元/组件测试，但 E2E 仍未建立。
+- 仍开放：4.3/4.4（BOM 与报价仍为前端估算，不作为正式商业报价）、4.10（校验错误尚未作为 BOM/报价导出与询价的门禁，目前仅 `designFile.ts` 的导入/导出调用 `validateHarness`）。
+- Phase B1（轻量云端）：已实施，采用 Supabase 直连而非自建 NestJS。
+
+### 2026-09-20 新发现、尚未处理
+
+- 仍无 E2E 与 CI：无 `.github` 工作流、无 Playwright 用例，跨模块回归依赖单元/组件测试和手工走查。
+- 死代码：`src/components/drawings/workbench/*`（`DrawingWizardDialog`、`DrawingCanvas` 等约 1300 行）已无生产引用，实际制作图页使用 `components/drawings/standalone/*`；仅个别静态测试读取其源码文本。
+- 超大文件：`HarnessCanvas.tsx`、`MaterialLibraryPage.tsx`、`TwoDView.tsx`、`App.tsx` 均超过 1000 行，后续维护和拆分成本高。
+- 本文以下章节中的测试数量、构建体积、localStorage 流程等均为 2026-07-03 的历史记录，不再代表现状。
 
 ---
 

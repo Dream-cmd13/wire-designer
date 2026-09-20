@@ -2,7 +2,8 @@
 
 > [!IMPORTANT]
 > 本文是 2026-06-29 的历史审计，包含“无右键菜单、无撤销、无测试”等已失效结论。
-> 当前系统判断与前端 MVP 决策请以 `CURRENT_SYSTEM_RISK_AND_FRONTEND_MVP_PLAN.md`（2026-07-03）为准。
+> 当前架构与数据模型请以 `README.md` 和 `docs/supabase-backend-database-integration.md` 为准；
+> 前端风险与浏览器走查见 `CURRENT_SYSTEM_RISK_AND_FRONTEND_MVP_PLAN.md`（2026-07-03 审计，附 2026-09-20 现状更新）。
 
 > 文档日期：2026-06-29  
 > 分析对象：`wire-harness-designer` 当前工作区  
