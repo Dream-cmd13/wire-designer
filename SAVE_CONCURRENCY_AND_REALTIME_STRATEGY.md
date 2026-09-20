@@ -7,6 +7,15 @@
 >
 > **实施更新（2026-07-03）：** 本地保存已改为单一项目文档源和异步
 > `ProjectRepository` 接口；原先无项目归属的 `harness-config` 双副本已移除。
+>
+> **实施更新（2026-09-20）：** 项目与图纸已切换为 Supabase 云端保存，保存契约如下：
+>
+> - 图纸保存在 `drawingStore` 内集中调度：文档维护单调递增 `revision` 与 `savedRevision`，从首次变脏起 500ms 调度；同一文档最多一个在途请求，请求期间的新编辑在成功后继续补存最新快照；失败保留 dirty 并显示 error，手动重试或下一次编辑重新发起；`flushDrawingSaves()` 用于显式等待。
+> - 项目保留 2 秒 debounce 自动保存，`doSave` 在飞时不排队；账号切换和关闭项目会等待保存完成，失败则停留并提示。
+> - 编辑中的项目和图纸按账号写入本地恢复副本 `wh_draft_v1:<ownerId>:<kind>:<documentId>`；云端确认成功后仅清理不高于确认版本的草稿，本地有更新时保留；重新进入同账号时若草稿与云端不一致，提示“恢复本地草稿 / 使用云端版本”。
+> - `visibilitychange(hidden)`、`pagehide`、`beforeunload` 只做 best-effort 快照写入；`beforeunload` 在存在未保存内容时触发浏览器原生提示，但不作为可靠的云端提交点。
+> - 第 3 节的数据库 revision 乐观锁与保存 RPC 尚未实施，仍属后续方案；当前冲突策略是账号隔离、串行保存与本地草稿恢复。
+> - 第 2.1–2.6 节描述的是 2026-07 的纯 localStorage MVP，仅作历史背景；当前数据模型见 `README.md`。
 
 ---
 

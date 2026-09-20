@@ -176,6 +176,77 @@ describe('project store', () => {
     expect(useProjectStore.getState().projectsStatus).not.toBe('success');
   });
 
+  it('discards responses from a previous session even when the same account returns', async () => {
+    setCurrentUser('user-a');
+    let resolveRemote: (val: Project[]) => void = () => {};
+    mocks.listProjects.mockReturnValue(new Promise<Project[]>((resolve) => {
+      resolveRemote = resolve;
+    }));
+
+    const loadPromise = useProjectStore.getState().loadProjects('user-a');
+    setCurrentUser('user-b');
+    useProjectStore.getState().resetProjects();
+    setCurrentUser('user-a');
+
+    resolveRemote([{
+      id: 'p-stale',
+      userId: 'user-a',
+      name: 'Stale Project',
+      description: '',
+      createdAt: 1,
+      updatedAt: 2,
+    }]);
+    await loadPromise;
+
+    expect(useProjectStore.getState().projects).toEqual([]);
+    expect(useProjectStore.getState().projectsStatus).not.toBe('success');
+  });
+
+  it('starts a fresh request after a session reset instead of reusing the old promise', async () => {
+    setCurrentUser('user-a');
+    const pending: Array<(value: Project[]) => void> = [];
+    mocks.listProjects.mockImplementation(() => new Promise<Project[]>((resolve) => {
+      pending.push(resolve);
+    }));
+
+    const first = useProjectStore.getState().loadProjects('user-a');
+    useProjectStore.getState().resetProjects();
+    const second = useProjectStore.getState().loadProjects('user-a');
+
+    expect(mocks.listProjects).toHaveBeenCalledTimes(2);
+
+    pending[1]([{ id: 'p-new', userId: 'user-a', name: 'New', description: '', createdAt: 2, updatedAt: 3 }]);
+    await second;
+    pending[0]([{ id: 'p-stale', userId: 'user-a', name: 'Stale', description: '', createdAt: 1, updatedAt: 2 }]);
+    await first;
+
+    expect(useProjectStore.getState().projects.map((project) => project.id)).toEqual(['p-new']);
+    expect(useProjectStore.getState().projectsStatus).toBe('success');
+  });
+
+  it('does not inject a created project from a previous session of the same account', async () => {
+    setCurrentUser('user-a');
+    let resolveCreate: () => void = () => {};
+    mocks.createProject.mockReturnValue(new Promise((resolve) => {
+      resolveCreate = () => resolve(undefined);
+    }));
+
+    const creation = useProjectStore.getState().createProject(
+      'user-a',
+      'Stale creation',
+      '',
+      createFallbackConfig(),
+    );
+    setCurrentUser('user-b');
+    useProjectStore.getState().resetProjects();
+    setCurrentUser('user-a');
+    resolveCreate();
+
+    await expect(creation).resolves.toBeNull();
+    expect(useProjectStore.getState().projects).toEqual([]);
+    expect(useProjectStore.getState().currentProject).toBeNull();
+  });
+
   it('retains cached projects and surfaces error when remote fetch fails', async () => {
     const cachedItem = {
       id: 'p-cached',
@@ -213,6 +284,24 @@ describe('project store', () => {
 
     await Promise.all([p1, p2]);
     expect(callCount).toBe(1);
+  });
+
+  it('does not save a config that belongs to another project', async () => {
+    const save = vi.fn(async () => undefined);
+    const repository = await import('@/repositories/projectRepository');
+    vi.spyOn(repository.projectRepository, 'save').mockImplementation(save);
+    useProjectStore.getState().setCurrentProject({
+      id: 'p2',
+      userId: 'user-1',
+      name: 'P2',
+      description: '',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    await useProjectStore.getState().saveCurrentConfig({ ...createFallbackConfig(), id: 'p1' });
+
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('resets projects and status on user reset', () => {

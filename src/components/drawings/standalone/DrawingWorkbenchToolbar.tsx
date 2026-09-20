@@ -3,6 +3,7 @@ import {
   ArrowDown, ArrowUp, ArrowUpFromLine, Eraser, FileText, Layers2, LockKeyhole,
   Menu, MousePointer2, PenLine, Pencil, Redo2, Save, Shapes, SquareDashed, Trash2, Undo2, Wand2,
 } from 'lucide-react';
+import type { DrawingSaveState } from '@/stores/drawingStore';
 import type { DrawingToolMode } from '@/types/drawing';
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
   allObjectsLocked: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  saveState: DrawingSaveState;
   onBeforeAction: () => void;
   onWizard: () => void;
   onResources: () => void;
@@ -39,6 +41,20 @@ interface Props {
 function Button({ title, active, disabled, iconOnly, onClick, children }: { title: string; active?: boolean; disabled?: boolean; iconOnly?: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button type="button" title={title} aria-label={title} aria-pressed={active} disabled={disabled} onClick={onClick} className={`flex h-9 shrink-0 items-center rounded-md border text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 ${iconOnly ? 'w-9 justify-center px-0' : 'gap-1 px-2'} ${active ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>{children}</button>;
 }
+
+const SAVE_STATE_LABELS: Record<DrawingSaveState, string> = {
+  saved: '已保存',
+  dirty: '未保存',
+  saving: '保存中',
+  error: '保存失败',
+};
+
+const SAVE_STATE_CLASSES: Record<DrawingSaveState, string> = {
+  saved: 'text-emerald-600',
+  dirty: 'text-amber-600',
+  saving: 'text-slate-500',
+  error: 'text-red-600',
+};
 
 export function DrawingWorkbenchToolbar(props: Props) {
   const [layerMenuOpen, setLayerMenuOpen] = useState(false);
@@ -99,7 +115,9 @@ export function DrawingWorkbenchToolbar(props: Props) {
     <Button title="长度标注" iconOnly onClick={() => run(props.onAddDimension)}><span className="text-xs leading-none">↔</span></Button>
     <Button title="表格" iconOnly onClick={() => run(props.onAddTable)}><span className="text-xs leading-none">▦</span></Button>
     <span className="ml-auto"/>
-    <Button title="保存" iconOnly onClick={() => run(props.onSave)}><Save className="h-4 w-4"/></Button>
+    <span role="status" aria-live="polite" className={`shrink-0 px-1 text-xs font-medium ${SAVE_STATE_CLASSES[props.saveState]}`}>{SAVE_STATE_LABELS[props.saveState]}</span>
+    {props.saveState === 'error' && <Button title="重试保存" onClick={() => run(props.onSave)}>重试</Button>}
+    <Button title={props.saveState === 'error' ? '重试保存' : '保存'} iconOnly onClick={() => run(props.onSave)}><Save className="h-4 w-4"/></Button>
     <Button title={props.exporting ? '正在导出 PDF' : '导出 PDF'} iconOnly disabled={props.exporting} onClick={() => run(props.onPdf)}><FileText className="h-4 w-4"/></Button>
   </div>;
 }

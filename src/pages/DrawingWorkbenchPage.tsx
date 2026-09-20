@@ -20,7 +20,8 @@ import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTable
 import { getDrawingTransformObject, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
 import { enterDrawingWorkbench } from '@/lib/drawingWorkbenchSession';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
-import { hydrateDrawingStore, useDrawingStore } from '@/stores/drawingStore';
+import { listWorkspaceDrafts, removeWorkspaceDraft, type WorkspaceDraft } from '@/lib/workspaceDraftCache';
+import { hasPendingDrawingChanges, hydrateDrawingStore, restoreDrawingDraft, useDrawingStore } from '@/stores/drawingStore';
 import { useUserStore } from '@/stores/userStore';
 import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
 
@@ -84,6 +85,7 @@ export function DrawingWorkbenchPage() {
   const documents = useDrawingStore((state) => state.documents);
   const activeDocumentId = useDrawingStore((state) => state.activeDocumentId);
   const saveState = useDrawingStore((state) => state.saveState);
+  const draftError = useDrawingStore((state) => state.draftError);
   const replaceWithNewDocument = useDrawingStore((state) => state.replaceWithNewDocument);
   const updateDocument = useDrawingStore((state) => state.updateDocument);
   const updateObject = useDrawingStore((state) => state.updateObject);
@@ -111,6 +113,7 @@ export function DrawingWorkbenchPage() {
   const [materialTableObjectId, setMaterialTableObjectId] = useState<string | null>(null);
   const [drawingStoreHydrated, setDrawingStoreHydrated] = useState(false);
   const [refreshDecisionOpen, setRefreshDecisionOpen] = useState(false);
+  const [draftRecovery, setDraftRecovery] = useState<WorkspaceDraft | null>(null);
   const [entryReady, setEntryReady] = useState(false);
   const entryHandledRef = useRef(false);
   const wheelGestureRef = useRef<WheelGestureState | null>(null);
@@ -136,6 +139,7 @@ export function DrawingWorkbenchPage() {
       setClipboard([]);
       setLineEditorObjectId(null);
       setMaterialTableObjectId(null);
+      setDraftRecovery(null);
 
       const state = useDrawingStore.getState();
       const alreadyHasDrawing = Boolean(state.activeDocumentId && state.documents[state.activeDocumentId]);
@@ -165,6 +169,26 @@ export function DrawingWorkbenchPage() {
         replaceWithNewDocument('未命名线束图');
       }
 
+      if (drawingOwnerId) {
+        const currentDocuments = useDrawingStore.getState().documents;
+        const drafts = listWorkspaceDrafts(drawingOwnerId, 'drawing');
+        const candidates = drafts.filter((draft) => {
+          const current = currentDocuments[draft.documentId];
+          if (!current) return true;
+          if (JSON.stringify(current) === JSON.stringify(draft.document)) {
+            if (!hasPendingDrawingChanges(draft.documentId)) {
+              removeWorkspaceDraft(drawingOwnerId, 'drawing', draft.documentId);
+            }
+            return false;
+          }
+          return true;
+        });
+        if (candidates.length > 0) {
+          const newest = [...candidates].sort((left, right) => right.savedAt - left.savedAt)[0];
+          setDraftRecovery(newest);
+        }
+      }
+
       if (!cancelled) {
         setEntryReady(true);
       }
@@ -173,13 +197,6 @@ export function DrawingWorkbenchPage() {
     void initialize();
     return () => { cancelled = true; };
   }, [drawingOwnerId, replaceWithNewDocument]);
-  useEffect(() => {
-    if (saveState !== 'dirty') return;
-    const timer = window.setTimeout(() => {
-      void saveActiveDocument().catch((error) => console.error('图纸保存失败:', error));
-    }, 500);
-    return () => window.clearTimeout(timer);
-  }, [saveActiveDocument, saveState]);
   useEffect(() => { if (!selectionWarning) return; const timer = window.setTimeout(() => setSelectionWarning(false), 2200); return () => window.clearTimeout(timer); }, [selectionWarning]);
   useEffect(() => () => { if (wheelGestureRef.current) window.clearTimeout(wheelGestureRef.current.timeoutId); }, []);
 
@@ -302,6 +319,24 @@ export function DrawingWorkbenchPage() {
     resetTransientState();
     setRefreshDecisionOpen(false);
   };
+  const restoreDraft = () => {
+    if (!draftRecovery) return;
+    const ownerId = useUserStore.getState().currentUser?.id ?? null;
+    if (!ownerId || ownerId !== draftRecovery.ownerId) {
+      setDraftRecovery(null);
+      return;
+    }
+    restoreDrawingDraft(draftRecovery.document as DrawingDocument, draftRecovery.revision);
+    setDraftRecovery(null);
+  };
+  const discardDraft = () => {
+    if (!draftRecovery) return;
+    const ownerId = useUserStore.getState().currentUser?.id ?? null;
+    if (ownerId && ownerId === draftRecovery.ownerId) {
+      removeWorkspaceDraft(draftRecovery.ownerId, 'drawing', draftRecovery.documentId);
+    }
+    setDraftRecovery(null);
+  };
   const requireSelection = (action: () => void) => {
     if (!selected.length) { setSelectionWarning(true); return; }
     action();
@@ -422,7 +457,7 @@ export function DrawingWorkbenchPage() {
 
   if (!drawingStoreHydrated || !entryReady || !drawing) return null;
   return <div className="flex h-full min-h-0 flex-col bg-slate-100">
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} onSave={() => void saveActiveDocument()} onPdf={requestPdfExport} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={() => void saveActiveDocument().catch((error) => console.error('图纸保存失败:', error))} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
       <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>
@@ -457,6 +492,15 @@ export function DrawingWorkbenchPage() {
       primaryAction={{ label: '丢弃并新建', destructive: true, onClick: discardAndCreate }}
       onClose={() => setRefreshDecisionOpen(false)}
     />}
+    {draftRecovery && <ActionToast
+      role="alertdialog"
+      title="发现本地图纸草稿"
+      message="本地保存了未同步到云端的图纸修改。恢复本地草稿会使用本地版本，使用云端版本会丢弃本地草稿。"
+      secondaryAction={{ label: '使用云端版本', onClick: discardDraft }}
+      primaryAction={{ label: '恢复本地草稿', onClick: restoreDraft }}
+      onClose={() => setDraftRecovery(null)}
+    />}
+    {draftError && <div role="alert" className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">本地草稿备份失败：{draftError}。请保持页面打开并重试保存。</div>}
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
     {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
     <DrawingTableCreateDialog open={tableDialogOpen} onClose={() => setTableDialogOpen(false)} onConfirm={addTable}/>

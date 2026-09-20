@@ -46,9 +46,14 @@ interface ProjectState {
 }
 
 const inFlightLoads = new Map<string, Promise<void>>();
+let projectSessionGeneration = 0;
 
 function isCurrentUser(userId: string): boolean {
   return useUserStore.getState().currentUser?.id === userId;
+}
+
+function isCurrentSession(userId: string, generation: number): boolean {
+  return generation === projectSessionGeneration && isCurrentUser(userId);
 }
 
 export const useProjectStore = create<ProjectState>()((set, get) => ({
@@ -59,7 +64,9 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 
   loadProjects: async (userId, options) => {
     if (!userId) return;
+    if (!isCurrentUser(userId)) return;
 
+    const generation = projectSessionGeneration;
     const currentProjects = get().projects;
     const hasCurrentProjectsForUser = currentProjects.length > 0
       && currentProjects.every((project) => project.userId === userId);
@@ -82,7 +89,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     const loadPromise = (async () => {
       try {
         const remoteProjects = await projectRepository.listProjects(userId);
-        if (!isCurrentUser(userId)) return;
+        if (!isCurrentSession(userId, generation)) return;
         setCachedProjects(userId, remoteProjects);
         set({
           projects: remoteProjects,
@@ -90,23 +97,27 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
           projectsError: null,
         });
       } catch (error) {
-        if (!isCurrentUser(userId)) return;
+        if (!isCurrentSession(userId, generation)) return;
         const message = getUserErrorMessage(error, '获取项目列表失败');
         set({
           projectsStatus: 'error',
           projectsError: message,
         });
-      } finally {
-        inFlightLoads.delete(userId);
       }
     })();
 
     inFlightLoads.set(userId, loadPromise);
+    void loadPromise.finally(() => {
+      if (inFlightLoads.get(userId) === loadPromise) {
+        inFlightLoads.delete(userId);
+      }
+    });
     return loadPromise;
   },
 
   createProject: async (userId, name, description, initialConfig) => {
     if (!isCurrentUser(userId)) return null;
+    const generation = projectSessionGeneration;
     const projectId = generateId();
     const newProject: Project = {
       id: projectId,
@@ -118,7 +129,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     };
     const configToSave = { ...initialConfig, id: projectId, name };
     await projectRepository.createProject(newProject, configToSave);
-    if (!isCurrentUser(userId)) return null;
+    if (!isCurrentSession(userId, generation)) return null;
     const updatedProjects = [...get().projects.filter((project) => project.userId === userId), newProject];
     setCachedProjects(userId, updatedProjects);
     set((state) => ({
@@ -168,6 +179,8 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   },
 
   resetProjects: () => {
+    projectSessionGeneration += 1;
+    inFlightLoads.clear();
     set({
       projects: [],
       currentProject: null,
@@ -180,9 +193,8 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
 
   saveCurrentConfig: async (config) => {
     const { currentProject } = get();
-    if (currentProject) {
-      await projectRepository.save(currentProject.id, config);
-    }
+    if (!currentProject || currentProject.id !== config.id) return;
+    await projectRepository.save(currentProject.id, config);
   },
 
   loadCurrentConfig: async () => {

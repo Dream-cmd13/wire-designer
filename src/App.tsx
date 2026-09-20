@@ -1,13 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, FolderOpen, Loader2 } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
-import { HarnessCanvas } from '@/components/canvas/HarnessCanvas';
 import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { ActionToast } from '@/components/shared/ActionToast';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
-import { TwoDView } from '@/components/drawings/TwoDView';
-import { BomModal } from '@/components/panels/BomPanel';
-import { QuoteModal } from '@/components/panels/QuotePanel';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { useAppRoute } from '@/hooks/useAppRoute';
@@ -16,17 +14,57 @@ import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
 import { supabase } from '@/lib/supabaseClient';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import {
+  canApplyWorkspaceDraft,
+  readWorkspaceDraft,
+  removeWorkspaceDraft,
+  removeWorkspaceDraftIfRevisionAtMost,
+  writeWorkspaceDraft,
+  type WorkspaceDraft,
+} from '@/lib/workspaceDraftCache';
 import { projectRepository } from '@/repositories/projectRepository';
-import { resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
+import { flushDrawingDrafts, resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
-import { MaterialLibraryPage } from '@/pages/MaterialLibraryPage';
-import { DrawingWorkbenchPage } from '@/pages/DrawingWorkbenchPage';
 import type { Project } from '@/types/user';
+import type { HarnessConfig } from '@/types/harness';
+
+const HarnessCanvas = lazy(() => import('@/components/canvas/HarnessCanvas').then((module) => ({ default: module.HarnessCanvas })));
+const TwoDView = lazy(() => import('@/components/drawings/TwoDView').then((module) => ({ default: module.TwoDView })));
+const BomModal = lazy(() => import('@/components/panels/BomPanel').then((module) => ({ default: module.BomModal })));
+const QuoteModal = lazy(() => import('@/components/panels/QuotePanel').then((module) => ({ default: module.QuoteModal })));
+const MaterialLibraryPage = lazy(() => import('@/pages/MaterialLibraryPage').then((module) => ({ default: module.MaterialLibraryPage })));
+const DrawingWorkbenchPage = lazy(() => import('@/pages/DrawingWorkbenchPage').then((module) => ({ default: module.DrawingWorkbenchPage })));
+
+function ModuleLoadingState() {
+  return (
+    <div className="flex h-full items-center justify-center bg-slate-100 p-4 text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
+      页面加载中...
+    </div>
+  );
+}
+
+function ModuleLoadErrorState() {
+  return (
+    <div className="flex h-full items-center justify-center bg-slate-100 p-4">
+      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <p className="text-sm text-slate-600">页面模块加载失败，请检查网络后重试。</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-4 cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          重新加载
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function DesignerView() {
   return (
@@ -139,12 +177,20 @@ export default function App() {
   const previousAuthUserIdRef = useRef<string | null | undefined>(undefined);
   const restoreProjectAttemptRef = useRef<string | null>(null);
   const projectsLoadRequestRef = useRef(0);
+  const workspaceSessionRef = useRef(0);
+  const projectOpenRequestRef = useRef(0);
   const [projectsReady, setProjectsReady] = useState<{
     userId: string;
     requestId: number;
   } | null>(null);
   const [isRestoringProject, setIsRestoringProject] = useState(false);
   const [failedProjectId, setFailedProjectId] = useState<string | null>(null);
+  const [draftRecovery, setDraftRecovery] = useState<{
+    ownerId: string;
+    projectId: string;
+    draft: WorkspaceDraft;
+  } | null>(null);
+  const [draftBackupError, setDraftBackupError] = useState<string | null>(null);
   const restoreFailed = Boolean(projectId && failedProjectId === projectId);
 
   const currentUser = useUserStore((state) => state.currentUser);
@@ -226,29 +272,6 @@ export default function App() {
   }, [needsStorageBootstrap, performStorageBootstrapCheck]);
 
   useEffect(() => {
-    const requestId = ++projectsLoadRequestRef.current;
-    if (!authReady || !currentUserId) {
-      return;
-    }
-
-    let cancelled = false;
-    void loadProjects(currentUserId)
-      .then(() => {
-        if (!cancelled && requestId === projectsLoadRequestRef.current) {
-          setProjectsReady({ userId: currentUserId, requestId });
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error('项目列表加载失败:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authReady, currentUserId, loadProjects]);
-
-  useEffect(() => {
     if (!needsCatalog) return;
     void initializeCatalog().catch(() => {
       // The catalog store exposes the error state to the shell; no mock fallback is used.
@@ -298,42 +321,91 @@ export default function App() {
     applyHistoryDocument(next);
   }, [applyHistoryDocument]);
 
-  const doSave = useCallback(async () => {
+  const writeProjectDraft = useCallback((): void => {
+    if (saveBlocked) return;
+    const project = useProjectStore.getState().currentProject;
+    const ownerId = useUserStore.getState().currentUser?.id ?? null;
+    const harness = useHarnessStore.getState();
+    if (!project || !ownerId || harness.saveState.status === 'saved') return;
+    const result = writeWorkspaceDraft({
+      ownerId,
+      kind: 'project',
+      documentId: project.id,
+      revision: harness.config.updatedAt,
+      baseUpdatedAt: project.updatedAt,
+      document: harness.config,
+    });
+    setDraftBackupError(result.ok ? null : result.error ?? '本地草稿备份失败。');
+  }, [saveBlocked]);
+
+  const doSave = useCallback(async (options?: { retry?: boolean }) => {
     if (!currentProject || saveBlocked) {
       return;
     }
-    if (saveInFlightRef.current) {
-      await saveInFlightRef.current;
-      return;
-    }
 
-    const task = (async () => {
-      const latestConfig = useHarnessStore.getState().config;
-      markSaving();
-      try {
-        await saveCurrentConfig(latestConfig);
-        if (useHarnessStore.getState().config.updatedAt === latestConfig.updatedAt) {
-          markSaved();
-        }
-      } catch (error) {
-        console.error('项目保存失败:', error);
-        markSaveError(getUserErrorMessage(error, '保存失败，请重试。'));
+    const saveUserId = useUserStore.getState().currentUser?.id ?? null;
+    const saveSession = workspaceSessionRef.current;
+    const saveOpenRequest = projectOpenRequestRef.current;
+    const saveProjectId = currentProject.id;
+    const isSaveContextCurrent = () => (
+      workspaceSessionRef.current === saveSession
+      && projectOpenRequestRef.current === saveOpenRequest
+      && (useUserStore.getState().currentUser?.id ?? null) === saveUserId
+      && (useProjectStore.getState().currentProject?.id ?? null) === saveProjectId
+    );
+
+    let allowErrorRetry = options?.retry === true;
+    while (true) {
+      if (!isSaveContextCurrent()) return;
+
+      if (saveInFlightRef.current) {
+        await saveInFlightRef.current;
+        continue;
       }
-    })();
 
-    saveInFlightRef.current = task;
-    try {
-      await task;
-    } finally {
-      saveInFlightRef.current = null;
+      const status = useHarnessStore.getState().saveState.status;
+      if (status === 'saved') {
+        return;
+      }
+      if (status === 'error' && !allowErrorRetry) {
+        return;
+      }
+      allowErrorRetry = false;
+
+      const latestConfig = useHarnessStore.getState().config;
+      const task = (async () => {
+        markSaving();
+        try {
+          await saveCurrentConfig(latestConfig);
+          if (!isSaveContextCurrent()) return;
+          if (useHarnessStore.getState().config.updatedAt === latestConfig.updatedAt) {
+            markSaved();
+            const ownerId = useUserStore.getState().currentUser?.id;
+            if (ownerId) {
+              removeWorkspaceDraftIfRevisionAtMost(ownerId, 'project', saveProjectId, latestConfig.updatedAt);
+            }
+          }
+        } catch (error) {
+          if (!isSaveContextCurrent()) return;
+          console.error('项目保存失败:', error);
+          markSaveError(getUserErrorMessage(error, '保存失败，请重试。'));
+        }
+      })();
+
+      saveInFlightRef.current = task;
+      try {
+        await task;
+      } finally {
+        if (saveInFlightRef.current === task) {
+          saveInFlightRef.current = null;
+        }
+      }
     }
   }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig]);
 
   const prepareForUserSwitch = useCallback(async () => {
-    const hasUnsavedProject = Boolean(
-      currentProject && (saveState.status === 'dirty' || saveState.status === 'saving'),
-    );
-    const hasUnsavedDrawing = drawingSaveState === 'dirty';
+    const hasUnsavedProject = Boolean(currentProject && saveState.status !== 'saved');
+    const hasUnsavedDrawing = drawingSaveState !== 'saved';
 
     if (!hasUnsavedProject && !hasUnsavedDrawing) return true;
     if (hasUnsavedProject && saveBlocked) {
@@ -345,8 +417,8 @@ export default function App() {
     if (!shouldSave) return false;
 
     if (hasUnsavedProject) {
-      await doSave();
-      if (useHarnessStore.getState().saveState.status === 'error') {
+      await doSave({ retry: true });
+      if (useHarnessStore.getState().saveState.status !== 'saved') {
         window.alert('项目保存失败，已取消用户切换。');
         return false;
       }
@@ -370,6 +442,8 @@ export default function App() {
       saveTimerRef.current = null;
     }
 
+    workspaceSessionRef.current += 1;
+    projectOpenRequestRef.current += 1;
     restoreProjectAttemptRef.current = null;
     setFailedProjectId(null);
     setIsRestoringProject(false);
@@ -377,6 +451,8 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
+    setDraftRecovery(null);
+    setDraftBackupError(null);
     useProjectStore.getState().resetProjects();
     resetDrawingStore();
     replaceDocument(createDefaultConfig(), { markSaved: true });
@@ -402,6 +478,30 @@ export default function App() {
     );
   }, [authReady, currentUser?.id, projectId, resetWorkspaceForUser, route.path, route.section]);
 
+  // 必须在账号重置（resetWorkspaceForUser 使旧会话代次失效）之后执行，否则新账号的列表请求会捕获旧代次并被丢弃。
+  useEffect(() => {
+    const requestId = ++projectsLoadRequestRef.current;
+    if (!authReady || !currentUserId) {
+      return;
+    }
+
+    let cancelled = false;
+    void loadProjects(currentUserId)
+      .then(() => {
+        if (!cancelled && requestId === projectsLoadRequestRef.current) {
+          setProjectsReady({ userId: currentUserId, requestId });
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('项目列表加载失败:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, currentUserId, loadProjects]);
+
   useEffect(() => {
     if (saveState.status !== 'dirty' || !currentProject || saveBlocked) {
       return;
@@ -419,6 +519,32 @@ export default function App() {
       }
     };
   }, [config, currentProject, doSave, saveBlocked, saveState.status]);
+
+  useEffect(() => {
+    if (!currentProject || saveBlocked || saveState.status === 'saved') {
+      return;
+    }
+
+    const timer = window.setTimeout(writeProjectDraft, 1000);
+    return () => window.clearTimeout(timer);
+  }, [config, currentProject, saveBlocked, saveState.status, writeProjectDraft]);
+
+  useEffect(() => {
+    const flushDrafts = () => {
+      writeProjectDraft();
+      flushDrawingDrafts();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushDrafts();
+    };
+
+    window.addEventListener('pagehide', flushDrafts);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flushDrafts);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [writeProjectDraft]);
 
   useEffect(() => {
     const unsubscribe = useHarnessStore.subscribe((state, previousState) => {
@@ -456,7 +582,18 @@ export default function App() {
   }, [handleRedo, handleUndo, route.section]);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      const projectPending = Boolean(currentProject && !saveBlocked && saveState.status !== 'saved');
+      const drawingPending = drawingSaveState !== 'saved';
+
+      if (projectPending) writeProjectDraft();
+      if (drawingPending) flushDrawingDrafts();
+
+      if (projectPending || drawingPending) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+
       if (!currentProject || saveBlocked) {
         return;
       }
@@ -470,7 +607,7 @@ export default function App() {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [currentProject, saveBlocked]);
+  }, [currentProject, drawingSaveState, saveBlocked, saveState.status, writeProjectDraft]);
 
   const handleNewProject = () => {
     if (!currentUser) {
@@ -504,8 +641,18 @@ export default function App() {
       return;
     }
 
+    const requestSession = workspaceSessionRef.current;
+    const requestId = ++projectOpenRequestRef.current;
+    const isRequestCurrent = () => (
+      workspaceSessionRef.current === requestSession
+      && projectOpenRequestRef.current === requestId
+      && (useUserStore.getState().currentUser?.id ?? null) === requestUserId
+    );
+
     setIsRestoringProject(true);
     setFailedProjectId(null);
+    setDraftRecovery(null);
+    setDraftBackupError(null);
     setCurrentProject(project);
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
@@ -516,14 +663,22 @@ export default function App() {
     try {
       const result = await projectRepository.load(project.id);
 
-      if ((useUserStore.getState().currentUser?.id ?? null) !== requestUserId) {
-        return;
-      }
+      if (!isRequestCurrent()) return;
 
       if (result.status === 'ok') {
         replaceDocument(result.config, { markSaved: true });
         if (result.config.name !== project.name) {
           await updateProject(project.id, { name: result.config.name });
+          if (!isRequestCurrent()) return;
+        }
+        const draft = readWorkspaceDraft(requestUserId, 'project', project.id);
+        if (draft) {
+          const draftConfig = draft.document as HarnessConfig;
+          if (draftConfig.updatedAt === result.config.updatedAt) {
+            removeWorkspaceDraft(requestUserId, 'project', project.id);
+          } else {
+            setDraftRecovery({ ownerId: requestUserId, projectId: project.id, draft });
+          }
         }
         setLoadError(null);
         setRecoveryRaw(null);
@@ -541,11 +696,26 @@ export default function App() {
         }
         setSaveBlocked(true);
       }
+    } catch (error) {
+      if (!isRequestCurrent()) return;
+      console.error('项目打开失败:', error);
+      setFailedProjectId(project.id);
+      setCurrentProject(null);
+      replaceDocument(createDefaultConfig(), { markSaved: true });
+      setLoadError(getUserErrorMessage(error, '项目加载失败，请重试。'));
+      setRecoveryRaw(null);
+      setSaveBlocked(false);
+      useHistoryStore.getState().clear();
+      navigate(appRoutes.home.path);
+      return;
     } finally {
-      history.resume();
-      setIsRestoringProject(false);
+      if (isRequestCurrent()) {
+        history.resume();
+        setIsRestoringProject(false);
+      }
     }
 
+    if (!isRequestCurrent()) return;
     navigate(destinationPath, { projectId: project.id });
   }, [navigate, replaceDocument, setCurrentProject, updateProject]);
 
@@ -632,18 +802,34 @@ export default function App() {
     });
   };
 
-  const handleCloseProject = () => {
+  const handleCloseProject = async () => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
     }
 
-    if (currentProject && !saveBlocked) {
-      try {
-        projectRepository.emergencySave(currentProject.id, useHarnessStore.getState().config);
-      } catch {
-        // best effort flush only
+    const closingProject = useProjectStore.getState().currentProject;
+    const closingSession = workspaceSessionRef.current;
+    const closingOpenRequest = projectOpenRequestRef.current;
+    const isCloseCurrent = () => (
+      workspaceSessionRef.current === closingSession
+      && projectOpenRequestRef.current === closingOpenRequest
+      && (useProjectStore.getState().currentProject?.id ?? null) === (closingProject?.id ?? null)
+    );
+
+    if (closingProject && !saveBlocked && useHarnessStore.getState().saveState.status !== 'saved') {
+      await doSave({ retry: true });
+      if (!isCloseCurrent()) return;
+      if (useHarnessStore.getState().saveState.status !== 'saved') {
+        window.alert('项目保存失败，已取消关闭，请重试。');
+        return;
       }
     }
+
+    if (!isCloseCurrent()) return;
+
+    setDraftRecovery(null);
+    setDraftBackupError(null);
 
     restoreProjectAttemptRef.current = null;
     setFailedProjectId(null);
@@ -762,8 +948,50 @@ export default function App() {
             目录数据暂时不可用：{catalogError ?? '请检查云端服务配置后重试。'}
           </div>
         )}
-        {renderContent()}
+        {draftBackupError && (
+          <div role="alert" className="border-b border-red-200 bg-red-50 px-4 py-1.5 text-xs text-red-700">
+            本地草稿备份失败：{draftBackupError}。请保持页面打开，或重试保存。
+          </div>
+        )}
+        <ErrorBoundary fallback={<ModuleLoadErrorState />}>
+          <Suspense fallback={<ModuleLoadingState />}>
+            {renderContent()}
+          </Suspense>
+        </ErrorBoundary>
       </AdminShell>
+
+      {draftRecovery && (
+        <ActionToast
+          role="alertdialog"
+          title="发现本地草稿"
+          message="本地保存了未同步到云端的项目修改。恢复本地草稿会使用本地版本，使用云端版本会丢弃本地草稿。"
+          secondaryAction={{
+            label: '使用云端版本',
+            onClick: () => {
+              const ownerId = useUserStore.getState().currentUser?.id ?? null;
+              const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
+              if (canApplyWorkspaceDraft(draftRecovery.draft, { ownerId, documentId: currentProjectId })) {
+                removeWorkspaceDraft(draftRecovery.ownerId, 'project', draftRecovery.projectId);
+              }
+              setDraftRecovery(null);
+            },
+          }}
+          primaryAction={{
+            label: '恢复本地草稿',
+            onClick: () => {
+              const ownerId = useUserStore.getState().currentUser?.id ?? null;
+              const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
+              if (!canApplyWorkspaceDraft(draftRecovery.draft, { ownerId, documentId: currentProjectId })) {
+                setDraftRecovery(null);
+                return;
+              }
+              replaceDocument(draftRecovery.draft.document as HarnessConfig, { markSaved: false });
+              setDraftRecovery(null);
+            },
+          }}
+          onClose={() => setDraftRecovery(null)}
+        />
+      )}
 
       {authOpen && (
         <AuthModal
@@ -780,19 +1008,21 @@ export default function App() {
         />
       )}
 
-      {bomModalOpen && (
-        <BomModal
-          isOpen
-          onClose={() => setBomModalOpen(false)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {bomModalOpen && (
+          <BomModal
+            isOpen
+            onClose={() => setBomModalOpen(false)}
+          />
+        )}
 
-      {quoteModalOpen && (
-        <QuoteModal
-          isOpen
-          onClose={() => setQuoteModalOpen(false)}
-        />
-      )}
+        {quoteModalOpen && (
+          <QuoteModal
+            isOpen
+            onClose={() => setQuoteModalOpen(false)}
+          />
+        )}
+      </Suspense>
 
     </>
   );

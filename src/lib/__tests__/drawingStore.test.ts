@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useDrawingStore } from '@/stores/drawingStore';
+import { resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 
 describe('independent drawing store', () => {
   beforeEach(() => {
-    useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
+    resetDrawingStore();
   });
 
   it('atomically replaces the library with one new default drawing', () => {
