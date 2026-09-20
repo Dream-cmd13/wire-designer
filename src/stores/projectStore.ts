@@ -7,6 +7,7 @@ import {
   projectRepository,
   type ProjectLoadResult,
 } from '@/repositories/projectRepository';
+import { useUserStore } from '@/stores/userStore';
 
 const generateId = (): string => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -30,7 +31,7 @@ interface ProjectState {
     name: string,
     description: string,
     initialConfig: HarnessConfig
-  ) => Promise<Project>;
+  ) => Promise<Project | null>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   setCurrentProject: (project: Project | null) => void;
@@ -45,6 +46,10 @@ interface ProjectState {
 }
 
 const inFlightLoads = new Map<string, Promise<void>>();
+
+function isCurrentUser(userId: string): boolean {
+  return useUserStore.getState().currentUser?.id === userId;
+}
 
 export const useProjectStore = create<ProjectState>()((set, get) => ({
   projects: [],
@@ -77,6 +82,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     const loadPromise = (async () => {
       try {
         const remoteProjects = await projectRepository.listProjects(userId);
+        if (!isCurrentUser(userId)) return;
         setCachedProjects(userId, remoteProjects);
         set({
           projects: remoteProjects,
@@ -84,6 +90,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
           projectsError: null,
         });
       } catch (error) {
+        if (!isCurrentUser(userId)) return;
         const message = getUserErrorMessage(error, '获取项目列表失败');
         set({
           projectsStatus: 'error',
@@ -99,6 +106,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   },
 
   createProject: async (userId, name, description, initialConfig) => {
+    if (!isCurrentUser(userId)) return null;
     const projectId = generateId();
     const newProject: Project = {
       id: projectId,
@@ -110,6 +118,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     };
     const configToSave = { ...initialConfig, id: projectId, name };
     await projectRepository.createProject(newProject, configToSave);
+    if (!isCurrentUser(userId)) return null;
     const updatedProjects = [...get().projects.filter((project) => project.userId === userId), newProject];
     setCachedProjects(userId, updatedProjects);
     set((state) => ({

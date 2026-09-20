@@ -23,6 +23,14 @@ vi.mock('@/repositories/projectRepository', () => ({
 }));
 
 import { useProjectStore } from '@/stores/projectStore';
+import { useUserStore } from '@/stores/userStore';
+
+function setCurrentUser(id: string | null): void {
+  useUserStore.setState({
+    currentUser: id ? { id, name: id, email: `${id}@test`, createdAt: 1 } : null,
+    authReady: true,
+  });
+}
 
 function createMockStorage(): Storage {
   let store: Record<string, string> = {};
@@ -52,15 +60,17 @@ describe('project store', () => {
       writable: true,
       configurable: true,
     });
-    mocks.createProject.mockClear();
+    mocks.createProject.mockReset();
     mocks.listProjects.mockClear();
     mocks.updateProject.mockClear();
     mocks.remove.mockClear();
     clearCachedProjects();
+    setCurrentUser(null);
     useProjectStore.getState().resetProjects();
   });
 
   it('uses one id for project metadata and its HarnessConfig', async () => {
+    setCurrentUser('user-1');
     const initial = { ...createFallbackConfig(), id: 'template-id', name: 'Template' };
 
     const project = await useProjectStore.getState().createProject(
@@ -69,6 +79,8 @@ describe('project store', () => {
       'Description',
       initial,
     );
+    expect(project).not.toBeNull();
+    if (!project) throw new Error('Expected a created project');
 
     expect(mocks.createProject).toHaveBeenCalledWith(
       expect.objectContaining({ id: project.id }),
@@ -76,6 +88,36 @@ describe('project store', () => {
     );
     expect(project).not.toHaveProperty('harnessConfigId');
     expect(project).not.toHaveProperty('status');
+  });
+
+  it.each(['user-new', null])('discards creation after switching to %s', async (nextUser) => {
+    setCurrentUser('user-old');
+    let resolveCreate: () => void = () => {};
+    mocks.createProject.mockReturnValue(new Promise((resolve) => {
+      resolveCreate = () => resolve(undefined);
+    }));
+
+    const creation = useProjectStore.getState().createProject(
+      'user-old',
+      'Old Account Project',
+      '',
+      createFallbackConfig(),
+    );
+    setCurrentUser(nextUser);
+    resolveCreate();
+    const created = await creation;
+
+    expect(created).toBeNull();
+    expect(useProjectStore.getState().projects).toEqual([]);
+    expect(useProjectStore.getState().currentProject).toBeNull();
+  });
+
+  it('does not submit a create request from a stale caller', async () => {
+    setCurrentUser('user-new');
+    await expect(useProjectStore.getState().createProject(
+      'user-old', 'Stale project', '', createFallbackConfig(),
+    )).resolves.toBeNull();
+    expect(mocks.createProject).not.toHaveBeenCalled();
   });
 
   it('implements SWR by showing cached projects immediately while fetching remote updates', async () => {
@@ -88,6 +130,7 @@ describe('project store', () => {
       updatedAt: 200,
     };
     setCachedProjects('user-swr', [cachedItem]);
+    setCurrentUser('user-swr');
 
     let resolveRemote: (val: Project[]) => void = () => {};
     mocks.listProjects.mockReturnValue(new Promise<Project[]>((resolve) => {
@@ -109,6 +152,30 @@ describe('project store', () => {
     expect(useProjectStore.getState().projectsStatus).toBe('success');
   });
 
+  it('discards a stale response that arrives after the account changed', async () => {
+    setCurrentUser('user-old');
+    let resolveRemote: (val: Project[]) => void = () => {};
+    mocks.listProjects.mockReturnValue(new Promise<Project[]>((resolve) => {
+      resolveRemote = resolve;
+    }));
+
+    const loadPromise = useProjectStore.getState().loadProjects('user-old');
+    setCurrentUser('user-new');
+
+    resolveRemote([{
+      id: 'p-old',
+      userId: 'user-old',
+      name: 'Old Account Project',
+      description: '',
+      createdAt: 1,
+      updatedAt: 2,
+    }]);
+    await loadPromise;
+
+    expect(useProjectStore.getState().projects).toEqual([]);
+    expect(useProjectStore.getState().projectsStatus).not.toBe('success');
+  });
+
   it('retains cached projects and surfaces error when remote fetch fails', async () => {
     const cachedItem = {
       id: 'p-cached',
@@ -119,6 +186,7 @@ describe('project store', () => {
       updatedAt: 200,
     };
     setCachedProjects('user-err', [cachedItem]);
+    setCurrentUser('user-err');
     mocks.listProjects.mockRejectedValue(new Error('Network offline'));
 
     await useProjectStore.getState().loadProjects('user-err');
@@ -130,6 +198,7 @@ describe('project store', () => {
   });
 
   it('deduplicates in-flight load requests for the same user', async () => {
+    setCurrentUser('user-dup');
     let callCount = 0;
     mocks.listProjects.mockImplementation(async () => {
       callCount++;

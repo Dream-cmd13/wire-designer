@@ -8,6 +8,7 @@ export type DrawingHydrationResult = 'hydrated' | 'recovered';
 
 const ANONYMOUS_DRAWING_OWNER = 'anonymous';
 let activeDrawingOwner = ANONYMOUS_DRAWING_OWNER;
+let hydrationToken = 0;
 
 interface DrawingStore {
   documents: Record<string, DrawingDocument>;
@@ -128,17 +129,26 @@ function migrateHydratedDrawingTablePositions(): void {
   if (changed) useDrawingStore.setState({ documents, saveState: 'dirty' });
 }
 
+export function resetDrawingStore(): void {
+  hydrationToken += 1;
+  activeDrawingOwner = ANONYMOUS_DRAWING_OWNER;
+  useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
+}
+
 export async function hydrateDrawingStore(ownerId?: string | null): Promise<DrawingHydrationResult> {
   activeDrawingOwner = ownerId || ANONYMOUS_DRAWING_OWNER;
+  const token = ++hydrationToken;
   useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
   if (!ownerId) return 'recovered';
   try {
     const loaded = await drawingDocumentRepository.list(ownerId);
+    if (token !== hydrationToken) return 'recovered';
     const documents = Object.fromEntries(loaded.map((document) => [document.id, document]));
     useDrawingStore.setState({ documents, activeDocumentId: loaded[0]?.id ?? null, saveState: 'saved' });
     migrateHydratedDrawingTablePositions();
     return 'hydrated';
   } catch {
+    if (token !== hydrationToken) return 'recovered';
     useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
     return 'recovered';
   }

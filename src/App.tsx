@@ -17,7 +17,7 @@ import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storage
 import { supabase } from '@/lib/supabaseClient';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { projectRepository } from '@/repositories/projectRepository';
-import { useDrawingStore } from '@/stores/drawingStore';
+import { resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
@@ -378,6 +378,7 @@ export default function App() {
     setRecoveryRaw(null);
     setSaveBlocked(false);
     useProjectStore.getState().resetProjects();
+    resetDrawingStore();
     replaceDocument(createDefaultConfig(), { markSaved: true });
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
@@ -498,6 +499,11 @@ export default function App() {
     project: Project,
     destinationPath = appRoutes['designer-design'].path,
   ) => {
+    const requestUserId = useUserStore.getState().currentUser?.id ?? null;
+    if (!requestUserId || project.userId !== requestUserId) {
+      return;
+    }
+
     setIsRestoringProject(true);
     setFailedProjectId(null);
     setCurrentProject(project);
@@ -509,6 +515,10 @@ export default function App() {
 
     try {
       const result = await projectRepository.load(project.id);
+
+      if ((useUserStore.getState().currentUser?.id ?? null) !== requestUserId) {
+        return;
+      }
 
       if (result.status === 'ok') {
         replaceDocument(result.config, { markSaved: true });

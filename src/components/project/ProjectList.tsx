@@ -181,6 +181,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
         updatedAt: Date.now(),
       },
     );
+    if (!project || useUserStore.getState().currentUser?.id !== project.userId) return;
     setNotice(`已从设计文件创建项目“${project.name}”`);
   };
 
