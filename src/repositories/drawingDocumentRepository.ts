@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isDrawingDocument } from '@/lib/drawingDocumentSchema';
 import { supabase } from '@/lib/supabaseClient';
 import type { DrawingDocument } from '@/types/drawing';
 
@@ -7,21 +8,6 @@ export class DrawingDocumentRepositoryError extends Error {
     super(message);
     this.name = 'DrawingDocumentRepositoryError';
   }
-}
-
-function isDrawingDocument(value: unknown): value is DrawingDocument {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const document = value as Partial<DrawingDocument>;
-  return document.schemaVersion === 1
-    && typeof document.id === 'string'
-    && typeof document.name === 'string'
-    && typeof document.createdAt === 'number'
-    && typeof document.updatedAt === 'number'
-    && Array.isArray(document.objects)
-    && Array.isArray(document.revisionTable)
-    && Array.isArray(document.techRequirements)
-    && Boolean(document.page)
-    && Boolean(document.titleBlock);
 }
 
 export class DrawingDocumentRepository {
@@ -47,13 +33,20 @@ export class DrawingDocumentRepository {
   async list(ownerId: string): Promise<DrawingDocument[]> {
     const { data, error } = await this.requireClient()
       .from('drawings')
-      .select('document')
+      .select('id,document')
       .eq('owner_id', ownerId)
       .order('updated_at', { ascending: false });
     this.throwIfError(error);
-    return (data ?? [])
-      .map((row) => (row as Record<string, unknown>).document)
-      .filter(isDrawingDocument);
+    const documents: DrawingDocument[] = [];
+    for (const row of data ?? []) {
+      const record = row as Record<string, unknown>;
+      if (isDrawingDocument(record.document)) {
+        documents.push(record.document);
+        continue;
+      }
+      console.warn(`已跳过结构损坏的图纸记录（原始数据仍保留在数据库中）：${String(record.id ?? '未知 ID')}`);
+    }
+    return documents;
   }
 
   async load(documentId: string): Promise<DrawingDocument | null> {

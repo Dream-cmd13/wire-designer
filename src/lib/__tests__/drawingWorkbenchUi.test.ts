@@ -24,8 +24,9 @@ describe('drawing workbench UI contract', () => {
     expect(drawingStoreSource).not.toContain('localStorage');
     expect(pageSource).toContain('hydrateDrawingStore');
     expect(pageSource).not.toContain('useDrawingStore.persist.onFinishHydration');
-    expect(pageSource).toContain('.catch(() => undefined)');
-    expect(pageSource).toContain('.finally(() =>');
+    expect(pageSource).toContain('hydrationError');
+    expect(pageSource).toContain('图纸列表加载失败');
+    expect(pageSource).toContain('重新加载');
     expect(pageSource).toContain('enterDrawingWorkbench');
     expect(pageSource).toContain('replaceWithNewDocument');
     expect(pageSource).toContain('是否丢弃当前制作的图纸？');

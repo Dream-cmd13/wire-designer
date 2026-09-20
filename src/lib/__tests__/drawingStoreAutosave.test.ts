@@ -9,7 +9,7 @@ import {
 } from '@/stores/drawingStore';
 import { drawingDocumentRepository } from '@/repositories/drawingDocumentRepository';
 import { createBlankDrawingDocument } from '@/lib/drawingDocument';
-import { readWorkspaceDraft, removeWorkspaceDraft, writeWorkspaceDraft } from '@/lib/workspaceDraftCache';
+import { listCorruptWorkspaceDrafts, readWorkspaceDraft, removeWorkspaceDraft, workspaceDraftKey, writeWorkspaceDraft } from '@/lib/workspaceDraftCache';
 import type { DrawingDocument } from '@/types/drawing';
 
 interface SaveCall {
@@ -275,6 +275,37 @@ describe('drawing autosave reliability', () => {
     expect(result.ok).toBe(true);
     expect((readWorkspaceDraft('user-a', 'drawing', created.id)?.document as DrawingDocument).name)
       .toBe('v2');
+  });
+
+  it('keeps a corrupt draft while autosave backs up and then saves the same document', async () => {
+    const gate = deferred();
+    vi.spyOn(drawingDocumentRepository, 'save').mockImplementation(async () => {
+      await gate.promise;
+    });
+
+    const created = await startEditing('v1');
+    const corruptRaw = JSON.stringify({
+      version: 1,
+      ownerId: 'user-a',
+      kind: 'drawing',
+      documentId: created.id,
+      revision: 1,
+      baseUpdatedAt: 1,
+      savedAt: 1,
+      document: { schemaVersion: 1, id: created.id, name: '损坏草稿', updatedAt: 1, objects: [null] },
+    });
+    localStorage.setItem(workspaceDraftKey('user-a', 'drawing', created.id), corruptRaw);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(listCorruptWorkspaceDrafts('user-a', 'drawing').map((entry) => entry.raw)).toEqual([corruptRaw]);
+    expect(readWorkspaceDraft('user-a', 'drawing', created.id)?.revision).toBe(2);
+
+    gate.resolve();
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(readWorkspaceDraft('user-a', 'drawing', created.id)).toBeNull();
+    expect(listCorruptWorkspaceDrafts('user-a', 'drawing').map((entry) => entry.raw)).toEqual([corruptRaw]);
   });
 
   it('reports draft storage failures instead of silently claiming a backup', async () => {

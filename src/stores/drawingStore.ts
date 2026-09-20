@@ -11,7 +11,7 @@ import { drawingDocumentRepository } from '@/repositories/drawingDocumentReposit
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
 export type DrawingSaveState = 'saved' | 'dirty' | 'saving' | 'error';
-export type DrawingHydrationResult = 'hydrated' | 'recovered';
+export type DrawingHydrationResult = 'hydrated' | 'recovered' | 'failed';
 
 const AUTO_SAVE_DELAY_MS = 500;
 const DRAFT_WRITE_DELAY_MS = 1000;
@@ -37,6 +37,7 @@ interface DrawingStore {
   activeDocumentId: string | null;
   saveState: DrawingSaveState;
   draftError: string | null;
+  hydrationError: string | null;
   createDocument: (name?: string) => DrawingDocument;
   replaceWithNewDocument: (name?: string) => DrawingDocument;
   openDocument: (documentId: string) => void;
@@ -226,6 +227,7 @@ export const useDrawingStore = create<DrawingStore>((set, get) => ({
   activeDocumentId: null,
   saveState: 'saved',
   draftError: null,
+  hydrationError: null,
 
   createDocument: (name) => {
     const document = createBlankDrawingDocument(name);
@@ -346,7 +348,13 @@ export function resetDrawingStore(): void {
   saveSessionToken += 1;
   activeDrawingOwner = ANONYMOUS_DRAWING_OWNER;
   clearSaveScheduling();
-  useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved', draftError: null });
+  useDrawingStore.setState({
+    documents: {},
+    activeDocumentId: null,
+    saveState: 'saved',
+    draftError: null,
+    hydrationError: null,
+  });
 }
 
 export async function hydrateDrawingStore(ownerId?: string | null): Promise<DrawingHydrationResult> {
@@ -354,7 +362,13 @@ export async function hydrateDrawingStore(ownerId?: string | null): Promise<Draw
   const token = ++hydrationToken;
   saveSessionToken += 1;
   clearSaveScheduling();
-  useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved', draftError: null });
+  useDrawingStore.setState({
+    documents: {},
+    activeDocumentId: null,
+    saveState: 'saved',
+    draftError: null,
+    hydrationError: null,
+  });
   if (!ownerId) return 'recovered';
   try {
     const loaded = await drawingDocumentRepository.list(ownerId);
@@ -363,9 +377,14 @@ export async function hydrateDrawingStore(ownerId?: string | null): Promise<Draw
     useDrawingStore.setState({ documents, activeDocumentId: loaded[0]?.id ?? null, saveState: 'saved' });
     migrateHydratedDrawingTablePositions();
     return 'hydrated';
-  } catch {
+  } catch (error) {
     if (token !== hydrationToken) return 'recovered';
-    useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
-    return 'recovered';
+    useDrawingStore.setState({
+      documents: {},
+      activeDocumentId: null,
+      saveState: 'saved',
+      hydrationError: getUserErrorMessage(error, '图纸列表加载失败，请检查网络后重试。'),
+    });
+    return 'failed';
   }
 }

@@ -16,10 +16,14 @@ import { supabase } from '@/lib/supabaseClient';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import {
   canApplyWorkspaceDraft,
+  corruptWorkspaceDraftsToJson,
+  listCorruptWorkspaceDrafts,
   readWorkspaceDraft,
+  removeCorruptWorkspaceDraft,
   removeWorkspaceDraft,
   removeWorkspaceDraftIfRevisionAtMost,
   writeWorkspaceDraft,
+  type CorruptWorkspaceDraft,
   type WorkspaceDraft,
 } from '@/lib/workspaceDraftCache';
 import { projectRepository } from '@/repositories/projectRepository';
@@ -190,6 +194,7 @@ export default function App() {
     projectId: string;
     draft: WorkspaceDraft;
   } | null>(null);
+  const [corruptDrafts, setCorruptDrafts] = useState<CorruptWorkspaceDraft[]>([]);
   const [draftBackupError, setDraftBackupError] = useState<string | null>(null);
   const restoreFailed = Boolean(projectId && failedProjectId === projectId);
 
@@ -327,6 +332,7 @@ export default function App() {
     const ownerId = useUserStore.getState().currentUser?.id ?? null;
     const harness = useHarnessStore.getState();
     if (!project || !ownerId || harness.saveState.status === 'saved') return;
+    if (harness.config.id !== project.id) return;
     const result = writeWorkspaceDraft({
       ownerId,
       kind: 'project',
@@ -373,6 +379,9 @@ export default function App() {
       allowErrorRetry = false;
 
       const latestConfig = useHarnessStore.getState().config;
+      if (latestConfig.id !== saveProjectId) {
+        return;
+      }
       const task = (async () => {
         markSaving();
         try {
@@ -402,6 +411,21 @@ export default function App() {
       }
     }
   }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig]);
+
+  const saveBeforeLeavingWorkspace = useCallback(async (): Promise<boolean> => {
+    const project = useProjectStore.getState().currentProject;
+    if (!project || useHarnessStore.getState().saveState.status === 'saved') return true;
+    if (saveBlocked) {
+      window.alert('当前项目无法保存，请先处理保存错误后再切换项目。');
+      return false;
+    }
+
+    writeProjectDraft();
+    await doSave({ retry: true });
+    if (useHarnessStore.getState().saveState.status === 'saved') return true;
+    window.alert('当前项目保存失败，已取消切换，请重试。');
+    return false;
+  }, [doSave, saveBlocked, writeProjectDraft]);
 
   const prepareForUserSwitch = useCallback(async () => {
     const hasUnsavedProject = Boolean(currentProject && saveState.status !== 'saved');
@@ -452,6 +476,7 @@ export default function App() {
     setRecoveryRaw(null);
     setSaveBlocked(false);
     setDraftRecovery(null);
+    setCorruptDrafts([]);
     setDraftBackupError(null);
     useProjectStore.getState().resetProjects();
     resetDrawingStore();
@@ -609,9 +634,12 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [currentProject, drawingSaveState, saveBlocked, saveState.status, writeProjectDraft]);
 
-  const handleNewProject = () => {
+  const handleNewProject = async () => {
     if (!currentUser) {
       setAuthOpen(true);
+      return;
+    }
+    if (!(await saveBeforeLeavingWorkspace())) {
       return;
     }
 
@@ -649,9 +677,14 @@ export default function App() {
       && (useUserStore.getState().currentUser?.id ?? null) === requestUserId
     );
 
+    const saved = await saveBeforeLeavingWorkspace();
+    if (!isRequestCurrent()) return;
+    if (!saved) return;
+
     setIsRestoringProject(true);
     setFailedProjectId(null);
     setDraftRecovery(null);
+    setCorruptDrafts([]);
     setDraftBackupError(null);
     setCurrentProject(project);
     useHarnessStore.getState().setCanvasViewport(null);
@@ -680,6 +713,10 @@ export default function App() {
             setDraftRecovery({ ownerId: requestUserId, projectId: project.id, draft });
           }
         }
+        setCorruptDrafts(
+          listCorruptWorkspaceDrafts(requestUserId, 'project')
+            .filter((entry) => entry.documentId === project.id),
+        );
         setLoadError(null);
         setRecoveryRaw(null);
         setSaveBlocked(false);
@@ -717,7 +754,7 @@ export default function App() {
 
     if (!isRequestCurrent()) return;
     navigate(destinationPath, { projectId: project.id });
-  }, [navigate, replaceDocument, setCurrentProject, updateProject]);
+  }, [navigate, replaceDocument, saveBeforeLeavingWorkspace, setCurrentProject, updateProject]);
 
   useEffect(() => {
     if (!projectId || route.section !== 'designer' || !authReady || !currentUserId) {
@@ -829,6 +866,7 @@ export default function App() {
     if (!isCloseCurrent()) return;
 
     setDraftRecovery(null);
+    setCorruptDrafts([]);
     setDraftBackupError(null);
 
     restoreProjectAttemptRef.current = null;
@@ -990,6 +1028,38 @@ export default function App() {
             },
           }}
           onClose={() => setDraftRecovery(null)}
+        />
+      )}
+
+      {corruptDrafts.length > 0 && !draftRecovery && (
+        <ActionToast
+          role="alertdialog"
+          tone="danger"
+          title="发现损坏的本地项目草稿"
+          message={`本地保存的未同步修改无法解析（共 ${corruptDrafts.length} 份），原始内容仍保留在本地。${corruptDrafts.some((entry) => !entry.isolated) ? '部分内容因本地存储空间不足未能转入隔离区，请先下载备份。' : '建议先下载备份，再决定是否丢弃。'}`}
+          secondaryAction={{
+            label: '丢弃草稿',
+            destructive: true,
+            onClick: () => {
+              corruptDrafts.forEach((entry) => removeCorruptWorkspaceDraft(entry));
+              const ownerId = useUserStore.getState().currentUser?.id ?? null;
+              const activeProjectId = useProjectStore.getState().currentProject?.id ?? null;
+              setCorruptDrafts(
+                ownerId && activeProjectId
+                  ? listCorruptWorkspaceDrafts(ownerId, 'project')
+                    .filter((entry) => entry.documentId === activeProjectId)
+                  : [],
+              );
+            },
+          }}
+          primaryAction={{
+            label: '下载原始内容',
+            onClick: () => downloadTextFile(
+              corruptWorkspaceDraftsToJson(corruptDrafts),
+              `${safeFilename('损坏项目草稿')}-${Date.now()}.json`,
+            ),
+          }}
+          onClose={() => setCorruptDrafts([])}
         />
       )}
 

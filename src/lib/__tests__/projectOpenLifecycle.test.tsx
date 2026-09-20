@@ -137,6 +137,7 @@ function installWindow(pathname = '/home'): { pushState: ReturnType<typeof vi.fn
       history,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
+      alert: vi.fn(),
     },
     writable: true,
     configurable: true,
@@ -242,6 +243,7 @@ describe('project open lifecycle', () => {
 
     const open = findOpenProjectHandler(App());
     open!(makeProject('p1'));
+    await tick();
     open!(makeProject('p2'));
 
     load2.resolve(makeResult('p2'));
@@ -350,7 +352,7 @@ describe('project open lifecycle', () => {
     expect(useHarnessStore.getState().config.id).toBe('p2');
   });
 
-  it('does not mark the new project as failed when the previous project save fails', async () => {
+  it('persists the previous project edit before opening the next project', async () => {
     useProjectStore.getState().setCurrentProject(makeProject('p1'));
     useHarnessStore.getState().replaceDocument(
       { ...createFallbackConfig(), id: 'p1', name: 'p1' },
@@ -380,12 +382,14 @@ describe('project open lifecycle', () => {
     await closePromise;
     await tick();
 
-    expect(useHarnessStore.getState().saveState.status).toBe('dirty');
+    expect(saveSpy).toHaveBeenCalledTimes(2);
+    expect(saveSpy.mock.calls[1]?.[1].name).toBe('p2-edit');
+    expect(useHarnessStore.getState().saveState.status).toBe('saved');
     expect(useProjectStore.getState().currentProject?.id).toBe('p2');
     expect(useHarnessStore.getState().config.id).toBe('p2');
   });
 
-  it('does not backfill a failed save into a reopened project', async () => {
+  it('reopens the same project only after its pending edit is fully saved', async () => {
     useProjectStore.getState().setCurrentProject(makeProject('p1'));
     useHarnessStore.getState().replaceDocument(
       { ...createFallbackConfig(), id: 'p1', name: 'p1' },
@@ -395,7 +399,8 @@ describe('project open lifecycle', () => {
     const saveSpy = vi.spyOn(projectRepository, 'save').mockImplementation(async () => {
       if (saveSpy.mock.calls.length === 1) await failureGate.promise;
     });
-    vi.spyOn(projectRepository, 'load').mockImplementation(async (projectId) => makeResult(projectId));
+    const loadSpy = vi.spyOn(projectRepository, 'load')
+      .mockImplementation(async (projectId) => makeResult(projectId));
 
     const tree = App();
     const close = findCloseProjectHandler(tree);
@@ -412,15 +417,64 @@ describe('project open lifecycle', () => {
     open!(makeProject('p1'));
     await tick();
     useHarnessStore.getState().setConfig({ name: 'p1-edit' });
-    expect(useHarnessStore.getState().saveState.status).toBe('dirty');
 
     failureGate.reject(new Error('network down'));
     await closePromise;
     await tick();
 
-    expect(useHarnessStore.getState().saveState.status).toBe('dirty');
+    expect(saveSpy).toHaveBeenCalledTimes(2);
+    expect(saveSpy.mock.calls[1]?.[1].name).toBe('p1-edit');
+    expect(loadSpy.mock.calls.map(([id]) => id)).toEqual(['p1']);
+    expect(useHarnessStore.getState().saveState.status).toBe('saved');
     expect(useProjectStore.getState().currentProject?.id).toBe('p1');
     expect(useHarnessStore.getState().config.id).toBe('p1');
+    expect(readWorkspaceDraft('user-a', 'project', 'p1')).toBeNull();
+  });
+
+  it('saves and backs up the current project before opening another one', async () => {
+    useProjectStore.getState().setCurrentProject(makeProject('p1'));
+    useHarnessStore.getState().replaceDocument(
+      { ...createFallbackConfig(), id: 'p1', name: '待保存修改' },
+      { markSaved: false },
+    );
+    const savedNames: string[] = [];
+    vi.spyOn(projectRepository, 'save').mockImplementation(async (_id, config) => {
+      savedNames.push(config.name);
+    });
+    vi.spyOn(projectRepository, 'load').mockImplementation(async (projectId) => makeResult(projectId));
+
+    const open = findOpenProjectHandler(App());
+    open!(makeProject('p2'));
+    await tick();
+    await tick();
+
+    expect(savedNames).toEqual(['待保存修改']);
+    expect(useProjectStore.getState().currentProject?.id).toBe('p2');
+    expect(useHarnessStore.getState().config.id).toBe('p2');
+    expect(readWorkspaceDraft('user-a', 'project', 'p1')).toBeNull();
+  });
+
+  it('keeps the current workspace and draft when the pre-switch save fails', async () => {
+    useProjectStore.getState().setCurrentProject(makeProject('p1'));
+    useHarnessStore.getState().replaceDocument(
+      { ...createFallbackConfig(), id: 'p1', name: '待保存修改' },
+      { markSaved: false },
+    );
+    vi.spyOn(projectRepository, 'save').mockRejectedValue(new Error('network down'));
+    const load = vi.spyOn(projectRepository, 'load')
+      .mockImplementation(async (projectId) => makeResult(projectId));
+
+    const open = findOpenProjectHandler(App());
+    open!(makeProject('p2'));
+    await tick();
+    await tick();
+
+    expect(load).not.toHaveBeenCalled();
+    expect(useProjectStore.getState().currentProject?.id).toBe('p1');
+    expect(useHarnessStore.getState().config.id).toBe('p1');
+    expect(useHarnessStore.getState().saveState.status).toBe('error');
+    expect(window.alert).toHaveBeenCalledTimes(1);
+    expect(readWorkspaceDraft('user-a', 'project', 'p1')).not.toBeNull();
   });
 
   it('keeps an undecided local draft when closing an already saved project', async () => {

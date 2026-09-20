@@ -90,6 +90,31 @@ describe('project store', () => {
     expect(project).not.toHaveProperty('status');
   });
 
+  it('creates a project without activating it when requested', async () => {
+    setCurrentUser('user-1');
+    const currentProject: Project = {
+      id: 'p-current',
+      userId: 'user-1',
+      name: 'Current',
+      description: '',
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    useProjectStore.getState().setCurrentProject(currentProject);
+
+    const created = await useProjectStore.getState().createProject(
+      'user-1',
+      'Imported',
+      'from file',
+      { ...createFallbackConfig(), id: 'template-id' },
+      { activate: false },
+    );
+
+    expect(created).not.toBeNull();
+    expect(useProjectStore.getState().projects.map((project) => project.id)).toContain(created!.id);
+    expect(useProjectStore.getState().currentProject?.id).toBe('p-current');
+  });
+
   it.each(['user-new', null])('discards creation after switching to %s', async (nextUser) => {
     setCurrentUser('user-old');
     let resolveCreate: () => void = () => {};

@@ -51,7 +51,7 @@ function fakeClient() {
           return builder;
         },
         then: (
-          resolve: (value: { data: null; error: null }) => unknown,
+          resolve: (value: { data: Array<{ id: unknown }>; error: null }) => unknown,
           reject: (reason: unknown) => unknown,
         ) => {
           try {
@@ -62,7 +62,10 @@ function fakeClient() {
             if (action === 'delete') {
               selected.forEach((row) => rows.delete(String(row.id)));
             }
-            return Promise.resolve({ data: null, error: null }).then(resolve, reject);
+            return Promise.resolve({
+              data: selected.map((row) => ({ id: row.id })),
+              error: null,
+            }).then(resolve, reject);
           } catch (error) {
             return Promise.reject(error).then(resolve, reject);
           }
@@ -139,6 +142,22 @@ describe('SupabaseProjectRepository', () => {
       'project-2',
       { ...config, materials: [{ id: 'broken' }] } as typeof config,
     )).rejects.toThrow('Invalid project document');
+  });
+
+  it('fails the save when the target project row no longer exists', async () => {
+    const { client } = fakeClient();
+    const repository = new SupabaseProjectRepository(client);
+    const config = { ...createFallbackConfig(), id: 'missing-project' };
+
+    await expect(repository.save('missing-project', config)).rejects.toThrow('未写入任何数据');
+  });
+
+  it('fails the metadata update when the target project row no longer exists', async () => {
+    const { client } = fakeClient();
+    const repository = new SupabaseProjectRepository(client);
+
+    await expect(repository.updateProject('missing-project', { name: '新名称' }))
+      .rejects.toThrow('更新失败');
   });
 
   it('hard deletes a project', async () => {

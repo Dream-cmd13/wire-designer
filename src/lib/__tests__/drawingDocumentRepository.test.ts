@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createBlankDrawingDocument } from '@/lib/drawingDocument';
 import { DrawingDocumentRepository } from '@/repositories/drawingDocumentRepository';
+import type { DrawingDocument } from '@/types/drawing';
 
 type Row = Record<string, unknown>;
 
@@ -84,5 +85,32 @@ describe('DrawingDocumentRepository', () => {
 
     await repository.remove('owner-1', document.id);
     expect(rows.has(document.id)).toBe(false);
+  });
+
+  it('isolates drawings with corrupt objects without dropping their raw rows', async () => {
+    const { client, rows } = fakeDrawingClient();
+    const repository = new DrawingDocumentRepository(client);
+    const healthy = createBlankDrawingDocument('健康图纸');
+    await repository.save('owner-1', healthy);
+    const corruptDocument = { ...createBlankDrawingDocument('损坏图纸'), objects: [null] };
+    rows.set('broken-row', { id: 'broken-row', owner_id: 'owner-1', document: corruptDocument });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await expect(repository.list('owner-1')).resolves.toEqual([healthy]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(rows.get('broken-row')?.document).toBe(corruptDocument);
+
+    warn.mockRestore();
+  });
+
+  it('rejects saving a document whose objects are incomplete', async () => {
+    const { client } = fakeDrawingClient();
+    const repository = new DrawingDocumentRepository(client);
+    const document = {
+      ...createBlankDrawingDocument('损坏图纸'),
+      objects: [null],
+    } as unknown as DrawingDocument;
+
+    await expect(repository.save('owner-1', document)).rejects.toThrow('图纸结构校验失败');
   });
 });

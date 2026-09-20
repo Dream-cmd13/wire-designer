@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
 import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
@@ -12,6 +13,7 @@ import { StandaloneDrawingInspector } from '@/components/drawings/standalone/Sta
 import { StandaloneDrawingWizard } from '@/components/drawings/standalone/StandaloneDrawingWizard';
 import { DrawingWorkbenchToolbar } from '@/components/drawings/standalone/DrawingWorkbenchToolbar';
 import { clearDrawingCanvas, moveDrawingLayers, patchDrawingObjects, placeDrawingCopiesAtPoint, setDrawingLayer, splitDrawingObjects, splitDrawingPathAtPoint, toggleAllDrawingLocks, toggleDrawingLocks } from '@/lib/drawingCommands';
+import { downloadTextFile } from '@/lib/designFile';
 import { createDrawingId, createDrawingNumberTubeObject, createDrawingResourceObject, createDrawingTableObject, defaultDrawingObjectStyle, type DrawingTableCreateInput } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
@@ -20,7 +22,15 @@ import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTable
 import { getDrawingTransformObject, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
 import { enterDrawingWorkbench } from '@/lib/drawingWorkbenchSession';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
-import { listWorkspaceDrafts, removeWorkspaceDraft, type WorkspaceDraft } from '@/lib/workspaceDraftCache';
+import {
+  corruptWorkspaceDraftsToJson,
+  listCorruptWorkspaceDrafts,
+  listWorkspaceDrafts,
+  removeCorruptWorkspaceDraft,
+  removeWorkspaceDraft,
+  type CorruptWorkspaceDraft,
+  type WorkspaceDraft,
+} from '@/lib/workspaceDraftCache';
 import { hasPendingDrawingChanges, hydrateDrawingStore, restoreDrawingDraft, useDrawingStore } from '@/stores/drawingStore';
 import { useUserStore } from '@/stores/userStore';
 import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
@@ -86,6 +96,7 @@ export function DrawingWorkbenchPage() {
   const activeDocumentId = useDrawingStore((state) => state.activeDocumentId);
   const saveState = useDrawingStore((state) => state.saveState);
   const draftError = useDrawingStore((state) => state.draftError);
+  const hydrationError = useDrawingStore((state) => state.hydrationError);
   const replaceWithNewDocument = useDrawingStore((state) => state.replaceWithNewDocument);
   const updateDocument = useDrawingStore((state) => state.updateDocument);
   const updateObject = useDrawingStore((state) => state.updateObject);
@@ -112,8 +123,10 @@ export function DrawingWorkbenchPage() {
   const [lineEditorObjectId, setLineEditorObjectId] = useState<string | null>(null);
   const [materialTableObjectId, setMaterialTableObjectId] = useState<string | null>(null);
   const [drawingStoreHydrated, setDrawingStoreHydrated] = useState(false);
+  const [hydrationAttempt, setHydrationAttempt] = useState(0);
   const [refreshDecisionOpen, setRefreshDecisionOpen] = useState(false);
   const [draftRecovery, setDraftRecovery] = useState<WorkspaceDraft | null>(null);
+  const [corruptDrafts, setCorruptDrafts] = useState<CorruptWorkspaceDraft[]>([]);
   const [entryReady, setEntryReady] = useState(false);
   const entryHandledRef = useRef(false);
   const wheelGestureRef = useRef<WheelGestureState | null>(null);
@@ -140,23 +153,27 @@ export function DrawingWorkbenchPage() {
       setLineEditorObjectId(null);
       setMaterialTableObjectId(null);
       setDraftRecovery(null);
+      setCorruptDrafts([]);
 
       const state = useDrawingStore.getState();
       const alreadyHasDrawing = Boolean(state.activeDocumentId && state.documents[state.activeDocumentId]);
 
+      let hydrationFailed = false;
       if (!alreadyHasDrawing) {
         setDrawingStoreHydrated(false);
         setEntryReady(false);
-        await hydrateDrawingStore(drawingOwnerId)
-          .catch(() => undefined)
-          .finally(() => {
-            if (!cancelled) setDrawingStoreHydrated(true);
-          });
+        const result = await hydrateDrawingStore(drawingOwnerId);
+        hydrationFailed = result === 'failed';
+        if (!cancelled) setDrawingStoreHydrated(true);
       } else {
         setDrawingStoreHydrated(true);
       }
 
       if (cancelled) return;
+      if (hydrationFailed) {
+        setEntryReady(true);
+        return;
+      }
 
       const currentState = useDrawingStore.getState();
       const hasExisting = Boolean(currentState.activeDocumentId && currentState.documents[currentState.activeDocumentId]);
@@ -187,6 +204,7 @@ export function DrawingWorkbenchPage() {
           const newest = [...candidates].sort((left, right) => right.savedAt - left.savedAt)[0];
           setDraftRecovery(newest);
         }
+        setCorruptDrafts(listCorruptWorkspaceDrafts(drawingOwnerId, 'drawing'));
       }
 
       if (!cancelled) {
@@ -196,7 +214,7 @@ export function DrawingWorkbenchPage() {
 
     void initialize();
     return () => { cancelled = true; };
-  }, [drawingOwnerId, replaceWithNewDocument]);
+  }, [drawingOwnerId, hydrationAttempt, replaceWithNewDocument]);
   useEffect(() => { if (!selectionWarning) return; const timer = window.setTimeout(() => setSelectionWarning(false), 2200); return () => window.clearTimeout(timer); }, [selectionWarning]);
   useEffect(() => () => { if (wheelGestureRef.current) window.clearTimeout(wheelGestureRef.current.timeoutId); }, []);
 
@@ -455,7 +473,29 @@ export function DrawingWorkbenchPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  if (!drawingStoreHydrated || !entryReady || !drawing) return null;
+  if (!drawingStoreHydrated || !entryReady) return null;
+  if (!drawing) {
+    if (!hydrationError) return null;
+    return <div className="flex h-full items-center justify-center bg-slate-100 p-4">
+      <div className="w-full max-w-md rounded-lg border border-red-200 bg-white p-6 text-center shadow-sm">
+        <AlertCircle className="mx-auto h-9 w-9 text-red-400" />
+        <h2 className="mt-4 text-base font-semibold text-slate-900">图纸列表加载失败</h2>
+        <p className="mt-2 text-sm text-slate-500">{hydrationError}</p>
+        <p className="mt-1 text-xs text-slate-400">为避免覆盖云端数据，加载成功前不会自动新建图纸。</p>
+        <button
+          type="button"
+          onClick={() => {
+            setDrawingStoreHydrated(false);
+            setEntryReady(false);
+            setHydrationAttempt((value) => value + 1);
+          }}
+          className="mt-4 cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          重新加载
+        </button>
+      </div>
+    </div>;
+  }
   return <div className="flex h-full min-h-0 flex-col bg-slate-100">
     <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={() => void saveActiveDocument().catch((error) => console.error('图纸保存失败:', error))} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
@@ -499,6 +539,28 @@ export function DrawingWorkbenchPage() {
       secondaryAction={{ label: '使用云端版本', onClick: discardDraft }}
       primaryAction={{ label: '恢复本地草稿', onClick: restoreDraft }}
       onClose={() => setDraftRecovery(null)}
+    />}
+    {corruptDrafts.length > 0 && !draftRecovery && <ActionToast
+      role="alertdialog"
+      tone="danger"
+      title="发现损坏的本地图纸草稿"
+      message={`有 ${corruptDrafts.length} 份本地图纸草稿无法解析，原始内容仍保留在本地。${corruptDrafts.some((draft) => !draft.isolated) ? '部分内容因本地存储空间不足未能转入隔离区，请先下载备份。' : '建议先下载备份，再决定是否丢弃。'}`}
+      secondaryAction={{
+        label: '丢弃草稿',
+        destructive: true,
+        onClick: () => {
+          corruptDrafts.forEach((draft) => removeCorruptWorkspaceDraft(draft));
+          setCorruptDrafts(drawingOwnerId ? listCorruptWorkspaceDrafts(drawingOwnerId, 'drawing') : []);
+        },
+      }}
+      primaryAction={{
+        label: '下载原始草稿',
+        onClick: () => downloadTextFile(
+          corruptWorkspaceDraftsToJson(corruptDrafts),
+          `损坏图纸草稿-${Date.now()}.json`,
+        ),
+      }}
+      onClose={() => setCorruptDrafts([])}
     />}
     {draftError && <div role="alert" className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700">本地草稿备份失败：{draftError}。请保持页面打开并重试保存。</div>}
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}

@@ -180,9 +180,10 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
         name: preview.name,
         updatedAt: Date.now(),
       },
+      { activate: false },
     );
     if (!project || useUserStore.getState().currentUser?.id !== project.userId) return;
-    setNotice(`已从设计文件创建项目“${project.name}”`);
+    setNotice(`已从设计文件创建项目“${project.name}”，可在项目列表中打开。`);
   };
 
   const formatDate = (timestamp: number) => {

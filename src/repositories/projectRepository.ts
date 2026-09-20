@@ -80,8 +80,15 @@ export class SupabaseProjectRepository implements ProjectRepository {
     if (updates.description !== undefined) payload.description = updates.description;
     if (Object.keys(payload).length === 0) return;
     payload.updated_at = new Date().toISOString();
-    const { error } = await this.client.from('projects').update(payload).eq('id', projectId);
+    const { data, error } = await this.client
+      .from('projects')
+      .update(payload)
+      .eq('id', projectId)
+      .select('id');
     if (error) throw this.parseError(error);
+    if (!data || data.length === 0) {
+      throw new Error('项目不存在或已被删除，更新失败。');
+    }
   }
 
   async load(projectId: string): Promise<ProjectLoadResult> {
@@ -108,15 +115,19 @@ export class SupabaseProjectRepository implements ProjectRepository {
     if (document.id !== projectId) {
       throw new Error('Invalid project document: project id does not match config id');
     }
-    const { error } = await this.client
+    const { data, error } = await this.client
       .from('projects')
       .update({
         name: document.name,
         config: document,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', projectId);
+      .eq('id', projectId)
+      .select('id');
     if (error) throw this.parseError(error);
+    if (!data || data.length === 0) {
+      throw new Error('项目不存在或已被删除，本次保存未写入任何数据。');
+    }
   }
 
   async remove(projectId: string): Promise<void> {

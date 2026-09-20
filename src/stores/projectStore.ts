@@ -30,7 +30,8 @@ interface ProjectState {
     userId: string,
     name: string,
     description: string,
-    initialConfig: HarnessConfig
+    initialConfig: HarnessConfig,
+    options?: { activate?: boolean }
   ) => Promise<Project | null>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
@@ -115,7 +116,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     return loadPromise;
   },
 
-  createProject: async (userId, name, description, initialConfig) => {
+  createProject: async (userId, name, description, initialConfig, options) => {
     if (!isCurrentUser(userId)) return null;
     const generation = projectSessionGeneration;
     const projectId = generateId();
@@ -134,7 +135,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     setCachedProjects(userId, updatedProjects);
     set((state) => ({
       projects: [...state.projects, newProject],
-      currentProject: newProject,
+      currentProject: options?.activate === false ? state.currentProject : newProject,
     }));
     return newProject;
   },
