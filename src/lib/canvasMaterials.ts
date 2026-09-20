@@ -14,7 +14,6 @@ import type {
   HarnessConfig,
   Selection,
 } from '@/types/harness';
-import type { CatalogSnapshot } from '@/types/catalog';
 import { syncConnectorLabels } from '@/lib/connectorDesignation';
 
 export const JACKET_CORE_COUNTS: JacketCoreCount[] = [
@@ -159,20 +158,6 @@ export function getMaterialStripHeight(kind: 'electronic' | 'jacketed'): number 
 }
 
 /**
- * Position an attached sleeve around the visual center line of a material.
- * This is the single source of truth for create, resize, move, and edit flows.
- */
-export function centerSleeveOnMaterial(
-  material: Pick<CanvasWireMaterial, 'position' | 'width' | 'spec'>,
-  sleeveWidth: number,
-): { x: number; y: number } {
-  return {
-    x: material.position.x + (material.width - sleeveWidth) / 2,
-    y: material.position.y + getMaterialCenterY(material.spec.kind) - PROTECTIVE_SLEEVE_HEIGHT / 2,
-  };
-}
-
-/**
  * Position a protective sleeve around any selected subset of wires.
  * The selected wire centers determine the vertical span, so one sleeve
  * can cover two wires, four wires, or any other explicit combination.
@@ -203,21 +188,6 @@ export function placeSleeveAroundMaterials(
     },
     height,
   };
-}
-
-/** @deprecated Use lengthMmToCanvasWidth */
-export function sleeveLengthToCanvasWidth(lengthMm: number): number {
-  return lengthMmToCanvasWidth(lengthMm);
-}
-
-export function calculateProtectiveSleevePrice(sleeve: ProtectiveSleeve, catalog: CatalogSnapshot | null = getCatalogSnapshot()): number {
-  const option = catalog?.protectionOptions.find((item) => item.id === sleeve.type);
-  const pricePerMeter = option?.price ?? 0;
-  const materialMultiplier =
-    sleeve.type === 'corrugated' && sleeve.corrugatedMaterial
-      ? (option?.materialMultipliers[sleeve.corrugatedMaterial] ?? 1)
-      : 1;
-  return pricePerMeter * materialMultiplier * (sleeve.lengthMm / 1000);
 }
 
 export function getCanvasModelDisplayName(model: CanvasModel): string {

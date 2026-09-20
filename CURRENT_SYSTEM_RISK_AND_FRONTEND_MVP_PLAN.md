@@ -22,7 +22,7 @@
 - 认证与持久化：Supabase Auth 取代本地明文登录；`projects`、`drawings` 云端保存并带 RLS 账号隔离；本机仅保留按账号隔离的恢复草稿（`wh_draft_v1:<ownerId>:<kind>:<documentId>`），保存契约见 `SAVE_CONCURRENCY_AND_REALTIME_STRATEGY.md` 的实施更新。
 - 共享数据：物料库（七类物料）、材料价格、供应商、成品线束物料与成本分析已迁入 Supabase 共享表，目录数据不再写死在前端数组。
 - 新增模块：制作图纸工作台（新建、编辑、PDF 导出）、物料库页面、来源 Excel 与内嵌图片预览、成品方案成本分析。
-- 质量基线（2026-09-20 实测）：`npx eslint .` 0 错误 0 告警；`npx tsc -b` 通过；`npm test` 为 87 个测试文件、658 个用例全部通过。
+- 质量基线（2026-09-20 实测）：`npx eslint .` 0 错误 0 告警；`npx tsc -b` 通过；`npm test` 为 86 个测试文件、649 个用例全部通过。
 
 ### 本文风险条目的当前状态
 
@@ -34,10 +34,10 @@
 - 仍开放：4.3/4.4（BOM 与报价仍为前端估算，不作为正式商业报价）、4.10（校验错误尚未作为 BOM/报价导出与询价的门禁，目前仅 `designFile.ts` 的导入/导出调用 `validateHarness`）。
 - Phase B1（轻量云端）：已实施，采用 Supabase 直连而非自建 NestJS。
 
-### 2026-09-20 新发现、尚未处理
+### 2026-09-20 新发现与处理结果
 
+- 死代码已于本轮清理：删除无生产引用的旧版工作台 6 个组件（`src/components/drawings/workbench/*`）、`Preview3D`、`CanvasModelDialog`，以及无调用方的命令/工具函数、无效事件通道、未引用的模板资源与 `autoprefixer` 依赖；README 和窄屏提示中不再宣传实际不存在的等距预览。
 - 仍无 E2E 与 CI：无 `.github` 工作流、无 Playwright 用例，跨模块回归依赖单元/组件测试和手工走查。
-- 死代码：`src/components/drawings/workbench/*`（`DrawingWizardDialog`、`DrawingCanvas` 等约 1300 行）已无生产引用，实际制作图页使用 `components/drawings/standalone/*`；仅个别静态测试读取其源码文本。
 - 超大文件：`HarnessCanvas.tsx`、`MaterialLibraryPage.tsx`、`TwoDView.tsx`、`App.tsx` 均超过 1000 行，后续维护和拆分成本高。
 - 本文以下章节中的测试数量、构建体积、localStorage 流程等均为 2026-07-03 的历史记录，不再代表现状。
 

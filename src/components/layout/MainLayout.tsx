@@ -56,7 +56,7 @@ export function MainLayout({ children, leftPanel, rightPanel }: MainLayoutProps)
     <div className="flex h-full flex-col bg-slate-50">
       {Boolean(rightPanel) && (
         <div className="hidden border-b border-blue-200 bg-blue-50 px-3 py-2 text-center text-xs text-blue-700 max-xl:block">
-          窄屏模式已自动收起右侧面板和等距预览；可按需展开右侧面板。
+          窄屏模式已自动收起右侧面板；可按需展开右侧面板。
         </div>
       )}
 

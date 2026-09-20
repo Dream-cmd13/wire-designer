@@ -20,7 +20,6 @@ import type {
 } from '@/types/harness';
 import { findRuntimeConnector } from '@/lib/catalogRuntime';
 import {
-  createDefaultWireSpec,
   lengthMmToCanvasWidth,
   placeSleeveAroundMaterials,
 } from '@/lib/canvasMaterials';
@@ -30,14 +29,7 @@ import { syncConnectorLabels } from '@/lib/connectorDesignation';
 // ID Generator
 // ============================================================
 
-let _idGenerator: (() => string) | null = null;
-
-export function setIdGenerator(fn: () => string): void {
-  _idGenerator = fn;
-}
-
 export function generateId(): string {
-  if (_idGenerator) return _idGenerator();
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
@@ -125,21 +117,6 @@ export function addConnector(
   return {
     ...config,
     connectors: [...config.connectors, newInstance],
-    updatedAt: Date.now(),
-  };
-}
-
-/** Update connector instance label or position. */
-export function updateConnector(
-  config: HarnessConfig,
-  connectorId: string,
-  patch: Partial<Pick<ConnectorInstance, 'label' | 'position'>>,
-): HarnessConfig {
-  return {
-    ...config,
-    connectors: config.connectors.map((c) =>
-      c.id === connectorId ? { ...c, ...patch } : c,
-    ),
     updatedAt: Date.now(),
   };
 }
@@ -243,39 +220,6 @@ export function removeConnector(
 // ============================================================
 // Material Commands
 // ============================================================
-
-export interface AddMaterialInput {
-  position?: { x: number; y: number };
-  spec?: CanvasWireMaterial['spec'];
-  name?: string;
-}
-
-/** Add a new wire material to the canvas. */
-export function addMaterial(
-  config: HarnessConfig,
-  input: AddMaterialInput = {},
-): { config: HarnessConfig; materialId: string } {
-  const materialId = generateId();
-  const spec = input.spec ?? createDefaultWireSpec();
-  const material: CanvasWireMaterial = {
-    id: materialId,
-    name: input.name ?? '新线材',
-    position: input.position ?? { x: 300, y: 300 },
-    width: lengthMmToCanvasWidth(spec.lengthMm),
-    spec,
-    circuits: alignCircuits(spec, []),
-    expandedByDefault: true,
-  };
-
-  return {
-    config: {
-      ...config,
-      materials: [...config.materials, material],
-      updatedAt: Date.now(),
-    },
-    materialId,
-  };
-}
 
 /** Update material properties (name, position, width, spec). */
 export function updateMaterial(
@@ -856,30 +800,6 @@ export function addConnectorJumper(
   };
 }
 
-/** Add a pin to an existing jumper. */
-export function extendConnectorJumper(
-  config: HarnessConfig,
-  connectorId: string,
-  jumperId: string,
-  pin: number,
-): HarnessConfig {
-  return {
-    ...config,
-    connectors: config.connectors.map((c) => {
-      if (c.id !== connectorId) return c;
-      return {
-        ...c,
-        jumpers: c.jumpers.map((j) =>
-          j.id === jumperId && !j.pins.includes(pin)
-            ? { ...j, pins: [...j.pins, pin].sort((a, b) => a - b) }
-            : j,
-        ),
-      };
-    }),
-    updatedAt: Date.now(),
-  };
-}
-
 /** Remove an entire jumper. */
 export function removeConnectorJumper(
   config: HarnessConfig,
@@ -900,17 +820,6 @@ export function removeConnectorJumper(
 // ============================================================
 // Protective Sleeve Commands
 // ============================================================
-
-export function addProtectiveSleeve(
-  config: HarnessConfig,
-  sleeve: ProtectiveSleeve,
-): HarnessConfig {
-  return {
-    ...config,
-    protectiveSleeves: [...config.protectiveSleeves, sleeve],
-    updatedAt: Date.now(),
-  };
-}
 
 export function updateProtectiveSleeve(
   config: HarnessConfig,
@@ -955,17 +864,6 @@ function repositionSleeve(
     ...sleeve,
     position: placement.position,
     height: placement.height,
-  };
-}
-
-export function removeProtectiveSleeve(
-  config: HarnessConfig,
-  sleeveId: string,
-): HarnessConfig {
-  return {
-    ...config,
-    protectiveSleeves: config.protectiveSleeves.filter((s) => s.id !== sleeveId),
-    updatedAt: Date.now(),
   };
 }
 
@@ -1038,39 +936,4 @@ export function getConnectorPinBindings(
     }
   }
   return map;
-}
-
-/** Get the set of pins that are part of a jumper on a given side. */
-export function getJumperPinSet(
-  connector: ConnectorInstance,
-  side: ConnectorSide,
-): Set<number> {
-  const pins = new Set<number>();
-  for (const jumper of connector.jumpers) {
-    if (jumper.side === side) {
-      for (const pin of jumper.pins) {
-        pins.add(pin);
-      }
-    }
-  }
-  return pins;
-}
-
-/** Count connected pins on a connector (from material circuits). */
-export function getConnectedPinCount(
-  config: HarnessConfig,
-  connectorId: string,
-): number {
-  const pins = new Set<string>();
-  for (const material of config.materials) {
-    for (const circuit of material.circuits) {
-      if (circuit.start?.connectorId === connectorId) {
-        pins.add(`${circuit.start.connectorSide}-${circuit.start.pin}`);
-      }
-      if (circuit.end?.connectorId === connectorId) {
-        pins.add(`${circuit.end.connectorSide}-${circuit.end.pin}`);
-      }
-    }
-  }
-  return pins.size;
 }

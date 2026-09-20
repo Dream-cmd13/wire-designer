@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest';
 const rendererFiles = [
   'src/components/drawings/standalone/StandaloneDrawingCanvas.tsx',
   'src/lib/drawingRenderer.ts',
-  'src/components/drawings/workbench/DrawingCanvas.tsx',
 ];
 
 describe('drawing table line color', () => {

@@ -66,7 +66,6 @@ import { ProtectiveSleeveDialog } from './ProtectiveSleeveDialog';
 import { WireMaterialDialog } from './WireMaterialDialog';
 import {
   setMaterialAccessoryContextMenuHandler,
-  setMaterialAccessoryDialogHandler,
 } from './materialAccessoryEvents';
 import {
   setMaterialConnectionPointHandler,
@@ -729,14 +728,6 @@ function HarnessCanvasInner() {
     const timer = window.setTimeout(() => setDeletionNotice(null), 6000);
     return () => window.clearTimeout(timer);
   }, [deletionNotice]);
-
-  useEffect(() => {
-    setMaterialAccessoryDialogHandler((request) => {
-      if (!isInteractiveRef.current) return;
-      setAccessoryDialog(request);
-    });
-    return () => setMaterialAccessoryDialogHandler(null);
-  }, []);
 
   useEffect(() => {
     setMaterialAccessoryContextMenuHandler((request) => {

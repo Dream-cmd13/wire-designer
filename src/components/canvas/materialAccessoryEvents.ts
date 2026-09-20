@@ -14,18 +14,7 @@ export interface MaterialAccessoryContextMenuRequest extends MaterialAccessoryDi
   y: number;
 }
 
-let dialogHandler: ((request: MaterialAccessoryDialogRequest) => void) | null = null;
 let contextMenuHandler: ((request: MaterialAccessoryContextMenuRequest) => void) | null = null;
-
-export function setMaterialAccessoryDialogHandler(
-  nextHandler: ((request: MaterialAccessoryDialogRequest) => void) | null,
-) {
-  dialogHandler = nextHandler;
-}
-
-export function openMaterialAccessoryDialog(request: MaterialAccessoryDialogRequest) {
-  dialogHandler?.(request);
-}
 
 export function setMaterialAccessoryContextMenuHandler(
   nextHandler: ((request: MaterialAccessoryContextMenuRequest) => void) | null,
