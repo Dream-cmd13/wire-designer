@@ -8,8 +8,6 @@ import type {
   ConnectorPinRef,
   HarnessConfig,
   MaterialCircuit,
-  ProductionDrawing,
-  ProductionDrawingObject,
   ProtectiveSleeve,
   DrawingRevisionRow,
   DrawingSignOff,
@@ -653,258 +651,6 @@ function readModel(value: unknown, path: string, issues: string[]): CanvasModel 
   };
 }
 
-function readProductionDrawingObjectBase(value: UnknownRecord, path: string, issues: string[]) {
-  if (
-    !isString(value.id)
-    || !isFiniteNumber(value.x)
-    || !isFiniteNumber(value.y)
-    || !isPositiveNumber(value.width)
-    || !isPositiveNumber(value.height)
-  ) {
-    issues.push(`${path} has invalid object geometry`);
-    return null;
-  }
-
-  return {
-    id: value.id,
-    x: value.x,
-    y: value.y,
-    width: value.width,
-    height: value.height,
-  };
-}
-
-function readProductionDrawingObject(
-  value: unknown,
-  path: string,
-  issues: string[],
-): ProductionDrawingObject | null {
-  if (!isRecord(value) || !isString(value.kind)) {
-    issues.push(`${path} is not a valid production drawing object`);
-    return null;
-  }
-
-  const base = readProductionDrawingObjectBase(value, path, issues);
-  if (!base) return null;
-
-  if (value.kind === 'connector') {
-    if (
-      !isString(value.connectorId)
-      || !isString(value.label)
-      || !isPositiveInteger(value.pinCount)
-      || (value.side !== 'left' && value.side !== 'right' && value.side !== 'none')
-    ) {
-      issues.push(`${path} is not a valid connector drawing object`);
-      return null;
-    }
-    return {
-      ...base,
-      kind: 'connector',
-      connectorId: value.connectorId,
-      label: value.label,
-      pinCount: value.pinCount,
-      side: value.side,
-    };
-  }
-
-  if (value.kind === 'wire-bundle') {
-    const materialIds = readStringArray(value.materialIds, `${path}.materialIds`, issues);
-    if (!materialIds || !isPositiveInteger(value.wireCount) || typeof value.jacketed !== 'boolean') {
-      issues.push(`${path} is not a valid wire bundle drawing object`);
-      return null;
-    }
-    return {
-      ...base,
-      kind: 'wire-bundle',
-      materialIds,
-      wireCount: value.wireCount,
-      jacketed: value.jacketed,
-    };
-  }
-
-  if (value.kind === 'dimension') {
-    if (!isString(value.label)) {
-      issues.push(`${path} is not a valid dimension drawing object`);
-      return null;
-    }
-    return { ...base, kind: 'dimension', label: value.label };
-  }
-
-  if (value.kind === 'text') {
-    if (!isString(value.text) || !isPositiveNumber(value.fontSize)) {
-      issues.push(`${path} is not a valid text drawing object`);
-      return null;
-    }
-    return { ...base, kind: 'text', text: value.text, fontSize: value.fontSize };
-  }
-
-  if (value.kind === 'bom-table') {
-    if (!Array.isArray(value.rows)) {
-      issues.push(`${path}.rows must be an array`);
-      return null;
-    }
-    const rows = value.rows.map((row, index) => {
-      if (
-        !isRecord(row)
-        || !isPositiveInteger(row.item)
-        || !isString(row.description)
-        || !isPositiveNumber(row.quantity)
-      ) {
-        issues.push(`${path}.rows[${index}] is not a valid BOM row`);
-        return null;
-      }
-      return {
-        item: row.item,
-        description: row.description,
-        quantity: row.quantity,
-      };
-    });
-    if (rows.some((row) => !row)) return null;
-    return {
-      ...base,
-      kind: 'bom-table',
-      rows: rows as Extract<ProductionDrawingObject, { kind: 'bom-table' }>['rows'],
-    };
-  }
-
-  if (value.kind === 'wiring-table') {
-    if (!Array.isArray(value.rows)) {
-      issues.push(`${path}.rows must be an array`);
-      return null;
-    }
-    const rows = value.rows.map((row, index) => {
-      if (
-        !isRecord(row)
-        || !isPositiveInteger(row.item)
-        || !isString(row.color)
-        || !isString(row.signalName)
-        || !isString(row.connectionNo)
-        || (row.startPin !== undefined && !isPositiveInteger(row.startPin))
-        || (row.endPin !== undefined && !isPositiveInteger(row.endPin))
-        || (row.lengthMm !== undefined && !isPositiveNumber(row.lengthMm))
-      ) {
-        issues.push(`${path}.rows[${index}] is not a valid wiring table row`);
-        return null;
-      }
-      return {
-        item: row.item,
-        color: row.color,
-        signalName: row.signalName,
-        connectionNo: row.connectionNo,
-        ...(row.startPin === undefined ? {} : { startPin: row.startPin }),
-        ...(row.endPin === undefined ? {} : { endPin: row.endPin }),
-        ...(row.lengthMm === undefined ? {} : { lengthMm: row.lengthMm }),
-      };
-    });
-    if (rows.some((row) => !row)) return null;
-    return {
-      ...base,
-      kind: 'wiring-table',
-      rows: rows as Extract<ProductionDrawingObject, { kind: 'wiring-table' }>['rows'],
-    };
-  }
-
-  if (value.kind === 'title-block') {
-    if (!isString(value.title) || !isString(value.drawingNo) || !isString(value.revision)) {
-      issues.push(`${path} is not a valid title block drawing object`);
-      return null;
-    }
-    return {
-      ...base,
-      kind: 'title-block',
-      title: value.title,
-      drawingNo: value.drawingNo,
-      revision: value.revision,
-    };
-  }
-
-  if (value.kind === 'tech-requirements') {
-    const requirements = readStringArray(value.requirements, `${path}.requirements`, issues);
-    if (!requirements) {
-      issues.push(`${path} is not a valid tech requirements drawing object`);
-      return null;
-    }
-    return { ...base, kind: 'tech-requirements', requirements };
-  }
-
-  issues.push(`${path}.kind is not supported`);
-  return null;
-}
-
-function readProductionDrawing(value: unknown, path: string, issues: string[]): ProductionDrawing | null {
-  if (!isRecord(value)) {
-    issues.push(`${path} must be an object`);
-    return null;
-  }
-
-  if (
-    value.schemaVersion !== 1
-    || !isRecord(value.page)
-    || value.page.size !== 'A4'
-    || value.page.orientation !== 'landscape'
-    || value.page.width !== 1200
-    || value.page.height !== 800
-    || !Array.isArray(value.objects)
-    || !Array.isArray(value.revisionTable)
-    || !isRecord(value.titleBlock)
-    || !Array.isArray(value.techRequirements)
-  ) {
-    issues.push(`${path} is not a valid production drawing`);
-    return null;
-  }
-
-  const objects = value.objects.map((item, index) =>
-    readProductionDrawingObject(item, `${path}.objects[${index}]`, issues));
-  const revisionTable = value.revisionTable.map((row, index) => {
-    if (
-      !isRecord(row)
-      || !isString(row.revision)
-      || !isString(row.description)
-      || !isString(row.date)
-    ) {
-      issues.push(`${path}.revisionTable[${index}] is not a valid revision row`);
-      return null;
-    }
-    return {
-      revision: row.revision,
-      description: row.description,
-      date: row.date,
-    };
-  });
-  const techRequirements = readStringArray(value.techRequirements, `${path}.techRequirements`, issues);
-
-  if (
-    !isString(value.titleBlock.title)
-    || !isString(value.titleBlock.drawingNo)
-    || !isString(value.titleBlock.revision)
-    || objects.some((object) => !object)
-    || revisionTable.some((row) => !row)
-    || !techRequirements
-  ) {
-    issues.push(`${path} has invalid nested data`);
-    return null;
-  }
-
-  return {
-    schemaVersion: 1,
-    page: {
-      size: 'A4',
-      orientation: 'landscape',
-      width: 1200,
-      height: 800,
-    },
-    objects: objects as ProductionDrawingObject[],
-    revisionTable: revisionTable as ProductionDrawing['revisionTable'],
-    titleBlock: {
-      title: value.titleBlock.title,
-      drawingNo: value.titleBlock.drawingNo,
-      revision: value.titleBlock.revision,
-    },
-    techRequirements,
-  };
-}
-
-
 function readDrawingSignOff(value: unknown, path: string, issues: string[]): DrawingSignOff | null {
   if (!isRecord(value)) {
     issues.push(`${path} must be an object`);
@@ -1004,9 +750,6 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
     readSleeve(item, `protectiveSleeves[${index}]`, issues));
   const models = (input.models as unknown[]).map((item, index) =>
     readModel(item, `models[${index}]`, issues));
-  const productionDrawing = input.productionDrawing === undefined
-    ? undefined
-    : readProductionDrawing(input.productionDrawing, 'productionDrawing', issues);
   const drawingFrame = input.drawingFrame === undefined
     ? undefined
     : readProductionDrawingFrame(input.drawingFrame, 'drawingFrame', issues);
@@ -1016,7 +759,6 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
     || materials.some((item) => !item)
     || protectiveSleeves.some((item) => !item)
     || models.some((item) => !item)
-    || productionDrawing === null
     || drawingFrame === null
   ) {
     return { success: false, issues };
@@ -1046,7 +788,6 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
               typeof (x as Record<string, unknown>).dataUrl === 'string',
           ) as TwoDImage[]
         : [],
-      ...(productionDrawing === undefined ? {} : { productionDrawing }),
       ...(drawingFrame === undefined ? {} : { drawingFrame }),
     },
   };

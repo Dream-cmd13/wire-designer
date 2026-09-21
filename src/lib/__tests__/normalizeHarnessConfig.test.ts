@@ -387,6 +387,26 @@ describe('normalizeHarnessConfig', () => {
 
     expect(parseHarnessConfig(input).success).toBe(false);
   });
+
+  it('ignores the legacy productionDrawing field instead of parsing it', () => {
+    const input = {
+      ...createFallbackConfig(),
+      productionDrawing: {
+        schemaVersion: 1,
+        page: { size: 'A4', orientation: 'landscape', width: 1200, height: 800 },
+        objects: [{ kind: 'unsupported-object' }],
+        revisionTable: [],
+        titleBlock: { title: '旧图纸', drawingNo: 'OLD-1', revision: 'A' },
+        techRequirements: [],
+      },
+    };
+
+    const parsed = parseHarnessConfig(input);
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect('productionDrawing' in parsed.data).toBe(false);
+    }
+  });
 });
 
 describe('createFallbackConfig', () => {
