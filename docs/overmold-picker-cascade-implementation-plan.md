@@ -228,7 +228,7 @@ kind <> 'overmold' or (
 
 修改 [01_catalog_items.sql](../supabase/sql/40_seed/01_catalog_items.sql)：
 
-- 保留 `pvc-45p-pe` 作为黑色 PVC 45P 直头的稳定代码，避免无必要地改变现有引用。
+- 黑色 PVC 45P 直头代码统一为 `pvc-45p-straight`（历史 mock 代码 `pvc-45p-pe` 已在测试阶段改名，语义与型号 `PVC-45P-STRAIGHT` 对齐）。
 - 新增 PVC 45P 弯头、TPE 直头、TPE 弯头三个正式组合代码；代码只使用小写字母、数字、下划线或连字符。
 - 移除或替换 `demo-pvc-overmold` 这条会显示第三种 `PVC/PE` 值的演示外模记录；不能让演示值污染正式的两种材质筛选。
 - 四条正式记录的 `spec` 都写入 `outerForm`；当前确认有内模配对的记录写入固定 `innerMaterial` 和匹配的 `innerForm`。
@@ -384,7 +384,7 @@ order by sort_order, code;
 | `45P` 实际不是硬度 | 本轮保留 `outerHardness` 兼容字段，只改变组合显示；确认后另立字段重命名任务 |
 | 旧演示行污染固定选项 | 全库重建前删除/替换 `demo-pvc-overmold`，不能只依赖前端隐藏 |
 | seed upsert 不删除旧数据 | 必须执行完整测试库重建；只跑 seed 不视为完成 |
-| 外模 ID 改动导致旧图纸引用失效 | 保留 `pvc-45p-pe` 代码；测试阶段如需清理其余旧记录，先确认项目/图纸已清空 |
+| 外模 ID 改动导致旧图纸引用失效 | 测试阶段直接统一为 `pvc-45p-straight`；执行前确认项目无外模引用、图纸可清空 |
 | 外模图片未区分直头/弯头 | 没有真实资源时复用现有图片并保持字段正确，不伪造图片路径 |
 | 内模开关与目录元数据混淆 | `OvermoldSpec` 只描述可用内模，`CanvasModel.includeInnerMold` 只描述本次是否包含 |
 | 旧计划与新计划冲突 | 实施只遵循本文档，旧文档作为历史记录，不再作为执行依据 |

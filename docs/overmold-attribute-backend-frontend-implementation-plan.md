@@ -165,7 +165,7 @@ constraint catalog_items_overmold_spec_check check (
 逐条处理现有外模种子：
 
 1. `demo-pvc-overmold`：补 `outerForm: 'straight'`，保留实际内模 `PE` 和 `innerMaterialOptional: true`。
-2. `pvc-45p-pe`：补 `outerForm: 'straight'`，保留低密度透明 PE 内模。
+2. `pvc-45p-straight`：补 `outerForm: 'straight'`，保留低密度透明 PE 内模。
 3. 若新增黑色 TPE 或弯头规格，必须以“外模项”为根记录；无内模的记录使用 `innerMaterial: '无内模'`，不能创建只有内模的记录。
 4. 保持现有 `(kind, code)` 冲突更新逻辑和图片路径不变。
 

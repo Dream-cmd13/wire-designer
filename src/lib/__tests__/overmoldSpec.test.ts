@@ -91,7 +91,7 @@ describe('overmoldSpec pure functions', () => {
 
     it('returns declared PE and matching form when complete metadata is present', () => {
       const result = getAvailableInnerMold({
-        id: 'pvc-45p-pe',
+        id: 'pvc-45p-straight',
         name: 'PVC 45P PE',
         outerMaterial: '黑色PVC',
         outerHardness: '45P',
@@ -108,7 +108,7 @@ describe('overmoldSpec pure functions', () => {
 
     it('returns straight inner mold metadata', () => {
       const result = getAvailableInnerMold({
-        id: 'pvc-45p-pe',
+        id: 'pvc-45p-straight',
         name: 'PVC 45P PE',
         outerMaterial: '黑色PVC',
         outerHardness: '45P',

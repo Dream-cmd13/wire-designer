@@ -201,7 +201,7 @@ describe('CatalogRepository', () => {
       catalog_items: [{
         id: 'om-1',
         kind: 'overmold',
-        code: 'pvc-45p-pe',
+        code: 'pvc-45p-straight',
         name: 'PVC 45P 直头',
         model: 'PVC-45P-S',
         ...common,
@@ -216,7 +216,7 @@ describe('CatalogRepository', () => {
     }));
 
     await expect(repository.listOvermolds()).resolves.toEqual([expect.objectContaining({
-      id: 'pvc-45p-pe',
+      id: 'pvc-45p-straight',
       resourceItemId: 'om-1',
       name: 'PVC 45P 直头',
       outerMaterial: '黑色PVC',

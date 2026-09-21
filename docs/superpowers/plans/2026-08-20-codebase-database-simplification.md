@@ -1051,7 +1051,7 @@ on conflict (kind, code) do update set
 
 - [ ] **Step 6: 扩展 SQL 测试覆盖字段数、种子和旧对象缺席**
 
-测试读取两个 schema 文件，按顶层列定义断言 `projects=7`、`drawings=4`、`catalog_items=11`。读取种子并断言代表项 `demo-m12-4pin`、`xh254-4p-f`、`jst-xh-2`、`pvc-45p-pe`、`coil-bag` 以及 `on conflict (kind, code)` 存在，并加入以下精确分布断言：
+测试读取两个 schema 文件，按顶层列定义断言 `projects=7`、`drawings=4`、`catalog_items=11`。读取种子并断言代表项 `demo-m12-4pin`、`xh254-4p-f`、`jst-xh-2`、`pvc-45p-straight`（当时为 `pvc-45p-pe`）、`coil-bag` 以及 `on conflict (kind, code)` 存在，并加入以下精确分布断言：
 
 ```ts
 const seed = read('supabase/sql/40_seed/01_catalog_items.sql');

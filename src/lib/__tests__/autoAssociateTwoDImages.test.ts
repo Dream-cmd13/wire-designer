@@ -359,7 +359,7 @@ describe('product image wire matching', () => {
       connectors: [],
       wires: [],
       overmolds: [{
-        id: 'pvc-45p-pe',
+        id: 'pvc-45p-straight',
         resourceItemId: 'overmold-resource',
         name: '黑色PVC 45P直头外模',
         outerMaterial: '黑色PVC',
@@ -380,7 +380,7 @@ describe('product image wire matching', () => {
         position: { x: 0, y: 0 },
         width: 80,
         height: 60,
-        overmoldSpecId: 'pvc-45p-pe',
+        overmoldSpecId: 'pvc-45p-straight',
         includeInnerMold: true,
         resourceItemId: 'overmold-resource',
       }],

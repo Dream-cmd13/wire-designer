@@ -154,7 +154,7 @@ describe('normalizeHarnessConfig', () => {
         circuits: [],
       }],
       protectiveSleeves: [],
-      models: [{ id: 'model-1', kind: 'outer-box', overmoldSpecId: 'pvc-45p-pe', includeInnerMold: false, resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png', position: { x: 0, y: 0 }, width: 100, height: 80 }],
+      models: [{ id: 'model-1', kind: 'outer-box', overmoldSpecId: 'pvc-45p-straight', includeInnerMold: false, resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png', position: { x: 0, y: 0 }, width: 100, height: 80 }],
       quantity: 1,
       leadTime: 'standard',
     };
@@ -165,7 +165,7 @@ describe('normalizeHarnessConfig', () => {
     if (result.success) {
       expect(result.data.connectors[0].connector.resourceItemId).toBe('connector-resource');
       expect(result.data.materials[0]).toMatchObject({ resourceItemId: 'wire-resource', resourceImageUrl: 'https://example.test/wire.png' });
-      expect(result.data.models[0]).toMatchObject({ overmoldSpecId: 'pvc-45p-pe', includeInnerMold: false, resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png' });
+      expect(result.data.models[0]).toMatchObject({ overmoldSpecId: 'pvc-45p-straight', includeInnerMold: false, resourceItemId: 'overmold-resource', resourceImageUrl: 'https://example.test/overmold.png' });
     }
   });
 
@@ -321,7 +321,7 @@ describe('normalizeHarnessConfig', () => {
         position: { x: 10, y: 20 },
         width: 80,
         height: 60,
-        overmoldSpecId: 'pvc-45p-pe',
+        overmoldSpecId: 'pvc-45p-straight',
         includeInnerMold: true,
       }],
       quantity: 1,
@@ -332,7 +332,7 @@ describe('normalizeHarnessConfig', () => {
 
     expect(parsed.success).toBe(true);
     if (parsed.success) {
-      expect(parsed.data.models[0].overmoldSpecId).toBe('pvc-45p-pe');
+      expect(parsed.data.models[0].overmoldSpecId).toBe('pvc-45p-straight');
       expect(parsed.data.models[0].includeInnerMold).toBe(true);
     }
   });
@@ -379,7 +379,7 @@ describe('normalizeHarnessConfig', () => {
         position: { x: 10, y: 20 },
         width: 80,
         height: 60,
-        overmoldSpecId: 'pvc-45p-pe',
+        overmoldSpecId: 'pvc-45p-straight',
       }],
       quantity: 1,
       leadTime: 'standard',

@@ -83,7 +83,7 @@ describe('minimal database schema', () => {
     expect(seed).not.toContain('demo-m12-4pin');
     expect(seed).not.toContain('xh254-4p-f');
     expect(seed).not.toContain('jst-xh-2');
-    expect(seed).toContain('pvc-45p-pe');
+    expect(seed).toContain('pvc-45p-straight');
     expect(seed).toContain('pvc-45p-bent');
     expect(seed).not.toContain('tpe-straight');
     expect(seed).not.toContain('tpe-bent');
