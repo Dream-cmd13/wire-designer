@@ -55,6 +55,7 @@ npm run supabase:bootstrap-storage
 - 成品库只展示有来源图纸或被成本分析引用的物料；第 13 步种子已剔除无图纸且未被引用的记录，第 14 步种子（或同步脚本）会在成本分析写入完成后对已有库执行同样的清理。
 - 成品方案补充的 2D 图纸存放在公开桶 `finished-harness-drawings`（对象名 `<platform_no>.<png|jpeg>`）；`file_2d` 仅在该列为空时回填，原本已有图纸的记录永不被覆盖。上传与回填使用 `node scripts/upload-cost-drawings.mjs`（默认只读预览，`--apply` 写入，`--write-seed` 刷新第 15 步种子）。
 - `excel/` 下每个成本分析 xlsx 存放在同名子文件夹中，从 xlsx 提取的 2D 图纸校对图片与 `2d-drawings-manifest.csv` 清单位于同目录；解析、同步与核验脚本均递归扫描该目录。
+- M12/M8 目录与价格来源表存放在 `catalog-source/`（`M12、M8线束报价 - IT版本(1).xlsx`、`M12单线材料价格导入.xlsx`），目录与价格计划通过 `node scripts/prepare-real-catalog.mjs <源文件>` 生成；目录源表不得放进 `excel/`，否则会被成本分析扫描器误收录。
 - 成本分析解析器（`parseCostWorkbook`）在找不到 BOM/工序表头或汇总标签时输出告警摘要；导出的种子与数据库核对使用 `npm run supabase:verify-cost-analyses`。
 - 真实线材的原始描述保存在 `description`，工程字段保存在 `spec`；当来源文本与结构化值冲突时，两者都保留。
 - `kind = 'overmold'` 的目录项只允许黑色 PVC 45P / 黑色 TPE 与直头 / 弯头四种组合；可用内模固定为低密度透明 PE，且内模外型必须与外模一致。

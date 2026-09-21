@@ -1,4 +1,8 @@
 grant usage on schema public to anon, authenticated;
+grant usage on schema public to service_role;
+grant all on all tables in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant all on all functions in schema public to service_role;
 
 revoke all on public.projects, public.drawings, public.catalog_items from anon, authenticated;
 grant select, insert, update, delete on public.projects, public.drawings to authenticated;
