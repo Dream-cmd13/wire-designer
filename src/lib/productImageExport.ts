@@ -45,10 +45,6 @@ export async function renderTwoDViewToCanvas(
         clonedWorld.style.opacity = '1';
         clonedWorld.style.margin = '0px';
 
-        // Hide edit info boxes if any
-        const infoBoxes = clonedWorld.querySelectorAll('.absolute.top-full');
-        infoBoxes.forEach((el) => el.remove());
-
         // Hide drag handle badges
         const handleBadges = clonedWorld.querySelectorAll('.group-hover\\:block');
         handleBadges.forEach((el) => el.remove());

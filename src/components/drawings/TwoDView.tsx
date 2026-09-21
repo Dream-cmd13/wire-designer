@@ -20,11 +20,7 @@ import { ensureDrawingFrame, DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawin
 import { useUserStore } from '@/stores/userStore';
 import { getCatalogSnapshot } from '@/lib/catalogRuntime';
 import { useCatalogStore } from '@/stores/catalogStore';
-import {
-  getCanvasModelDisplayName,
-  getProtectiveSleeveDisplayName,
-  getMoldLinkage,
-} from '@/lib/canvasMaterials';
+import { getMoldLinkage } from '@/lib/canvasMaterials';
 import {
   calculateAssemblyUnscaledBounds,
   calculateUniformAssemblyScale,
@@ -58,35 +54,6 @@ const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.15;
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-function useElementLabel(
-  elementKind: TwoDImage['elementKind'],
-  elementId: string | undefined,
-): string {
-  const connectors = useHarnessStore((s) => s.config.connectors);
-  const materials = useHarnessStore((s) => s.config.materials);
-  const models = useHarnessStore((s) => s.config.models);
-  const sleeves = useHarnessStore((s) => s.config.protectiveSleeves);
-
-  if (!elementKind || !elementId) return '';
-  if (elementKind === 'connector') {
-    const c = connectors.find((x) => x.id === elementId);
-    return c ? `连接器 · ${c.label || c.id}` : `连接器 · ${elementId}`;
-  }
-  if (elementKind === 'material') {
-    const m = materials.find((x) => x.id === elementId);
-    return m ? `线材 · ${m.name}` : `线材 · ${elementId}`;
-  }
-  if (elementKind === 'sleeve') {
-    const s = sleeves.find((x) => x.id === elementId);
-    return s ? getProtectiveSleeveDisplayName(s) : `保护套 · ${elementId}`;
-  }
-  if (elementKind === 'model') {
-    const m = models.find((x) => x.id === elementId);
-    return m ? getCanvasModelDisplayName(m) : `外模 · ${elementId}`;
-  }
-  return elementId;
-}
-
 function resolveChineseColorName(value: string): string {
   const byId = getCatalogSnapshot()?.wireColors.find((c) => c.id === value);
   if (byId) return byId.name;
@@ -446,43 +413,6 @@ function BOMTable({
 }
 
 
-// ── ImageInfoBox ───────────────────────────────────────────────────────────────
-function ImageInfoBox({
-  image,
-  onCollapse,
-}: {
-  image: TwoDImage;
-  onCollapse: () => void;
-}) {
-  const label = useElementLabel(image.elementKind, image.elementId);
-
-  return (
-    <div className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-      <p className="truncate text-xs font-semibold text-slate-700" title={image.name}>
-        {image.name}
-      </p>
-      <div className="mt-1.5">
-        {label ? (
-          <span className="inline-block rounded bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">
-            {label}
-          </span>
-        ) : (
-          <span className="text-[10px] text-slate-400">未关联元素</span>
-        )}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={onCollapse}
-          className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-[10px] text-slate-600 hover:border-slate-300 hover:bg-slate-50 cursor-pointer"
-        >
-          收起
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ── main view ──────────────────────────────────────────────────────────────────
 export function TwoDView() {
   const reloadCatalog = useCatalogStore((state) => state.reload);
@@ -502,11 +432,9 @@ export function TwoDView() {
   const materials = useHarnessStore((s) => s.config.materials);
   const sleeves = useHarnessStore((s) => s.config.protectiveSleeves);
   const models = useHarnessStore((s) => s.config.models);
-  const selection = useHarnessStore((s) => s.selection);
   const updateMaterial = useHarnessStore((s) => s.updateMaterial);
   const patchDocument = useHarnessStore((s) => s.patchDocument);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [highlightedRowKey, setHighlightedRowKey] = useState<string | null>(null);
   const [showCallouts, setShowCallouts] = useState<boolean>(true);
   const [isFitted, setIsFitted] = useState(false);
@@ -644,16 +572,6 @@ export function TwoDView() {
     () => calculateProductionDrawingLayout({ bomRowCount, hasWiringDiagram }),
     [bomRowCount, hasWiringDiagram],
   );
-
-  // Sort all images by their element's x-position individually, ignoring group structure.
-  const flatImages = useMemo(() => {
-    const allImages = groups.flatMap((g) => g.images);
-    return allImages.sort((a, b) => {
-      const ax = getElementX(a.elementKind, a.elementId, connectors, materials, sleeves, models);
-      const bx = getElementX(b.elementKind, b.elementId, connectors, materials, sleeves, models);
-      return ax - bx;
-    });
-  }, [groups, connectors, materials, sleeves, models]);
 
   // ── measure exact DOM dimensions and wire offset (in local unscaled layout coordinates) ──
   const measureGroupDimensions = useCallback(() => {
@@ -1075,16 +993,6 @@ export function TwoDView() {
     };
   }, [dragStartPos, dragOffset, groups, twoDImages, getGroupPosition, getCardWidth, patchDocument, clampGroupPosition]);
 
-  // ── highlighted image (follows canvas selection) ─────────────────────────────
-  const highlightedImageId =
-    selection.kind !== 'none'
-      ? (flatImages.find(
-          (img) =>
-            img.elementKind === selection.kind &&
-            img.elementId === (selection as { id: string }).id,
-        )?.id ?? null)
-      : null;
-
   // ── close context menu on click ───────────────────────────────────────────────
   useEffect(() => {
     if (!contextMenu) return;
@@ -1108,7 +1016,6 @@ export function TwoDView() {
   const handleExport = async (format: 'png' | 'pdf') => {
     if (isExporting || !worldRef.current) return;
     setIsExportMenuOpen(false);
-    setSelectedId(null);
     setIsExporting(true);
 
     try {
@@ -1504,8 +1411,6 @@ export function TwoDView() {
                       }
 
                       const renderCard = (img: TwoDImage) => {
-                        const isHighlighted = img.id === highlightedImageId;
-                        const isSelected = img.id === selectedId;
                         const cardWidth = getCardWidth(img);
                         const cardHeight = getCardHeight(img);
                         const wireMat =
@@ -1535,9 +1440,6 @@ export function TwoDView() {
                             )}
                             <TwoDImageCard
                               image={img}
-                              highlighted={isHighlighted}
-                              selected={isSelected}
-                              onClick={() => setSelectedId((p) => (p === img.id ? null : img.id))}
                               onMouseDown={(e) => handleImageMouseDown(e, groupIdx)}
                               onImageError={() => {
                                 if (retryingImagesRef.current.has(img.id)) return;
@@ -1550,14 +1452,6 @@ export function TwoDView() {
                               exactHeight={cardHeight}
                               onNaturalSizeChange={handleNaturalSizeChange}
                             />
-                            {isSelected && (
-                              <div className="absolute top-full left-1/2 -translate-x-1/2 z-20 mt-2">
-                                <ImageInfoBox
-                                  image={img}
-                                  onCollapse={() => setSelectedId(null)}
-                                />
-                              </div>
-                            )}
                           </div>
                         );
                       };

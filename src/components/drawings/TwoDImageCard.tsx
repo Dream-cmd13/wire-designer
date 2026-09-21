@@ -4,10 +4,6 @@ import type { TwoDImage } from '@/types/harness';
 
 interface TwoDImageCardProps {
   image: TwoDImage;
-  highlighted?: boolean;
-  selected?: boolean;
-  isDragging?: boolean;
-  onClick: () => void;
   onMouseDown: (e: React.MouseEvent) => void;
   maxWidth?: number | string;
   maxHeight?: number | string;
@@ -19,10 +15,6 @@ interface TwoDImageCardProps {
 
 export function TwoDImageCard({
   image,
-  highlighted,
-  selected,
-  isDragging,
-  onClick,
   onMouseDown,
   maxWidth,
   maxHeight,
@@ -130,14 +122,8 @@ export function TwoDImageCard({
         <GripVertical className="h-3 w-3 text-white" />
       </div>
 
-      {/* image - direct display, outline on select/highlight */}
-      <button
-        type="button"
-        onClick={onClick}
-        className="block focus:outline-none"
-        aria-label={image.name}
-        style={cardBoxStyle}
-      >
+      {/* image - static display */}
+      <div className="block" style={cardBoxStyle}>
         <img
           src={image.dataUrl}
           alt={image.name}
@@ -150,18 +136,10 @@ export function TwoDImageCard({
             }
           }}
           onError={onImageError}
-          className={`block transition-all ${
-            isDragging
-              ? 'opacity-80 shadow-2xl ring-4 ring-blue-400'
-              : highlighted
-              ? 'shadow-lg ring-4 ring-blue-500'
-              : selected
-              ? 'shadow-md ring-2 ring-slate-400'
-              : 'hover:shadow-sm'
-          }`}
+          className="block transition-all hover:shadow-sm"
           style={imgStyle}
         />
-      </button>
+      </div>
     </div>
   );
 }
