@@ -18,13 +18,14 @@
 10. `30_security/01_rls.sql`：安装项目、图纸、目录与目录图片读取策略。
 11. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
 12. `40_seed/02_real_harness_catalog.sql`：写入 12 个真实连接器和 10 个真实线材。
-13. `40_seed/05_finished_harness_materials.sql`：写入外部系统导出的成品线束物料（已剔除无图纸且未被成本分析引用的记录，可单独重复执行）。
-14. `40_seed/06_finished_harness_cost_analyses.sql`：写入 43 个成品方案成本分析、工序工时与定价公式推导基线数据（可单独重复执行）。
-15. `40_seed/07_finished_harness_drawings.sql`：为原本无图纸的成品方案回填补充 2D 图纸公网地址（仅当 `file_2d` 为空时更新，已有图纸的记录不受影响，可单独重复执行）。
+13. `40_seed/04_material_prices.sql`：写入 24 个目录项的 54 条共享价格档位（依赖第 11、12 步的目录项，可单独重复执行）。
+14. `40_seed/05_finished_harness_materials.sql`：写入外部系统导出的成品线束物料（已剔除无图纸且未被成本分析引用的记录，可单独重复执行）。
+15. `40_seed/06_finished_harness_cost_analyses.sql`：写入 43 个成品方案成本分析、工序工时与定价公式推导基线数据（可单独重复执行）。
+16. `40_seed/07_finished_harness_drawings.sql`：为原本无图纸的成品方案回填补充 2D 图纸公网地址（仅当 `file_2d` 为空时更新，已有图纸的记录不受影响，可单独重复执行）。
 
-新增成品线束表与成本分析也可以在已有数据库上单独执行第 6、7、8、13、14、15 步，无需执行 `drop all`。若后续更新了 `excel/` 目录下的成本分析表格（含料号命名变化），运行 `npm run supabase:export-cost-seed` 刷新第 14 步种子后只需重新执行该文件：种子会先清理当前解析结果之外的历史成本分析与无分析引用的自动建档物料，再写入最新结果，直接替换旧命名，无需清库或重建。
+新增成品线束表与成本分析也可以在已有数据库上单独执行第 6、7、8、14、15、16 步，共享价格种子（第 13 步）同样可单独重复执行，无需执行 `drop all`。若后续更新了 `excel/` 目录下的成本分析表格（含料号命名变化），运行 `npm run supabase:export-cost-seed` 刷新第 15 步种子后只需重新执行该文件：种子会先清理当前解析结果之外的历史成本分析与无分析引用的自动建档物料，再写入最新结果，直接替换旧命名，无需清库或重建。
 
-完成第 13、14 步或刷新种子后，可运行只读核对命令验证数据库与原始 Excel、种子的一致性：
+完成第 14、15 步或刷新种子后，可运行只读核对命令验证数据库与原始 Excel、种子的一致性：
 
 ```powershell
 npm run supabase:verify-cost-analyses
@@ -51,9 +52,9 @@ npm run supabase:bootstrap-storage
 - 历史 Excel 误写到 `son_price_low` 的数据不能作为 CRM 价格继续保留。须先备份并结合来源 ID、原始 CRM 数据、历史导入代码及旧 Excel 值确认误写范围，再事务清理并验证真实 CRM 价格和 Excel 价格均未改变；不得只按价格相同或来源 ID 为空判断。完整规则见[成品方案成本分析文档](../../docs/finished-harness-cost-analysis-plan.md#售价与最低售价来源规则2026-09-18-确认)。
 - `finished_harness_materials.son_unit` 是外部导入单位，成本分析建档不写入、缺失保持 null；`son_name` 只写 Excel 来源名称（如 B2 描述），无来源名称时保持 null，界面以“未命名”兜底，CRM 已有名称不被覆盖。
 - 成本分析的来源定位以 `source_excel_path`（私有桶 `cost-analysis-sources` 内对象路径）为准；`source_excel_url` 仅作 URL 形式的展示/兼容定位，私有桶下不可匿名访问。
-- 成本分析 `platform_no` 直接取规范命名的 Sheet 名（`WL-*`，长度统一为 mm 数字后缀，如 `WL-B21-414-2000`）；Sheet 无规范命名时取来源文件名中的规范料号；同一 Excel 内多个非规范 sheet 共用一个料号时，统一追加 sheet 名后缀以区分。重新执行第 14 步种子（或同步脚本）会直接清理替换旧命名残留，无需清库重建。
-- 成品库只展示有来源图纸或被成本分析引用的物料；第 13 步种子已剔除无图纸且未被引用的记录，第 14 步种子（或同步脚本）会在成本分析写入完成后对已有库执行同样的清理。
-- 成品方案补充的 2D 图纸存放在公开桶 `finished-harness-drawings`（对象名 `<platform_no>.<png|jpeg>`）；`file_2d` 仅在该列为空时回填，原本已有图纸的记录永不被覆盖。上传与回填使用 `node scripts/upload-cost-drawings.mjs`（默认只读预览，`--apply` 写入，`--write-seed` 刷新第 15 步种子）。
+- 成本分析 `platform_no` 直接取规范命名的 Sheet 名（`WL-*`，长度统一为 mm 数字后缀，如 `WL-B21-414-2000`）；Sheet 无规范命名时取来源文件名中的规范料号；同一 Excel 内多个非规范 sheet 共用一个料号时，统一追加 sheet 名后缀以区分。重新执行第 15 步种子（或同步脚本）会直接清理替换旧命名残留，无需清库重建。
+- 成品库只展示有来源图纸或被成本分析引用的物料；第 14 步种子已剔除无图纸且未被引用的记录，第 15 步种子（或同步脚本）会在成本分析写入完成后对已有库执行同样的清理。
+- 成品方案补充的 2D 图纸存放在公开桶 `finished-harness-drawings`（对象名 `<platform_no>.<png|jpeg>`）；`file_2d` 仅在该列为空时回填，原本已有图纸的记录永不被覆盖。上传与回填使用 `node scripts/upload-cost-drawings.mjs`（默认只读预览，`--apply` 写入，`--write-seed` 刷新第 16 步种子）。
 - `excel/` 下每个成本分析 xlsx 存放在同名子文件夹中，从 xlsx 提取的 2D 图纸校对图片与 `2d-drawings-manifest.csv` 清单位于同目录；解析、同步与核验脚本均递归扫描该目录。
 - M12/M8 目录与价格来源表存放在 `catalog-source/`（`M12、M8线束报价 - IT版本(1).xlsx`、`M12单线材料价格导入.xlsx`），目录与价格计划通过 `node scripts/prepare-real-catalog.mjs <源文件>` 生成；目录源表不得放进 `excel/`，否则会被成本分析扫描器误收录。
 - 目录源表只以 `成本分析-M12单线` sheet 为准；同工作簿的 `M12单线`、`M12-M12`、`成本分析-M12双头`、`成本分析-M12工业以太网`、`成本分析-M8单线`、`M8单线`、`M8-M8`、`M8-M12`、`线材价格`、`M系列线束编码原则` 等 sheet 尚未完善或不准确，不得作为导入来源。
