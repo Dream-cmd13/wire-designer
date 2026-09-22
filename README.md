@@ -47,9 +47,9 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 - `suppliers`：供应商编号与名称。
 - `finished_harness_materials`、`finished_harness_cost_analyses`：现有成品线束物料、成本分析与定价公式推导明细。
 
-`catalog_items` 与 `suppliers` 匿名可读；登录用户只能向 `catalog_items` 新增 `accessory`（制作图公司辅材）；其余共享表仅登录用户可读；`projects` 和 `drawings` 仅本人可读写。
+`catalog_items`、`suppliers`、`material_prices`、成品线束与成品图纸均仅登录用户可读，匿名用户对 `catalog_items` 无任何增删改查权限；登录用户只能向 `catalog_items` 新增 `accessory`（制作图公司辅材）；`projects` 和 `drawings` 仅本人可读写。
 
-存储使用三个桶：私有 `catalog-assets`（目录图片）、私有 `cost-analysis-sources`（成本分析来源 Excel）、公开 `finished-harness-drawings`（成品方案补充 2D 图纸）；另有只读 RPC `get_storage_bootstrap_status` 检查目录桶状态。
+存储使用三个桶：私有 `catalog-assets`（目录图片）、私有 `cost-analysis-sources`（成本分析来源 Excel）、私有 `finished-harness-drawings`（成品方案补充 2D 图纸，登录后通过签名 URL 查看）；另有只读 RPC `get_storage_bootstrap_status` 检查目录桶状态。
 
 业务选项以及图纸模板、常用语、图标随前端代码发布。项目和图纸采用硬删除；重复保存以最后一次成功写入为准。详细字段、权限和验收见 [Supabase 集成说明](docs/supabase-backend-database-integration.md)，成本分析口径见[成品方案成本分析文档](docs/finished-harness-cost-analysis-plan.md)，建库步骤与数据约定见 [SQL 执行说明](supabase/sql/README.md)。
 

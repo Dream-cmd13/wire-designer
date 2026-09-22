@@ -29,6 +29,16 @@ export class DrawingMaterialError extends Error {
   }
 }
 
+export type DrawingMaterialSessionGuard = () => Promise<void>;
+
+export async function requireDrawingMaterialSession(): Promise<void> {
+  if (!supabase) return;
+  const { data } = await supabase.auth.getSession();
+  if (!data.session) {
+    throw new DrawingMaterialError('登录后才能访问公共物料目录。');
+  }
+}
+
 function mapRow(row: Extract<CatalogItemRow, { kind: 'accessory' }>): CompanyMaterial {
   const name = row.name.trim();
   const detail = row.spec.specification.trim();
@@ -52,12 +62,18 @@ function legacyKey(code: string) {
 
 export class DrawingMaterialRepository {
   private readonly gateway: DrawingMaterialCatalogGateway;
+  private readonly requireSession: DrawingMaterialSessionGuard;
 
-  constructor(gateway: DrawingMaterialCatalogGateway) {
+  constructor(
+    gateway: DrawingMaterialCatalogGateway,
+    requireSession: DrawingMaterialSessionGuard = async () => {},
+  ) {
     this.gateway = gateway;
+    this.requireSession = requireSession;
   }
 
   async list(query = ''): Promise<CompanyMaterial[]> {
+    await this.requireSession();
     const rows = await this.gateway.list();
     const materials = rows
       .filter((row): row is Extract<CatalogItemRow, { kind: 'accessory' }> =>
@@ -73,6 +89,7 @@ export class DrawingMaterialRepository {
   }
 
   async create(input: CompanyMaterialInput): Promise<CompanyMaterial> {
+    await this.requireSession();
     const normalized = {
       code: input.code.trim(),
       nameAndSpecification: input.nameAndSpecification.trim(),
@@ -138,5 +155,5 @@ function createSupabaseGateway(client: NonNullable<typeof supabase>): DrawingMat
 const supabaseGateway = supabase ? createSupabaseGateway(supabase) : null;
 
 export const drawingMaterialRepository = supabaseGateway
-  ? new DrawingMaterialRepository(supabaseGateway)
+  ? new DrawingMaterialRepository(supabaseGateway, requireDrawingMaterialSession)
   : null;

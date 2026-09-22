@@ -75,5 +75,21 @@ describe('catalog image signed URLs', () => {
     expect(url2).toBe(url1);
     expect(download).toHaveBeenCalledTimes(1);
   });
+
+  it('re-downloads images after a global cache clear instead of reusing revoked blob URLs', async () => {
+    const fakeBlob = new Blob(['image-binary'], { type: 'image/png' });
+    const download = vi.fn().mockResolvedValue({ data: fakeBlob, error: null });
+    const client = {
+      storage: {
+        from: vi.fn(() => ({ download })),
+      },
+    };
+
+    await signCatalogImage(client, 'catalog/connector/c3.png');
+    clearCatalogImageCache();
+    await signCatalogImage(client, 'catalog/connector/c3.png');
+
+    expect(download).toHaveBeenCalledTimes(2);
+  });
 });
 

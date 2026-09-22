@@ -14,7 +14,7 @@ create index projects_owner_updated_idx
   on public.projects (owner_id, updated_at desc);
 
 create table public.drawings (
-  id uuid primary key,
+  id text primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,
   document jsonb not null check (jsonb_typeof(document) = 'object'),
   updated_at timestamptz not null default now()

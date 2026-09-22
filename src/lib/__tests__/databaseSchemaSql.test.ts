@@ -50,6 +50,8 @@ describe('minimal database schema', () => {
     expect(columns(core, 'drawings')).toEqual([
       'id', 'owner_id', 'document', 'updated_at',
     ]);
+    // 图纸文档 id 由客户端生成（drawing-<uuid>），列类型必须是 text 而不是 uuid。
+    expect(core).toMatch(/create table public\.drawings \(\s*id text primary key,/);
     expect(columns(catalog, 'catalog_items')).toEqual([
       'id', 'kind', 'code', 'name', 'model', 'resource_group',
       'description', 'image_path', 'image_variants', 'sort_order', 'spec',

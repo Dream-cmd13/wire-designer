@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Download, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { LoginRequiredHint } from '@/components/auth/LoginRequiredHint';
 import { DrawingMaterialFormDialog } from '@/components/drawings/standalone/DrawingMaterialFormDialog';
 import { downloadDrawingMaterialXlsx } from '@/lib/drawingMaterialExport';
 import { drawingMaterialRepository, type CompanyMaterial } from '@/lib/drawingMaterialRepository';
@@ -10,11 +11,12 @@ import type { DrawingBomTableObject, DrawingDocument } from '@/types/drawing';
 interface Props {
   drawing: DrawingDocument;
   table: DrawingBomTableObject;
+  canUseCatalog?: boolean;
   onAddCurrent: (input: DrawingMaterialInput) => void;
   onClose: () => void;
 }
 
-export function DrawingMaterialTableDialog({ drawing, table, onAddCurrent, onClose }: Props) {
+export function DrawingMaterialTableDialog({ drawing, table, canUseCatalog = false, onAddCurrent, onClose }: Props) {
   const [tab, setTab] = useState<'current' | 'company'>('current');
   const [materials, setMaterials] = useState<CompanyMaterial[]>([]);
   const [query, setQuery] = useState('');
@@ -24,6 +26,7 @@ export function DrawingMaterialTableDialog({ drawing, table, onAddCurrent, onClo
   const [form, setForm] = useState<{ mode: 'current' | 'company'; initial?: Partial<DrawingMaterialInput> } | null>(null);
 
   const load = async () => {
+    if (!canUseCatalog) { setMaterials([]); setError(''); return; }
     if (!drawingMaterialRepository) { setError('物料服务尚未配置，无法读取公司物料表。'); return; }
     setLoading(true); setError('');
     try { setMaterials(await drawingMaterialRepository.list()); }
@@ -31,8 +34,8 @@ export function DrawingMaterialTableDialog({ drawing, table, onAddCurrent, onClo
     finally { setLoading(false); }
   };
   // Opening this dialog is the external event that starts its company-material fetch.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { void load(); }, []);
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, [canUseCatalog]);
   const visibleMaterials = useMemo(() => {
     const normalized = appliedQuery.trim().toLocaleLowerCase();
     return !normalized ? materials : materials.filter((item) => `${item.code} ${item.nameAndSpecification} ${item.unit} ${item.note}`.toLocaleLowerCase().includes(normalized));
@@ -59,7 +62,7 @@ export function DrawingMaterialTableDialog({ drawing, table, onAddCurrent, onClo
             <button type="button" onClick={exportCurrent} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4"/>导出物料表（XLSX）</button>
           </div>
           <MaterialRows rows={table.rows}/>
-        </> : <>
+        </> : !canUseCatalog ? <LoginRequiredHint message="登录后可查看并新增公司物料。" /> : <>
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <label className="flex min-w-64 flex-1 items-center gap-2 rounded-lg border border-slate-300 px-3"><Search className="h-4 w-4 text-slate-400"/><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') setAppliedQuery(query); }} placeholder="物料名称/规格请输入搜索" className="min-w-0 flex-1 py-2 text-sm outline-none"/></label>
             <button type="button" onClick={() => setAppliedQuery(query)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white">搜索</button>

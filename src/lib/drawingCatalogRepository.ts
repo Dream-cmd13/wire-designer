@@ -4,6 +4,7 @@ import {
   parseCatalogItemRow,
   type CatalogItemRow,
 } from '@/lib/catalogItem';
+import { createDrawingId } from '@/lib/drawingDocument';
 import { formatOvermoldForm, formatOvermoldOuterLabel } from '@/lib/overmoldSpec';
 import {
   listStaticDrawingCommonPhrases,
@@ -42,6 +43,16 @@ export class DrawingCatalogError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'DrawingCatalogError';
+  }
+}
+
+export type DrawingSessionGuard = () => Promise<void>;
+
+export async function requireDrawingCatalogSession(): Promise<void> {
+  if (!supabase) return;
+  const { data } = await supabase.auth.getSession();
+  if (!data.session) {
+    throw new DrawingCatalogError('登录后才能访问公共物料目录。');
   }
 }
 
@@ -196,12 +207,15 @@ export function filterDrawingCatalogResources(
 
 export class DrawingCatalogRepository {
   private readonly client: DrawingCatalogClient | null;
+  private readonly requireSession: DrawingSessionGuard;
 
-  constructor(client: DrawingCatalogClient | null) {
+  constructor(client: DrawingCatalogClient | null, requireSession: DrawingSessionGuard = async () => {}) {
     this.client = client;
+    this.requireSession = requireSession;
   }
 
   private async catalogItems(): Promise<CatalogItemRow[]> {
+    await this.requireSession();
     if (!this.client) throw new DrawingCatalogError('Supabase 尚未配置，无法加载目录数据。');
     const { data, error } = await this.client.from('catalog_items').select(CATALOG_ITEM_COLUMNS);
     if (error) throw new DrawingCatalogError(error.message);
@@ -238,7 +252,8 @@ export class DrawingCatalogRepository {
   async loadTemplate(templateId: string): Promise<DrawingDocument> {
     const document = loadStaticDrawingTemplate(templateId);
     if (!document) throw new DrawingCatalogError('未找到图库模板。');
-    return document;
+    const now = Date.now();
+    return { ...document, id: createDrawingId(), createdAt: now, updatedAt: now };
   }
 
   async listCommonPhrases(): Promise<DrawingCommonPhrase[]> {
@@ -252,4 +267,5 @@ export class DrawingCatalogRepository {
 
 export const drawingCatalogRepository = new DrawingCatalogRepository(
   supabase as unknown as DrawingCatalogClient | null,
+  requireDrawingCatalogSession,
 );

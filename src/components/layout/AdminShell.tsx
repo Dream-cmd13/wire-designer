@@ -23,6 +23,7 @@ export interface SidebarItem {
   path?: string;
   icon: ComponentType<{ className?: string }>;
   children?: SidebarItem[];
+  access?: 'projects' | 'materials';
 }
 
 const sidebarItems: SidebarItem[] = [
@@ -35,6 +36,7 @@ const sidebarItems: SidebarItem[] = [
     label: '线束设计器',
     path: appRoutes['designer-design'].path,
     icon: Cable,
+    access: 'projects',
     children: [
       { label: '设计图', path: appRoutes['designer-design'].path, icon: PenTool },
       { label: '成品图', path: appRoutes['designer-product-image'].path, icon: FileImage },
@@ -49,6 +51,7 @@ const sidebarItems: SidebarItem[] = [
     label: '物料库',
     path: appRoutes.materials.path,
     icon: Database,
+    access: 'materials',
   },
 ];
 
@@ -61,6 +64,8 @@ interface AdminShellProps {
   saveBlocked: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  canAccessProjects?: boolean;
+  canAccessMaterials?: boolean;
   children: ReactNode;
   onNavigate: (path: string) => void;
   onUndo: () => void;
@@ -178,6 +183,8 @@ export function AdminShell({
   saveBlocked,
   canUndo,
   canRedo,
+  canAccessProjects,
+  canAccessMaterials,
   children,
   onNavigate,
   onUndo,
@@ -188,6 +195,13 @@ export function AdminShell({
   onOpenBom,
   onOpenQuote,
 }: AdminShellProps) {
+  const accessProjects = canAccessProjects ?? Boolean(currentUser);
+  const accessMaterials = canAccessMaterials ?? Boolean(currentUser);
+  const visibleSidebarItems = sidebarItems.filter((item) => {
+    if (item.access === 'projects') return accessProjects;
+    if (item.access === 'materials') return accessMaterials;
+    return true;
+  });
   const showDesignerActions = route.section === 'designer' && Boolean(currentProjectName);
   const contextLabel = route.id === 'drawing-workbench'
     ? '独立制图 · 新建后导出'
@@ -233,7 +247,7 @@ export function AdminShell({
 
         <nav className={`min-h-0 flex-1 overflow-y-auto py-3 ${sidebarCollapsed ? 'px-1.5' : 'px-2'}`}>
           <div className="space-y-1">
-            {sidebarItems.map((item) => {
+            {visibleSidebarItems.map((item) => {
               const Icon = item.icon;
               const active = pathMatches(route, item);
               return (

@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { User as SupabaseAuthUser } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
-import { clearCatalogImageCache } from '@/lib/catalogImageUrl';
+import { clearCatalogImageCache, type CatalogStorageClient } from '@/lib/catalogImageUrl';
+import { clearFinishedHarnessDrawingUrlCache } from '@/lib/finishedHarnessDrawingUrl';
 import type { User } from '@/types/user';
 
 interface UserState {
@@ -13,6 +14,13 @@ interface UserState {
 }
 
 const LOCAL_EMAIL_DOMAIN = '@local.app';
+
+function clearSignedAssetCaches(): void {
+  clearCatalogImageCache();
+  if (supabase) {
+    clearFinishedHarnessDrawingUrlCache(supabase as unknown as CatalogStorageClient);
+  }
+}
 
 function normalizeLoginEmail(emailOrUsername: string): string {
   const identifier = emailOrUsername.trim();
@@ -45,20 +53,20 @@ export const useUserStore = create<UserState>((set) => ({
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
-        clearCatalogImageCache();
+        clearSignedAssetCaches();
       }
       set({ currentUser: session?.user ? toAppUser(session.user) : null, authReady: true });
     });
 
     void supabase.auth.getSession().then(({ data, error }) => {
       if (error) {
-        clearCatalogImageCache();
+        clearSignedAssetCaches();
         set({ currentUser: null, authReady: true });
         return;
       }
 
       if (!data.session) {
-        clearCatalogImageCache();
+        clearSignedAssetCaches();
       }
       set({ currentUser: data.session?.user ? toAppUser(data.session.user) : null, authReady: true });
     });
@@ -82,13 +90,13 @@ export const useUserStore = create<UserState>((set) => ({
 
   signOut: async () => {
     if (!supabase) {
-      clearCatalogImageCache();
+      clearSignedAssetCaches();
       set({ currentUser: null, authReady: true });
       return;
     }
 
     const { error } = await supabase.auth.signOut({ scope: 'local' });
-    clearCatalogImageCache();
+    clearSignedAssetCaches();
     if (error) throw error;
 
     set({ currentUser: null, authReady: true });

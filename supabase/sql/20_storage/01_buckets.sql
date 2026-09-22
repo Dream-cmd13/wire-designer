@@ -6,9 +6,9 @@ insert into storage.buckets (id, name, public)
 values ('cost-analysis-sources', 'cost-analysis-sources', false)
 on conflict (id) do update set public = excluded.public;
 
--- 成品线束补充 2D 图纸公开桶：仅由种子/上传脚本写入，前端直接通过公网 URL 访问
+-- 成品线束补充 2D 图纸私有桶：仅由种子/上传脚本写入，登录用户通过签名 URL 访问
 insert into storage.buckets (id, name, public)
-values ('finished-harness-drawings', 'finished-harness-drawings', true)
+values ('finished-harness-drawings', 'finished-harness-drawings', false)
 on conflict (id) do update set public = excluded.public;
 
 create or replace function public.get_storage_bootstrap_status()

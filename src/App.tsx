@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, FolderOpen, Loader2 } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
+import { LoginRequiredPanel } from '@/components/auth/LoginRequiredPanel';
 import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ActionToast } from '@/components/shared/ActionToast';
@@ -10,7 +11,7 @@ import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { useAppRoute } from '@/hooks/useAppRoute';
-import { appRoutes, getRouteByPath } from '@/lib/appRoute';
+import { appRoutes, getRouteByPath, requiresAuth, shouldKeepRouteAfterLogin } from '@/lib/appRoute';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
 import { supabase } from '@/lib/supabaseClient';
@@ -31,6 +32,7 @@ import { projectRepository } from '@/repositories/projectRepository';
 import { flushDrawingDrafts, resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
 import { usePriceStore } from '@/stores/priceStore';
 import { useHistoryStore } from '@/stores/historyStore';
 import { notify } from '@/stores/noticeStore';
@@ -51,6 +53,15 @@ function ModuleLoadingState() {
     <div className="flex h-full items-center justify-center bg-slate-100 p-4 text-sm text-slate-500">
       <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
       页面加载中...
+    </div>
+  );
+}
+
+function AuthLoadingState() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-slate-100 p-4 text-sm text-slate-500">
+      <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-600" />
+      正在确认登录状态...
     </div>
   );
 }
@@ -226,12 +237,14 @@ export default function App() {
   const drawingSaveState = useDrawingStore((state) => state.saveState);
   const saveActiveDrawing = useDrawingStore((state) => state.saveActiveDocument);
 
-  const needsCatalog = route.section === 'designer'
+  const needsCatalog = Boolean(currentUserId) && (
+    route.section === 'designer'
     || route.id === 'materials'
     || route.id === 'drawing-workbench'
-    || wizardOpen;
+    || wizardOpen
+  );
 
-  const needsStorageBootstrap = Boolean(supabase) && (
+  const needsStorageBootstrap = Boolean(supabase) && Boolean(currentUserId) && (
     route.section === 'designer'
     || route.id === 'materials'
     || route.id === 'drawing-workbench'
@@ -279,16 +292,6 @@ export default function App() {
     }, 0);
     return () => clearTimeout(timer);
   }, [needsStorageBootstrap, performStorageBootstrapCheck]);
-
-  useEffect(() => {
-    if (!needsCatalog) return;
-    void initializeCatalog().catch(() => {
-      // The catalog store exposes the error state to the shell; no mock fallback is used.
-    });
-    void loadPrices().catch(() => {
-      // Background preload; QuoteModal handles loading/fallback gracefully.
-    });
-  }, [needsCatalog, initializeCatalog, loadPrices]);
 
   useEffect(() => {
     if (!needsCatalog) return;
@@ -353,7 +356,7 @@ export default function App() {
   }, [saveBlocked]);
 
   const doSave = useCallback(async (options?: { retry?: boolean }) => {
-    if (!currentProject || saveBlocked) {
+    if (!currentProject || saveBlocked || !useUserStore.getState().currentUser) {
       return;
     }
 
@@ -534,6 +537,9 @@ export default function App() {
     setDraftBackupError(null);
     useProjectStore.getState().resetProjects();
     resetDrawingStore();
+    useCatalogStore.getState().reset();
+    usePriceStore.getState().reset();
+    useFinishedHarnessStore.getState().reset();
     replaceDocument(createDefaultConfig(), { markSaved: true });
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
@@ -549,13 +555,24 @@ export default function App() {
     previousAuthUserIdRef.current = nextUserId;
     if (previousUserId === undefined || previousUserId === nextUserId) return;
 
-    const keepRequestedProject = previousUserId === null
-      && Boolean(projectId)
-      && route.section === 'designer';
+    const keepRequestedRoute = previousUserId === null
+      && shouldKeepRouteAfterLogin(route, projectId);
     resetWorkspaceForUser(
-      keepRequestedProject ? route.path : appRoutes.home.path,
+      keepRequestedRoute ? route.path : appRoutes.home.path,
     );
-  }, [authReady, currentUser?.id, projectId, resetWorkspaceForUser, route.path, route.section]);
+  }, [authReady, currentUser?.id, projectId, resetWorkspaceForUser, route]);
+
+  // 必须在账号重置（resetWorkspaceForUser 会清空目录/价格数据并使旧请求失效）之后执行，
+  // 否则登录后刚发起的目录请求会被同一次提交中的重置丢弃。
+  useEffect(() => {
+    if (!needsCatalog) return;
+    void initializeCatalog().catch(() => {
+      // The catalog store exposes the error state to the shell; no mock fallback is used.
+    });
+    void loadPrices().catch(() => {
+      // Background preload; QuoteModal handles loading/fallback gracefully.
+    });
+  }, [needsCatalog, initializeCatalog, loadPrices]);
 
   // 必须在账号重置（resetWorkspaceForUser 使旧会话代次失效）之后执行，否则新账号的列表请求会捕获旧代次并被丢弃。
   useEffect(() => {
@@ -944,7 +961,7 @@ export default function App() {
 
   const handleUpdateProjectName = useCallback((nextName: string) => {
     const project = useProjectStore.getState().currentProject;
-    if (!project) return;
+    if (!project || !useUserStore.getState().currentUser) return;
     const trimmed = nextName.trim();
     if (!trimmed || trimmed === project.name) return;
     useHarnessStore.getState().setConfig({ name: trimmed });
@@ -1010,6 +1027,10 @@ export default function App() {
   };
 
   const renderContent = () => {
+    if (!currentUser && requiresAuth(route)) {
+      return <LoginRequiredPanel />;
+    }
+
     if (route.section === 'designer') {
       return renderDesignerContent();
     }
@@ -1029,6 +1050,10 @@ export default function App() {
       />
     );
   };
+
+  if (!authReady) {
+    return <AuthLoadingState />;
+  }
 
   return (
     <>

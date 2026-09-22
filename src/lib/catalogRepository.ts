@@ -28,6 +28,16 @@ export class CatalogRepositoryError extends Error {
   }
 }
 
+export type SessionGuard = () => Promise<void>;
+
+export async function requireCatalogSession(): Promise<void> {
+  if (!supabase) return;
+  const { data } = await supabase.auth.getSession();
+  if (!data.session) {
+    throw new CatalogRepositoryError('登录后才能访问公共物料目录。');
+  }
+}
+
 function wireSpec(item: CatalogItemOf<'wire'>): CatalogWireSpec {
   const spec = item.spec;
   return spec.kind === 'electronic'
@@ -81,9 +91,14 @@ function engineeringWireFields(spec: CatalogItemOf<'wire'>['spec']): CatalogWire
 
 export class CatalogRepository {
   private readonly client: SupabaseClient | null;
+  private readonly requireSession: SessionGuard;
 
-  constructor(client: SupabaseClient | null = supabase) {
+  constructor(
+    client: SupabaseClient | null = supabase,
+    requireSession: SessionGuard = async () => {},
+  ) {
     this.client = client;
+    this.requireSession = requireSession;
   }
 
   private requireClient(): SupabaseClient {
@@ -94,6 +109,7 @@ export class CatalogRepository {
   }
 
   private async items<K extends CatalogItemKind>(kind: K): Promise<Array<CatalogItemOf<K>>> {
+    await this.requireSession();
     const { data, error } = await this.requireClient()
       .from('catalog_items')
       .select(CATALOG_ITEM_COLUMNS)
@@ -215,7 +231,7 @@ export class CatalogRepository {
   }
 }
 
-export const catalogRepository = new CatalogRepository();
+export const catalogRepository = new CatalogRepository(supabase, requireCatalogSession);
 
 
 

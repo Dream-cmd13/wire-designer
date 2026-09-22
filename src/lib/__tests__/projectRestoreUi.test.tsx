@@ -37,6 +37,14 @@ vi.mock('@/lib/supabaseClient', () => ({
   isSupabaseConfigured: false,
 }));
 
+vi.mock('@/stores/userStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/stores/userStore')>();
+  const hook = (selector?: (state: ReturnType<typeof actual.useUserStore.getState>) => unknown) => (
+    selector ? selector(actual.useUserStore.getState()) : actual.useUserStore.getState()
+  );
+  return { ...actual, useUserStore: Object.assign(hook, actual.useUserStore) };
+});
+
 import App from '@/App';
 
 function setMockLocation(pathname: string, search = '') {
@@ -63,7 +71,10 @@ function setMockLocation(pathname: string, search = '') {
 describe('Project restoration UI state', () => {
   beforeEach(() => {
     useProjectStore.getState().resetProjects();
-    useUserStore.setState({ currentUser: null, authReady: true });
+    useUserStore.setState({
+      currentUser: { id: 'user-a', name: 'user-a', email: 'user-a@test', createdAt: 1 },
+      authReady: true,
+    });
     setMockLocation('/home');
   });
 
@@ -96,5 +107,26 @@ describe('Project restoration UI state', () => {
     expect(html).toContain('正在加载项目...');
     expect(html).toContain('正在准备设计环境与图纸数据，请稍候。');
     expect(html).not.toContain('尚未打开项目');
+  });
+
+  it('shows a login prompt instead of designer states for anonymous visitors', () => {
+    useUserStore.setState({ currentUser: null, authReady: true });
+    setMockLocation('/designer/design', '?projectId=proj-123');
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain('当前功能需要登录后使用，请先登录。');
+    expect(html).not.toContain('正在加载项目...');
+    expect(html).not.toContain('尚未打开项目');
+  });
+
+  it('shows a login prompt instead of the material library for anonymous visitors', () => {
+    useUserStore.setState({ currentUser: null, authReady: true });
+    setMockLocation('/materials');
+
+    const html = renderToStaticMarkup(<App />);
+
+    expect(html).toContain('当前功能需要登录后使用，请先登录。');
+    expect(html).not.toContain('导入价格表');
   });
 });

@@ -28,6 +28,8 @@ interface DocumentSaveEntry {
   savedRevision: number;
   inFlight: Promise<void> | null;
   error: string | null;
+  // 自动新建的空白图纸在首次编辑或手动保存前不落库、不写本地草稿。
+  pristine: boolean;
 }
 
 const documentSaves = new Map<string, DocumentSaveEntry>();
@@ -51,7 +53,7 @@ interface DrawingStore {
 function getSaveEntry(documentId: string): DocumentSaveEntry {
   let entry = documentSaves.get(documentId);
   if (!entry) {
-    entry = { revision: 0, savedRevision: 0, inFlight: null, error: null };
+    entry = { revision: 0, savedRevision: 0, inFlight: null, error: null, pristine: false };
     documentSaves.set(documentId, entry);
   }
   return entry;
@@ -186,6 +188,7 @@ function startDocumentSave(documentId: string): Promise<void> {
       if (!after) return;
       after.savedRevision = Math.max(after.savedRevision, revision);
       after.error = null;
+      after.pristine = false;
       removeWorkspaceDraftIfRevisionAtMost(ownerId, 'drawing', documentId, after.savedRevision);
       syncSaveState();
     }
@@ -214,8 +217,17 @@ function scheduleAutoSave(): void {
   }, AUTO_SAVE_DELAY_MS);
 }
 
+function markDocumentCreated(documentId: string): void {
+  const entry = getSaveEntry(documentId);
+  entry.revision = 1;
+  entry.savedRevision = 1;
+  entry.error = null;
+  entry.pristine = true;
+}
+
 function markDocumentEdited(documentId: string): void {
   const entry = getSaveEntry(documentId);
+  entry.pristine = false;
   entry.revision += 1;
   entry.error = null;
   scheduleAutoSave();
@@ -231,7 +243,7 @@ export const useDrawingStore = create<DrawingStore>((set, get) => ({
 
   createDocument: (name) => {
     const document = createBlankDrawingDocument(name);
-    markDocumentEdited(document.id);
+    markDocumentCreated(document.id);
     set((state) => ({
       documents: { ...state.documents, [document.id]: document },
       activeDocumentId: document.id,
@@ -243,7 +255,7 @@ export const useDrawingStore = create<DrawingStore>((set, get) => ({
   replaceWithNewDocument: (name) => {
     const document = createBlankDrawingDocument(name);
     clearSaveScheduling();
-    markDocumentEdited(document.id);
+    markDocumentCreated(document.id);
     set({ documents: { [document.id]: document }, activeDocumentId: document.id });
     syncSaveState();
     return document;
@@ -313,9 +325,16 @@ export const useDrawingStore = create<DrawingStore>((set, get) => ({
     const activeDocumentId = get().activeDocumentId;
     if (!activeDocumentId) return;
     if (!get().documents[activeDocumentId]) return;
+    const entry = getSaveEntry(activeDocumentId);
+    if (entry.pristine) {
+      // 用户显式保存空白图纸时才在云端建档。
+      entry.pristine = false;
+      entry.revision = entry.savedRevision + 1;
+      syncSaveState();
+    }
     await startDocumentSave(activeDocumentId);
-    const entry = documentSaves.get(activeDocumentId);
-    if (entry?.error) throw new Error(entry.error);
+    const after = documentSaves.get(activeDocumentId);
+    if (after?.error) throw new Error(after.error);
   },
 }));
 

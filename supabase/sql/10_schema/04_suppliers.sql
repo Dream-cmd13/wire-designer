@@ -10,11 +10,12 @@ create table if not exists public.suppliers (
 
 alter table public.suppliers enable row level security;
 revoke all on public.suppliers from anon, authenticated;
-grant select on public.suppliers to anon, authenticated;
+grant select on public.suppliers to authenticated;
 
 drop policy if exists "suppliers public read" on public.suppliers;
-create policy "suppliers public read"
-  on public.suppliers for select to anon, authenticated
+drop policy if exists "suppliers authenticated read" on public.suppliers;
+create policy "suppliers authenticated read"
+  on public.suppliers for select to authenticated
   using (true);
 
 alter table public.catalog_items

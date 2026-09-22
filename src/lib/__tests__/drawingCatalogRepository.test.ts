@@ -60,9 +60,9 @@ describe('DrawingCatalogRepository', () => {
     const repository = new DrawingCatalogRepository(fakeClient({}, {}, queries));
 
     await expect(repository.listTemplates()).resolves.toHaveLength(2);
-    await expect(repository.loadTemplate('template-single')).resolves.toEqual(
-      expect.objectContaining({ id: 'template-single', name: '单头普通电子线模板' }),
-    );
+    const template = await repository.loadTemplate('template-single');
+    expect(template).toEqual(expect.objectContaining({ name: '单头普通电子线模板' }));
+    expect(template.id).not.toBe('template-single');
     await expect(repository.listCommonPhrases()).resolves.toHaveLength(3);
     const icons = await repository.listIcons();
     expect(icons).toHaveLength(66);

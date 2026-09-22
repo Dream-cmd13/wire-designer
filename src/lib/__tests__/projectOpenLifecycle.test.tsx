@@ -314,7 +314,7 @@ describe('project open lifecycle', () => {
 
   it('resets the workspace before starting the project list load', () => {
     const source = readFileSync(new URL('../../App.tsx', import.meta.url), 'utf8');
-    const resetEffectIndex = source.search(/resetWorkspaceForUser\(\s*keepRequestedProject/);
+    const resetEffectIndex = source.search(/resetWorkspaceForUser\(\s*keepRequestedRoute/);
     const loadEffectIndex = source.indexOf('void loadProjects(currentUserId)');
 
     expect(resetEffectIndex).toBeGreaterThan(-1);

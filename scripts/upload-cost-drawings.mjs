@@ -56,12 +56,12 @@ function buildSeedSql(entries) {
   const lines = [];
   lines.push('-- ==============================================================================');
   lines.push('-- 07_finished_harness_drawings.sql');
-  lines.push('-- 成品线束补充 2D 图纸（公开桶 finished-harness-drawings）');
+  lines.push('-- 成品线束补充 2D 图纸（私有桶 finished-harness-drawings，file_2d 保存对象路径，登录后签名访问）');
   lines.push('-- 仅当 file_2d 为空时回填；原本已有图纸的记录不做任何处理。');
   lines.push('-- ==============================================================================\n');
   for (const entry of entries) {
     lines.push('update public.finished_harness_materials');
-    lines.push(`set file_2d = '${entry.publicUrl}', updated_at = now()`);
+    lines.push(`set file_2d = '${entry.storagePath}', updated_at = now()`);
     lines.push(`where platform_no = '${entry.platformNo}' and file_2d is null;\n`);
   }
   return lines.join('\n');
@@ -82,23 +82,21 @@ const analysesRes = await dbClient.query('select platform_no from public.finishe
 const materialsRes = await dbClient.query('select platform_no, file_2d from public.finished_harness_materials');
 const analysisSet = new Set(analysesRes.rows.map((row) => row.platform_no));
 const materialMap = new Map(materialsRes.rows.map((row) => [row.platform_no, row.file_2d]));
-const bucketUrlPrefix = `${url}/storage/v1/object/public/${BUCKET}/`;
 
 const plan = [];
 const seedEntries = [];
 for (const item of drawingFiles) {
   const storagePath = `${item.platformNo}.${item.ext}`;
-  const { data } = client.storage.from(BUCKET).getPublicUrl(storagePath);
-  const publicUrl = data.publicUrl;
+  const current = materialMap.get(item.platformNo);
   let action;
   if (!analysisSet.has(item.platformNo)) action = 'skip-非成本方案';
   else if (!materialMap.has(item.platformNo)) action = 'skip-物料不存在';
-  else if (materialMap.get(item.platformNo)?.startsWith(bucketUrlPrefix)) action = 'skip-已由本桶图纸填充';
-  else if (materialMap.get(item.platformNo)) action = 'skip-已有图纸';
+  else if (current && !/^https?:\/\//i.test(current)) action = 'skip-已由本桶图纸填充';
+  else if (current) action = 'skip-已有图纸';
   else action = 'fill-补充图纸';
-  plan.push({ ...item, storagePath, publicUrl, action });
+  plan.push({ ...item, storagePath, action });
   if (action === 'fill-补充图纸' || action === 'skip-已由本桶图纸填充') {
-    seedEntries.push({ platformNo: item.platformNo, publicUrl });
+    seedEntries.push({ platformNo: item.platformNo, storagePath });
   }
 }
 
@@ -128,7 +126,7 @@ if (APPLY) {
     uploaded++;
     const updateRes = await dbClient.query(
       'update public.finished_harness_materials set file_2d = $1, updated_at = now() where platform_no = $2 and file_2d is null',
-      [item.publicUrl, item.platformNo],
+      [item.storagePath, item.platformNo],
     );
     updated += updateRes.rowCount || 0;
   }

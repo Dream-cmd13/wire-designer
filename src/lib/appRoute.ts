@@ -47,6 +47,22 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
 
 export const defaultRoute = appRoutes.home;
 
+/**
+ * 需要登录后才能访问的路由；`drawing-workbench` 允许匿名使用（其目录入口单独门禁）。
+ */
+export function requiresAuth(route: AppRoute): boolean {
+  return route.id !== 'drawing-workbench';
+}
+
+/**
+ * 匿名用户登录成功后是否保留当前路由（而不是被送回首页）。
+ * 设计器需要 projectId 才能恢复项目；物料库与制作图纸直接保留。
+ */
+export function shouldKeepRouteAfterLogin(route: AppRoute, projectId: string | null): boolean {
+  if (route.section === 'designer') return Boolean(projectId);
+  return route.id === 'materials' || route.id === 'drawing-workbench';
+}
+
 export const projectIdQueryKey = 'projectId';
 
 const routeBaseUrl = 'http://wire-harness-designer.local';

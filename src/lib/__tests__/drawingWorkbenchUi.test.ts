@@ -38,6 +38,11 @@ describe('drawing workbench UI contract', () => {
     expect(pageSource).toContain('if (refreshDecisionOpen) return;');
   });
 
+  it('discards every drawing draft at once so stale drafts cannot prompt on every entry', () => {
+    expect(pageSource).toContain("listWorkspaceDrafts(ownerId, 'drawing').forEach");
+    expect(pageSource).toContain('使用云端版本会丢弃全部本地图纸草稿');
+  });
+
   it('exposes the required editing commands and shortcuts', () => {
     ['清空画板', '图层操作', '上移', '下移', '锁定/解锁当前选择', '全局锁定', '正交', '自由画笔'].forEach((label) => expect(toolbarSource).toContain(label));
     expect(toolbarSource.match(/<Layers2/g)).toHaveLength(1);

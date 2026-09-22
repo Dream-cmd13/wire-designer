@@ -126,6 +126,7 @@ export function DrawingWorkbenchPage() {
   const [hydrationAttempt, setHydrationAttempt] = useState(0);
   const [refreshDecisionOpen, setRefreshDecisionOpen] = useState(false);
   const [draftRecovery, setDraftRecovery] = useState<WorkspaceDraft | null>(null);
+  const [draftRecoveryCount, setDraftRecoveryCount] = useState(0);
   const [corruptDrafts, setCorruptDrafts] = useState<CorruptWorkspaceDraft[]>([]);
   const [entryReady, setEntryReady] = useState(false);
   const entryHandledRef = useRef(false);
@@ -153,6 +154,7 @@ export function DrawingWorkbenchPage() {
       setLineEditorObjectId(null);
       setMaterialTableObjectId(null);
       setDraftRecovery(null);
+      setDraftRecoveryCount(0);
       setCorruptDrafts([]);
 
       const state = useDrawingStore.getState();
@@ -203,6 +205,7 @@ export function DrawingWorkbenchPage() {
         if (candidates.length > 0) {
           const newest = [...candidates].sort((left, right) => right.savedAt - left.savedAt)[0];
           setDraftRecovery(newest);
+          setDraftRecoveryCount(candidates.length);
         }
         setCorruptDrafts(listCorruptWorkspaceDrafts(drawingOwnerId, 'drawing'));
       }
@@ -346,14 +349,19 @@ export function DrawingWorkbenchPage() {
     }
     restoreDrawingDraft(draftRecovery.document as DrawingDocument, draftRecovery.revision);
     setDraftRecovery(null);
+    setDraftRecoveryCount(0);
   };
   const discardDraft = () => {
     if (!draftRecovery) return;
     const ownerId = useUserStore.getState().currentUser?.id ?? null;
     if (ownerId && ownerId === draftRecovery.ownerId) {
-      removeWorkspaceDraft(draftRecovery.ownerId, 'drawing', draftRecovery.documentId);
+      // 一次清空该账号的全部图纸草稿，避免每次进入工作台都弹出下一份历史草稿。
+      listWorkspaceDrafts(ownerId, 'drawing').forEach((draft) => {
+        removeWorkspaceDraft(ownerId, 'drawing', draft.documentId);
+      });
     }
     setDraftRecovery(null);
+    setDraftRecoveryCount(0);
   };
   const requireSelection = (action: () => void) => {
     if (!selected.length) { setSelectionWarning(true); return; }
@@ -510,7 +518,7 @@ export function DrawingWorkbenchPage() {
   return <div className="flex h-full min-h-0 flex-col bg-slate-100">
     <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={() => void saveActiveDocument().catch((error) => console.error('图纸保存失败:', error))} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
-      <DrawingResourcePanel open={resourcesOpen} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
+      <DrawingResourcePanel open={resourcesOpen} canUseCatalog={Boolean(currentUser)} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
       <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>
       <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onCanvasZoom={setZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
@@ -546,10 +554,10 @@ export function DrawingWorkbenchPage() {
     {draftRecovery && <ActionToast
       role="alertdialog"
       title="发现本地图纸草稿"
-      message="本地保存了未同步到云端的图纸修改。恢复本地草稿会使用本地版本，使用云端版本会丢弃本地草稿。"
+      message={`本地保存了未同步到云端的图纸修改（共 ${Math.max(draftRecoveryCount, 1)} 份）。恢复本地草稿会使用本地版本；使用云端版本会丢弃全部本地图纸草稿。`}
       secondaryAction={{ label: '使用云端版本', onClick: discardDraft }}
       primaryAction={{ label: '恢复本地草稿', onClick: restoreDraft }}
-      onClose={() => setDraftRecovery(null)}
+      onClose={() => { setDraftRecovery(null); setDraftRecoveryCount(0); }}
     />}
     {corruptDrafts.length > 0 && !draftRecovery && <ActionToast
       role="alertdialog"
@@ -577,8 +585,8 @@ export function DrawingWorkbenchPage() {
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
     {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
     <DrawingTableCreateDialog open={tableDialogOpen} onClose={() => setTableDialogOpen(false)} onConfirm={addTable}/>
-    {materialTableObject && <DrawingMaterialTableDialog drawing={drawing} table={materialTableObject} onAddCurrent={addCurrentMaterial} onClose={() => setMaterialTableObjectId(null)}/>}
+    {materialTableObject && <DrawingMaterialTableDialog drawing={drawing} table={materialTableObject} canUseCatalog={Boolean(currentUser)} onAddCurrent={addCurrentMaterial} onClose={() => setMaterialTableObjectId(null)}/>}
     {lineEditorObject && <DrawingLinePropertiesDialog object={lineEditorObject} defaultName={lineEditorObject.name || fallbackLineName(drawing, lineEditorObject.id)} onClose={() => setLineEditorObjectId(null)} onConfirm={updateLineProperties}/>}
-    <StandaloneDrawingWizard open={wizardOpen} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
+    <StandaloneDrawingWizard open={wizardOpen} canUseCatalog={Boolean(currentUser)} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
   </div>;
 }

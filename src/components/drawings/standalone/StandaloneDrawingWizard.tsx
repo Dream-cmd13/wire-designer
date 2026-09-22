@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, FilePlus2, LayoutTemplate, Wand2, X } from 'lucide-react';
+import { LoginRequiredHint } from '@/components/auth/LoginRequiredHint';
 import { DrawingResourceSelect } from '@/components/drawings/standalone/DrawingResourceSelect';
 import { DrawingWireBatchEditor } from '@/components/drawings/standalone/DrawingWireBatchEditor';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -19,6 +20,7 @@ import type {
 
 interface StandaloneDrawingWizardProps {
   open: boolean;
+  canUseCatalog?: boolean;
   onClose: () => void;
   onGenerate: (drawing: DrawingDocument) => void;
   onLoadTemplate?: (drawing: DrawingDocument) => void;
@@ -77,7 +79,29 @@ function resourceSummary(resource: DrawingCatalogResource | undefined) {
   return [resource.name, resource.model, resource.specification].filter(Boolean).join(' · ');
 }
 
-export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTemplate }: StandaloneDrawingWizardProps) {
+function stripCatalogSelections(draft: DrawingWizardDraft): DrawingWizardDraft {
+  if (
+    !draft.singleConnector
+    && !draft.leftConnector
+    && !draft.rightConnector
+    && !draft.modelResource
+    && !draft.wireResource
+    && !draft.protectiveSleeveResource
+  ) {
+    return draft;
+  }
+  return {
+    ...draft,
+    singleConnector: undefined,
+    leftConnector: undefined,
+    rightConnector: undefined,
+    modelResource: undefined,
+    wireResource: undefined,
+    protectiveSleeveResource: undefined,
+  };
+}
+
+export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, onGenerate, onLoadTemplate }: StandaloneDrawingWizardProps) {
   const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
   const [mode, setMode] = useState<WizardMode>('drawing');
   const [step, setStep] = useState(0);
@@ -104,6 +128,11 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
     try {
       const gallery = await drawingCatalogRepository.listTemplates();
       setTemplates(gallery);
+      if (!canUseCatalog) {
+        setResources([]);
+        setDraft(stripCatalogSelections);
+        return;
+      }
       const catalog = await drawingCatalogRepository.listResources({});
       setResources(catalog);
       setDraft((current) => {
@@ -135,8 +164,19 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
   };
 
   // Opening the wizard is the external event that starts its one-time catalog fetch.
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
-  useEffect(() => { if (open && resources.length === 0 && !loading) void loadResources(); }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    if (!canUseCatalog) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setResources([]);
+      setDraft(stripCatalogSelections);
+      /* eslint-enable react-hooks/set-state-in-effect */
+      if (templates.length === 0 && !loading) void loadResources();
+      return;
+    }
+    if (resources.length === 0 && !loading) void loadResources();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, canUseCatalog]);
 
   if (!open) return null;
 
@@ -259,28 +299,32 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
               </button>)}
             </div>
           </section>
-          <DrawingResourceSelect
-            title={isSingle ? '连接器/模型' : '左连接器/模型'}
-            resources={filtered}
-            filters={filters}
-            selectedId={(isSingle ? draft.singleConnector : draft.leftConnector)?.id}
-            loading={loading}
-            error={error}
-            onFiltersChange={setFilters}
-            onSelect={(resource) => selectConnector(isSingle ? 'singleConnector' : 'leftConnector', resource)}
-            onRetry={() => void loadResources()}
-          />
-          {!isSingle && <DrawingResourceSelect
-            title="右连接器/模型"
-            resources={filtered}
-            filters={filters}
-            selectedId={draft.rightConnector?.id}
-            loading={loading}
-            error={error}
-            onFiltersChange={setFilters}
-            onSelect={(resource) => selectConnector('rightConnector', resource)}
-            onRetry={() => void loadResources()}
-          />}
+          {!canUseCatalog
+            ? <LoginRequiredHint message="登录后可使用公共物料目录，选择连接器/模型。" />
+            : <>
+              <DrawingResourceSelect
+                title={isSingle ? '连接器/模型' : '左连接器/模型'}
+                resources={filtered}
+                filters={filters}
+                selectedId={(isSingle ? draft.singleConnector : draft.leftConnector)?.id}
+                loading={loading}
+                error={error}
+                onFiltersChange={setFilters}
+                onSelect={(resource) => selectConnector(isSingle ? 'singleConnector' : 'leftConnector', resource)}
+                onRetry={() => void loadResources()}
+              />
+              {!isSingle && <DrawingResourceSelect
+                title="右连接器/模型"
+                resources={filtered}
+                filters={filters}
+                selectedId={draft.rightConnector?.id}
+                loading={loading}
+                error={error}
+                onFiltersChange={setFilters}
+                onSelect={(resource) => selectConnector('rightConnector', resource)}
+                onRetry={() => void loadResources()}
+              />}
+            </>}
         </div>}
 
         {mode === 'drawing' && step === 1 && <div className="space-y-4">
@@ -292,18 +336,20 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
             <label className="text-sm">图号
               <input className={fieldClass} value={draft.drawingNo} onChange={(event) => setDraft({ ...draft, drawingNo: event.target.value })} />
             </label>
-            <label className="text-sm">线材规格
-              <select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => setDraft({ ...draft, wireResource: wireResources.find((resource) => resource.resourceItemId === event.target.value) })}>
-                <option value="">请选择</option>
-                {wireResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
-              </select>
-            </label>
-            <label className="text-sm">热缩套管
-              <select className={fieldClass} value={draft.protectiveSleeveResource?.resourceItemId ?? ''} onChange={(event) => selectProtectiveSleeve(event.target.value)}>
-                <option value="">不使用</option>
-                {protectiveSleeveResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
-              </select>
-            </label>
+            {canUseCatalog ? <>
+              <label className="text-sm">线材规格
+                <select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => setDraft({ ...draft, wireResource: wireResources.find((resource) => resource.resourceItemId === event.target.value) })}>
+                  <option value="">请选择</option>
+                  {wireResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
+                </select>
+              </label>
+              <label className="text-sm">热缩套管
+                <select className={fieldClass} value={draft.protectiveSleeveResource?.resourceItemId ?? ''} onChange={(event) => selectProtectiveSleeve(event.target.value)}>
+                  <option value="">不使用</option>
+                  {protectiveSleeveResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
+                </select>
+              </label>
+            </> : <div className="md:col-span-2"><LoginRequiredHint message="登录后可使用公共物料目录，选择线材与热缩套管。" /></div>}
             <label className="text-sm">总长度(mm)
               <input className={fieldClass} type="number" value={draft.totalLengthMm} onChange={(event) => setDraft({ ...draft, totalLengthMm: Number(event.target.value) })} />
             </label>
@@ -314,8 +360,8 @@ export function StandaloneDrawingWizard({ open, onClose, onGenerate, onLoadTempl
               <input className={fieldClass} readOnly value={countDrawingMaterialKinds(draft)} />
             </label>
           </div>
-          {!loading && !error && protectiveSleeveResources.length === 0 && <p className="text-sm text-slate-500">暂无可用热缩套管。</p>}
-          {draft.protectiveSleeveResource && <p className="text-xs text-slate-500">已选：{resourceSummary(draft.protectiveSleeveResource)}</p>}
+          {canUseCatalog && !loading && !error && protectiveSleeveResources.length === 0 && <p className="text-sm text-slate-500">暂无可用热缩套管。</p>}
+          {canUseCatalog && draft.protectiveSleeveResource && <p className="text-xs text-slate-500">已选：{resourceSummary(draft.protectiveSleeveResource)}</p>}
           <label className="inline-flex items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.hasMold} onChange={(event) => setDraft({ ...draft, hasMold: event.target.checked })} />
             使用模具

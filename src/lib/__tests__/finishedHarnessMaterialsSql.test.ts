@@ -50,7 +50,10 @@ describe('finished harness material SQL', () => {
 
   it('supplements drawings only when file_2d is empty', () => {
     expect(bucketsSql).toContain("'finished-harness-drawings'");
+    expect(bucketsSql).toContain("values ('finished-harness-drawings', 'finished-harness-drawings', false)");
     expect(drawingsSeed).toContain('finished-harness-drawings');
+    expect(drawingsSeed).not.toContain('https://');
+    expect(drawingsSeed).toContain(".png'");
     const updates = (drawingsSeed.match(/update public\.finished_harness_materials/g) || []).length;
     const guards = (drawingsSeed.match(/file_2d is null/g) || []).length;
     expect(updates).toBeGreaterThan(0);

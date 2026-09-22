@@ -136,4 +136,36 @@ describe('FinishedHarnessMaterialRepository', () => {
     await repo.listBySupplier('A118');
     expect(listSpy).toHaveBeenCalledWith({ supplierNo: 'A118' });
   });
+
+  it('signs private bucket drawing paths and passes external links through', async () => {
+    const createSignedUrl = vi.fn().mockImplementation(async (path: string) => ({
+      data: { signedUrl: `https://signed.example/${path}` },
+      error: null,
+    }));
+    const mockClient = {
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            range: vi.fn().mockResolvedValue({
+              data: [
+                { id: '1', platform_no: 'WL-A', file_2d: 'WL-A.png' },
+                { id: '2', platform_no: 'WL-B', file_2d: 'http://img.example.com/WL-B.pdf' },
+              ],
+              error: null,
+            }),
+          }),
+        }),
+      }),
+      storage: {
+        from: vi.fn().mockReturnValue({ createSignedUrl }),
+      },
+    } as unknown as SupabaseClient;
+
+    const repo = new FinishedHarnessMaterialRepository(mockClient);
+    const rows = await repo.list();
+
+    expect(rows[0].file2d).toBe('https://signed.example/WL-A.png');
+    expect(rows[1].file2d).toBe('http://img.example.com/WL-B.pdf');
+    expect(createSignedUrl).toHaveBeenCalledTimes(1);
+  });
 });

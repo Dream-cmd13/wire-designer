@@ -30,6 +30,7 @@ interface CacheEntry {
 const clientCaches = new WeakMap<object, Map<string, CacheEntry>>();
 const clientInFlight = new WeakMap<object, Map<string, Promise<CatalogImageSignResult>>>();
 const activeBlobUrls = new Set<string>();
+const knownClients = new Set<object>();
 
 function createObjectUrlSafe(blob: Blob, path: string): string {
   if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
@@ -50,6 +51,7 @@ function revokeObjectUrlSafe(url: string): void {
 
 function getClientCache(client: CatalogStorageClient): Map<string, CacheEntry> {
   const target = client as object;
+  knownClients.add(target);
   let cache = clientCaches.get(target);
   if (!cache) {
     cache = new Map<string, CacheEntry>();
@@ -68,25 +70,36 @@ function getClientInFlight(client: CatalogStorageClient): Map<string, Promise<Ca
   return inFlight;
 }
 
-export function clearCatalogImageCache(client?: CatalogStorageClient): void {
-  if (client) {
-    const cache = clientCaches.get(client as object);
-    if (cache) {
-      for (const entry of cache.values()) {
-        if (entry.isBlob) {
-          revokeObjectUrlSafe(entry.signedUrl);
-          activeBlobUrls.delete(entry.signedUrl);
-        }
+function clearClientCache(client: CatalogStorageClient): void {
+  const cache = clientCaches.get(client as object);
+  if (cache) {
+    for (const entry of cache.values()) {
+      if (entry.isBlob) {
+        revokeObjectUrlSafe(entry.signedUrl);
+        activeBlobUrls.delete(entry.signedUrl);
       }
     }
-    clientCaches.delete(client as object);
-    clientInFlight.delete(client as object);
-  } else {
-    for (const url of activeBlobUrls) {
-      revokeObjectUrlSafe(url);
-    }
-    activeBlobUrls.clear();
   }
+  clientCaches.delete(client as object);
+  clientInFlight.delete(client as object);
+  knownClients.delete(client as object);
+}
+
+export function clearCatalogImageCache(client?: CatalogStorageClient): void {
+  if (client) {
+    clearClientCache(client);
+    return;
+  }
+  // 无参调用必须同时清掉所有已知客户端的缓存条目：
+  // 只 revoke blob URL 而不清缓存会让后续读取命中已失效的 blob URL，导致图片图裂。
+  for (const target of knownClients) {
+    clearClientCache(target as CatalogStorageClient);
+  }
+  knownClients.clear();
+  for (const url of activeBlobUrls) {
+    revokeObjectUrlSafe(url);
+  }
+  activeBlobUrls.clear();
 }
 
 export async function signCatalogImageResult(

@@ -27,6 +27,15 @@ interface FinishedHarnessMaterialDetailDialogProps {
   material: FinishedHarnessMaterial | null;
 }
 
+function drawingDisplayName(value: string): string {
+  const lastSegment = value.split('?')[0].split('/').filter(Boolean).at(-1) ?? '';
+  try {
+    return decodeURIComponent(lastSegment) || '图纸文件';
+  } catch {
+    return lastSegment || '图纸文件';
+  }
+}
+
 function formatDate(isoString: string | null | undefined): string {
   if (!isoString) return '暂无';
   try {
@@ -596,8 +605,8 @@ export function FinishedHarnessMaterialDetailDialog({
                     <div className="truncate max-w-[260px]">
                       <span className="text-slate-500">2D图纸: </span>
                       {material.file2d ? (
-                        <span className="font-mono text-slate-700" title={material.file2d}>
-                          {material.file2d}
+                        <span className="text-slate-700" title="2D 图纸文件">
+                          {drawingDisplayName(material.file2d)}
                         </span>
                       ) : (
                         <span className="text-slate-400">暂无图纸</span>

@@ -332,6 +332,43 @@ describe('drawing autosave reliability', () => {
     expect(useDrawingStore.getState().saveState).toBe('dirty');
   });
 
+  it('does not persist or back up an untouched blank document', async () => {
+    const save = vi.spyOn(drawingDocumentRepository, 'save').mockResolvedValue();
+    const created = useDrawingStore.getState().createDocument('未命名线束图') as DrawingDocument;
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    expect(save).not.toHaveBeenCalled();
+    expect(readWorkspaceDraft('user-a', 'drawing', created.id)).toBeNull();
+    expect(useDrawingStore.getState().saveState).toBe('saved');
+  });
+
+  it('persists a blank document when the user saves it manually', async () => {
+    vi.spyOn(drawingDocumentRepository, 'save').mockImplementation(async (ownerId, document) => {
+      saveCalls.push({ ownerId, document });
+    });
+    const created = useDrawingStore.getState().createDocument('未命名线束图') as DrawingDocument;
+
+    await useDrawingStore.getState().saveActiveDocument();
+
+    expect(saveCalls).toHaveLength(1);
+    expect(saveCalls[0]?.document.id).toBe(created.id);
+    expect(useDrawingStore.getState().saveState).toBe('saved');
+  });
+
+  it('saves a blank document as soon as it is edited', async () => {
+    vi.spyOn(drawingDocumentRepository, 'save').mockImplementation(async (ownerId, document) => {
+      saveCalls.push({ ownerId, document });
+    });
+    const created = useDrawingStore.getState().createDocument('未命名线束图') as DrawingDocument;
+    useDrawingStore.getState().updateDocument({ ...created, name: '开始编辑', updatedAt: 20 });
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(saveCalls).toHaveLength(1);
+    expect(saveCalls[0]?.document.name).toBe('开始编辑');
+  });
+
   it('clears a restored draft whose revision is higher than the in-memory revision', async () => {
     vi.spyOn(drawingDocumentRepository, 'save').mockResolvedValue();
     const document = { ...createBlankDrawingDocument('云端版本'), id: 'doc-restored' };

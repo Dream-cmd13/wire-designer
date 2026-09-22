@@ -11,7 +11,7 @@
 | 表 | 用途 |
 | --- | --- |
 | `projects` | 用户项目及完整 `HarnessConfig`（`id`, `owner_id`, `name`, `description`, `config`, `created_at`, `updated_at`） |
-| `drawings` | 独立制作图纸文档（`id`, `owner_id`, `document`, `updated_at`） |
+| `drawings` | 独立制作图纸文档（`id` 为 text，保存客户端生成的 `drawing-<uuid>`；`owner_id`, `document`, `updated_at`） |
 | `catalog_items` | 共享物料目录（`id`, `kind`, `code`, `name`, `model`, `resource_group`, `description`, `image_path`, `image_variants`, `sort_order`, `spec`, `supplier_id`） |
 | `material_prices` | 连接器、线材、外模的共享价格档位 |
 | `suppliers` | 供应商编号与名称 |
@@ -26,7 +26,7 @@
 
 `catalog_items.kind` 支持 `connector`、`wire`、`protective_sleeve`、`overmold`、`model`、`accessory`、`packaging`。类型专属字段存入 `spec`，由前端运行时解析器校验；供应商通过 `supplier_id` 关联 `suppliers`，价格档位存放在 `material_prices`。图片仅保存私有 `catalog-assets` 中的对象路径。
 
-成品线束成本分析数据由来源 Excel 解析导入，原表缺失值保持 null，不做回退推算；来源 Excel 存放在私有 `cost-analysis-sources`，补充的 2D 图纸存放在公开 `finished-harness-drawings`。
+成品线束成本分析数据由来源 Excel 解析导入，原表缺失值保持 null，不做回退推算；来源 Excel 存放在私有 `cost-analysis-sources`，补充的 2D 图纸存放在私有 `finished-harness-drawings`，登录用户通过签名 URL 查看（`file_2d` 保存对象路径或外部 CRM 链接）。
 
 线材颜色、交期、保护方案、报价规则、数量折扣、图纸模板、常用语和图标属于静态前端资源，随应用版本发布。
 
@@ -34,12 +34,13 @@
 
 - `projects`：登录用户仅能 CRUD 自己的行。
 - `drawings`：登录用户仅能 CRUD 自己的行。
-- `catalog_items`：匿名和登录用户均可读；登录用户只能新增 `accessory`，供制作图公司物料使用。
+- `catalog_items`：仅登录用户可读；登录用户只能新增 `accessory`，供制作图公司物料使用；匿名用户无任何增删改查权限。
 - `material_prices`：仅登录用户可读可写，全表共享。
-- `suppliers`：匿名和登录用户均可读。
+- `suppliers`：仅登录用户可读。
 - `finished_harness_materials`、`finished_harness_cost_analyses`：仅登录用户可读，由种子或受信任脚本写入。
-- `catalog-assets`：保持私有；匿名和登录用户只能读取被 `catalog_items.image_path` 或 `catalog_items.image_variants` 引用的对象。浏览器没有 Storage 写权限。
+- `catalog-assets`：保持私有；登录用户只能读取被 `catalog_items.image_path` 或 `catalog_items.image_variants` 引用的对象。浏览器没有 Storage 写权限。
 - `cost-analysis-sources`：保持私有，登录用户可读，用于认证下载成本分析来源 Excel。
+- `finished-harness-drawings`：保持私有，登录用户可读，物料库通过签名 URL 查看补充 2D 图纸。
 
 项目和图纸均为硬删除。保存不做乐观锁或版本冲突检测，最后一个成功写入覆盖之前内容；浏览器内撤销/重做以及设计文件导入/导出不受影响。
 
@@ -59,7 +60,7 @@ npm run user:create -- user@example.com "password" "显示名"
 
 1. 用户 A 无法读取或修改用户 B 的项目和图纸。
 2. 同一账号更换浏览器后可加载并继续编辑项目与制作图纸。
-3. 匿名用户可加载目录，登录用户可新增公司辅材但不能新增其他目录类型。
+3. 匿名用户无法读取目录、价格与成品数据，直接访问受保护路由显示登录引导；匿名仍可进入独立制作图纸，但其中的公共资源、新建向导目录物料与公司物料表需登录后使用。
 4. 只有目录表引用的图片路径可通过私有桶读取。
 5. 项目保存、图纸保存、目录加载、BOM/报价、导入导出与 PDF 导出正常。
 6. 远程重置前再次确认目标项目和测试数据可删除；未经授权不执行重置 SQL。

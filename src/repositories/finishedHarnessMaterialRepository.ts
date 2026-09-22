@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { CatalogStorageClient } from '@/lib/catalogImageUrl';
+import { resolveFinishedHarnessDrawingUrl } from '@/lib/finishedHarnessDrawingUrl';
 import { supabase } from '@/lib/supabaseClient';
 import type {
   FinishedHarnessCostAnalysis,
@@ -154,6 +156,14 @@ export class FinishedHarnessMaterialRepository {
     );
   }
 
+  private async resolveDrawingUrl(value: string | null): Promise<string | null> {
+    if (!value) return null;
+    return resolveFinishedHarnessDrawingUrl(
+      this.client as unknown as CatalogStorageClient | null,
+      value,
+    );
+  }
+
   async list(options: FinishedHarnessMaterialListOptions = {}): Promise<FinishedHarnessMaterial[]> {
     const client = this.requireClient();
     const rows: FinishedHarnessMaterial[] = [];
@@ -190,10 +200,20 @@ export class FinishedHarnessMaterialRepository {
     }
 
     if (options.supplierNo) {
-      return rows.filter((r) => r.supplierNo === options.supplierNo);
+      const filtered = rows.filter((r) => r.supplierNo === options.supplierNo);
+      return this.withDrawingUrls(filtered);
     }
 
-    return rows;
+    return this.withDrawingUrls(rows);
+  }
+
+  private async withDrawingUrls(
+    rows: FinishedHarnessMaterial[],
+  ): Promise<FinishedHarnessMaterial[]> {
+    return Promise.all(rows.map(async (row) => ({
+      ...row,
+      file2d: await this.resolveDrawingUrl(row.file2d),
+    })));
   }
 
   async getById(id: string): Promise<FinishedHarnessMaterial | null> {
@@ -207,7 +227,9 @@ export class FinishedHarnessMaterialRepository {
       this.transformError(error);
     }
 
-    return data ? mapFinishedHarnessMaterialRow(data) : null;
+    if (!data) return null;
+    const material = mapFinishedHarnessMaterialRow(data);
+    return { ...material, file2d: await this.resolveDrawingUrl(material.file2d) };
   }
 
   async getByPlatformNo(platformNo: string): Promise<FinishedHarnessMaterial | null> {
@@ -221,7 +243,9 @@ export class FinishedHarnessMaterialRepository {
       this.transformError(error);
     }
 
-    return data ? mapFinishedHarnessMaterialRow(data) : null;
+    if (!data) return null;
+    const material = mapFinishedHarnessMaterialRow(data);
+    return { ...material, file2d: await this.resolveDrawingUrl(material.file2d) };
   }
 
   async getCostAnalysisByPlatformNo(platformNo: string): Promise<FinishedHarnessCostAnalysis | null> {
