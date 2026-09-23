@@ -28,11 +28,15 @@ npm run build
 
 ## DWG 图纸页
 
-「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染，支持缩放/平移、图层面板、黑白底切换，以及 PNG/PDF 导出。
+「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染（按黑白二色输出：白底全黑、黑底全白），支持缩放/平移、图层面板、黑白底切换，以及 PNG/PDF 导出。
 
 - `npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-dwg-viewer-assets.mjs`：将 `node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.wasm` 复制到 `public/libredwg/`，并在根目录存在 `线束设计器.dwg` 时复制到 `public/dwg/`（两个目录均已加入 `.gitignore`）。
 - 示例 DWG 未入库时页面会提示「未找到内置示例图纸」，可直接打开本地 DWG 文件；此时 `tests/dwgViewer.test.ts` 中的真实图纸用例会自动跳过。
 - 首次进入页面需下载约 9 MB 解析引擎（按需懒加载，之后由浏览器缓存）；解析在浏览器内完成，图纸不会上传到服务端。
+
+## 图纸字体约定
+
+制作图纸与成品图（图框、接线图、BOM、件号标注与尺寸标注）中的文字统一使用宋体：优先 `SimSun`，依次回退 `STSong`、`Songti SC`、`serif`；常量见 `src/lib/drawingFont.ts` 的 `DRAWING_FONT_FAMILY`，屏幕渲染、SVG 与 PDF 导出共用。DWG 图纸页的文字同样固定使用宋体。
 
 ## 环境变量
 

@@ -69,12 +69,7 @@ export function hexToRgb(hex: string): Rgb {
   return { r: (value >> 16) & 0xff, g: (value >> 8) & 0xff, b: value & 0xff };
 }
 
-/** 浅色背景下的墨色（用于替换图纸中的白色线）。 */
-const LIGHT_BACKGROUND_INK: Rgb = { r: 17, g: 24, b: 39 };
-/** 深色背景下用于替换黑色线的浅色。 */
-const DARK_BACKGROUND_INK: Rgb = { r: 226, g: 232, b: 240 };
-
-export function luminanceOf({ r, g, b }: Rgb): number {
+function luminanceOf({ r, g, b }: Rgb): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
@@ -82,16 +77,7 @@ export function isDarkColor(hex: string): boolean {
   return luminanceOf(hexToRgb(hex)) < 0.5;
 }
 
-/**
- * 图纸线色多为深色背景下的白色（或浅色背景下的黑色），
- * 渲染时按当前背景把接近白/黑的线色替换为对比色，其余颜色保持不变。
- */
-export function resolveDisplayColor(rgb: Rgb, darkBackground: boolean): Rgb {
-  const luminance = luminanceOf(rgb);
-  if (darkBackground) return luminance < 0.08 ? DARK_BACKGROUND_INK : rgb;
-  return luminance > 0.92 ? LIGHT_BACKGROUND_INK : rgb;
-}
-
-export function resolveDisplayHex(rgb: Rgb, darkBackground: boolean): string {
-  return rgbToHex(resolveDisplayColor(rgb, darkBackground));
+/** 图纸按黑白二色渲染：浅色背景用黑色，深色背景用白色，忽略图元自身颜色。 */
+export function inkHex(darkBackground: boolean): string {
+  return darkBackground ? '#ffffff' : '#000000';
 }

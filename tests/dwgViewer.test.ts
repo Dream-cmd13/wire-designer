@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { DwgDatabase } from '@mlightcad/libredwg-web';
-import { aciToRgb, hexToRgb, isDarkColor, resolveDisplayHex, rgbFromTrueColor } from '@/lib/dwg/aciColor';
+import { aciToRgb, hexToRgb, inkHex, isDarkColor, rgbFromTrueColor } from '@/lib/dwg/aciColor';
 import { applyAffine, multiplyAffine, rotationAffine, scaleAffine, similarityOf, translationAffine } from '@/lib/dwg/affine';
 import { fitView, panView, zoomLimitsFor, zoomViewAt } from '@/lib/dwg/dwgView';
 import { decodePercentCodes, parseMText } from '@/lib/dwg/mtextFormat';
@@ -31,12 +31,9 @@ describe('aciColor', () => {
     expect(hexToRgb('#ff0000')).toEqual({ r: 255, g: 0, b: 0 });
   });
 
-  it('maps white/black lines to contrast colors based on background', () => {
-    expect(resolveDisplayHex({ r: 255, g: 255, b: 255 }, false)).toBe('#111827');
-    expect(resolveDisplayHex({ r: 255, g: 255, b: 255 }, true)).toBe('#ffffff');
-    expect(resolveDisplayHex({ r: 0, g: 0, b: 0 }, true)).toBe('#e2e8f0');
-    expect(resolveDisplayHex({ r: 255, g: 0, b: 0 }, false)).toBe('#ff0000');
-    expect(resolveDisplayHex({ r: 255, g: 0, b: 0 }, true)).toBe('#ff0000');
+  it('renders every entity in pure black/white according to the background', () => {
+    expect(inkHex(false)).toBe('#000000');
+    expect(inkHex(true)).toBe('#ffffff');
     expect(isDarkColor('#111827')).toBe(true);
     expect(isDarkColor('#ffffff')).toBe(false);
   });
