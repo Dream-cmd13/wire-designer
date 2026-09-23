@@ -53,6 +53,7 @@ const DEFAULT_LAYER = '0';
 const BY_LAYER_INDEXES = new Set([0, 256]);
 const MAX_BLOCK_DEPTH = 8;
 const MODEL_SPACE_NAME = '*MODEL_SPACE';
+const PAPER_SPACE_PREFIX = '*PAPER_SPACE';
 /** 文字高度（大写字母高度）与字宽的近似比例，用于估算文字包围盒。 */
 const TEXT_WIDTH_RATIO = 0.7;
 const TEXT_LINE_SPACING = 1.66;
@@ -199,10 +200,21 @@ function sampleSpline(
   return points;
 }
 
-function sampleEllipse(center: DwgPoint, major: DwgPoint, minor: DwgPoint, start: number, end: number): DwgPoint[] {
+function sampleEllipse(
+  center: DwgPoint,
+  major: DwgPoint,
+  minor: DwgPoint,
+  start: number,
+  end: number,
+  counterClockwise: boolean,
+): DwgPoint[] {
   let sweep = end - start;
-  while (sweep <= 0) sweep += Math.PI * 2;
-  const steps = Math.max(8, Math.ceil((sweep / (Math.PI * 2)) * 64));
+  if (counterClockwise) {
+    while (sweep <= 0) sweep += Math.PI * 2;
+  } else {
+    while (sweep >= 0) sweep -= Math.PI * 2;
+  }
+  const steps = Math.max(8, Math.ceil((Math.abs(sweep) / (Math.PI * 2)) * 64));
   const points: DwgPoint[] = [];
   for (let index = 0; index <= steps; index += 1) {
     const t = start + (sweep * index) / steps;
@@ -222,9 +234,11 @@ interface BoundaryEdgeLike {
   radius?: number;
   startAngle?: number;
   endAngle?: number;
+  isCCW?: boolean;
   degree?: number;
   knots?: number[];
   controlPoints?: Array<{ x: number; y: number }>;
+  /** 椭圆边：短轴/长轴比例（DXF 组码 40）。 */
   lengthOfMinorAxis?: number;
 }
 
@@ -250,18 +264,21 @@ function convertBoundaryPath(path: {
         if (start && end) points.push(start, end);
       } else if (edge.type === 2 && edge.center && edge.radius && edge.startAngle !== undefined && edge.endAngle !== undefined) {
         const center = toPoint(edge.center);
-        if (center) points.push(...sampleArcRange(center, edge.radius, edge.startAngle, edge.endAngle, true));
-      } else if (edge.type === 3 && edge.center && edge.end && edge.lengthOfMinorAxis !== undefined) {
+        if (center) {
+          points.push(...sampleArcRange(center, edge.radius, edge.startAngle, edge.endAngle, edge.isCCW !== false));
+        }
+      } else if (edge.type === 3 && edge.center && edge.end) {
         const center = toPoint(edge.center);
-        const end = toPoint(edge.end);
-        if (center && end) {
-          const major = { x: end.x - center.x, y: end.y - center.y };
-          const majorLength = Math.hypot(major.x, major.y);
-          if (majorLength > 0) {
-            const ratio = edge.lengthOfMinorAxis / majorLength;
-            const minor = { x: -major.y * ratio, y: major.x * ratio };
-            points.push(...sampleEllipse(center, major, minor, 0, Math.PI * 2));
-          }
+        // 长轴端点相对中心（DXF 组码 11），组码 40 为短轴/长轴比例
+        const major = toPoint(edge.end);
+        if (center && major) {
+          const ratio = typeof edge.lengthOfMinorAxis === 'number' && Number.isFinite(edge.lengthOfMinorAxis)
+            ? edge.lengthOfMinorAxis
+            : 1;
+          const minor = { x: -major.y * ratio, y: major.x * ratio };
+          const start = edge.startAngle ?? 0;
+          const end = edge.endAngle ?? Math.PI * 2;
+          points.push(...sampleEllipse(center, major, minor, start, end, edge.isCCW !== false));
         }
       } else if (edge.type === 4 && edge.controlPoints?.length) {
         const controlPoints = edge.controlPoints.map(toPoint).filter((point): point is DwgPoint => point !== null);
@@ -334,41 +351,41 @@ function expandInsert(entity: DwgEntity, context: ConvertContext, transform: Aff
   };
   const block = context.blocks.get(insert.name);
   const insertion = toPoint(insert.insertionPoint);
-  if (!block || block.entities.length === 0 || !insertion) return [];
-
-  const childContext: ConvertContext = {
-    transform: IDENTITY_AFFINE,
-    layerColors: context.layerColors,
-    blocks: context.blocks,
-    blockColor: resolveEntityRgb(entity, context),
-    blockLayer: resolveLayerName(entity, context),
-    depth: context.depth + 1,
-  };
-
-  const columnCount = Math.max(1, Math.round(insert.columnCount ?? 1));
-  const rowCount = Math.max(1, Math.round(insert.rowCount ?? 1));
   const result: DwgGeometry[] = [];
 
-  for (let column = 0; column < columnCount; column += 1) {
-    for (let row = 0; row < rowCount; row += 1) {
-      let instance = multiplyAffine(transform, translationAffine(insertion.x, insertion.y));
-      instance = multiplyAffine(instance, rotationAffine(insert.rotation ?? 0));
-      instance = multiplyAffine(instance, translationAffine(column * (insert.columnSpacing ?? 0), row * (insert.rowSpacing ?? 0)));
-      instance = multiplyAffine(instance, scaleAffine(insert.xScale ?? 1, insert.yScale ?? 1));
-      instance = multiplyAffine(instance, translationAffine(-block.base.x, -block.base.y));
-      const instanceContext = { ...childContext, transform: instance };
-      for (const child of block.entities) {
-        result.push(...convertEntity(child, instanceContext));
+  if (block && insertion && block.entities.length > 0) {
+    const childContext: ConvertContext = {
+      transform: IDENTITY_AFFINE,
+      layerColors: context.layerColors,
+      blocks: context.blocks,
+      blockColor: resolveEntityRgb(entity, context),
+      blockLayer: resolveLayerName(entity, context),
+      depth: context.depth + 1,
+    };
+
+    const columnCount = Math.max(1, Math.round(insert.columnCount ?? 1));
+    const rowCount = Math.max(1, Math.round(insert.rowCount ?? 1));
+
+    for (let column = 0; column < columnCount; column += 1) {
+      for (let row = 0; row < rowCount; row += 1) {
+        let instance = multiplyAffine(transform, translationAffine(insertion.x, insertion.y));
+        instance = multiplyAffine(instance, rotationAffine(insert.rotation ?? 0));
+        instance = multiplyAffine(instance, translationAffine(column * (insert.columnSpacing ?? 0), row * (insert.rowSpacing ?? 0)));
+        instance = multiplyAffine(instance, scaleAffine(insert.xScale ?? 1, insert.yScale ?? 1));
+        instance = multiplyAffine(instance, translationAffine(-block.base.x, -block.base.y));
+        const instanceContext = { ...childContext, transform: instance };
+        for (const child of block.entities) {
+          result.push(...convertEntity(child, instanceContext));
+        }
       }
     }
   }
 
-  // 顶层 INSERT 的属性文字已由转换器并入 db.entities，避免重复绘制；嵌套块的属性文字在此展开
-  if (context.depth > 0) {
-    const attribs = (entity as DwgEntity & { attribs?: DwgEntity[] }).attribs ?? [];
-    for (const attrib of attribs) {
-      result.push(...convertEntity(attrib, context));
-    }
+  // 属性文字（ATTRIB）随 INSERT 展开；顶层 INSERT 的 context.transform 为单位阵，
+  // 正好还原其 WCS 位置。转换器额外并入 db.entities 的同一批属性由调用方按 handle 去重。
+  const attribs = (entity as DwgEntity & { attribs?: DwgEntity[] }).attribs ?? [];
+  for (const attrib of attribs) {
+    result.push(...convertEntity(attrib, context));
   }
 
   return result;
@@ -459,7 +476,7 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
       const start = Number.isFinite(ellipse.startAngle) ? ellipse.startAngle : 0;
       const end = Number.isFinite(ellipse.endAngle) ? ellipse.endAngle : Math.PI * 2;
       const closed = Math.abs(end - start) >= Math.PI * 2 - 1e-6;
-      const points = sampleEllipse(center, major, minor, start, end).map((point) => applyAffine(transform, point));
+      const points = sampleEllipse(center, major, minor, start, end, true).map((point) => applyAffine(transform, point));
       return [{ kind: 'polyline', points, bulges: points.map(() => 0), closed, color }];
     }
     case 'SOLID': {
@@ -604,14 +621,18 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
   }
 
   const blocks = new Map<string, BlockDefinition>();
+  const paperSpaceHandles = new Set<string>();
   let modelSpaceEntities: DwgEntity[] | null = null;
   for (const record of db.tables?.BLOCK_RECORD?.entries ?? []) {
     blocks.set(record.name, {
       base: toPoint(record.basePoint) ?? { x: 0, y: 0 },
       entities: record.entities ?? [],
     });
-    if (record.name?.toUpperCase() === MODEL_SPACE_NAME && (record.entities?.length ?? 0) > 0) {
+    const upperName = record.name?.toUpperCase() ?? '';
+    if (upperName === MODEL_SPACE_NAME && (record.entities?.length ?? 0) > 0) {
       modelSpaceEntities = record.entities;
+    } else if (upperName.startsWith(PAPER_SPACE_PREFIX)) {
+      paperSpaceHandles.add(record.handle);
     }
   }
 
@@ -628,12 +649,25 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
   const skipped: Record<string, number> = {};
   let textCount = 0;
   let bounds: DwgBounds | null = null;
-  // 优先取模型空间块内容，避免把图纸空间（布局/视口）图元叠加到模型空间上
+  // 优先取模型空间块内容，避免把图纸空间（布局/视口）图元叠加到模型空间上；
+  // 回退路径按 ownerBlockRecordSoftId 排除图纸空间块（libredwg-web 不填 isInPaperSpace）
   const allEntities = modelSpaceEntities
-    ?? (db.entities ?? []).filter((entity) => entity.isInPaperSpace !== true);
+    ?? (db.entities ?? []).filter((entity) => (
+      entity.isInPaperSpace !== true && !paperSpaceHandles.has(entity.ownerBlockRecordSoftId ?? '')
+    ));
+
+  // 顶层 INSERT 的属性文字由 INSERT 展开绘制；转换器并入 db.entities 的同一批属性按 handle 跳过，避免重复
+  const expandedAttribHandles = new Set<string>();
+  for (const entity of allEntities) {
+    if (entity.type !== 'INSERT') continue;
+    for (const attrib of (entity as DwgEntity & { attribs?: DwgEntity[] }).attribs ?? []) {
+      if (attrib.handle) expandedAttribHandles.add(attrib.handle);
+    }
+  }
 
   for (const entity of allEntities) {
     if (entity.isInPaperSpace === true) continue;
+    if (entity.type === 'ATTRIB' && entity.handle && expandedAttribHandles.has(entity.handle)) continue;
     const geometries = convertEntity(entity, context);
     if (geometries.length === 0) {
       skipped[entity.type] = (skipped[entity.type] ?? 0) + 1;

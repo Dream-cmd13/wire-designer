@@ -402,7 +402,7 @@ export function DwgViewerPage() {
             className={toolbarButtonClass}
             onClick={() => void handleExport('png')}
             disabled={!isReady || exporting !== null}
-            title="导出当前视图（含背景与图层显示）"
+            title="导出 PNG（适应图纸范围，含背景与图层显示）"
           >
             {exporting === 'png' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             导出 PNG
@@ -412,7 +412,7 @@ export function DwgViewerPage() {
             className={toolbarButtonClass}
             onClick={() => void handleExport('pdf')}
             disabled={!isReady || exporting !== null}
-            title="导出 A4 横向 PDF（含背景与图层显示）"
+            title="导出 A4 横向 PDF（适应图纸范围，含背景与图层显示）"
           >
             {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             导出 PDF

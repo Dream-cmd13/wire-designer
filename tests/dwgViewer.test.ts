@@ -411,6 +411,159 @@ describe('normalizeDwgDatabase', () => {
     expect(text?.bounds.maxX ?? 0).toBeGreaterThan(20);
   });
 
+  it('renders top-level insert attributes once when model space record lacks them', () => {
+    // 真实转换器行为：*Model_Space 记录不含 ATTRIB，ATTRIB 由转换器额外 push 到 db.entities
+    const attrib = {
+      type: 'ATTRIB', handle: 'A2', layer: '0', colorIndex: 256, flags: 0,
+      text: { text: 'VAL-1', startPoint: { x: 7, y: 9, z: 0 }, textHeight: 1 },
+    };
+    const insert = {
+      type: 'INSERT', handle: 'A1', layer: '0', colorIndex: 256, name: 'SYM',
+      insertionPoint: { x: 2, y: 3, z: 0 }, xScale: 1, yScale: 1, rotation: 0,
+      columnCount: 1, rowCount: 1, columnSpacing: 0, rowSpacing: 0, attribs: [attrib],
+    };
+    const database = makeDatabase(
+      [insert, attrib],
+      [
+        { name: '*Model_Space', basePoint: { x: 0, y: 0, z: 0 }, entities: [insert] },
+        {
+          name: 'SYM',
+          basePoint: { x: 0, y: 0, z: 0 },
+          entities: [
+            { type: 'LINE', handle: 'A3', layer: '0', colorIndex: 256, startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 0 } },
+          ],
+        },
+      ],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'attrib-model.dwg');
+    const texts = drawing.entities.filter((entity) => entity.kind === 'text');
+    expect(texts).toHaveLength(1);
+    if (texts[0].kind !== 'text') throw new Error('expected text');
+    expect(texts[0].lines).toEqual(['VAL-1']);
+    // 顶层 INSERT 的属性位置本身已是 WCS，不应再叠加插入点偏移
+    expect(texts[0].position.x).toBeCloseTo(7, 6);
+    expect(texts[0].position.y).toBeCloseTo(9, 6);
+    expect(drawing.entities.filter((entity) => entity.kind === 'line')).toHaveLength(1);
+  });
+
+  it('renders top-level insert attributes once in the fallback path', () => {
+    const attrib = {
+      type: 'ATTRIB', handle: 'B2', layer: '0', colorIndex: 256, flags: 0,
+      text: { text: 'VAL-2', startPoint: { x: 0, y: 0, z: 0 }, textHeight: 1 },
+    };
+    const insert = {
+      type: 'INSERT', handle: 'B1', layer: '0', colorIndex: 256, name: 'SYM',
+      insertionPoint: { x: 0, y: 0, z: 0 }, xScale: 1, yScale: 1, rotation: 0,
+      columnCount: 1, rowCount: 1, columnSpacing: 0, rowSpacing: 0, attribs: [attrib],
+    };
+    // 无 *Model_Space 记录时回退到 db.entities，其中同时存在 INSERT 与其 ATTRIB
+    const database = makeDatabase(
+      [insert, attrib],
+      [
+        {
+          name: 'SYM',
+          basePoint: { x: 0, y: 0, z: 0 },
+          entities: [
+            { type: 'LINE', handle: 'B3', layer: '0', colorIndex: 256, startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 0 } },
+          ],
+        },
+      ],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'attrib-fallback.dwg');
+    const texts = drawing.entities.filter((entity) => entity.kind === 'text');
+    expect(texts).toHaveLength(1);
+    if (texts[0].kind !== 'text') throw new Error('expected text');
+    expect(texts[0].lines).toEqual(['VAL-2']);
+  });
+
+  it('excludes paper space entities in the fallback path by owner block record', () => {
+    const modelLine = {
+      type: 'LINE', handle: 'C1', layer: '0', colorIndex: 256, ownerBlockRecordSoftId: '1F',
+      startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 0 },
+    };
+    const paperLine = {
+      type: 'LINE', handle: 'C2', layer: '0', colorIndex: 256, ownerBlockRecordSoftId: 'D2',
+      startPoint: { x: 50, y: 50, z: 0 }, endPoint: { x: 51, y: 50, z: 0 },
+    };
+    const database = makeDatabase(
+      [modelLine, paperLine],
+      [
+        { name: '*Model_Space', handle: '1F', basePoint: { x: 0, y: 0, z: 0 }, entities: [] },
+        { name: '*Paper_Space', handle: 'D2', basePoint: { x: 0, y: 0, z: 0 }, entities: [] },
+      ],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'fallback-paper.dwg');
+    expect(drawing.stats.rendered).toBe(1);
+    const [line] = drawing.entities;
+    if (line.kind !== 'line') throw new Error('expected line');
+    expect(line.a.x).toBeCloseTo(0, 6);
+  });
+
+  it('samples hatch elliptical edges with center-relative major axis and sweep', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'HATCH', handle: 'D1', layer: '0', colorIndex: 256, solidFill: 1,
+          boundaryPaths: [{
+            boundaryPathTypeFlag: 3,
+            edges: [{
+              type: 3,
+              center: { x: 100, y: 50 },
+              end: { x: 10, y: 0 },
+              lengthOfMinorAxis: 0.5,
+              startAngle: 0,
+              endAngle: Math.PI / 2,
+              isCCW: true,
+            }],
+          }],
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'hatch-ellipse.dwg');
+    const [entity] = drawing.entities;
+    if (entity.kind !== 'hatch') throw new Error('expected hatch');
+    const points = entity.paths[0].points;
+    expect(points[0].x).toBeCloseTo(110, 6);
+    expect(points[0].y).toBeCloseTo(50, 6);
+    const last = points[points.length - 1];
+    expect(last.x).toBeCloseTo(100, 6);
+    expect(last.y).toBeCloseTo(55, 6);
+    expect(entity.bounds.maxX).toBeCloseTo(110, 6);
+    expect(entity.bounds.maxY).toBeCloseTo(55, 6);
+    expect(entity.bounds.minX).toBeCloseTo(100, 6);
+  });
+
+  it('honours the counterclockwise flag of hatch arc edges', () => {
+    const buildHatch = (isCCW: boolean) => makeDatabase(
+      [
+        {
+          type: 'HATCH', handle: 'E1', layer: '0', colorIndex: 256, solidFill: 0,
+          boundaryPaths: [{
+            boundaryPathTypeFlag: 3,
+            edges: [{ type: 2, center: { x: 0, y: 0 }, radius: 1, startAngle: 0, endAngle: Math.PI / 2, isCCW }],
+          }],
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const shortWay = normalizeDwgDatabase(buildHatch(true), 'arc-ccw.dwg').entities[0];
+    const longWay = normalizeDwgDatabase(buildHatch(false), 'arc-cw.dwg').entities[0];
+    if (shortWay.kind !== 'hatch' || longWay.kind !== 'hatch') throw new Error('expected hatch');
+    expect(shortWay.paths[0].points.length).toBeLessThan(20);
+    expect(longWay.paths[0].points.length).toBeGreaterThan(30);
+  });
+
   it('renders attributes of nested block references', () => {
     const database = makeDatabase(
       [

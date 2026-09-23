@@ -9,13 +9,15 @@ describe('route auth requirements', () => {
     expect(requiresAuth(appRoutes.materials)).toBe(true);
   });
 
-  it('allows anonymous access to the standalone drawing workbench', () => {
+  it('allows anonymous access to the standalone drawing workbench and DWG viewer', () => {
     expect(requiresAuth(appRoutes['drawing-workbench'])).toBe(false);
+    expect(requiresAuth(appRoutes['dwg-viewer'])).toBe(false);
   });
 
   it('keeps the current route after anonymous visitors log in', () => {
     expect(shouldKeepRouteAfterLogin(appRoutes.materials, null)).toBe(true);
     expect(shouldKeepRouteAfterLogin(appRoutes['drawing-workbench'], null)).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes['dwg-viewer'], null)).toBe(true);
     expect(shouldKeepRouteAfterLogin(appRoutes['designer-design'], 'project-1')).toBe(true);
     expect(shouldKeepRouteAfterLogin(appRoutes['designer-design'], null)).toBe(false);
     expect(shouldKeepRouteAfterLogin(appRoutes.home, null)).toBe(false);
