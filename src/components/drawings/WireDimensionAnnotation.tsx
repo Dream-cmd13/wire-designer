@@ -5,6 +5,7 @@ import {
   calculateDefaultWireTolerance,
   resolveWireDimension,
 } from '@/lib/wireTolerance';
+import { PRODUCT_DRAWING_FONT_FAMILY } from '@/lib/productionDrawingFont';
 
 interface WireDimensionAnnotationProps {
   material: CanvasWireMaterial;
@@ -179,12 +180,18 @@ export const WireDimensionAnnotation: React.FC<WireDimensionAnnotationProps> = (
         title="点击修改线材尺寸标注与公差"
       >
         {/* Left: Length Number (Unit 'mm' is omitted) */}
-        <span className="text-xs font-bold font-mono tracking-tight text-black leading-none">
+        <span
+          className="text-xs font-bold tracking-tight text-black leading-none"
+          style={{ fontFamily: PRODUCT_DRAWING_FONT_FAMILY }}
+        >
           {dimInfo.lengthDisplay}
         </span>
 
         {/* Right: Stacked Tolerances (Upper and Lower in single baseline block) */}
-        <div className="flex flex-col text-[8.5px] font-semibold font-mono leading-[1.05] tracking-tight text-slate-800">
+        <div
+          className="flex flex-col text-[8.5px] font-semibold leading-[1.05] tracking-tight text-slate-800"
+          style={{ fontFamily: PRODUCT_DRAWING_FONT_FAMILY }}
+        >
           <span className="leading-tight">{dimInfo.upper}</span>
           <span className="leading-tight">{dimInfo.lower}</span>
         </div>

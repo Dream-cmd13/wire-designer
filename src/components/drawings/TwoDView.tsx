@@ -44,6 +44,7 @@ import { buildProductionBomRows, type ProductionBomRow } from '@/lib/productionB
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { notify } from '@/stores/noticeStore';
 import { ItemCalloutLayer } from './ItemCalloutLayer';
+import { PRODUCT_DRAWING_FONT_FAMILY } from '@/lib/productionDrawingFont';
 
 // ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
@@ -159,7 +160,7 @@ function WiringDiagram({
     <div 
       className="border border-black bg-white flex flex-col font-serif text-black select-none shadow-sm rounded overflow-hidden"
       style={{
-        fontFamily: 'SimSun, STSong, "Songti SC", serif',
+        fontFamily: PRODUCT_DRAWING_FONT_FAMILY,
         width: diagramWidth,
         height: layout.height,
         boxSizing: 'border-box',
@@ -336,7 +337,7 @@ function BOMTable({
         bottom: layout.bom.bottom,
         right: layout.bom.right,
         width: layout.bom.width,
-        fontFamily: 'SimSun, STSong, "Songti SC", serif',
+        fontFamily: PRODUCT_DRAWING_FONT_FAMILY,
         boxSizing: 'border-box',
       }}
       onMouseDown={(e) => e.stopPropagation()} // prevent viewport drag
@@ -1335,6 +1336,7 @@ export function TwoDView() {
               maxWidth: 1200,
               maxHeight: 800,
               backgroundColor: '#ffffff',
+              fontFamily: PRODUCT_DRAWING_FONT_FAMILY,
               opacity: isFitted ? 1 : 0,
               transition: 'opacity 0.15s ease-in-out',
             }}

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ProductionDrawingFrame } from '@/types/harness';
 import { DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
+import { PRODUCT_DRAWING_FONT_FAMILY } from '@/lib/productionDrawingFont';
 
 interface ProductionDrawingFrameSvgProps {
   frame: ProductionDrawingFrame;
@@ -31,7 +32,7 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
       viewBox="0 0 1200 800"
       className="absolute top-0 left-0 pointer-events-auto select-none"
       style={{
-        fontFamily: 'SimSun, STSong, "Songti SC", "SimHei", "Microsoft YaHei", sans-serif',
+        fontFamily: PRODUCT_DRAWING_FONT_FAMILY,
       }}
     >
       {/* ── Background & Outer Canvas Border ──────────────────────── */}
@@ -471,7 +472,7 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
             fontWeight="bold"
             letterSpacing="1.5"
             fill="#000000"
-            style={{ fontFamily: '"SimHei", "Microsoft YaHei", sans-serif' }}
+            style={{ fontFamily: PRODUCT_DRAWING_FONT_FAMILY }}
           >
             {frame.companyNameCn || '万连科技'}
           </text>
@@ -483,7 +484,7 @@ export const ProductionDrawingFrameSvg: React.FC<ProductionDrawingFrameSvgProps>
             fontSize="8"
             letterSpacing="0.3"
             fill="#333333"
-            style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
+            style={{ fontFamily: PRODUCT_DRAWING_FONT_FAMILY }}
           >
             {frame.companyNameEn || 'WanLian Technology Co., Ltd'}
           </text>
