@@ -5,7 +5,7 @@ import {
   calculateDefaultWireTolerance,
   resolveWireDimension,
 } from '@/lib/wireTolerance';
-import { PRODUCT_DRAWING_FONT_FAMILY } from '@/lib/productionDrawingFont';
+import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
 
 interface WireDimensionAnnotationProps {
   material: CanvasWireMaterial;
@@ -182,7 +182,7 @@ export const WireDimensionAnnotation: React.FC<WireDimensionAnnotationProps> = (
         {/* Left: Length Number (Unit 'mm' is omitted) */}
         <span
           className="text-xs font-bold tracking-tight text-black leading-none"
-          style={{ fontFamily: PRODUCT_DRAWING_FONT_FAMILY }}
+          style={{ fontFamily: DRAWING_FONT_FAMILY }}
         >
           {dimInfo.lengthDisplay}
         </span>
@@ -190,7 +190,7 @@ export const WireDimensionAnnotation: React.FC<WireDimensionAnnotationProps> = (
         {/* Right: Stacked Tolerances (Upper and Lower in single baseline block) */}
         <div
           className="flex flex-col text-[8.5px] font-semibold leading-[1.05] tracking-tight text-slate-800"
-          style={{ fontFamily: PRODUCT_DRAWING_FONT_FAMILY }}
+          style={{ fontFamily: DRAWING_FONT_FAMILY }}
         >
           <span className="leading-tight">{dimInfo.upper}</span>
           <span className="leading-tight">{dimInfo.lower}</span>

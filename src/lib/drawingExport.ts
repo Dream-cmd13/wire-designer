@@ -1,3 +1,4 @@
+import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
 import { safeFilename } from '@/lib/designFile';
 import { getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
@@ -88,7 +89,7 @@ function svgObject(object: DrawingObject): string {
 
 export function serializeDrawingSvg(drawing: DrawingDocument): string {
   const objects = drawing.objects.filter((object) => object.visible).sort((left, right) => left.zIndex - right.zIndex).map(svgObject).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${drawing.page.width}" height="${drawing.page.height}" viewBox="0 0 ${drawing.page.width} ${drawing.page.height}"><style>text{font-family:Arial,'Microsoft YaHei',sans-serif}</style><rect width="100%" height="100%" fill="#fff"/><rect x="20" y="20" width="${drawing.page.width - 40}" height="${drawing.page.height - 40}" fill="none" stroke="#111827"/>${objects}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${drawing.page.width}" height="${drawing.page.height}" viewBox="0 0 ${drawing.page.width} ${drawing.page.height}"><style>text{font-family:${DRAWING_FONT_FAMILY}}</style><rect width="100%" height="100%" fill="#fff"/><rect x="20" y="20" width="${drawing.page.width - 40}" height="${drawing.page.height - 40}" fill="none" stroke="#111827"/>${objects}</svg>`;
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

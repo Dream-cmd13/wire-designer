@@ -1,4 +1,5 @@
 import type { DrawingObject, DrawingPoint } from '@/types/drawing';
+import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
 
 export type EditableDrawingTextField = 'text' | 'label' | 'title' | 'drawingNo' | 'revision' | 'requirements';
 
@@ -52,13 +53,13 @@ export function getEditableDrawingTextRuns(
   value: string,
 ): EditableDrawingTextRun[] {
   const fontSize = object.style.fontSize;
-  const normalFont = `${fontSize}px Arial`;
+  const normalFont = `${fontSize}px ${DRAWING_FONT_FAMILY}`;
 
   if ((object.kind === 'text' || object.kind === 'label') && field === 'text') {
     return [run(value, 0, fontSize, normalFont)];
   }
   if (object.kind === 'connector' && field === 'label') {
-    return [run(value, 8, 18, `600 ${fontSize}px Arial`, { maxWidth: object.width - 16 })];
+    return [run(value, 8, 18, `600 ${fontSize}px ${DRAWING_FONT_FAMILY}`, { maxWidth: object.width - 16 })];
   }
   if (object.kind === 'wire-bundle' && field === 'label') {
     return [run(value, 8, object.height - 5, normalFont, { suffix: ` · ${object.wireCount}芯` })];
@@ -72,9 +73,9 @@ export function getEditableDrawingTextRuns(
     return [run(value, object.width / 2 - width / 2, object.height / 2 + 1, normalFont)];
   }
   if (object.kind === 'title-block') {
-    if (field === 'title') return [run(value, 10, 20, `600 ${fontSize}px Arial`, { maxWidth: object.width - 100 })];
-    if (field === 'drawingNo') return [run(value, 10, 42, '10px Arial', { prefix: '图号：' })];
-    if (field === 'revision') return [run(value, object.width - 70, 32, '10px Arial', { prefix: '版本：' })];
+    if (field === 'title') return [run(value, 10, 20, `600 ${fontSize}px ${DRAWING_FONT_FAMILY}`, { maxWidth: object.width - 100 })];
+    if (field === 'drawingNo') return [run(value, 10, 42, `10px ${DRAWING_FONT_FAMILY}`, { prefix: '图号：' })];
+    if (field === 'revision') return [run(value, object.width - 70, 32, `10px ${DRAWING_FONT_FAMILY}`, { prefix: '版本：' })];
   }
   if (object.kind === 'tech-requirements' && field === 'requirements') {
     const lines = value.split('\n');

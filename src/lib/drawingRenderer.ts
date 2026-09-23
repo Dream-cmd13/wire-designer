@@ -1,4 +1,5 @@
 import type { DrawingDocument, DrawingObject, DrawingPoint } from '@/types/drawing';
+import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
 import { containsDrawingPoint } from '@/lib/drawingTransform';
 import { DRAWING_TABLE_LINE_COLOR, getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getEditableDrawingTextRuns, type EditableDrawingTextField } from '@/lib/drawingTextLayout';
@@ -50,7 +51,7 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, cellWidth: number, centered = false) => {
     const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
     const fontSize = getDrawingTableTextFontSize(text, cellWidth, layout.textSizes[key]?.fontSize ?? fallbackSize);
-    context.font = `${fontSize}px Arial`;
+    context.font = `${fontSize}px ${DRAWING_FONT_FAMILY}`;
     context.textAlign = centered ? 'center' : 'left';
     context.fillText(text, (centered ? x + cellWidth / 2 : x) + offset.x, y + offset.y, Math.max(1, cellWidth - 8));
     context.textAlign = 'left';
@@ -92,7 +93,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
   context.strokeStyle = object.style.stroke;
   context.fillStyle = object.style.color;
   context.lineWidth = object.style.strokeWidth;
-  context.font = `${object.style.fontSize}px Arial`;
+  context.font = `${object.style.fontSize}px ${DRAWING_FONT_FAMILY}`;
 
   if (object.kind === 'connector') {
     context.fillStyle = object.style.fill;
@@ -104,7 +105,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
     context.moveTo(0, 25);
     context.lineTo(object.width, 25);
     context.stroke();
-    context.font = '9px Arial';
+    context.font = `9px ${DRAWING_FONT_FAMILY}`;
     Array.from({ length: Math.min(object.pinCount, 40) }, (_, index) => {
       const column = index % 2;
       const row = Math.floor(index / 2);
@@ -170,7 +171,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
     context.fillRect(0, 0, object.width, object.height);
     context.strokeRect(0, 0, object.width, object.height);
     context.fillStyle = object.style.color;
-    context.font = `600 ${object.style.fontSize}px Arial`;
+    context.font = `600 ${object.style.fontSize}px ${DRAWING_FONT_FAMILY}`;
     context.fillText('技术要求', 10, 18);
     drawEditableText(context, object, 'requirements', object.requirements.join('\n'));
   } else if (object.kind === 'title-block') {

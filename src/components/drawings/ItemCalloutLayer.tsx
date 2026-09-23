@@ -9,7 +9,7 @@ import {
   type TargetBox,
   type GroupCalloutItem,
 } from '@/lib/itemCalloutLayout';
-import { PRODUCT_DRAWING_FONT_FAMILY } from '@/lib/productionDrawingFont';
+import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
 
 export type { TargetBox, GroupCalloutItem };
 
@@ -347,7 +347,7 @@ export function ItemCalloutLayer({
               fill={textColor}
               fontSize="11"
               fontWeight="bold"
-              fontFamily={PRODUCT_DRAWING_FONT_FAMILY}
+              fontFamily={DRAWING_FONT_FAMILY}
               textAnchor="middle"
               dominantBaseline="central"
             >

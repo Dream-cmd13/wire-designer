@@ -27,7 +27,7 @@ describe('drawing text layout', () => {
   it('uses the measured label width to center dimension text', () => {
     const object = { ...base('dimension', 240, 45), kind: 'dimension', label: '1234', start: { x: 100, y: 200 }, end: { x: 340, y: 200 } } as DrawingObject;
     const [run] = getEditableDrawingTextRuns(context(), object, 'label', '1234');
-    expect(run).toMatchObject({ x: 100, baseline: 23.5, font: '12px Arial' });
+    expect(run).toMatchObject({ x: 100, baseline: 23.5, font: '12px SimSun, "宋体", STSong, "Songti SC", serif' });
   });
 
   it('preserves the wire-bundle baseline and keeps the generated suffix outside the editable range', () => {

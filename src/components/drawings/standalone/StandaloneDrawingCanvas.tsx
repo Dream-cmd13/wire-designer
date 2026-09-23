@@ -8,6 +8,7 @@ import {
   snapOrthogonalPoint,
 } from '@/lib/drawingCommands';
 import { DRAWING_PAGE_INSET } from '@/lib/drawingDocument';
+import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
 import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRenderer';
 import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
 import { DRAWING_TABLE_LINE_COLOR, getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
@@ -329,7 +330,7 @@ function DrawingTableLayer({
         width: object.width * zoom,
         height: object.height * zoom,
         boxShadow: `inset 0 0 0 1px ${DRAWING_TABLE_LINE_COLOR}`,
-        fontFamily: 'Arial, sans-serif',
+        fontFamily: DRAWING_FONT_FAMILY,
         fontSize: object.style.fontSize * zoom,
         lineHeight: `${rowHeight}px`,
         transform: `rotate(${object.rotation}deg)`,
