@@ -47,6 +47,7 @@ const BomModal = lazy(() => import('@/components/panels/BomPanel').then((module)
 const QuoteModal = lazy(() => import('@/components/panels/QuotePanel').then((module) => ({ default: module.QuoteModal })));
 const MaterialLibraryPage = lazy(() => import('@/pages/MaterialLibraryPage').then((module) => ({ default: module.MaterialLibraryPage })));
 const DrawingWorkbenchPage = lazy(() => import('@/pages/DrawingWorkbenchPage').then((module) => ({ default: module.DrawingWorkbenchPage })));
+const DwgViewerPage = lazy(() => import('@/pages/DwgViewerPage').then((module) => ({ default: module.DwgViewerPage })));
 
 function ModuleLoadingState() {
   return (
@@ -1037,6 +1038,10 @@ export default function App() {
 
     if (route.id === 'drawing-workbench') {
       return <DrawingWorkbenchPage />;
+    }
+
+    if (route.id === 'dwg-viewer') {
+      return <DwgViewerPage />;
     }
 
     if (route.id === 'materials') {

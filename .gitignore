@@ -16,6 +16,10 @@ dist-ssr
 !.env.example
 !**/.env.example
 
+# DWG 查看页面的运行时资源（由 scripts/prepare-dwg-viewer-assets.mjs 生成）
+public/libredwg/
+public/dwg/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

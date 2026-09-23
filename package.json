@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/prepare-dwg-viewer-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/prepare-dwg-viewer-assets.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -19,6 +21,7 @@
     "test:watch": "vitest --exclude \".worktrees/**\""
   },
   "dependencies": {
+    "@mlightcad/libredwg-web": "^0.7.14",
     "@supabase/supabase-js": "^2.110.2",
     "@xyflow/react": "^12.11.0",
     "decimal.js": "^10.6.0",

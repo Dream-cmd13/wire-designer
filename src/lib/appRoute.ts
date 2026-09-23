@@ -3,6 +3,7 @@ export type AppRouteId =
   | 'designer-design'
   | 'designer-product-image'
   | 'drawing-workbench'
+  | 'dwg-viewer'
   | 'materials';
 
 export interface AppRoute {
@@ -37,6 +38,12 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     title: '制作图纸',
     section: 'drawing',
   },
+  'dwg-viewer': {
+    id: 'dwg-viewer',
+    path: '/dwg-viewer',
+    title: 'DWG 图纸',
+    section: 'drawing',
+  },
   materials: {
     id: 'materials',
     path: '/materials',
@@ -48,10 +55,10 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
 export const defaultRoute = appRoutes.home;
 
 /**
- * 需要登录后才能访问的路由；`drawing-workbench` 允许匿名使用（其目录入口单独门禁）。
+ * 需要登录后才能访问的路由；`drawing-workbench` 与 `dwg-viewer` 为独立工具，允许匿名使用。
  */
 export function requiresAuth(route: AppRoute): boolean {
-  return route.id !== 'drawing-workbench';
+  return route.id !== 'drawing-workbench' && route.id !== 'dwg-viewer';
 }
 
 /**
@@ -60,7 +67,7 @@ export function requiresAuth(route: AppRoute): boolean {
  */
 export function shouldKeepRouteAfterLogin(route: AppRoute, projectId: string | null): boolean {
   if (route.section === 'designer') return Boolean(projectId);
-  return route.id === 'materials' || route.id === 'drawing-workbench';
+  return route.id === 'materials' || route.id === 'drawing-workbench' || route.id === 'dwg-viewer';
 }
 
 export const projectIdQueryKey = 'projectId';

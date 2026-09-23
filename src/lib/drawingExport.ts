@@ -91,7 +91,7 @@ export function serializeDrawingSvg(drawing: DrawingDocument): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${drawing.page.width}" height="${drawing.page.height}" viewBox="0 0 ${drawing.page.width} ${drawing.page.height}"><style>text{font-family:Arial,'Microsoft YaHei',sans-serif}</style><rect width="100%" height="100%" fill="#fff"/><rect x="20" y="20" width="${drawing.page.width - 40}" height="${drawing.page.height - 40}" fill="none" stroke="#111827"/>${objects}</svg>`;
 }
 
-function downloadBlob(blob: Blob, filename: string) {
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;

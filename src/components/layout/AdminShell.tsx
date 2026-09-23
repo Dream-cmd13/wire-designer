@@ -4,6 +4,7 @@ import {
   Calculator,
   ClipboardList,
   Database,
+  DraftingCompass,
   FileImage,
   Home,
   LayoutDashboard,
@@ -46,6 +47,11 @@ const sidebarItems: SidebarItem[] = [
     label: '制作图纸',
     path: appRoutes['drawing-workbench'].path,
     icon: LayoutDashboard,
+  },
+  {
+    label: 'DWG 图纸',
+    path: appRoutes['dwg-viewer'].path,
+    icon: DraftingCompass,
   },
   {
     label: '物料库',
@@ -205,11 +211,13 @@ export function AdminShell({
   const showDesignerActions = route.section === 'designer' && Boolean(currentProjectName);
   const contextLabel = route.id === 'drawing-workbench'
     ? '独立制图 · 新建后导出'
-    : route.section === 'designer'
-      ? (currentProjectName || '选择项目后可进入完整设计流程')
-      : route.section === 'home'
-        ? '选择项目后可进入完整设计流程'
-        : '标准元器件与物料规格';
+    : route.id === 'dwg-viewer'
+      ? 'DWG 图纸 · 浏览器内解析与导出'
+      : route.section === 'designer'
+        ? (currentProjectName || '选择项目后可进入完整设计流程')
+        : route.section === 'home'
+          ? '选择项目后可进入完整设计流程'
+          : '标准元器件与物料规格';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
