@@ -19,7 +19,9 @@ export interface DwgRenderOptions {
   hiddenLayers?: ReadonlySet<string>;
 }
 
-const DEFAULT_FONT_FAMILY = '"SimSun", "Microsoft YaHei", "Noto Sans SC", sans-serif';
+const DEFAULT_FONT_FAMILY = '"SimSun", "宋体", "STSong", "Songti SC", serif';
+/** 浅色背景下文字统一使用黑色，忽略图纸中的文字颜色。 */
+const TEXT_INK_COLOR = '#000000';
 /** 图纸文字高度为大写字母高度，转换为 canvas 字号需要放大。 */
 const TEXT_SIZE_RATIO = 1.35;
 const TEXT_LINE_SPACING = 1.66;
@@ -90,7 +92,9 @@ function renderText(
   context.translate(screen.x, screen.y);
   if (entity.rotation) context.rotate(-entity.rotation);
   context.font = `${entity.bold ? 'bold ' : ''}${fontSize.toFixed(2)}px ${options.fontFamily ?? DEFAULT_FONT_FAMILY}`;
-  context.fillStyle = resolveDisplayHex(hexToRgb(entity.color), darkBackground);
+  context.fillStyle = darkBackground
+    ? resolveDisplayHex(hexToRgb(entity.color), true)
+    : TEXT_INK_COLOR;
   context.textAlign = entity.align;
   context.textBaseline = 'alphabetic';
   entity.lines.forEach((line, index) => {
