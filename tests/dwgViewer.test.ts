@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 import type { DwgDatabase } from '@mlightcad/libredwg-web';
 import { aciToRgb, hexToRgb, isDarkColor, resolveDisplayHex, rgbFromTrueColor } from '@/lib/dwg/aciColor';
 import { applyAffine, multiplyAffine, rotationAffine, scaleAffine, similarityOf, translationAffine } from '@/lib/dwg/affine';
-import { fitView, panView, zoomViewAt } from '@/lib/dwg/dwgView';
+import { fitView, panView, zoomLimitsFor, zoomViewAt } from '@/lib/dwg/dwgView';
 import { decodePercentCodes, parseMText } from '@/lib/dwg/mtextFormat';
-import { normalizeDwgDatabase, parseDwg } from '@/lib/dwg/parseDwg';
+import { hasDwgHeader, normalizeDwgDatabase, parseDwg } from '@/lib/dwg/parseDwg';
 import { visibleWorldBounds } from '@/lib/dwg/renderDwg';
 
 describe('aciColor', () => {
@@ -82,6 +82,17 @@ describe('mtextFormat', () => {
   it('decodes %% control codes', () => {
     expect(decodePercentCodes('45%%d')).toBe('45°');
     expect(decodePercentCodes('%%c10 %%p0.1 100%%%')).toBe('⌀10 ±0.1 100%');
+    expect(decodePercentCodes('%%uUnder%%u %%oOver%%o')).toBe('Under Over');
+  });
+});
+
+describe('hasDwgHeader', () => {
+  it('accepts DWG headers and rejects other files', () => {
+    const dwg = new TextEncoder().encode('AC1018\u0000\u0000\u0000\u0000\u0000');
+    expect(hasDwgHeader(dwg.buffer as ArrayBuffer)).toBe(true);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00]);
+    expect(hasDwgHeader(png.buffer as ArrayBuffer)).toBe(false);
+    expect(hasDwgHeader(new Uint8Array([0x41, 0x43]).buffer as ArrayBuffer)).toBe(false);
   });
 });
 
@@ -117,6 +128,18 @@ describe('dwgView', () => {
   it('computes the visible world bounds for culling', () => {
     const world = visibleWorldBounds({ scale: 2, offsetX: 100, offsetY: 400, lineWidth: 1 }, 1000, 500);
     expect(world).toEqual({ minX: -50, maxX: 450, maxY: 200, minY: -50 });
+  });
+
+  it('derives zoom limits from the fit scale so large-coordinate drawings still fit', () => {
+    const view = fitView({ minX: 0, minY: 0, maxX: 1e6, maxY: 1e6 }, { width: 1400, height: 900 }, 32);
+    expect(view.scale).toBeGreaterThan(0);
+    expect(view.scale).toBeLessThan(0.01);
+    const limits = zoomLimitsFor(view.scale);
+    expect(limits.min).toBeLessThan(view.scale);
+    expect(limits.max).toBeGreaterThan(view.scale);
+    // 适应比例本身不应被缩放上下限截断
+    expect(view.scale).toBeGreaterThan(limits.min);
+    expect(view.scale).toBeLessThan(limits.max);
   });
 });
 
@@ -335,6 +358,103 @@ describe('normalizeDwgDatabase', () => {
     const drawing = normalizeDwgDatabase(database, 'skip.dwg');
     expect(drawing.stats.rendered).toBe(0);
     expect(drawing.stats.skipped).toEqual({ REGION: 1, ATTRIB: 1 });
+  });
+
+  it('uses model space entities and hides off/frozen layers by default', () => {
+    const modelLine = {
+      type: 'LINE', handle: '70', layer: '0', colorIndex: 256,
+      startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 0 },
+    };
+    const paperLine = {
+      type: 'LINE', handle: '71', layer: '0', colorIndex: 256,
+      startPoint: { x: 50, y: 50, z: 0 }, endPoint: { x: 51, y: 50, z: 0 },
+    };
+    const database = makeDatabase(
+      [modelLine, paperLine],
+      [
+        { name: '*Model_Space', basePoint: { x: 0, y: 0, z: 0 }, entities: [modelLine] },
+        { name: '*Paper_Space', basePoint: { x: 0, y: 0, z: 0 }, entities: [paperLine] },
+      ],
+      [
+        ...layerEntries,
+        { name: 'HIDDEN_OFF', handle: '12', ownerHandle: '0', colorIndex: 3, color: 0x00ff00, off: true },
+        { name: 'HIDDEN_FROZEN', handle: '13', ownerHandle: '0', colorIndex: 4, color: 0x00ffff, frozen: true },
+      ],
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'layout.dwg');
+    expect(drawing.stats.rendered).toBe(1);
+    const [line] = drawing.entities;
+    if (line.kind !== 'line') throw new Error('expected line');
+    expect(line.a.x).toBeCloseTo(0, 6);
+    expect(drawing.hiddenLayers).toEqual(['HIDDEN_OFF', 'HIDDEN_FROZEN']);
+    expect(drawing.layers.find((layer) => layer.name === 'HIDDEN_OFF')?.off).toBe(true);
+  });
+
+  it('treats negative color index as by-layer and expands text bounds by width', () => {
+    const database = makeDatabase(
+      [
+        { type: 'LINE', handle: '80', layer: 'WIRE', colorIndex: -1, startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 0 } },
+        {
+          type: 'TEXT', handle: '81', layer: '0', colorIndex: 256,
+          text: 'M12A-04-CONNECTOR-LONG-TEXT', startPoint: { x: 0, y: 0, z: 0 }, textHeight: 2,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'colors.dwg');
+    const line = drawing.entities.find((entity) => entity.kind === 'line');
+    expect(line?.color).toBe('#ff0000');
+    const text = drawing.entities.find((entity) => entity.kind === 'text');
+    expect(text?.bounds.maxX ?? 0).toBeGreaterThan(20);
+  });
+
+  it('renders attributes of nested block references', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'INSERT', handle: '90', layer: '0', colorIndex: 256, name: 'SYM',
+          insertionPoint: { x: 5, y: 5, z: 0 }, xScale: 1, yScale: 1, rotation: 0,
+          columnCount: 1, rowCount: 1, columnSpacing: 0, rowSpacing: 0, attribs: [],
+        },
+      ],
+      [
+        {
+          name: 'SYM',
+          basePoint: { x: 0, y: 0, z: 0 },
+          entities: [
+            {
+              type: 'INSERT', handle: '91', layer: '0', colorIndex: 256, name: 'SUB',
+              insertionPoint: { x: 0, y: 0, z: 0 }, xScale: 1, yScale: 1, rotation: 0,
+              columnCount: 1, rowCount: 1, columnSpacing: 0, rowSpacing: 0,
+              attribs: [
+                {
+                  type: 'ATTRIB', handle: '92', layer: '0', colorIndex: 256, flags: 0,
+                  text: { text: 'TAG-1', startPoint: { x: 0, y: 0, z: 0 }, textHeight: 1 },
+                },
+              ],
+            },
+          ],
+        },
+        {
+          name: 'SUB',
+          basePoint: { x: 0, y: 0, z: 0 },
+          entities: [
+            { type: 'LINE', handle: '93', layer: '0', colorIndex: 256, startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 0 } },
+          ],
+        },
+      ],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'nested.dwg');
+    const text = drawing.entities.find((entity) => entity.kind === 'text');
+    if (!text || text.kind !== 'text') throw new Error('expected text');
+    expect(text.lines).toEqual(['TAG-1']);
+    expect(text.position.x).toBeCloseTo(5, 6);
+    expect(text.position.y).toBeCloseTo(5, 6);
   });
 });
 

@@ -52,6 +52,9 @@ export interface DwgLayerInfo {
   name: string;
   colorIndex: number;
   color: string;
+  /** 图层关闭（OFF）或冻结（FROZEN），默认不显示，可在图层面板中重新打开。 */
+  off?: boolean;
+  frozen?: boolean;
 }
 
 export interface DwgDrawingStats {
@@ -67,6 +70,8 @@ export interface DwgDrawing {
   units: number | null;
   bounds: DwgBounds;
   layers: DwgLayerInfo[];
+  /** 默认隐藏的图层（图纸中处于关闭/冻结状态）。 */
+  hiddenLayers: string[];
   entities: DwgRenderEntity[];
   stats: DwgDrawingStats;
 }

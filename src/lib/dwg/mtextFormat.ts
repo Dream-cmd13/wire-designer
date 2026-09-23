@@ -5,9 +5,13 @@ export interface MTextContent {
   bold: boolean;
 }
 
-/** AutoCAD 单行文本中的 %% 控制码：%%d 度数、%%p 正负号、%%c 直径、%%% 百分号。 */
+/**
+ * AutoCAD 单行文本中的 %% 控制码：%%d 度数、%%p 正负号、%%c 直径、%%% 百分号；
+ * %%u/%%o/%%k 为下划线/上划线/删除线开关，渲染时去除。
+ */
 export function decodePercentCodes(text: string): string {
   return text
+    .replace(/%%[uUoOkK]/g, '')
     .replace(/%%[dD]/g, '°')
     .replace(/%%[pP]/g, '±')
     .replace(/%%[cC]/g, '⌀')

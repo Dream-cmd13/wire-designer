@@ -52,6 +52,19 @@ interface ConvertContext {
 const DEFAULT_LAYER = '0';
 const BY_LAYER_INDEXES = new Set([0, 256]);
 const MAX_BLOCK_DEPTH = 8;
+const MODEL_SPACE_NAME = '*MODEL_SPACE';
+/** 文字高度（大写字母高度）与字宽的近似比例，用于估算文字包围盒。 */
+const TEXT_WIDTH_RATIO = 0.7;
+const TEXT_LINE_SPACING = 1.66;
+
+/**
+ * DWG 文件头版本标识检查（AC1.2 ~ AC1032 均以 AC + 数字开头）。
+ */
+export function hasDwgHeader(buffer: ArrayBuffer): boolean {
+  if (buffer.byteLength < 6) return false;
+  const header = new TextDecoder('latin1').decode(new Uint8Array(buffer, 0, 6));
+  return /^AC\d/.test(header);
+}
 
 let enginePromise: Promise<Awaited<ReturnType<typeof LibreDwg.create>>> | null = null;
 
@@ -82,7 +95,8 @@ function resolveEntityRgb(entity: DwgEntity, context: ConvertContext): Rgb {
   if (index === 0 && context.blockColor) {
     return context.blockColor;
   }
-  if (index === undefined || BY_LAYER_INDEXES.has(index)) {
+  // 负数索引表示图层被关闭，颜色仍按随层解析
+  if (index === undefined || index < 0 || BY_LAYER_INDEXES.has(index)) {
     return context.layerColors.get(resolveLayerName(entity, context)) ?? aciToRgb(7);
   }
   return aciToRgb(index);
@@ -215,16 +229,19 @@ interface BoundaryEdgeLike {
 }
 
 function convertBoundaryPath(path: {
+  isClosed?: boolean;
   vertices?: Array<{ x: number; y: number; bulge?: number }>;
   edges?: BoundaryEdgeLike[];
 }): DwgHatchPath | null {
   const points: DwgPoint[] = [];
 
   if (path.vertices?.length) {
-    for (const vertex of path.vertices) {
-      const point = toPoint(vertex);
-      if (point) points.push(point);
-    }
+    const vertices = path.vertices
+      .map((vertex) => toPoint(vertex))
+      .filter((point): point is DwgPoint => point !== null);
+    const bulges = path.vertices.map((vertex) => vertex.bulge ?? 0);
+    const hasBulge = bulges.some((bulge) => bulge !== 0);
+    points.push(...(hasBulge ? flattenBulges(vertices, bulges, path.isClosed === true) : vertices));
   } else if (path.edges?.length) {
     for (const edge of path.edges) {
       if (edge.type === 1 && edge.start && edge.end) {
@@ -343,6 +360,14 @@ function expandInsert(entity: DwgEntity, context: ConvertContext, transform: Aff
       for (const child of block.entities) {
         result.push(...convertEntity(child, instanceContext));
       }
+    }
+  }
+
+  // 顶层 INSERT 的属性文字已由转换器并入 db.entities，避免重复绘制；嵌套块的属性文字在此展开
+  if (context.depth > 0) {
+    const attribs = (entity as DwgEntity & { attribs?: DwgEntity[] }).attribs ?? [];
+    for (const attrib of attribs) {
+      result.push(...convertEntity(attrib, context));
     }
   }
 
@@ -547,8 +572,13 @@ function geometryBounds(geometry: DwgGeometry): DwgBounds {
         { x: geometry.center.x + geometry.radius, y: geometry.center.y + geometry.radius },
       ]) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     case 'text': {
+      // 文字包围盒按最长行宽与行数保守估算（旋转文字也包含在内），避免视口边缘误裁剪
+      const maxLineLength = geometry.lines.reduce((max, line) => Math.max(max, line.length), 1);
+      const estimatedWidth = maxLineLength * geometry.height * TEXT_WIDTH_RATIO;
+      const estimatedHeight = geometry.lines.length * geometry.height * TEXT_LINE_SPACING;
+      const radius = estimatedWidth + estimatedHeight;
       const bounds = includePoints([geometry.position]);
-      return extendBounds(bounds, geometry.position.x, geometry.position.y + geometry.height);
+      return extendBounds(extendBounds(bounds, geometry.position.x + radius, geometry.position.y + radius), geometry.position.x - radius, geometry.position.y - radius);
     }
     default:
       return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
@@ -561,20 +591,28 @@ function geometryBounds(geometry: DwgGeometry): DwgBounds {
 export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDrawing {
   const layerColors = new Map<string, Rgb>();
   const layers: DwgLayerInfo[] = [];
+  const hiddenLayers: string[] = [];
   for (const layer of db.tables?.LAYER?.entries ?? []) {
     const rgb = typeof layer.color === 'number' && layer.color > 0
       ? rgbFromTrueColor(layer.color)
       : aciToRgb(layer.colorIndex ?? 7);
     layerColors.set(layer.name, rgb);
-    layers.push({ name: layer.name, colorIndex: layer.colorIndex ?? 7, color: rgbToHex(rgb) });
+    const off = layer.off === true;
+    const frozen = layer.frozen === true;
+    if (off || frozen) hiddenLayers.push(layer.name);
+    layers.push({ name: layer.name, colorIndex: layer.colorIndex ?? 7, color: rgbToHex(rgb), off, frozen });
   }
 
   const blocks = new Map<string, BlockDefinition>();
+  let modelSpaceEntities: DwgEntity[] | null = null;
   for (const record of db.tables?.BLOCK_RECORD?.entries ?? []) {
     blocks.set(record.name, {
       base: toPoint(record.basePoint) ?? { x: 0, y: 0 },
       entities: record.entities ?? [],
     });
+    if (record.name?.toUpperCase() === MODEL_SPACE_NAME && (record.entities?.length ?? 0) > 0) {
+      modelSpaceEntities = record.entities;
+    }
   }
 
   const context: ConvertContext = {
@@ -590,7 +628,9 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
   const skipped: Record<string, number> = {};
   let textCount = 0;
   let bounds: DwgBounds | null = null;
-  const allEntities = db.entities ?? [];
+  // 优先取模型空间块内容，避免把图纸空间（布局/视口）图元叠加到模型空间上
+  const allEntities = modelSpaceEntities
+    ?? (db.entities ?? []).filter((entity) => entity.isInPaperSpace !== true);
 
   for (const entity of allEntities) {
     if (entity.isInPaperSpace === true) continue;
@@ -628,6 +668,7 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     units: db.header?.INSUNITS ?? null,
     bounds: bounds ?? { minX: 0, minY: 0, maxX: 100, maxY: 100 },
     layers,
+    hiddenLayers,
     entities,
     stats: {
       total: allEntities.length,
@@ -643,6 +684,10 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
  */
 export async function parseDwg(buffer: ArrayBuffer, options: ParseDwgOptions = {}): Promise<DwgDrawing> {
   const { fileName = 'drawing.dwg', wasmBase, onProgress } = options;
+
+  if (!hasDwgHeader(buffer)) {
+    throw new Error('该文件不是有效的 DWG 图纸（文件头校验失败）');
+  }
 
   onProgress?.('engine');
   const lib = await loadEngine(wasmBase);
@@ -664,5 +709,9 @@ export async function parseDwg(buffer: ArrayBuffer, options: ParseDwgOptions = {
     }
   }
 
-  return normalizeDwgDatabase(db, fileName);
+  const drawing = normalizeDwgDatabase(db, fileName);
+  if (drawing.layers.length === 0) {
+    throw new Error('无法解析该 DWG 图纸（文件已损坏或格式不受支持）');
+  }
+  return drawing;
 }

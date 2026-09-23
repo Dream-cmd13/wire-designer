@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, Sun, X } from 'lucide-react';
-import {
-  DWG_MAX_SCALE,
-  DWG_MIN_SCALE,
-  fitView,
-  panView,
-  zoomViewAt,
-  type DwgView,
-} from '@/lib/dwg/dwgView';
+import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
 import { parseDwg, type DwgParsePhase } from '@/lib/dwg/parseDwg';
 import { renderDwgToCanvas } from '@/lib/dwg/renderDwg';
@@ -50,6 +43,16 @@ function zoomPercentOf(view: DwgView | null, drawing: DwgDrawing | null, width: 
   return Math.round((view.scale / fitScale) * 100);
 }
 
+/**
+ * 画布容器内的交互控件（图层面板、按钮等）不参与平移与滚轮缩放，
+ * 否则容器会捕获指针导致控件的 click 无法触发。
+ */
+const INTERACTIVE_SELECTOR = 'button, input, textarea, select, a, [role="button"], [data-dwg-overlay]';
+
+function isInteractiveTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
+}
+
 export function DwgViewerPage() {
   const [state, setState] = useState<ViewerState>(INITIAL_STATE);
   const [view, setView] = useState<DwgView | null>(null);
@@ -81,6 +84,19 @@ export function DwgViewerPage() {
     applyView(fitView(drawing.bounds, { width: container.clientWidth, height: container.clientHeight }, VIEW_PADDING));
   }, [applyView]);
 
+  /** 缩放范围按当前图纸的适应比例计算，兼容大坐标图纸。 */
+  const currentZoomLimits = useCallback(() => {
+    const drawing = drawingRef.current;
+    const container = containerRef.current;
+    if (!drawing || !container || container.clientWidth <= 0) return null;
+    const fitScale = fitView(
+      drawing.bounds,
+      { width: container.clientWidth, height: container.clientHeight },
+      VIEW_PADDING,
+    ).scale;
+    return zoomLimitsFor(fitScale);
+  }, []);
+
   const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string) => {
     const token = ++loadTokenRef.current;
     viewRef.current = null;
@@ -100,6 +116,7 @@ export function DwgViewerPage() {
       if (token !== loadTokenRef.current) return;
 
       drawingRef.current = drawing;
+      setHiddenLayers(new Set(drawing.hiddenLayers));
       const container = containerRef.current;
       if (container && container.clientWidth > 0) {
         applyView(fitView(drawing.bounds, { width: container.clientWidth, height: container.clientHeight }, VIEW_PADDING));
@@ -203,9 +220,12 @@ export function DwgViewerPage() {
     const container = containerRef.current;
     if (!container) return;
     const handleWheel = (event: WheelEvent) => {
+      if (isInteractiveTarget(event.target)) return;
       event.preventDefault();
       const current = viewRef.current;
       if (!current) return;
+      const limits = currentZoomLimits();
+      if (!limits) return;
       const rect = container.getBoundingClientRect();
       const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
       applyView(zoomViewAt(
@@ -213,27 +233,28 @@ export function DwgViewerPage() {
         factor,
         event.clientX - rect.left,
         event.clientY - rect.top,
-        DWG_MIN_SCALE,
-        DWG_MAX_SCALE,
+        limits.min,
+        limits.max,
       ));
     };
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, [applyView]);
+  }, [applyView, currentZoomLimits]);
 
   const zoomBy = useCallback((factor: number) => {
     const current = viewRef.current;
     const container = containerRef.current;
-    if (!current || !container) return;
+    const limits = currentZoomLimits();
+    if (!current || !container || !limits) return;
     applyView(zoomViewAt(
       current,
       factor,
       container.clientWidth / 2,
       container.clientHeight / 2,
-      DWG_MIN_SCALE,
-      DWG_MAX_SCALE,
+      limits.min,
+      limits.max,
     ));
-  }, [applyView]);
+  }, [applyView, currentZoomLimits]);
 
   // 快捷键：+/- 缩放，0/F 适应窗口
   useEffect(() => {
@@ -259,6 +280,7 @@ export function DwgViewerPage() {
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 && event.button !== 1) return;
     if (!viewRef.current) return;
+    if (isInteractiveTarget(event.target)) return;
     event.preventDefault();
     panRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -407,7 +429,10 @@ export function DwgViewerPage() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
-        onDoubleClick={fitToViewport}
+        onDoubleClick={(event) => {
+          if (isInteractiveTarget(event.target)) return;
+          fitToViewport();
+        }}
         onDragOver={(event) => {
           event.preventDefault();
           setIsDragging(true);
@@ -425,7 +450,10 @@ export function DwgViewerPage() {
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
         {isReady && layersOpen && (
-          <div className="absolute right-3 top-3 z-10 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-lg">
+          <div
+            data-dwg-overlay
+            className="absolute right-3 top-3 z-10 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-lg"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
               <span className="text-xs font-semibold text-slate-700">图层</span>
               <div className="flex items-center gap-1">

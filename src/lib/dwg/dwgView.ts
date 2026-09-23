@@ -12,12 +12,25 @@ export interface DwgView {
   offsetY: number;
 }
 
-export const DWG_MIN_SCALE = 0.01;
-export const DWG_MAX_SCALE = 500;
+/** 绝对缩放上下限，仅用于防止 0/Infinity 等异常值；实际缩放范围按适应比例计算。 */
+export const DWG_MIN_SCALE = 1e-6;
+export const DWG_MAX_SCALE = 1e6;
 
 export function clampScale(scale: number, min = DWG_MIN_SCALE, max = DWG_MAX_SCALE): number {
   if (!Number.isFinite(scale)) return min;
   return Math.min(max, Math.max(min, scale));
+}
+
+/**
+ * 相对适应比例计算缩放范围（适应窗口的 1/100 ~ 1000 倍），
+ * 避免大坐标图纸（如场地坐标 1e6）被固定下限截断而无法完整显示。
+ */
+export function zoomLimitsFor(fitScale: number): { min: number; max: number } {
+  const base = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
+  return {
+    min: Math.max(DWG_MIN_SCALE, base / 100),
+    max: Math.min(DWG_MAX_SCALE, base * 1000),
+  };
 }
 
 export function worldToScreen(view: DwgView, point: { x: number; y: number }) {
