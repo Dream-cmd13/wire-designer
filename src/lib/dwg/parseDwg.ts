@@ -12,7 +12,7 @@ import {
 } from '@/lib/dwg/affine';
 import { flattenBulges, sampleArcRange } from '@/lib/dwg/bulge';
 import { decodePercentCodes, parseMText } from '@/lib/dwg/mtextFormat';
-import { TEXT_LINE_SPACING, TEXT_SIZE_RATIO, textCharWidth, textWidthOf } from '@/lib/dwg/textMetrics';
+import { TEXT_LINE_SPACING, TEXT_SIZE_RATIO, isWideChar, textWidthOf } from '@/lib/dwg/textMetrics';
 import type {
   DwgBounds,
   DwgDrawing,
@@ -61,27 +61,49 @@ const MODEL_SPACE_NAME = '*MODEL_SPACE';
 const PAPER_SPACE_PREFIX = '*PAPER_SPACE';
 
 /**
+ * 折行单元：CJK 字符可独立断行（接线图的“切断”在窄参考宽下折成上下两行，
+ * 这就是原图的“从上到下”显示来源）；西文单词/数字串视为整体，不从中断开。
+ */
+function breakUnits(line: string): string[] {
+  const units: string[] = [];
+  let token = '';
+  for (const char of line) {
+    if (isWideChar(char) || char === ' ') {
+      if (token) {
+        units.push(token);
+        token = '';
+      }
+      units.push(char);
+    } else {
+      token += char;
+    }
+  }
+  if (token) units.push(token);
+  return units;
+}
+
+/**
  * 按 MTEXT 定义宽度（DXF 组码 41）折行；AutoCAD 会在该宽度处自动换行，
- * 不折行会让长文本直接画到图框外。部分 PDF 转出的图纸 rectWidth 小于一个字宽
- * （与 extentsWidth 冲突），此时保持原样而不是逐字折行。
+ * 放不下的西文单词整体溢出而不是逐字断行（与 `10` 这类窄框数字串的实测一致）。
  */
 function wrapMTextLines(lines: string[], width: number, height: number): string[] {
-  if (!(width > 0) || !(height > 0) || width < height * TEXT_SIZE_RATIO) return lines;
+  if (!(width > 0) || !(height > 0)) return lines;
   const wrapped: string[] = [];
   for (const line of lines) {
     let current = '';
     let currentWidth = 0;
-    for (const char of line) {
-      const charWidth = textCharWidth(char, height);
-      if (current && currentWidth + charWidth > width) {
-        wrapped.push(current);
-        current = '';
-        currentWidth = 0;
+    for (const unit of breakUnits(line)) {
+      const unitWidth = textWidthOf(unit, height);
+      if (current && currentWidth + unitWidth > width) {
+        wrapped.push(current.replace(/\s+$/, ''));
+        current = unit.replace(/^\s+/, '');
+        currentWidth = current ? textWidthOf(current, height) : 0;
+        continue;
       }
-      current += char;
-      currentWidth += charWidth;
+      current += unit;
+      currentWidth += unitWidth;
     }
-    wrapped.push(current);
+    wrapped.push(current.replace(/\s+$/, ''));
   }
   return wrapped;
 }
@@ -329,6 +351,8 @@ function mtextPlacement(attachment: number): { align: DwgTextAlign; baseline: Dw
 }
 
 function textPlacement(halign: number, valign: number): { align: DwgTextAlign; baseline: DwgTextBaseline } {
+  // halign 4（Middle）是水平与垂直都居中的特殊对齐，与 valign 无关
+  if (halign === 4) return { align: 'center', baseline: 'middle' };
   return {
     align: halign === 1 ? 'center' : halign === 2 ? 'right' : 'left',
     baseline: valign === 3 ? 'top' : valign === 2 ? 'middle' : 'bottom',
@@ -338,29 +362,62 @@ function textPlacement(halign: number, valign: number): { align: DwgTextAlign; b
 interface TextLike {
   text: string;
   startPoint: DwgPoint;
+  endPoint?: DwgPoint;
   textHeight: number;
   rotation?: number;
   halign?: number;
   valign?: number;
+  xScale?: number;
 }
 
 function convertTextLike(text: TextLike, transform: Affine, color: string): DwgGeometry[] {
-  const rawPosition = toPoint(text.startPoint);
-  if (!rawPosition || !text.text) return [];
+  if (!text.text) return [];
   const similarity = similarityOf(transform);
   const height = text.textHeight * (similarity?.scale ?? 1);
   if (!(height > 0)) return [];
-  const placement = textPlacement(text.halign ?? 0, text.valign ?? 0);
+
+  const halign = text.halign ?? 0;
+  const valign = text.valign ?? 0;
+  const start = toPoint(text.startPoint);
+  const end = toPoint(text.endPoint);
+  // DXF 约定：对齐方式非“左/基线”时第一个对齐点被忽略，锚点取第二个对齐点；
+  // Aligned/Fit（3/5）由两点连线拉伸，锚点仍是第一点
+  const stretch = halign === 3 || halign === 5;
+  const rawPosition = stretch ? start : (halign !== 0 || valign !== 0 ? end ?? start : start);
+  if (!rawPosition) return [];
+
+  const line = decodePercentCodes(text.text).replace(/\s+$/, '');
+  const placement = textPlacement(halign, valign);
+  const widthFactor = Number.isFinite(text.xScale) && (text.xScale ?? 0) > 0 ? text.xScale as number : 1;
+  let widthScale = widthFactor;
+  let heightScale = 1;
+  let rotation = (text.rotation ?? 0) + (similarity?.rotation ?? 0);
+
+  if (stretch && start && end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    const natural = textWidthOf(line, height) * widthFactor;
+    if (length > 0 && natural > 0) {
+      widthScale = length / natural;
+      // ALIGNED 等比缩放，FIT 只压宽度
+      if (halign === 3) heightScale = widthScale;
+    }
+    rotation = Math.atan2(dy, dx) + (similarity?.rotation ?? 0);
+  }
+
   return [{
     kind: 'text',
-    lines: [decodePercentCodes(text.text).replace(/\s+$/, '')],
+    lines: [line],
     position: applyAffine(transform, rawPosition),
     height,
-    rotation: (text.rotation ?? 0) + (similarity?.rotation ?? 0),
+    rotation,
     align: placement.align,
     baseline: placement.baseline,
     color,
     bold: false,
+    widthScale: widthScale === 1 ? undefined : widthScale,
+    heightScale: heightScale === 1 ? undefined : heightScale,
   }];
 }
 
@@ -575,6 +632,7 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
         insertionPoint: DwgPoint;
         textHeight: number;
         rotation?: number;
+        direction?: DwgPoint;
         attachmentPoint?: number;
         colorIndex?: number;
         rectWidth?: number;
@@ -594,16 +652,26 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
       const inlineColor = content.colorIndex !== null && !BY_LAYER_INDEXES.has(content.colorIndex)
         ? rgbToHex(aciToRgb(content.colorIndex))
         : color;
+      // DWG 只存文字方向的 X 轴向量（rotation 字段通常为 0），必须用它还原旋转：
+      // 竖直标注文字（direction=(0,1)）此前会被画成水平，造成叠字/出框
+      const direction = mtext.direction;
+      const directionAngle = direction && Number.isFinite(direction.x) && Number.isFinite(direction.y)
+        && (direction.x !== 0 || direction.y !== 0)
+        ? Math.atan2(direction.y, direction.x)
+        : null;
+      const rectWidth = (mtext.rectWidth ?? 0) * (similarityText?.scale ?? 1);
       return [{
         kind: 'text',
-        lines: wrapMTextLines(content.lines, (mtext.rectWidth ?? 0) * (similarityText?.scale ?? 1), height),
+        lines: wrapMTextLines(content.lines, rectWidth, height),
         position: applyAffine(transform, rawPosition),
         height,
-        rotation: (mtext.rotation ?? 0) + (similarityText?.rotation ?? 0),
+        rotation: (directionAngle ?? mtext.rotation ?? 0) + (similarityText?.rotation ?? 0),
         align: placement.align,
         baseline: placement.baseline,
         color: inlineColor,
         bold: content.bold,
+        // 参考框窄于一个字宽时不做折行（部分 PDF 转出的图纸数值不可靠），也不做兜底压缩
+        wrapWidth: rectWidth >= height * TEXT_SIZE_RATIO ? rectWidth : undefined,
       }];
     }
     case 'TEXT': {
@@ -691,8 +759,10 @@ function geometryBounds(geometry: DwgGeometry): DwgBounds {
     case 'text': {
       // 文字盒按对齐/基线确定相对锚点的位置（锚点位于盒的 left/center/right × top/middle/bottom），
       // 再按旋转角求轴对齐包围盒，避免用半径膨胀导致整图范围被撑大、适应窗口后图框过小
-      const width = geometry.lines.reduce((max, line) => Math.max(max, textWidthOf(line, geometry.height)), 0);
-      const height = (Math.max(1, geometry.lines.length) - 1) * geometry.height * TEXT_LINE_SPACING + geometry.height;
+      const width = geometry.lines.reduce((max, line) => Math.max(max, textWidthOf(line, geometry.height)), 0)
+        * (geometry.widthScale ?? 1);
+      const height = ((Math.max(1, geometry.lines.length) - 1) * geometry.height * TEXT_LINE_SPACING + geometry.height)
+        * (geometry.heightScale ?? 1);
       const left = geometry.align === 'center' ? -width / 2 : geometry.align === 'right' ? -width : 0;
       const top = geometry.baseline === 'top' ? -height : geometry.baseline === 'middle' ? -height / 2 : 0;
       const cos = Math.cos(geometry.rotation);
@@ -794,17 +864,14 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     }
   }
 
-  const headerMin = toPoint(db.header?.EXTMIN);
-  const headerMax = toPoint(db.header?.EXTMAX);
-  if (headerMin && headerMax && headerMax.x > headerMin.x && headerMax.y > headerMin.y) {
-    bounds = bounds
-      ? {
-          minX: Math.min(bounds.minX, headerMin.x),
-          minY: Math.min(bounds.minY, headerMin.y),
-          maxX: Math.max(bounds.maxX, headerMax.x),
-          maxY: Math.max(bounds.maxY, headerMax.y),
-        }
-      : { minX: headerMin.x, minY: headerMin.y, maxX: headerMax.x, maxY: headerMax.y };
+  // 只有没有任何可渲染图元时才回退到图纸头范围：部分图纸（如 M12A05-08-085）
+  // 的 EXTMIN/EXTMAX 是过期的历史值，并入会把适应窗口缩小成正常尺寸的几分之一
+  if (!bounds) {
+    const headerMin = toPoint(db.header?.EXTMIN);
+    const headerMax = toPoint(db.header?.EXTMAX);
+    if (headerMin && headerMax && headerMax.x > headerMin.x && headerMax.y > headerMin.y) {
+      bounds = { minX: headerMin.x, minY: headerMin.y, maxX: headerMax.x, maxY: headerMax.y };
+    }
   }
 
   return {

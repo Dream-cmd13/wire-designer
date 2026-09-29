@@ -7,7 +7,7 @@ import { applyAffine, multiplyAffine, rotationAffine, scaleAffine, similarityOf,
 import { fitView, panView, zoomLimitsFor, zoomViewAt } from '@/lib/dwg/dwgView';
 import { decodePercentCodes, parseMText } from '@/lib/dwg/mtextFormat';
 import { hasDwgHeader, normalizeDwgDatabase, parseDwg } from '@/lib/dwg/parseDwg';
-import { visibleWorldBounds } from '@/lib/dwg/renderDwg';
+import { renderDwgToCanvas, visibleWorldBounds } from '@/lib/dwg/renderDwg';
 
 describe('aciColor', () => {
   it('resolves standard ACI colors', () => {
@@ -345,12 +345,12 @@ describe('normalizeDwgDatabase', () => {
     expect(entity.bounds.minY).toBeCloseTo(-5, 6);
   });
 
-  it('wraps MTEXT at its reference width', () => {
+  it('wraps MTEXT at its reference width without breaking Latin words', () => {
     const database = makeDatabase(
       [
         {
           type: 'MTEXT', handle: 'M1', layer: '0', colorIndex: 256,
-          text: 'ABCDEFGHIJKLMNOP',
+          text: '中文 ABCD 中文',
           insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2, attachmentPoint: 1, rectWidth: 10,
         },
       ],
@@ -361,12 +361,33 @@ describe('normalizeDwgDatabase', () => {
     const drawing = normalizeDwgDatabase(database, 'mtext-wrap.dwg');
     const [entity] = drawing.entities;
     if (entity.kind !== 'text') throw new Error('expected text');
-    // 每个拉丁字符宽 1.35（0.5 em × 字号 2 × 1.35），rectWidth 10 → 每行 7 个字符
-    expect(entity.lines).toEqual(['ABCDEFG', 'HIJKLMN', 'OP']);
+    // CJK 每个宽 2.7、拉丁/空格每个宽 1.35：中文（5.4）换行后 ABCD 中（9.45）再换行
+    expect(entity.lines).toEqual(['中文', 'ABCD 中', '文']);
     expect(entity.bounds.maxX).toBeCloseTo(9.45, 6);
   });
 
-  it('keeps MTEXT unwrapped when the reference width is narrower than one glyph', () => {
+  it('keeps a Latin word wider than the reference box on one line', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M7', layer: '0', colorIndex: 256,
+          text: 'ABCDEFGHIJKLMNOP',
+          insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2, attachmentPoint: 1, rectWidth: 10,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'mtext-long-word.dwg');
+    const [entity] = drawing.entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    // 与 `10` 窄框数字串的实测一致：西文单词不逐字断行，放不下时整体溢出
+    expect(entity.lines).toEqual(['ABCDEFGHIJKLMNOP']);
+    expect(entity.bounds.maxX).toBeCloseTo(21.6, 6);
+  });
+
+  it('stacks MTEXT characters when the reference width is narrower than one glyph', () => {
     const database = makeDatabase(
       [
         {
@@ -382,7 +403,33 @@ describe('normalizeDwgDatabase', () => {
     const drawing = normalizeDwgDatabase(database, 'mtext-narrow.dwg');
     const [entity] = drawing.entities;
     if (entity.kind !== 'text') throw new Error('expected text');
-    expect(entity.lines).toEqual(['切断']);
+    // 参考宽小于一个字宽时 AutoCAD 逐字换行（接线图“切断”的上下两行显示）
+    expect(entity.lines).toEqual(['切', '断']);
+  });
+
+  it('fits to rendered entities instead of stale header extents', () => {
+    const database = makeDatabase(
+      [
+        { type: 'LINE', handle: 'H1', layer: '0', colorIndex: 256, startPoint: { x: 10, y: 20, z: 0 }, endPoint: { x: 30, y: 40, z: 0 } },
+      ],
+      [],
+      layerEntries,
+    );
+
+    // makeDatabase 的图纸头范围是 (0,0)-(100,100)，不应把实体范围撑大
+    const drawing = normalizeDwgDatabase(database, 'bounds-entities.dwg');
+    expect(drawing.bounds).toEqual({ minX: 10, minY: 20, maxX: 30, maxY: 40 });
+  });
+
+  it('falls back to header extents when nothing is rendered', () => {
+    const database = makeDatabase(
+      [{ type: 'REGION', handle: 'H2', layer: '0', colorIndex: 256 }],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'bounds-header.dwg');
+    expect(drawing.bounds).toEqual({ minX: 0, minY: 0, maxX: 100, maxY: 100 });
   });
 
   it('computes tight text bounds honouring alignment and rotation', () => {
@@ -406,6 +453,101 @@ describe('normalizeDwgDatabase', () => {
     expect(entity.bounds.maxX).toBeCloseTo(1, 6);
     expect(entity.bounds.minY).toBeCloseTo(-5.4, 6);
     expect(entity.bounds.maxY).toBeCloseTo(0, 6);
+  });
+
+  it('anchors justified TEXT at its second alignment point', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'TEXT', handle: 'T2', layer: '0', colorIndex: 256,
+          text: 'AB', startPoint: { x: 1, y: 0, z: 0 }, endPoint: { x: 2, y: 1, z: 0 },
+          textHeight: 2, halign: 1, valign: 2,
+        },
+        {
+          type: 'TEXT', handle: 'T3', layer: '0', colorIndex: 256,
+          text: 'CD', startPoint: { x: 5, y: 0, z: 0 }, endPoint: { x: 7, y: 0, z: 0 },
+          textHeight: 2, halign: 4,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const [center, middle] = normalizeDwgDatabase(database, 'text-anchor.dwg').entities;
+    if (center.kind !== 'text' || middle.kind !== 'text') throw new Error('expected text');
+    // 对齐方式非“左/基线”时第一个对齐点被忽略，锚点是第二个对齐点
+    expect(center.position).toEqual({ x: 2, y: 1 });
+    expect(center.align).toBe('center');
+    expect(center.baseline).toBe('middle');
+    // halign 4（Middle）= 水平与垂直都居中
+    expect(middle.position).toEqual({ x: 7, y: 0 });
+    expect(middle.align).toBe('center');
+    expect(middle.baseline).toBe('middle');
+  });
+
+  it('applies the TEXT width factor to the primitive and its bounds', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'TEXT', handle: 'T4', layer: '0', colorIndex: 256,
+          text: 'ABCD', startPoint: { x: 0, y: 0, z: 0 }, textHeight: 2, xScale: 0.5,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const [entity] = normalizeDwgDatabase(database, 'text-width-factor.dwg').entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    expect(entity.widthScale).toBeCloseTo(0.5, 6);
+    // 4 字符 × 0.5 em × 字号 2 × 1.35 × 0.5；基线锚点，文字盒在基线上方
+    expect(entity.bounds.maxX).toBeCloseTo(2.7, 6);
+    expect(entity.bounds.minY).toBeCloseTo(0, 6);
+    expect(entity.bounds.maxY).toBeCloseTo(2, 6);
+  });
+
+  it('stretches FIT text between its two alignment points', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'TEXT', handle: 'T5', layer: '0', colorIndex: 256,
+          text: 'AB', startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 10, y: 0, z: 0 },
+          textHeight: 2, halign: 5,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const [entity] = normalizeDwgDatabase(database, 'text-fit.dwg').entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    // 自然宽度 2.7，拉伸到 10
+    expect(entity.widthScale).toBeCloseTo(10 / 2.7, 6);
+    expect(entity.position).toEqual({ x: 0, y: 0 });
+    expect(entity.bounds.maxX).toBeCloseTo(10, 6);
+  });
+
+  it('rotates MTEXT according to its x-axis direction vector', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M4', layer: '0', colorIndex: 256,
+          text: 'M12*1', insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2,
+          attachmentPoint: 1, direction: { x: 0, y: 1, z: 0 },
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const [entity] = normalizeDwgDatabase(database, 'mtext-direction.dwg').entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    expect(entity.rotation).toBeCloseTo(Math.PI / 2, 6);
+    // 文字宽 5 × 1.35 = 6.75、高 2；绕左上锚点逆时针 90° 后包围盒为 [0, 2] × [0, 6.75]
+    expect(entity.bounds.minX).toBeCloseTo(0, 6);
+    expect(entity.bounds.maxX).toBeCloseTo(2, 6);
+    expect(entity.bounds.minY).toBeCloseTo(0, 6);
+    expect(entity.bounds.maxY).toBeCloseTo(6.75, 6);
   });
 
   it('keeps ellipse coordinates in WCS when the extrusion is mirrored', () => {
@@ -868,6 +1010,91 @@ describe('normalizeDwgDatabase', () => {
       { x: 10, y: 21 },
     ]);
     expect(entity.bounds).toEqual({ minX: 10, minY: 20, maxX: 12, maxY: 21 });
+  });
+});
+
+describe('renderDwgToCanvas', () => {
+  function createMockContext(measureWidth: (text: string) => number) {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const record = (method: string) => (...args: unknown[]) => {
+      calls.push({ method, args });
+    };
+    const context = {
+      canvas: { width: 800, height: 600 },
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      lineJoin: 'round',
+      lineCap: 'round',
+      font: '',
+      textAlign: 'left',
+      textBaseline: 'alphabetic',
+      setTransform: record('setTransform'),
+      fillRect: record('fillRect'),
+      save: record('save'),
+      restore: record('restore'),
+      translate: record('translate'),
+      rotate: record('rotate'),
+      scale: record('scale'),
+      beginPath: record('beginPath'),
+      moveTo: record('moveTo'),
+      lineTo: record('lineTo'),
+      arc: record('arc'),
+      closePath: record('closePath'),
+      stroke: record('stroke'),
+      fill: record('fill'),
+      fillText: record('fillText'),
+      measureText: (text: string) => ({ width: measureWidth(text) }),
+    };
+    return { context: context as unknown as CanvasRenderingContext2D, calls };
+  }
+
+  it('rotates text by its direction and squeezes wrapped lines into the reference box', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M5', layer: '0', colorIndex: 256,
+          text: 'M12*1', insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2,
+          attachmentPoint: 1, rectWidth: 10, direction: { x: 0, y: 1, z: 0 },
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    const drawing = normalizeDwgDatabase(database, 'mtext-render.dwg');
+    const { context, calls } = createMockContext((line) => line.length * 20);
+
+    renderDwgToCanvas(context, drawing, { scale: 1, offsetX: 0, offsetY: 0, lineWidth: 1, fontFamily: 'test' });
+
+    const rotateCall = calls.find((call) => call.method === 'rotate');
+    expect(rotateCall?.args[0] as number).toBeCloseTo(-Math.PI / 2, 6);
+    // 实测 5 字符 100px，参考框 10 → 压缩到 10 / 100
+    const scaleCall = calls.find((call) => call.method === 'scale');
+    expect(scaleCall?.args[0] as number).toBeCloseTo(0.1, 6);
+    expect(scaleCall?.args[1]).toBe(1);
+    expect(calls.some((call) => call.method === 'fillText' && call.args[0] === 'M12*1')).toBe(true);
+  });
+
+  it('keeps text inside its reference box when the font measures wider than estimated', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M6', layer: '0', colorIndex: 256,
+          text: 'ABCDEFG', insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2,
+          attachmentPoint: 1, rectWidth: 10,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    const drawing = normalizeDwgDatabase(database, 'mtext-clamp.dwg');
+    // 解析估算每行不超过 10（7 字符 × 1.35 = 9.45），但渲染字体实测更宽
+    const { context, calls } = createMockContext((line) => line.length * 20);
+
+    renderDwgToCanvas(context, drawing, { scale: 1, offsetX: 0, offsetY: 0, lineWidth: 1, fontFamily: 'test' });
+
+    const scaleCall = calls.find((call) => call.method === 'scale');
+    expect(scaleCall?.args[0] as number).toBeCloseTo(10 / 140, 6);
   });
 });
 

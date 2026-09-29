@@ -91,6 +91,22 @@ function renderText(
   context.fillStyle = inkHex(darkBackground);
   context.textAlign = entity.align;
   context.textBaseline = 'alphabetic';
+
+  // 参考框约束：字体度量与解析估算存在偏差或字体回退时，把整段文字水平压缩回框内
+  let widthScale = entity.widthScale ?? 1;
+  const wrapWidth = entity.wrapWidth ?? 0;
+  if (wrapWidth > 0 && entity.lines.length > 0) {
+    const widest = entity.lines.reduce(
+      (max, line) => (line ? Math.max(max, context.measureText(line).width) : max),
+      0,
+    );
+    const limit = wrapWidth * options.scale;
+    if (widest > limit) widthScale *= limit / widest;
+  }
+
+  const heightScale = entity.heightScale ?? 1;
+  if (widthScale !== 1 || heightScale !== 1) context.scale(widthScale, heightScale);
+
   entity.lines.forEach((line, index) => {
     if (!line) return;
     context.fillText(line, 0, firstBaseline + index * lineHeight);

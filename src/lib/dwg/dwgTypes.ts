@@ -28,6 +28,12 @@ export interface DwgTextPrimitive {
   baseline: DwgTextBaseline;
   color: string;
   bold: boolean;
+  /** MTEXT 参考框宽度（世界单位，已折行）；渲染时用于把整段文字兜底压缩回框内。 */
+  wrapWidth?: number;
+  /** 水平缩放（TEXT 宽度因子、Aligned/Fit 拉伸），参与包围盒与渲染。 */
+  widthScale?: number;
+  /** 垂直缩放（仅 Aligned 等比拉伸使用）。 */
+  heightScale?: number;
 }
 
 export interface DwgEntityMeta {

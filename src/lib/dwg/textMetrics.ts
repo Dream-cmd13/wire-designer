@@ -12,9 +12,16 @@ export const TEXT_LINE_SPACING = 1.66;
 /** 西文字符宽度 / em；宋体实测 CJK 为 1 em、西文为 0.5 em。 */
 export const TEXT_LATIN_EM_RATIO = 0.5;
 
+const WIDE_CHAR_START = 0x2e80;
+
+/** CJK 等全角字符（可独立断行；西文单词则不可从中间断开）。 */
+export function isWideChar(char: string): boolean {
+  return char.charCodeAt(0) > WIDE_CHAR_START;
+}
+
 export function textCharWidth(char: string, height: number): number {
   const em = height * TEXT_SIZE_RATIO;
-  return char.charCodeAt(0) > 0x2e80 ? em : em * TEXT_LATIN_EM_RATIO;
+  return isWideChar(char) ? em : em * TEXT_LATIN_EM_RATIO;
 }
 
 export function textWidthOf(line: string, height: number): number {
