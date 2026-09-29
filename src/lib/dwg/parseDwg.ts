@@ -31,7 +31,11 @@ export interface ParseDwgOptions {
   fileName?: string;
   /** wasm 所在目录（浏览器中为 `${BASE_URL}libredwg`）；Node 环境可省略。 */
   wasmBase?: string;
-  onProgress?: (phase: DwgParsePhase) => void;
+  /**
+   * 阶段回调；可返回 Promise，解析会等待其完成后继续，
+   * 便于调用方在同步解析前先绘制加载遮罩。
+   */
+  onProgress?: (phase: DwgParsePhase) => void | Promise<void>;
 }
 
 interface BlockDefinition {
@@ -830,10 +834,14 @@ export async function parseDwg(buffer: ArrayBuffer, options: ParseDwgOptions = {
     throw new Error('该文件不是有效的 DWG 图纸（文件头校验失败）');
   }
 
-  onProgress?.('engine');
+  // 仅在引擎尚未创建时提示引擎加载，已就绪时直接进入解析阶段
+  if (!enginePromise) {
+    await onProgress?.('engine');
+  }
   const lib = await loadEngine(wasmBase);
 
-  onProgress?.('parsing');
+  // 等待回调完成绘制后再开始同步解析，避免遮罩来不及显示就阻塞主线程
+  await onProgress?.('parsing');
   const dataPointer = lib.dwg_read_data(buffer, Dwg_File_Type.DWG);
   if (!dataPointer) {
     throw new Error('无法解析该 DWG 文件');

@@ -33,6 +33,9 @@ describe('DWG viewer UI contract', () => {
     expect(pageSource).toContain('正在解析图纸');
     expect(pageSource).toContain("phase: 'rendering'");
     expect(pageSource).toContain('正在渲染图纸');
+    // 工具栏同样显示加载/失败状态，避免只依赖画布遮罩
+    expect(pageSource).toContain('加载中');
+    expect(pageSource).toContain('加载失败');
     // 遮罩必须等首次绘制完成后才撤下，解析前也要先让遮罩绘制一帧
     expect(pageSource).toContain('nextPaint');
     expect(pageSource).toContain('firstRenderRef');
