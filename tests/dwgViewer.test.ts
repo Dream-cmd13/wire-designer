@@ -71,9 +71,19 @@ describe('mtextFormat', () => {
     const content = parseMText('{\\H1.524x;\\C256;Coding  }');
     expect(content.lines).toEqual(['Coding']);
     expect(content.colorIndex).toBe(256);
+    expect(content.height).toEqual({ value: 1.524, relative: true });
 
     const multiline = parseMText('Rated \\PVoltage');
     expect(multiline.lines).toEqual(['Rated', 'Voltage']);
+  });
+
+  it('parses inline height codes and rejects conflicting ones', () => {
+    expect(parseMText('plain').height).toBeNull();
+    expect(parseMText('\\H2.5x;标注').height).toEqual({ value: 2.5, relative: true });
+    expect(parseMText('\\H0.8x;\\H0.8x;*500±10').height).toEqual({ value: 0.8, relative: true });
+    expect(parseMText('\\H3;绝对高度').height).toEqual({ value: 3, relative: false });
+    // 多个不同取值无法用单一字号表达，退回实体字高
+    expect(parseMText('\\H2x;大\\H1x;小').height).toBeNull();
   });
 
   it('decodes %% control codes', () => {
@@ -333,6 +343,131 @@ describe('normalizeDwgDatabase', () => {
     expect(entity.points.length).toBeGreaterThan(16);
     expect(entity.bounds.maxX).toBeCloseTo(10, 6);
     expect(entity.bounds.minY).toBeCloseTo(-5, 6);
+  });
+
+  it('wraps MTEXT at its reference width', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M1', layer: '0', colorIndex: 256,
+          text: 'ABCDEFGHIJKLMNOP',
+          insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2, attachmentPoint: 1, rectWidth: 10,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'mtext-wrap.dwg');
+    const [entity] = drawing.entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    // 每个拉丁字符宽 1.35（0.5 em × 字号 2 × 1.35），rectWidth 10 → 每行 7 个字符
+    expect(entity.lines).toEqual(['ABCDEFG', 'HIJKLMN', 'OP']);
+    expect(entity.bounds.maxX).toBeCloseTo(9.45, 6);
+  });
+
+  it('keeps MTEXT unwrapped when the reference width is narrower than one glyph', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M2', layer: '0', colorIndex: 256,
+          text: '切断',
+          insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2, attachmentPoint: 1, rectWidth: 1.31,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'mtext-narrow.dwg');
+    const [entity] = drawing.entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    expect(entity.lines).toEqual(['切断']);
+  });
+
+  it('computes tight text bounds honouring alignment and rotation', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'TEXT', handle: 'T1', layer: '0', colorIndex: 256,
+          text: 'ABCD', startPoint: { x: 0, y: 0, z: 0 }, textHeight: 2, halign: 2, valign: 2,
+          rotation: Math.PI / 2,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'text-bounds.dwg');
+    const [entity] = drawing.entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    // 右中锚点：盒在锚点左侧 [-5.4, 0] × [-1, 1]，绕锚点逆时针 90° 后为 [-1, 1] × [-5.4, 0]
+    expect(entity.bounds.minX).toBeCloseTo(-1, 6);
+    expect(entity.bounds.maxX).toBeCloseTo(1, 6);
+    expect(entity.bounds.minY).toBeCloseTo(-5.4, 6);
+    expect(entity.bounds.maxY).toBeCloseTo(0, 6);
+  });
+
+  it('keeps ellipse coordinates in WCS when the extrusion is mirrored', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'ELLIPSE',
+          handle: 'E1',
+          layer: 'WIRE',
+          colorIndex: 256,
+          center: { x: 10, y: 20, z: 0 },
+          majorAxisEndPoint: { x: 4, y: 0, z: 0 },
+          axisRatio: 0.5,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+          extrusionDirection: { x: 0, y: 0, z: -1 },
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'ellipse-mirrored.dwg');
+    expect(drawing.entities).toHaveLength(1);
+    const [entity] = drawing.entities;
+    expect(entity.kind).toBe('polyline');
+    if (entity.kind !== 'polyline') throw new Error('expected polyline');
+    // 中心 (10,20)、长轴 4、短轴 2：法线 -Z 只翻转扫掠方向，不应镜像到负坐标
+    expect(entity.bounds.minX).toBeCloseTo(6, 6);
+    expect(entity.bounds.maxX).toBeCloseTo(14, 6);
+    expect(entity.bounds.minY).toBeCloseTo(18, 6);
+    expect(entity.bounds.maxY).toBeCloseTo(22, 6);
+  });
+
+  it('projects the minor axis of a tilted ellipse through the extrusion normal', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'ELLIPSE',
+          handle: 'E2',
+          layer: 'WIRE',
+          colorIndex: 256,
+          center: { x: 0, y: 0, z: 0 },
+          majorAxisEndPoint: { x: 0, y: 4, z: 0 },
+          axisRatio: 0.5,
+          startAngle: 0,
+          endAngle: Math.PI * 2,
+          // 长轴 (0,4) 与法线垂直：N × M = (-0.866, 0, 0.5)，短轴 XY 分量为 (-1.732, 0)
+          extrusionDirection: { x: 0.5, y: 0, z: Math.sqrt(3) / 2 },
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'ellipse-tilted.dwg');
+    const [entity] = drawing.entities;
+    if (entity.kind !== 'polyline') throw new Error('expected polyline');
+    expect(entity.bounds.minX).toBeCloseTo(-1.732, 3);
+    expect(entity.bounds.maxX).toBeCloseTo(1.732, 3);
+    expect(entity.bounds.minY).toBeCloseTo(-4, 6);
+    expect(entity.bounds.maxY).toBeCloseTo(4, 6);
   });
 
   it('skips unsupported entities and invisible attributes', () => {
@@ -606,6 +741,134 @@ describe('normalizeDwgDatabase', () => {
     expect(text.position.x).toBeCloseTo(5, 6);
     expect(text.position.y).toBeCloseTo(5, 6);
   });
+
+  it('expands dimension geometry and text from its anonymous block', () => {
+    const dimension = {
+      type: 'DIMENSION', handle: 'D1', layer: 'WIRE', colorIndex: 256, name: '*D1',
+      definitionPoint: { x: 0, y: 0, z: 0 }, textPoint: { x: 5, y: 1, z: 0 },
+      measurement: 10, text: '10', textRotation: 0,
+    };
+    const database = makeDatabase(
+      [dimension],
+      [
+        { name: '*Model_Space', basePoint: { x: 0, y: 0, z: 0 }, entities: [dimension] },
+        {
+          name: '*D1',
+          basePoint: { x: 0, y: 0, z: 0 },
+          entities: [
+            { type: 'LINE', handle: 'D2', layer: '0', colorIndex: 0, startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 10, y: 0, z: 0 } },
+            {
+              type: 'MTEXT', handle: 'D3', layer: '0', colorIndex: 0,
+              text: '{\\fSimSun|b0|i0|c0|p2;\\H0.8x;500±10}',
+              insertionPoint: { x: 5, y: 1, z: 0 }, textHeight: 2.5, attachmentPoint: 5,
+            },
+          ],
+        },
+      ],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'dimension.dwg');
+    expect(drawing.stats.rendered).toBe(2);
+    expect(drawing.stats.text).toBe(1);
+    expect(drawing.stats.skipped).toEqual({});
+    const line = drawing.entities.find((entity) => entity.kind === 'line');
+    if (!line || line.kind !== 'line') throw new Error('expected line');
+    expect(line.a).toEqual({ x: 0, y: 0 });
+    expect(line.b).toEqual({ x: 10, y: 0 });
+    // 标注块内 BYBLOCK 颜色继承 DIMENSION 所在图层（红）
+    expect(line.color).toBe('#ff0000');
+    const text = drawing.entities.find((entity) => entity.kind === 'text');
+    if (!text || text.kind !== 'text') throw new Error('expected text');
+    expect(text.lines).toEqual(['500±10']);
+    expect(text.position).toEqual({ x: 5, y: 1 });
+    // 块内 \\H0.8x; 生效：2.5 × 0.8
+    expect(text.height).toBeCloseTo(2.0, 6);
+  });
+
+  it('uses the absolute inline height when present', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M3', layer: '0', colorIndex: 256,
+          text: '\\H1.5;ABS',
+          insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2.5, attachmentPoint: 1,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'mtext-abs-height.dwg');
+    const [entity] = drawing.entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    expect(entity.height).toBeCloseTo(1.5, 6);
+  });
+
+  it('skips dimensions whose anonymous block is missing', () => {
+    const database = makeDatabase(
+      [{ type: 'DIMENSION', handle: 'D1', layer: 'WIRE', colorIndex: 256, name: '*D9', text: '10' }],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'dimension-broken.dwg');
+    expect(drawing.stats.rendered).toBe(0);
+    expect(drawing.stats.skipped).toEqual({ DIMENSION: 1 });
+  });
+
+  it('renders leaders as open polylines through their vertices', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'LEADER', handle: 'L1', layer: 'WIRE', colorIndex: 256,
+          numberOfVertices: 3,
+          vertices: [{ x: 0, y: 0, z: 0 }, { x: 2, y: 3, z: 0 }, { x: 5, y: 3, z: 0 }],
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'leader.dwg');
+    expect(drawing.entities).toHaveLength(1);
+    const [entity] = drawing.entities;
+    expect(entity.kind).toBe('polyline');
+    if (entity.kind !== 'polyline') throw new Error('expected polyline');
+    expect(entity.closed).toBe(false);
+    expect(entity.points).toEqual([{ x: 0, y: 0 }, { x: 2, y: 3 }, { x: 5, y: 3 }]);
+    expect(entity.color).toBe('#ff0000');
+  });
+
+  it('renders an image frame from its position, pixel vectors and size', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'IMAGE', handle: 'I1', layer: '0', colorIndex: 256,
+          position: { x: 10, y: 20, z: 0 },
+          uPixel: { x: 0.5, y: 0, z: 0 },
+          vPixel: { x: 0, y: 0.5, z: 0 },
+          imageSize: { x: 4, y: 2 },
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'image.dwg');
+    expect(drawing.entities).toHaveLength(1);
+    const [entity] = drawing.entities;
+    expect(entity.kind).toBe('polyline');
+    if (entity.kind !== 'polyline') throw new Error('expected polyline');
+    expect(entity.closed).toBe(true);
+    expect(entity.points).toEqual([
+      { x: 10, y: 20 },
+      { x: 12, y: 20 },
+      { x: 12, y: 21 },
+      { x: 10, y: 21 },
+    ]);
+    expect(entity.bounds).toEqual({ minX: 10, minY: 20, maxX: 12, maxY: 21 });
+  });
 });
 
 const samplePath = resolve(process.cwd(), '线束设计器.dwg');
@@ -647,4 +910,35 @@ describe.skipIf(!existsSync(samplePath))('parseDwg (示例 DWG)', () => {
     expect(lineColors).toEqual({ '#ffffff': 195, '#ff0000': 44 });
     expect(texts.filter((entity) => entity.color === '#ff00ff').length).toBe(40);
   }, 120_000);
+});
+
+const m12DrawingNames = [
+  'M12A04-07-068-3-10-500.dwg',
+  'M12A04-07-093-1-10-500.dwg',
+  'M12A04-08-085-1-10-500.dwg',
+  'M12A05-07-068-3-10-500.dwg',
+  'M12A05-07-093-1-10-500.dwg',
+  'M12A05-08-085-1-10-500.dwg',
+  'M12A08-07-068-3-10-500.dwg',
+  'M12A08-07-093-1-10-500.dwg',
+];
+
+describe.skipIf(m12DrawingNames.every((name) => !existsSync(resolve(process.cwd(), name))))('parseDwg (M12 图纸)', () => {
+  it('renders dimensions, leaders and image frames instead of skipping them', async () => {
+    for (const name of m12DrawingNames) {
+      const path = resolve(process.cwd(), name);
+      if (!existsSync(path)) continue;
+      const buffer = readFileSync(path);
+      const drawing = await parseDwg(
+        buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
+        { fileName: name },
+      );
+
+      expect(drawing.stats.rendered).toBeGreaterThan(1000);
+      expect(drawing.stats.text).toBeGreaterThan(100);
+      expect(drawing.stats.skipped.DIMENSION ?? 0).toBe(0);
+      expect(drawing.stats.skipped.LEADER ?? 0).toBe(0);
+      expect(drawing.stats.skipped.IMAGE ?? 0).toBe(0);
+    }
+  }, 180_000);
 });

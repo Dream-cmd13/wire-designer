@@ -12,6 +12,7 @@ import {
 } from '@/lib/dwg/affine';
 import { flattenBulges, sampleArcRange } from '@/lib/dwg/bulge';
 import { decodePercentCodes, parseMText } from '@/lib/dwg/mtextFormat';
+import { TEXT_LINE_SPACING, TEXT_SIZE_RATIO, textCharWidth, textWidthOf } from '@/lib/dwg/textMetrics';
 import type {
   DwgBounds,
   DwgDrawing,
@@ -54,9 +55,32 @@ const BY_LAYER_INDEXES = new Set([0, 256]);
 const MAX_BLOCK_DEPTH = 8;
 const MODEL_SPACE_NAME = '*MODEL_SPACE';
 const PAPER_SPACE_PREFIX = '*PAPER_SPACE';
-/** 文字高度（大写字母高度）与字宽的近似比例，用于估算文字包围盒。 */
-const TEXT_WIDTH_RATIO = 0.7;
-const TEXT_LINE_SPACING = 1.66;
+
+/**
+ * 按 MTEXT 定义宽度（DXF 组码 41）折行；AutoCAD 会在该宽度处自动换行，
+ * 不折行会让长文本直接画到图框外。部分 PDF 转出的图纸 rectWidth 小于一个字宽
+ * （与 extentsWidth 冲突），此时保持原样而不是逐字折行。
+ */
+function wrapMTextLines(lines: string[], width: number, height: number): string[] {
+  if (!(width > 0) || !(height > 0) || width < height * TEXT_SIZE_RATIO) return lines;
+  const wrapped: string[] = [];
+  for (const line of lines) {
+    let current = '';
+    let currentWidth = 0;
+    for (const char of line) {
+      const charWidth = textCharWidth(char, height);
+      if (current && currentWidth + charWidth > width) {
+        wrapped.push(current);
+        current = '';
+        currentWidth = 0;
+      }
+      current += char;
+      currentWidth += charWidth;
+    }
+    wrapped.push(current);
+  }
+  return wrapped;
+}
 
 /**
  * DWG 文件头版本标识检查（AC1.2 ~ AC1032 均以 AC + 数字开头）。
@@ -391,6 +415,32 @@ function expandInsert(entity: DwgEntity, context: ConvertContext, transform: Aff
   return result;
 }
 
+/**
+ * DIMENSION 的几何（尺寸线、箭头、标注文字）存放在其匿名标注块（*D…）中，
+ * 块内图元与标注处于同一坐标系，展开时只需按块基点平移并继承图层与颜色。
+ */
+function expandDimensionBlock(entity: DwgEntity, context: ConvertContext, transform: Affine): DwgGeometry[] {
+  if (context.depth >= MAX_BLOCK_DEPTH) return [];
+  const dimension = entity as DwgEntity & { name?: string };
+  const block = dimension.name ? context.blocks.get(dimension.name) : undefined;
+  if (!block || block.entities.length === 0) return [];
+
+  const childContext: ConvertContext = {
+    transform: multiplyAffine(transform, translationAffine(-block.base.x, -block.base.y)),
+    layerColors: context.layerColors,
+    blocks: context.blocks,
+    blockColor: resolveEntityRgb(entity, context),
+    blockLayer: resolveLayerName(entity, context),
+    depth: context.depth + 1,
+  };
+
+  const result: DwgGeometry[] = [];
+  for (const child of block.entities) {
+    result.push(...convertEntity(child, childContext));
+  }
+  return result;
+}
+
 function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[] {
   const extrusion = (entity as DwgEntity & { extrusionDirection?: { x?: number; y?: number; z?: number } }).extrusionDirection;
   const ocs = ocsAffine(extrusion);
@@ -472,11 +522,14 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
       const major = toPoint(ellipse.majorAxisEndPoint);
       if (!center || !major) return [];
       const ratio = Number.isFinite(ellipse.axisRatio) ? ellipse.axisRatio : 1;
-      const minor = { x: -major.y * ratio, y: major.x * ratio };
+      // ELLIPSE 的中心与长轴端点是 WCS 坐标（DXF 组码 10/11），拉伸方向只决定短轴方向（N × 长轴）；
+      // 不能再叠加 OCS 镜像，否则法线为 -Z 的椭圆会被错误地镜像到负坐标并撑大图纸范围。
+      const normal = { x: extrusion?.x ?? 0, y: extrusion?.y ?? 0, z: extrusion?.z ?? 1 };
+      const minor = { x: -normal.z * major.y * ratio, y: normal.z * major.x * ratio };
       const start = Number.isFinite(ellipse.startAngle) ? ellipse.startAngle : 0;
       const end = Number.isFinite(ellipse.endAngle) ? ellipse.endAngle : Math.PI * 2;
       const closed = Math.abs(end - start) >= Math.PI * 2 - 1e-6;
-      const points = sampleEllipse(center, major, minor, start, end, true).map((point) => applyAffine(transform, point));
+      const points = sampleEllipse(center, major, minor, start, end, true).map((point) => applyAffine(context.transform, point));
       return [{ kind: 'polyline', points, bulges: points.map(() => 0), closed, color }];
     }
     case 'SOLID': {
@@ -520,13 +573,18 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
         rotation?: number;
         attachmentPoint?: number;
         colorIndex?: number;
+        rectWidth?: number;
       };
       const rawPosition = toPoint(mtext.insertionPoint);
       if (!rawPosition || !mtext.text) return [];
       const content = parseMText(mtext.text);
       if (content.lines.every((line) => line.length === 0)) return [];
       const similarityText = similarityOf(transform);
-      const height = mtext.textHeight * (similarityText?.scale ?? 1);
+      // 内联字高优先于实体字高：标注块 MTEXT 依赖 \H0.8x; 缩到实际字号
+      const baseHeight = content.height
+        ? content.height.relative ? mtext.textHeight * content.height.value : content.height.value
+        : mtext.textHeight;
+      const height = baseHeight * (similarityText?.scale ?? 1);
       if (!(height > 0)) return [];
       const placement = mtextPlacement(mtext.attachmentPoint ?? 1);
       const inlineColor = content.colorIndex !== null && !BY_LAYER_INDEXES.has(content.colorIndex)
@@ -534,7 +592,7 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
         : color;
       return [{
         kind: 'text',
-        lines: content.lines,
+        lines: wrapMTextLines(content.lines, (mtext.rectWidth ?? 0) * (similarityText?.scale ?? 1), height),
         position: applyAffine(transform, rawPosition),
         height,
         rotation: (mtext.rotation ?? 0) + (similarityText?.rotation ?? 0),
@@ -555,6 +613,40 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
     }
     case 'INSERT':
       return expandInsert(entity, context, transform);
+    case 'DIMENSION':
+      return expandDimensionBlock(entity, context, transform);
+    case 'LEADER': {
+      const leader = entity as DwgEntity & { vertices?: DwgPoint[] };
+      const points = (leader.vertices ?? [])
+        .map(toPoint)
+        .filter((point): point is DwgPoint => point !== null)
+        .map((point) => applyAffine(transform, point));
+      return points.length >= 2
+        ? [{ kind: 'polyline', points, bulges: points.map(() => 0), closed: false, color }]
+        : [];
+    }
+    case 'IMAGE': {
+      // 光栅图像通常是外部参照，浏览器读不到源文件；仅绘制图像边框，保持版面完整
+      const image = entity as DwgEntity & {
+        position?: DwgPoint;
+        uPixel?: DwgPoint;
+        vPixel?: DwgPoint;
+        imageSize?: DwgPoint;
+      };
+      const origin = toPoint(image.position);
+      const u = toPoint(image.uPixel);
+      const v = toPoint(image.vPixel);
+      const width = image.imageSize?.x ?? 0;
+      const height = image.imageSize?.y ?? 0;
+      if (!origin || !u || !v || !(width > 0) || !(height > 0)) return [];
+      const corners = [
+        origin,
+        { x: origin.x + u.x * width, y: origin.y + u.y * width },
+        { x: origin.x + u.x * width + v.x * height, y: origin.y + u.y * width + v.y * height },
+        { x: origin.x + v.x * height, y: origin.y + v.y * height },
+      ].map((point) => applyAffine(transform, point));
+      return [{ kind: 'polyline', points: corners, bulges: corners.map(() => 0), closed: true, color }];
+    }
     default:
       return [];
   }
@@ -583,19 +675,34 @@ function geometryBounds(geometry: DwgGeometry): DwgBounds {
     case 'hatch':
       return includePoints(geometry.paths.flatMap((path) => path.points)) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     case 'circle':
-    case 'arc':
       return includePoints([
         { x: geometry.center.x - geometry.radius, y: geometry.center.y - geometry.radius },
         { x: geometry.center.x + geometry.radius, y: geometry.center.y + geometry.radius },
       ]) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    case 'arc':
+      // 按扫掠范围取包围盒；大半径小夹角的圆弧若按 center ± radius 计算会撑大整图范围
+      return includePoints(
+        sampleArcRange(geometry.center, geometry.radius, geometry.startAngle, geometry.endAngle, true),
+      ) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     case 'text': {
-      // 文字包围盒按最长行宽与行数保守估算（旋转文字也包含在内），避免视口边缘误裁剪
-      const maxLineLength = geometry.lines.reduce((max, line) => Math.max(max, line.length), 1);
-      const estimatedWidth = maxLineLength * geometry.height * TEXT_WIDTH_RATIO;
-      const estimatedHeight = geometry.lines.length * geometry.height * TEXT_LINE_SPACING;
-      const radius = estimatedWidth + estimatedHeight;
-      const bounds = includePoints([geometry.position]);
-      return extendBounds(extendBounds(bounds, geometry.position.x + radius, geometry.position.y + radius), geometry.position.x - radius, geometry.position.y - radius);
+      // 文字盒按对齐/基线确定相对锚点的位置（锚点位于盒的 left/center/right × top/middle/bottom），
+      // 再按旋转角求轴对齐包围盒，避免用半径膨胀导致整图范围被撑大、适应窗口后图框过小
+      const width = geometry.lines.reduce((max, line) => Math.max(max, textWidthOf(line, geometry.height)), 0);
+      const height = (Math.max(1, geometry.lines.length) - 1) * geometry.height * TEXT_LINE_SPACING + geometry.height;
+      const left = geometry.align === 'center' ? -width / 2 : geometry.align === 'right' ? -width : 0;
+      const top = geometry.baseline === 'top' ? -height : geometry.baseline === 'middle' ? -height / 2 : 0;
+      const cos = Math.cos(geometry.rotation);
+      const sin = Math.sin(geometry.rotation);
+      const corners: DwgPoint[] = [];
+      for (const x of [left, left + width]) {
+        for (const y of [top, top + height]) {
+          corners.push({
+            x: geometry.position.x + x * cos - y * sin,
+            y: geometry.position.y + x * sin + y * cos,
+          });
+        }
+      }
+      return includePoints(corners) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     }
     default:
       return { minX: 0, minY: 0, maxX: 0, maxY: 0 };

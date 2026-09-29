@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, Sun, X } from 'lucide-react';
+import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
 import { parseDwg, type DwgParsePhase } from '@/lib/dwg/parseDwg';
@@ -8,7 +9,8 @@ import type { DwgDrawing } from '@/lib/dwg/dwgTypes';
 import { notify } from '@/stores/noticeStore';
 
 const SAMPLE_FILE_NAME = '线束设计器.dwg';
-const SAMPLE_DWG_URL = `${import.meta.env.BASE_URL}dwg/${encodeURIComponent(SAMPLE_FILE_NAME)}`;
+const DWG_BASE_URL = `${import.meta.env.BASE_URL}dwg/`;
+const MANIFEST_URL = `${DWG_BASE_URL}manifest.json`;
 const WASM_BASE = `${import.meta.env.BASE_URL}libredwg`;
 const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
@@ -53,6 +55,12 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
 }
 
+/** 读取构建时生成的图纸清单（`public/dwg/manifest.json`）。 */
+function parseManifest(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
 export function DwgViewerPage() {
   const [state, setState] = useState<ViewerState>(INITIAL_STATE);
   const [view, setView] = useState<DwgView | null>(null);
@@ -63,6 +71,9 @@ export function DwgViewerPage() {
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'png' | null>(null);
+  const [availableFiles, setAvailableFiles] = useState<readonly string[]>([]);
+  /** 当前画面对应的内置图纸；本地文件为 null，用于下拉选中态与失败重试。 */
+  const [builtInFile, setBuiltInFile] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -70,7 +81,10 @@ export function DwgViewerPage() {
   const drawingRef = useRef<DwgDrawing | null>(null);
   const viewRef = useRef<DwgView | null>(null);
   const loadTokenRef = useRef(0);
+  const urlLoadRef = useRef<AbortController | null>(null);
   const panRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
+  /** 加载后布局稳定前保持自动适应窗口，用户缩放/平移后交还控制权。 */
+  const autoFitRef = useRef(true);
 
   const applyView = useCallback((next: DwgView) => {
     viewRef.current = next;
@@ -83,6 +97,11 @@ export function DwgViewerPage() {
     if (!drawing || !container || container.clientWidth <= 0) return;
     applyView(fitView(drawing.bounds, { width: container.clientWidth, height: container.clientHeight }, VIEW_PADDING));
   }, [applyView]);
+
+  const fitManually = useCallback(() => {
+    autoFitRef.current = false;
+    fitToViewport();
+  }, [fitToViewport]);
 
   /** 缩放范围按当前图纸的适应比例计算，兼容大坐标图纸。 */
   const currentZoomLimits = useCallback(() => {
@@ -99,6 +118,7 @@ export function DwgViewerPage() {
 
   const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string) => {
     const token = ++loadTokenRef.current;
+    autoFitRef.current = true;
     viewRef.current = null;
     setView(null);
     setHiddenLayers(new Set<string>());
@@ -134,7 +154,38 @@ export function DwgViewerPage() {
     }
   }, [applyView]);
 
+  /** 加载 `public/dwg/` 下的内置图纸；新请求会中止上一个未完成的加载。 */
+  const loadFromUrl = useCallback(async (fileName: string) => {
+    urlLoadRef.current?.abort();
+    const controller = new AbortController();
+    urlLoadRef.current = controller;
+    setBuiltInFile(fileName);
+
+    try {
+      const response = await fetch(`${DWG_BASE_URL}${encodeURIComponent(fileName)}`, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(response.status === 404
+          ? `未找到内置图纸「${fileName}」，请点击「打开 DWG 文件」选择本地文件`
+          : `图纸加载失败（HTTP ${response.status}）`);
+      }
+      await loadBuffer(await response.arrayBuffer(), fileName);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setState({
+        phase: 'error',
+        fileName,
+        drawing: null,
+        error: error instanceof Error ? error.message : '图纸加载失败',
+      });
+    }
+  }, [loadBuffer]);
+
   const loadFile = useCallback(async (file: File) => {
+    urlLoadRef.current?.abort();
+    setBuiltInFile(null);
+    if (getDwgFileFromSearch(window.location.search)) {
+      window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname));
+    }
     try {
       await loadBuffer(await file.arrayBuffer(), file.name);
     } catch (error) {
@@ -147,30 +198,49 @@ export function DwgViewerPage() {
     }
   }, [loadBuffer]);
 
-  // 首次进入加载内置示例图纸
+  /** 下拉切换内置图纸；同一文件也会重新加载，便于加载失败后重试。 */
+  const selectBuiltInFile = useCallback((fileName: string) => {
+    if (!fileName) return;
+    window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, fileName));
+    void loadFromUrl(fileName);
+  }, [loadFromUrl]);
+
+  // 首次进入读取图纸清单，按 ?file=、示例图纸、首张图纸的顺序加载
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
+      let files: string[] = [];
       try {
-        const response = await fetch(SAMPLE_DWG_URL, { signal: controller.signal });
-        if (!response.ok) {
-          throw new Error(response.status === 404
-            ? '未找到内置示例图纸，请点击「打开 DWG 文件」选择本地文件'
-            : `示例图纸加载失败（HTTP ${response.status}）`);
-        }
-        await loadBuffer(await response.arrayBuffer(), SAMPLE_FILE_NAME);
-      } catch (error) {
-        if (controller.signal.aborted) return;
+        const response = await fetch(MANIFEST_URL, { signal: controller.signal });
+        if (response.ok) files = parseManifest(await response.json());
+      } catch {
+        // 清单缺失或不可用时回退为手动打开本地文件
+      }
+      if (controller.signal.aborted) return;
+      setAvailableFiles(files);
+
+      const requested = getDwgFileFromSearch(window.location.search);
+      const initial = requested && files.includes(requested)
+        ? requested
+        : files.includes(SAMPLE_FILE_NAME) ? SAMPLE_FILE_NAME : files[0];
+      if (!initial) {
         setState({
           phase: 'error',
           fileName: SAMPLE_FILE_NAME,
           drawing: null,
-          error: error instanceof Error ? error.message : '示例图纸加载失败',
+          error: '未找到内置图纸，请点击「打开 DWG 文件」选择本地文件',
         });
+        return;
       }
+      // 回写实际加载的图纸，修正无效的 ?file= 并让默认地址也可分享
+      window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, initial));
+      await loadFromUrl(initial);
     })();
-    return () => controller.abort();
-  }, [loadBuffer]);
+    return () => {
+      controller.abort();
+      urlLoadRef.current?.abort();
+    };
+  }, [loadFromUrl]);
 
   // 跟踪画布尺寸，并在首次测量后自动适配视图
   useEffect(() => {
@@ -180,7 +250,7 @@ export function DwgViewerPage() {
       const rect = entries[0]?.contentRect;
       if (!rect || rect.width <= 0 || rect.height <= 0) return;
       setViewport({ width: rect.width, height: rect.height });
-      if (!viewRef.current && drawingRef.current) {
+      if (drawingRef.current && (!viewRef.current || autoFitRef.current)) {
         applyView(fitView(drawingRef.current.bounds, { width: rect.width, height: rect.height }, VIEW_PADDING));
       }
     });
@@ -226,6 +296,7 @@ export function DwgViewerPage() {
       if (!current) return;
       const limits = currentZoomLimits();
       if (!limits) return;
+      autoFitRef.current = false;
       const rect = container.getBoundingClientRect();
       const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
       applyView(zoomViewAt(
@@ -246,6 +317,7 @@ export function DwgViewerPage() {
     const container = containerRef.current;
     const limits = currentZoomLimits();
     if (!current || !container || !limits) return;
+    autoFitRef.current = false;
     applyView(zoomViewAt(
       current,
       factor,
@@ -270,17 +342,18 @@ export function DwgViewerPage() {
         zoomBy(1 / ZOOM_STEP);
       } else if (event.key === '0' || event.key.toLowerCase() === 'f') {
         event.preventDefault();
-        fitToViewport();
+        fitManually();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [zoomBy, fitToViewport]);
+  }, [zoomBy, fitManually]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 && event.button !== 1) return;
     if (!viewRef.current) return;
     if (isInteractiveTarget(event.target)) return;
+    autoFitRef.current = false;
     event.preventDefault();
     panRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -369,7 +442,7 @@ export function DwgViewerPage() {
             <button type="button" className={iconButtonClass} onClick={() => zoomBy(ZOOM_STEP)} disabled={!isReady} title="放大 (+)">
               <Plus className="h-4 w-4" />
             </button>
-            <button type="button" className={iconButtonClass} onClick={fitToViewport} disabled={!isReady} title="适应窗口 (0/F)">
+            <button type="button" className={iconButtonClass} onClick={fitManually} disabled={!isReady} title="适应窗口 (0/F)">
               <Maximize2 className="h-4 w-4" />
             </button>
             <button
@@ -393,6 +466,19 @@ export function DwgViewerPage() {
             <Layers className="h-3.5 w-3.5" />
             图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}
           </button>
+          {availableFiles.length > 0 && (
+            <select
+              className="h-8 max-w-56 cursor-pointer rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              value={state.phase === 'error' ? '' : builtInFile ?? ''}
+              onChange={(event) => selectBuiltInFile(event.target.value)}
+              title="切换内置图纸"
+            >
+              <option value="">选择图纸…</option>
+              {availableFiles.map((file) => (
+                <option key={file} value={file}>{file}</option>
+              ))}
+            </select>
+          )}
           <button type="button" className={toolbarButtonClass} onClick={() => fileInputRef.current?.click()}>
             <FileUp className="h-3.5 w-3.5" />
             打开 DWG 文件
@@ -431,7 +517,7 @@ export function DwgViewerPage() {
         onPointerCancel={handlePointerEnd}
         onDoubleClick={(event) => {
           if (isInteractiveTarget(event.target)) return;
-          fitToViewport();
+          fitManually();
         }}
         onDragOver={(event) => {
           event.preventDefault();

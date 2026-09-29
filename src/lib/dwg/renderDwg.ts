@@ -1,6 +1,7 @@
 import { inkHex, isDarkColor } from '@/lib/dwg/aciColor';
 import { bulgeToArc } from '@/lib/dwg/bulge';
 import { worldToScreen } from '@/lib/dwg/dwgView';
+import { TEXT_LINE_SPACING, TEXT_SIZE_RATIO } from '@/lib/dwg/textMetrics';
 import type { DwgBounds, DwgDrawing, DwgPoint, DwgRenderEntity, DwgTextPrimitive } from '@/lib/dwg/dwgTypes';
 
 type FillEntity = Extract<DwgRenderEntity, { kind: 'hatch' | 'solid' }>;
@@ -20,9 +21,6 @@ export interface DwgRenderOptions {
 }
 
 const DEFAULT_FONT_FAMILY = '"SimSun", "宋体", "STSong", "Songti SC", serif';
-/** 图纸文字高度为大写字母高度，转换为 canvas 字号需要放大。 */
-const TEXT_SIZE_RATIO = 1.35;
-const TEXT_LINE_SPACING = 1.66;
 
 function boundsIntersect(left: DwgBounds, right: DwgBounds): boolean {
   return left.minX <= right.maxX && left.maxX >= right.minX && left.minY <= right.maxY && left.maxY >= right.minY;

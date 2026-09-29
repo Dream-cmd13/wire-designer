@@ -1,8 +1,16 @@
+export interface MTextHeightCode {
+  value: number;
+  /** 代码形如 \\H0.8x; 时为相对当前高度的倍数，形如 \\H2.5; 时为绝对高度。 */
+  relative: boolean;
+}
+
 export interface MTextContent {
   lines: string[];
   /** MTEXT 内联颜色代码（\\C<index>;）最后一次出现值；256 表示随层。 */
   colorIndex: number | null;
   bold: boolean;
+  /** MTEXT 内联字高代码（\\H<value>[x];）；存在多个不同取值时返回 null。 */
+  height: MTextHeightCode | null;
 }
 
 /**
@@ -18,18 +26,20 @@ export function decodePercentCodes(text: string): string {
     .replace(/%%%/g, '%');
 }
 
-const SKIP_TO_SEMICOLON_CODES = new Set(['f', 'F', 'H', 'W', 'Q', 'T', 'A', 'p']);
+const SKIP_TO_SEMICOLON_CODES = new Set(['f', 'F', 'W', 'Q', 'T', 'A', 'p']);
 const TOGGLE_CODES = new Set(['L', 'l', 'O', 'o', 'K', 'k', 'N', 'n']);
 
 /**
  * 解析 MTEXT 文本中的格式化代码（\\fSimSun|b0|i0|c134|p2;、\\C1;、\\P 换行、\\H1.5x; 等），
- * 返回纯文本行。仅保留最后一个颜色代码与是否加粗，用于渲染。
+ * 返回纯文本行。仅保留最后一个颜色代码、是否加粗与统一的内联字高，用于渲染。
  */
 export function parseMText(raw: string): MTextContent {
   const lines: string[] = [];
   let current = '';
   let colorIndex: number | null = null;
   let bold = false;
+  let height: MTextHeightCode | null = null;
+  let heightConflict = false;
   let index = 0;
 
   const skipToSemicolon = (): void => {
@@ -73,6 +83,21 @@ export function parseMText(raw: string): MTextContent {
         index = end < 0 ? raw.length : end + 1;
         continue;
       }
+      if (next === 'H') {
+        const end = raw.indexOf(';', index);
+        const body = raw.slice(index + 2, end < 0 ? raw.length : end).trim();
+        const match = /^([0-9]*\.?[0-9]+)(x?)$/i.exec(body);
+        if (match) {
+          const value = Number.parseFloat(match[1]);
+          const relative = match[2].toLowerCase() === 'x';
+          if (value > 0) {
+            if (!height) height = { value, relative };
+            else if (height.value !== value || height.relative !== relative) heightConflict = true;
+          }
+        }
+        index = end < 0 ? raw.length : end + 1;
+        continue;
+      }
       if (TOGGLE_CODES.has(next)) {
         index += 2;
         continue;
@@ -106,5 +131,6 @@ export function parseMText(raw: string): MTextContent {
     lines: lines.map((line) => line.replace(/\s+$/, '')),
     colorIndex,
     bold,
+    height: heightConflict ? null : height,
   };
 }

@@ -28,10 +28,10 @@ npm run build
 
 ## DWG 图纸页
 
-「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染（按黑白二色输出：白底全黑、黑底全白），支持缩放/平移、图层面板、黑白底切换，以及 PNG/PDF 导出。
+「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染（按黑白二色输出：白底全黑、黑底全白），支持块引用、椭圆、文字与填充、尺寸标注与引线（外部参照图片读不到源文件时仅绘制边框），以及缩放/平移、图层面板、黑白底切换和 PNG/PDF 导出。
 
-- `npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-dwg-viewer-assets.mjs`：将 `node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.wasm` 复制到 `public/libredwg/`，并在根目录存在 `线束设计器.dwg` 时复制到 `public/dwg/`（两个目录均已加入 `.gitignore`）。
-- 示例 DWG 未入库时页面会提示「未找到内置示例图纸」，可直接打开本地 DWG 文件；此时 `tests/dwgViewer.test.ts` 中的真实图纸用例会自动跳过。
+- `npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-dwg-viewer-assets.mjs`：将 `node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.wasm` 复制到 `public/libredwg/`，把根目录全部 `*.dwg` 复制到 `public/dwg/` 并生成 `manifest.json` 清单（两个目录均已加入 `.gitignore`）。
+- 页面顶部可从清单下拉切换内置图纸，也可用 `/dwg-viewer?file=<文件名>` 直达某张图纸；根目录没有 DWG 时清单缺失，页面提示手动打开本地文件。`tests/dwgViewer.test.ts` 中的真实图纸用例在缺少 `线束设计器.dwg` 时自动跳过。
 - 首次进入页面需下载约 9 MB 解析引擎（按需懒加载，之后由浏览器缓存）；解析在浏览器内完成，图纸不会上传到服务端。
 
 ## 图纸字体约定
@@ -89,7 +89,7 @@ npm run user:create -- user@example.com "password" "显示名"
 - BOM、报价预估与设计校验。
 - 物料库：连接器、线材、模具与套管、现有成品线束方案，含共享价格、成本分析和来源 Excel 预览。
 - 制作图纸新建、编辑、保存和 PDF 导出。
-- DWG 图纸查看：浏览器内解析（含块引用、椭圆、文字与填充），图层显示控制、黑白底切换，PNG/PDF 导出。
+- DWG 图纸查看：浏览器内解析（含块引用、椭圆、文字与填充、尺寸标注与引线），图层显示控制、黑白底切换，PNG/PDF 导出。
 - 共享目录加载与制作图公司辅材新增。
 
 报价仍是前端估算结果，不作为正式商业报价；目录与成品方案基线数据用于当前产品验证，生产使用前需由业务方复核。

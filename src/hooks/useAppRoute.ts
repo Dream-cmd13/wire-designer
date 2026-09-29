@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  buildProjectRoutePath,
+  buildRoutePath,
   defaultRoute,
   getProjectIdFromSearch,
   getRouteByPath,
@@ -35,9 +35,10 @@ export function useAppRoute() {
 
   useEffect(() => {
     const nextLocation = readLocation();
-    const canonicalPath = buildProjectRoutePath(
-      nextLocation.route.path,
+    const canonicalPath = buildRoutePath(
+      nextLocation.route,
       nextLocation.projectId,
+      window.location.search,
     );
     const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (canonicalPath !== currentPath) {
@@ -57,7 +58,7 @@ export function useAppRoute() {
       : nextRoute.section === 'designer'
         ? getProjectIdFromSearch(window.location.search)
         : null;
-    const nextPath = buildProjectRoutePath(nextRoute.path, projectId);
+    const nextPath = buildRoutePath(nextRoute, projectId, window.location.search);
     const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
     if (currentPath !== nextPath) {

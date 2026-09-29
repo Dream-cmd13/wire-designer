@@ -101,6 +101,36 @@ export function getProjectIdFromSearch(search: string): string | null {
   return projectId || null;
 }
 
+/** DWG 查看页用 `?file=<文件名>` 直达内置图纸。 */
+export const dwgFileQueryKey = 'file';
+
+export function getDwgFileFromSearch(search: string): string | null {
+  const file = new URLSearchParams(search).get(dwgFileQueryKey)?.trim();
+  return file || null;
+}
+
+export function buildDwgViewerRoutePath(path: string, file: string | null = null): string {
+  const url = toUrl(path);
+  if (file) {
+    url.searchParams.set(dwgFileQueryKey, file);
+  } else {
+    url.searchParams.delete(dwgFileQueryKey);
+  }
+
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * 计算路由的规范 URL：DWG 查看页保留 `?file=` 直达参数（与设计器保留 projectId 同理），
+ * 其余路由只保留 projectId。
+ */
+export function buildRoutePath(route: AppRoute, projectId: string | null, search: string): string {
+  if (route.id === 'dwg-viewer') {
+    return buildDwgViewerRoutePath(route.path, getDwgFileFromSearch(search));
+  }
+  return buildProjectRoutePath(route.path, projectId);
+}
+
 export function buildProjectRoutePath(path: string, projectId: string | null = null): string {
   const url = toUrl(path);
   if (projectId) {
