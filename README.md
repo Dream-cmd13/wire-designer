@@ -28,7 +28,7 @@ npm run build
 
 ## DWG 图纸页
 
-「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染（按黑白二色输出：白底全黑、黑底全白），支持块引用、椭圆、文字与填充、尺寸标注与引线（外部参照图片读不到源文件时仅绘制边框），以及缩放/平移、图层面板、黑白底切换和 PNG/PDF 导出。
+「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染（按黑白二色输出：白底全黑、黑底全白），支持块引用、椭圆、文字、实体/图案填充、线型虚线（CENTER 等）、尺寸标注与引线（外部参照图片读不到源文件时仅绘制边框），以及缩放/平移、图层面板、黑白底切换和 PNG/PDF 导出。
 
 - `npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-dwg-viewer-assets.mjs`：将 `node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.wasm` 复制到 `public/libredwg/`（该目录已加入 `.gitignore`）。
 - 内置图纸存于 Supabase Storage 私有桶 `dwg-drawings`：对象在 `dwg/` 前缀下（非 ASCII 文件名会转义为 ASCII 键），清单为 `dwg/manifest.json`；上传命令为 `node scripts/upload-dwg-drawings.mjs`（预览）与 `node scripts/upload-dwg-drawings.mjs --apply`（上传根目录或 `--source=<目录>` 下的全部 `*.dwg`；PowerShell 下不要用 `npm run ... -- --apply`，开头的 `--` 不会透传）。源 DWG 不入库（`/*.dwg` 已加入 `.gitignore`）。

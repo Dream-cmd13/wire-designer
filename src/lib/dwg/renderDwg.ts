@@ -5,6 +5,7 @@ import { TEXT_LINE_SPACING, TEXT_SIZE_RATIO } from '@/lib/dwg/textMetrics';
 import type { DwgBounds, DwgDrawing, DwgPoint, DwgRenderEntity, DwgTextPrimitive } from '@/lib/dwg/dwgTypes';
 
 type FillEntity = Extract<DwgRenderEntity, { kind: 'hatch' | 'solid' }>;
+type HatchEntity = Extract<DwgRenderEntity, { kind: 'hatch' }>;
 type StrokeEntity = Extract<DwgRenderEntity, { kind: 'line' | 'polyline' | 'circle' | 'arc' }>;
 
 export interface DwgRenderOptions {
@@ -115,6 +116,62 @@ function renderText(
 }
 
 /**
+ * 按图案定义线绘制 HATCH：以边界路径裁剪平行线族，支持图案线自身的虚线。
+ * k 范围为相邻线偏移的整数倍，覆盖图元包围盒即可。
+ */
+function strokeHatchPattern(context: CanvasRenderingContext2D, entity: HatchEntity, color: string): void {
+  const pattern = entity.pattern;
+  if (!pattern || pattern.length === 0) return;
+  const bounds = entity.bounds;
+  const diagonal = Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) + 1;
+  if (!(diagonal > 0) || !Number.isFinite(diagonal)) return;
+
+  const corners: DwgPoint[] = [
+    { x: bounds.minX, y: bounds.minY },
+    { x: bounds.minX, y: bounds.maxY },
+    { x: bounds.maxX, y: bounds.minY },
+    { x: bounds.maxX, y: bounds.maxY },
+  ];
+
+  context.save();
+  context.beginPath();
+  for (const path of entity.paths) tracePolygon(context, path.points);
+  context.clip('evenodd');
+  context.strokeStyle = color;
+
+  for (const line of pattern) {
+    const direction = { x: Math.cos(line.angle), y: Math.sin(line.angle) };
+    const normal = { x: -direction.y, y: direction.x };
+    const spacing = line.offset.x * normal.x + line.offset.y * normal.y;
+    if (!(Math.abs(spacing) > 1e-9)) continue;
+
+    let minK = Infinity;
+    let maxK = -Infinity;
+    for (const corner of corners) {
+      const projection = (corner.x - line.base.x) * normal.x + (corner.y - line.base.y) * normal.y;
+      const k = projection / spacing;
+      minK = Math.min(minK, k);
+      maxK = Math.max(maxK, k);
+    }
+    // 异常图案比例下的段数保护：正常图案在包围盒内只有几十条
+    if (!Number.isFinite(minK) || !Number.isFinite(maxK) || maxK - minK > 2048) continue;
+    const startK = Math.floor(minK) - 1;
+    const endK = Math.ceil(maxK) + 1;
+
+    context.setLineDash(line.dashes);
+    context.beginPath();
+    for (let k = startK; k <= endK; k += 1) {
+      const originX = line.base.x + line.offset.x * k;
+      const originY = line.base.y + line.offset.y * k;
+      context.moveTo(originX - direction.x * diagonal, originY - direction.y * diagonal);
+      context.lineTo(originX + direction.x * diagonal, originY + direction.y * diagonal);
+    }
+    context.stroke();
+  }
+  context.restore();
+}
+
+/**
  * 将归一化后的 DWG 图元以黑白二色绘制到 canvas；按背景色选取墨色，并裁剪视口外图元。
  */
 export function renderDwgToCanvas(
@@ -147,28 +204,36 @@ export function renderDwgToCanvas(
   context.lineCap = 'round';
   context.setTransform(scale, 0, 0, -scale, offsetX, offsetY);
 
+  const strokeColor = inkHex(darkBackground);
+  context.lineWidth = Math.max(options.lineWidth, 0.75) / scale;
+
   for (const entity of fills) {
+    const color = inkHex(darkBackground);
+    if (entity.kind === 'hatch' && !entity.solid) {
+      if (entity.pattern && entity.pattern.length > 0) {
+        strokeHatchPattern(context, entity, color);
+      } else {
+        context.beginPath();
+        for (const path of entity.paths) tracePolygon(context, path.points);
+        context.strokeStyle = color;
+        context.stroke();
+      }
+      continue;
+    }
     context.beginPath();
     if (entity.kind === 'solid') {
       tracePolygon(context, entity.points);
     } else {
       for (const path of entity.paths) tracePolygon(context, path.points);
     }
-    const color = inkHex(darkBackground);
-    if (entity.kind === 'hatch' && !entity.solid) {
-      context.strokeStyle = color;
-      context.lineWidth = Math.max(options.lineWidth, 0.75) / scale;
-      context.stroke();
-    } else {
-      context.fillStyle = color;
-      context.fill('evenodd');
-    }
+    context.fillStyle = color;
+    context.fill('evenodd');
   }
 
-  context.lineWidth = Math.max(options.lineWidth, 0.75) / scale;
   for (const entity of strokes) {
+    context.setLineDash(entity.dash ?? []);
     context.beginPath();
-    context.strokeStyle = inkHex(darkBackground);
+    context.strokeStyle = strokeColor;
     switch (entity.kind) {
       case 'line':
         context.moveTo(entity.a.x, entity.a.y);

@@ -24,6 +24,14 @@ export function applyAffine(transform: Affine, point: DwgPoint): DwgPoint {
   };
 }
 
+/** 仅应用线性部分，用于方向/偏移向量（不叠加平移）。 */
+export function applyAffineVector(transform: Affine, vector: DwgPoint): DwgPoint {
+  return {
+    x: transform.a * vector.x + transform.c * vector.y,
+    y: transform.b * vector.x + transform.d * vector.y,
+  };
+}
+
 /** 先应用 inner，再应用 outer。 */
 export function multiplyAffine(outer: Affine, inner: Affine): Affine {
   return {

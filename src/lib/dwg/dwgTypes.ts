@@ -14,6 +14,23 @@ export interface DwgHatchPath {
   points: DwgPoint[];
 }
 
+/** HATCH 图案定义线（已应用图案比例与块变换）。 */
+export interface DwgHatchPatternLine {
+  /** 图案线方向（弧度）。 */
+  angle: number;
+  /** 图案基准点（世界单位）。 */
+  base: DwgPoint;
+  /** 相邻图案线的偏移向量（世界单位）。 */
+  offset: DwgPoint;
+  /** 图案线自身的虚线段（世界单位、正数交替实段/空段）；空数组为实线。 */
+  dashes: number[];
+}
+
+/** 线型虚线段（世界单位、正数交替实段/空段）；缺省为实线。 */
+export interface DwgStrokeStyle {
+  dash?: number[];
+}
+
 export type DwgTextAlign = 'left' | 'center' | 'right';
 
 export type DwgTextBaseline = 'top' | 'middle' | 'bottom';
@@ -44,12 +61,12 @@ export interface DwgEntityMeta {
 }
 
 export type DwgGeometry =
-  | { kind: 'line'; a: DwgPoint; b: DwgPoint; color: string }
-  | { kind: 'polyline'; points: DwgPoint[]; bulges: number[]; closed: boolean; color: string }
-  | { kind: 'circle'; center: DwgPoint; radius: number; color: string }
-  | { kind: 'arc'; center: DwgPoint; radius: number; startAngle: number; endAngle: number; color: string }
+  | ({ kind: 'line'; a: DwgPoint; b: DwgPoint; color: string } & DwgStrokeStyle)
+  | ({ kind: 'polyline'; points: DwgPoint[]; bulges: number[]; closed: boolean; color: string } & DwgStrokeStyle)
+  | ({ kind: 'circle'; center: DwgPoint; radius: number; color: string } & DwgStrokeStyle)
+  | ({ kind: 'arc'; center: DwgPoint; radius: number; startAngle: number; endAngle: number; color: string } & DwgStrokeStyle)
   | { kind: 'solid'; points: DwgPoint[]; color: string }
-  | { kind: 'hatch'; paths: DwgHatchPath[]; solid: boolean; color: string }
+  | { kind: 'hatch'; paths: DwgHatchPath[]; solid: boolean; color: string; pattern?: DwgHatchPatternLine[] }
   | DwgTextPrimitive;
 
 export type DwgRenderEntity = DwgGeometry & DwgEntityMeta;

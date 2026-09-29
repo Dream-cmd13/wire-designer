@@ -150,14 +150,19 @@ describe('dwgView', () => {
   });
 });
 
-function makeDatabase(entities: unknown[], blockRecords: unknown[] = [], layers: unknown[] = []): DwgDatabase {
+function makeDatabase(
+  entities: unknown[],
+  blockRecords: unknown[] = [],
+  layers: unknown[] = [],
+  lineTypes: unknown[] = [],
+): DwgDatabase {
   return {
     tables: {
       APPID: { entries: [] },
       BLOCK_RECORD: { entries: blockRecords },
       DIMSTYLE: { entries: [] },
       LAYER: { entries: layers },
-      LTYPE: { entries: [] },
+      LTYPE: { entries: lineTypes },
       STYLE: { entries: [] },
       VPORT: { entries: [] },
     },
@@ -548,6 +553,125 @@ describe('normalizeDwgDatabase', () => {
     expect(entity.bounds.maxX).toBeCloseTo(2, 6);
     expect(entity.bounds.minY).toBeCloseTo(0, 6);
     expect(entity.bounds.maxY).toBeCloseTo(6.75, 6);
+  });
+
+  it('applies CENTER linetype dashes from the entity and its layer', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'LINE', handle: 'L1', layer: '0', colorIndex: 256, lineType: 'CENTER', lineTypeScale: 0.5,
+          startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 10, y: 0, z: 0 },
+        },
+        {
+          type: 'LINE', handle: 'L2', layer: 'WIRE', colorIndex: 256, lineType: 'ByLayer',
+          startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 10, y: 0, z: 0 },
+        },
+      ],
+      [],
+      [
+        { name: '0', handle: '10', ownerHandle: '0', colorIndex: 7, color: 0xffffff },
+        { name: 'WIRE', handle: '11', ownerHandle: '0', colorIndex: 1, color: 0xff0000, lineType: 'CENTER' },
+      ],
+      [{ name: 'CENTER', pattern: [{ elementLength: 20 }, { elementLength: -5 }, { elementLength: 5 }, { elementLength: -5 }] }],
+    );
+
+    const [direct, viaLayer] = normalizeDwgDatabase(database, 'linetype.dwg').entities;
+    if (direct.kind !== 'line' || viaLayer.kind !== 'line') throw new Error('expected lines');
+    // 实体比例 0.5；负段取绝对值转成 canvas 交替实/空段
+    expect(direct.dash).toEqual([10, 2.5, 2.5, 2.5]);
+    expect(viaLayer.dash).toEqual([20, 5, 5, 5]);
+  });
+
+  it('inherits the INSERT linetype for ByBlock entities with the block scale', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'INSERT', handle: 'I1', layer: '0', colorIndex: 256, name: 'SYM', lineType: 'CENTER',
+          insertionPoint: { x: 0, y: 0, z: 0 }, xScale: 2, yScale: 2, rotation: 0,
+          columnCount: 1, rowCount: 1, columnSpacing: 0, rowSpacing: 0, attribs: [],
+        },
+      ],
+      [
+        {
+          name: 'SYM',
+          basePoint: { x: 0, y: 0, z: 0 },
+          entities: [
+            {
+              type: 'LINE', handle: 'L3', layer: '0', colorIndex: 256, lineType: 'ByBlock',
+              startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 1, y: 0, z: 0 },
+            },
+          ],
+        },
+      ],
+      layerEntries,
+      [{ name: 'CENTER', pattern: [{ elementLength: 20 }, { elementLength: -5 }] }],
+    );
+
+    const [line] = normalizeDwgDatabase(database, 'linetype-block.dwg').entities;
+    if (line.kind !== 'line') throw new Error('expected line');
+    // 块缩放 2：虚线长度随块缩放
+    expect(line.dash).toEqual([40, 10]);
+  });
+
+  it('closes hatch boundary paths when isClosed is reported as a number', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'HATCH', handle: 'H4', layer: '0', colorIndex: 256, solidFill: 1,
+          boundaryPaths: [{
+            boundaryPathTypeFlag: 7,
+            isClosed: 1,
+            vertices: [{ x: 1, y: 0, bulge: 1 }, { x: -1, y: 0, bulge: 1 }],
+          }],
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const [entity] = normalizeDwgDatabase(database, 'hatch-circle.dwg').entities;
+    if (entity.kind !== 'hatch') throw new Error('expected hatch');
+    const points = entity.paths[0].points;
+    const xs = points.map((point) => point.x);
+    const ys = points.map((point) => point.y);
+    // 闭合段由最后一个顶点的 bulge 定义：两段半圆拼成整圆（圆心 0,0、半径 1）；
+    // 若闭合标志被误判，只会剩一个半圆
+    expect(Math.min(...xs)).toBeCloseTo(-1, 3);
+    expect(Math.max(...xs)).toBeCloseTo(1, 3);
+    expect(Math.min(...ys)).toBeCloseTo(-1, 3);
+    expect(Math.max(...ys)).toBeCloseTo(1, 3);
+  });
+
+  it('converts hatch pattern definition lines into world coordinates', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'HATCH', handle: 'H1', layer: '0', colorIndex: 256, solidFill: 0,
+          boundaryPaths: [{
+            boundaryPathTypeFlag: 1,
+            isClosed: true,
+            vertices: [
+              { x: 0, y: 0, bulge: 0 }, { x: 10, y: 0, bulge: 0 },
+              { x: 10, y: 10, bulge: 0 }, { x: 0, y: 10, bulge: 0 },
+            ],
+          }],
+          definitionLines: [
+            { angle: Math.PI / 4, base: { x: 1, y: 2 }, offset: { x: -0.6735, y: 0.6735 }, dashLengths: [4, -2] },
+          ],
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const [entity] = normalizeDwgDatabase(database, 'hatch-pattern.dwg').entities;
+    if (entity.kind !== 'hatch') throw new Error('expected hatch');
+    expect(entity.solid).toBe(false);
+    expect(entity.pattern).toHaveLength(1);
+    expect(entity.pattern![0].angle).toBeCloseTo(Math.PI / 4, 6);
+    expect(entity.pattern![0].base).toEqual({ x: 1, y: 2 });
+    expect(entity.pattern![0].offset.x).toBeCloseTo(-0.6735, 6);
+    expect(entity.pattern![0].dashes).toEqual([4, 2]);
   });
 
   it('keeps ellipse coordinates in WCS when the extrusion is mirrored', () => {
@@ -1043,6 +1167,8 @@ describe('renderDwgToCanvas', () => {
       closePath: record('closePath'),
       stroke: record('stroke'),
       fill: record('fill'),
+      clip: record('clip'),
+      setLineDash: record('setLineDash'),
       fillText: record('fillText'),
       measureText: (text: string) => ({ width: measureWidth(text) }),
     };
@@ -1073,6 +1199,59 @@ describe('renderDwgToCanvas', () => {
     expect(scaleCall?.args[0] as number).toBeCloseTo(0.1, 6);
     expect(scaleCall?.args[1]).toBe(1);
     expect(calls.some((call) => call.method === 'fillText' && call.args[0] === 'M12*1')).toBe(true);
+  });
+
+  it('strokes dashed linetypes with setLineDash', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'LINE', handle: 'L9', layer: '0', colorIndex: 256, lineType: 'CENTER', lineTypeScale: 0.5,
+          startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 10, y: 0, z: 0 },
+        },
+      ],
+      [],
+      layerEntries,
+      [{ name: 'CENTER', pattern: [{ elementLength: 20 }, { elementLength: -5 }] }],
+    );
+    const drawing = normalizeDwgDatabase(database, 'dashed.dwg');
+    const { context, calls } = createMockContext((line) => line.length * 20);
+
+    renderDwgToCanvas(context, drawing, { scale: 1, offsetX: 0, offsetY: 0, lineWidth: 1, fontFamily: 'test' });
+
+    const dashCall = calls.find((call) => call.method === 'setLineDash');
+    expect(dashCall?.args[0]).toEqual([10, 2.5]);
+  });
+
+  it('clips hatch pattern lines to the boundary path', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'HATCH', handle: 'H2', layer: '0', colorIndex: 256, solidFill: 0,
+          boundaryPaths: [{
+            boundaryPathTypeFlag: 1,
+            isClosed: true,
+            vertices: [
+              { x: 0, y: 0, bulge: 0 }, { x: 10, y: 0, bulge: 0 },
+              { x: 10, y: 10, bulge: 0 }, { x: 0, y: 10, bulge: 0 },
+            ],
+          }],
+          definitionLines: [{ angle: Math.PI / 4, base: { x: 0, y: 0 }, offset: { x: -0.6735, y: 0.6735 }, dashLengths: [] }],
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    const drawing = normalizeDwgDatabase(database, 'hatch-render.dwg');
+    const { context, calls } = createMockContext((line) => line.length * 20);
+
+    renderDwgToCanvas(context, drawing, { scale: 1, offsetX: 0, offsetY: 0, lineWidth: 1, fontFamily: 'test' });
+
+    expect(calls.some((call) => call.method === 'clip' && call.args[0] === 'evenodd')).toBe(true);
+    expect(calls.some((call) => call.method === 'stroke')).toBe(true);
+    // 包围盒 10×10、斜线间距 0.9525：应生成十几条平行线
+    const lineCount = calls.filter((call) => call.method === 'lineTo').length;
+    expect(lineCount).toBeGreaterThan(5);
+    expect(lineCount).toBeLessThan(40);
   });
 
   it('keeps text inside its reference box when the font measures wider than estimated', () => {
@@ -1135,6 +1314,8 @@ describe.skipIf(!existsSync(samplePath))('parseDwg (示例 DWG)', () => {
       return acc;
     }, {});
     expect(lineColors).toEqual({ '#ffffff': 195, '#ff0000': 44 });
+    // CENTER 线型（中心线）按虚线绘制
+    expect(lines.filter((entity) => entity.dash && entity.dash.length > 0).length).toBeGreaterThan(0);
     expect(texts.filter((entity) => entity.color === '#ff00ff').length).toBe(40);
   }, 120_000);
 });
@@ -1166,6 +1347,18 @@ describe.skipIf(m12DrawingNames.every((name) => !existsSync(resolve(process.cwd(
       expect(drawing.stats.skipped.DIMENSION ?? 0).toBe(0);
       expect(drawing.stats.skipped.LEADER ?? 0).toBe(0);
       expect(drawing.stats.skipped.IMAGE ?? 0).toBe(0);
+      if (name === 'M12A04-07-093-1-10-500.dwg') {
+        // ANSI37 图案填充按定义线绘制，而不是只描边界
+        const patterned = drawing.entities.filter((entity) => entity.kind === 'hatch' && (entity.pattern?.length ?? 0) > 0);
+        expect(patterned.length).toBeGreaterThan(0);
+      }
+      if (name === 'M12A04-07-068-3-10-500.dwg') {
+        // 对插端针脚填充是整圆（此前闭合标志误判导致只画出半圆）
+        const pinHatch = drawing.entities.find((entity) => entity.kind === 'hatch'
+          && entity.bounds.minX > 2800 && entity.bounds.maxX < 2820);
+        expect(pinHatch?.kind).toBe('hatch');
+        expect(pinHatch?.bounds.minY ?? 0).toBeLessThan(1855.7);
+      }
     }
   }, 180_000);
 });

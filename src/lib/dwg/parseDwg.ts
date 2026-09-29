@@ -3,6 +3,7 @@ import { aciToRgb, rgbFromTrueColor, rgbToHex, type Rgb } from '@/lib/dwg/aciCol
 import {
   IDENTITY_AFFINE,
   applyAffine,
+  applyAffineVector,
   multiplyAffine,
   rotationAffine,
   scaleAffine,
@@ -18,6 +19,7 @@ import type {
   DwgDrawing,
   DwgGeometry,
   DwgHatchPath,
+  DwgHatchPatternLine,
   DwgLayerInfo,
   DwgPoint,
   DwgRenderEntity,
@@ -51,6 +53,14 @@ interface ConvertContext {
   blockColor: Rgb | null;
   /** 块内图层 "0" 图元继承的外层图层。 */
   blockLayer: string | null;
+  /** 随块线型（来自外层 INSERT），用于解析块内 BYBLOCK 图元。 */
+  blockLineType: string | null;
+  /** LTYPE 表：线型名 -> 虚线段（正数交替实段/空段，图纸单位）。 */
+  linePatterns: Map<string, number[]>;
+  /** LAYER 表：图层名 -> 线型名。 */
+  layerLineTypes: Map<string, string>;
+  /** 全局线型比例（LTSCALE 头变量）。 */
+  lineTypeScale: number;
   depth: number;
 }
 
@@ -136,6 +146,37 @@ function resolveLayerName(entity: DwgEntity, context: ConvertContext): string {
   const layer = entity.layer || DEFAULT_LAYER;
   if (layer === DEFAULT_LAYER && context.blockLayer) return context.blockLayer;
   return layer;
+}
+
+/** 解析实体线型名：BYBLOCK 继承外层 INSERT，空值与 BYLAYER 取所在图层。 */
+function resolveLineTypeName(entity: DwgEntity, context: ConvertContext): string | null {
+  const name = (entity as DwgEntity & { lineType?: string }).lineType;
+  if (!name || name === 'ByBlock') return context.blockLineType;
+  if (name === 'ByLayer') return context.layerLineTypes.get(resolveLayerName(entity, context)) ?? null;
+  return name;
+}
+
+/** MTEXT/标注块内实体线型取自 LTYPE 表的虚线段，按实体比例、LTSCALE 与块缩放换算为世界单位。 */
+function resolveEntityDash(entity: DwgEntity, context: ConvertContext, transformScale: number): number[] | undefined {
+  const name = resolveLineTypeName(entity, context);
+  if (!name) return undefined;
+  const pattern = context.linePatterns.get(name);
+  if (!pattern) return undefined;
+  const entityScale = (entity as DwgEntity & { lineTypeScale?: number }).lineTypeScale;
+  const scale = (typeof entityScale === 'number' && entityScale > 0 ? entityScale : 1)
+    * context.lineTypeScale
+    * transformScale;
+  if (!(scale > 0)) return undefined;
+  return pattern.map((length) => length * scale);
+}
+
+function applyDash(geometries: DwgGeometry[], dash: number[] | undefined): DwgGeometry[] {
+  if (!dash) return geometries;
+  return geometries.map((geometry) => (
+    geometry.kind === 'line' || geometry.kind === 'polyline' || geometry.kind === 'circle' || geometry.kind === 'arc'
+      ? { ...geometry, dash }
+      : geometry
+  ));
 }
 
 function resolveEntityRgb(entity: DwgEntity, context: ConvertContext): Rgb {
@@ -293,7 +334,8 @@ interface BoundaryEdgeLike {
 }
 
 function convertBoundaryPath(path: {
-  isClosed?: boolean;
+  /** 转换器实际返回 1/0（数字）或布尔值，需按真值判断。 */
+  isClosed?: boolean | number;
   vertices?: Array<{ x: number; y: number; bulge?: number }>;
   edges?: BoundaryEdgeLike[];
 }): DwgHatchPath | null {
@@ -305,7 +347,10 @@ function convertBoundaryPath(path: {
       .filter((point): point is DwgPoint => point !== null);
     const bulges = path.vertices.map((vertex) => vertex.bulge ?? 0);
     const hasBulge = bulges.some((bulge) => bulge !== 0);
-    points.push(...(hasBulge ? flattenBulges(vertices, bulges, path.isClosed === true) : vertices));
+    // 闭合段由最后一个顶点的 bulge 定义（如 2 顶点 + 两个 bulge=1 = 整圆）；
+    // 这里若用 `=== true` 严格比较，转换器返回的数字 1 会被当成未闭合而丢掉闭合段
+    const closed = path.isClosed === true || path.isClosed === 1;
+    points.push(...(hasBulge ? flattenBulges(vertices, bulges, closed) : vertices));
   } else if (path.edges?.length) {
     for (const edge of path.edges) {
       if (edge.type === 1 && edge.start && edge.end) {
@@ -445,6 +490,10 @@ function expandInsert(entity: DwgEntity, context: ConvertContext, transform: Aff
       blocks: context.blocks,
       blockColor: resolveEntityRgb(entity, context),
       blockLayer: resolveLayerName(entity, context),
+      blockLineType: resolveLineTypeName(entity, context),
+      linePatterns: context.linePatterns,
+      layerLineTypes: context.layerLineTypes,
+      lineTypeScale: context.lineTypeScale,
       depth: context.depth + 1,
     };
 
@@ -492,6 +541,10 @@ function expandDimensionBlock(entity: DwgEntity, context: ConvertContext, transf
     blocks: context.blocks,
     blockColor: resolveEntityRgb(entity, context),
     blockLayer: resolveLayerName(entity, context),
+    blockLineType: resolveLineTypeName(entity, context),
+    linePatterns: context.linePatterns,
+    layerLineTypes: context.layerLineTypes,
+    lineTypeScale: context.lineTypeScale,
     depth: context.depth + 1,
   };
 
@@ -502,6 +555,35 @@ function expandDimensionBlock(entity: DwgEntity, context: ConvertContext, transf
   return result;
 }
 
+/**
+ * 将 HATCH 图案定义线换算到世界坐标：方向/基准/偏移走仿射变换，虚线长度按线方向缩放。
+ * 库返回的 offset/dashLengths 已包含图案比例（patternScale），无需再次相乘。
+ */
+function convertHatchPattern(
+  definitionLines: Array<{ angle?: number; base?: DwgPoint; offset?: DwgPoint; dashLengths?: number[] }> | undefined,
+  transform: Affine,
+): DwgHatchPatternLine[] | undefined {
+  const lines: DwgHatchPatternLine[] = [];
+  for (const line of definitionLines ?? []) {
+    const angle = line.angle;
+    if (typeof angle !== 'number' || !Number.isFinite(angle)) continue;
+    const base = toPoint(line.base);
+    const offset = toPoint(line.offset);
+    if (!base || !offset) continue;
+    const direction = applyAffineVector(transform, { x: Math.cos(angle), y: Math.sin(angle) });
+    const directionLength = Math.hypot(direction.x, direction.y);
+    const worldOffset = applyAffineVector(transform, offset);
+    if (!(directionLength > 0) || !(Math.hypot(worldOffset.x, worldOffset.y) > 0)) continue;
+    lines.push({
+      angle: Math.atan2(direction.y, direction.x),
+      base: applyAffine(transform, base),
+      offset: worldOffset,
+      dashes: (line.dashLengths ?? []).map((value) => Math.abs(value) * directionLength),
+    });
+  }
+  return lines.length > 0 ? lines : undefined;
+}
+
 function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[] {
   const extrusion = (entity as DwgEntity & { extrusionDirection?: { x?: number; y?: number; z?: number } }).extrusionDirection;
   const ocs = ocsAffine(extrusion);
@@ -509,6 +591,19 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
   const similarity = similarityOf(transform);
   const color = rgbToHex(resolveEntityRgb(entity, context));
 
+  const geometries = convertEntityGeometries(entity, context, transform, similarity, color);
+  // INSERT/DIMENSION 展开出的子图元已按各自线型附加虚线，不能再用外层线型覆盖
+  if (entity.type === 'INSERT' || entity.type === 'DIMENSION') return geometries;
+  return applyDash(geometries, resolveEntityDash(entity, context, similarity?.scale ?? 1));
+}
+
+function convertEntityGeometries(
+  entity: DwgEntity,
+  context: ConvertContext,
+  transform: Affine,
+  similarity: ReturnType<typeof similarityOf>,
+  color: string,
+): DwgGeometry[] {
   switch (entity.type) {
     case 'LINE': {
       const line = entity as DwgEntity & { startPoint: DwgPoint; endPoint: DwgPoint };
@@ -585,6 +680,7 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
       const ratio = Number.isFinite(ellipse.axisRatio) ? ellipse.axisRatio : 1;
       // ELLIPSE 的中心与长轴端点是 WCS 坐标（DXF 组码 10/11），拉伸方向只决定短轴方向（N × 长轴）；
       // 不能再叠加 OCS 镜像，否则法线为 -Z 的椭圆会被错误地镜像到负坐标并撑大图纸范围。
+      const extrusion = (entity as DwgEntity & { extrusionDirection?: { x?: number; y?: number; z?: number } }).extrusionDirection;
       const normal = { x: extrusion?.x ?? 0, y: extrusion?.y ?? 0, z: extrusion?.z ?? 1 };
       const minor = { x: -normal.z * major.y * ratio, y: normal.z * major.x * ratio };
       const start = Number.isFinite(ellipse.startAngle) ? ellipse.startAngle : 0;
@@ -619,12 +715,20 @@ function convertEntity(entity: DwgEntity, context: ConvertContext): DwgGeometry[
       const hatch = entity as DwgEntity & {
         solidFill?: number;
         boundaryPaths?: Array<{ vertices?: Array<{ x: number; y: number; bulge?: number }>; edges?: BoundaryEdgeLike[] }>;
+        definitionLines?: Array<{ angle?: number; base?: DwgPoint; offset?: DwgPoint; dashLengths?: number[] }>;
       };
       const paths = (hatch.boundaryPaths ?? [])
         .map(convertBoundaryPath)
         .filter((path): path is DwgHatchPath => path !== null)
         .map((path) => ({ points: path.points.map((point) => applyAffine(transform, point)) }));
-      return paths.length > 0 ? [{ kind: 'hatch', paths, solid: hatch.solidFill === 1, color }] : [];
+      if (paths.length === 0) return [];
+      return [{
+        kind: 'hatch',
+        paths,
+        solid: hatch.solidFill === 1,
+        color,
+        pattern: hatch.solidFill === 1 ? undefined : convertHatchPattern(hatch.definitionLines, transform),
+      }];
     }
     case 'MTEXT': {
       const mtext = entity as DwgEntity & {
@@ -801,6 +905,21 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     layers.push({ name: layer.name, colorIndex: layer.colorIndex ?? 7, color: rgbToHex(rgb), off, frozen });
   }
 
+  // LTYPE 表的虚线段：正负交替的实/空段，取绝对值转成 canvas 需要的正数序列
+  const linePatterns = new Map<string, number[]>();
+  for (const lineType of db.tables?.LTYPE?.entries ?? []) {
+    const elements = (lineType.pattern ?? []).map((element) => Math.abs(element.elementLength ?? 0));
+    if (elements.length > 0 && elements.some((length) => length > 0)) {
+      linePatterns.set(lineType.name, elements);
+    }
+  }
+  const layerLineTypes = new Map<string, string>();
+  for (const layer of db.tables?.LAYER?.entries ?? []) {
+    if (layer.lineType) layerLineTypes.set(layer.name, layer.lineType);
+  }
+  const headerLineTypeScale = db.header?.LTSCALE;
+  const lineTypeScale = typeof headerLineTypeScale === 'number' && headerLineTypeScale > 0 ? headerLineTypeScale : 1;
+
   const blocks = new Map<string, BlockDefinition>();
   const paperSpaceHandles = new Set<string>();
   let modelSpaceEntities: DwgEntity[] | null = null;
@@ -823,6 +942,10 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     blocks,
     blockColor: null,
     blockLayer: null,
+    blockLineType: null,
+    linePatterns,
+    layerLineTypes,
+    lineTypeScale,
     depth: 0,
   };
 
