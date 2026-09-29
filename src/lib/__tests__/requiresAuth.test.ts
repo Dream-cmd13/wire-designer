@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { appRoutes, requiresAuth, shouldKeepRouteAfterLogin } from '@/lib/appRoute';
 
 describe('route auth requirements', () => {
-  it('requires login for home, designer and materials routes', () => {
+  it('requires login for home, designer, materials and DWG viewer routes', () => {
     expect(requiresAuth(appRoutes.home)).toBe(true);
     expect(requiresAuth(appRoutes['designer-design'])).toBe(true);
     expect(requiresAuth(appRoutes['designer-product-image'])).toBe(true);
     expect(requiresAuth(appRoutes.materials)).toBe(true);
+    expect(requiresAuth(appRoutes['dwg-viewer'])).toBe(true);
   });
 
-  it('allows anonymous access to the standalone drawing workbench and DWG viewer', () => {
+  it('allows anonymous access to the standalone drawing workbench only', () => {
     expect(requiresAuth(appRoutes['drawing-workbench'])).toBe(false);
-    expect(requiresAuth(appRoutes['dwg-viewer'])).toBe(false);
   });
 
   it('keeps the current route after anonymous visitors log in', () => {

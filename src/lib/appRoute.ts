@@ -55,10 +55,11 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
 export const defaultRoute = appRoutes.home;
 
 /**
- * 需要登录后才能访问的路由；`drawing-workbench` 与 `dwg-viewer` 为独立工具，允许匿名使用。
+ * 需要登录后才能访问的路由；`drawing-workbench` 为独立工具，允许匿名使用。
+ * DWG 查看页的图纸存于私有桶，需要登录后通过签名 URL 访问。
  */
 export function requiresAuth(route: AppRoute): boolean {
-  return route.id !== 'drawing-workbench' && route.id !== 'dwg-viewer';
+  return route.id !== 'drawing-workbench';
 }
 
 /**

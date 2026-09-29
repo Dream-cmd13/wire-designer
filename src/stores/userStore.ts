@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { User as SupabaseAuthUser } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
-import { clearCatalogImageCache, type CatalogStorageClient } from '@/lib/catalogImageUrl';
-import { clearFinishedHarnessDrawingUrlCache } from '@/lib/finishedHarnessDrawingUrl';
+import { clearCatalogImageCache } from '@/lib/catalogImageUrl';
+import { clearStorageSignedUrlCache } from '@/lib/storageSignedUrl';
 import type { User } from '@/types/user';
 
 interface UserState {
@@ -18,7 +18,8 @@ const LOCAL_EMAIL_DOMAIN = '@local.app';
 function clearSignedAssetCaches(): void {
   clearCatalogImageCache();
   if (supabase) {
-    clearFinishedHarnessDrawingUrlCache(supabase as unknown as CatalogStorageClient);
+    // 同时清掉成品图纸与 DWG 图纸的签名 URL 缓存
+    clearStorageSignedUrlCache(supabase);
   }
 }
 

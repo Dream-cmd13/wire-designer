@@ -67,3 +67,10 @@ create policy "finished harness drawings authenticated read"
     bucket_id = 'finished-harness-drawings'
   );
 
+drop policy if exists "dwg drawings authenticated read" on storage.objects;
+create policy "dwg drawings authenticated read"
+  on storage.objects for select to authenticated
+  using (
+    bucket_id = 'dwg-drawings'
+  );
+

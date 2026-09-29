@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, Sun, X } from 'lucide-react';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
+import { fetchDwgManifest, resolveDwgFileUrl, type DwgManifestEntry } from '@/lib/dwg/dwgLibrary';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
 import { parseDwg, type DwgParsePhase } from '@/lib/dwg/parseDwg';
 import { renderDwgToCanvas } from '@/lib/dwg/renderDwg';
 import type { DwgDrawing } from '@/lib/dwg/dwgTypes';
+import { supabase } from '@/lib/supabaseClient';
 import { notify } from '@/stores/noticeStore';
 
 const SAMPLE_FILE_NAME = '线束设计器.dwg';
-const DWG_BASE_URL = `${import.meta.env.BASE_URL}dwg/`;
-const MANIFEST_URL = `${DWG_BASE_URL}manifest.json`;
 const WASM_BASE = `${import.meta.env.BASE_URL}libredwg`;
 const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
@@ -55,12 +55,6 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
 }
 
-/** 读取构建时生成的图纸清单（`public/dwg/manifest.json`）。 */
-function parseManifest(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-}
-
 export function DwgViewerPage() {
   const [state, setState] = useState<ViewerState>(INITIAL_STATE);
   const [view, setView] = useState<DwgView | null>(null);
@@ -71,7 +65,7 @@ export function DwgViewerPage() {
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'png' | null>(null);
-  const [availableFiles, setAvailableFiles] = useState<readonly string[]>([]);
+  const [availableDrawings, setAvailableDrawings] = useState<readonly DwgManifestEntry[]>([]);
   /** 当前画面对应的内置图纸；本地文件为 null，用于下拉选中态与失败重试。 */
   const [builtInFile, setBuiltInFile] = useState<string | null>(null);
 
@@ -154,26 +148,31 @@ export function DwgViewerPage() {
     }
   }, [applyView]);
 
-  /** 加载 `public/dwg/` 下的内置图纸；新请求会中止上一个未完成的加载。 */
-  const loadFromUrl = useCallback(async (fileName: string) => {
+  /** 加载私有桶中的内置图纸（签名 URL）；新请求会中止上一个未完成的加载。 */
+  const loadFromUrl = useCallback(async (entry: DwgManifestEntry) => {
     urlLoadRef.current?.abort();
     const controller = new AbortController();
     urlLoadRef.current = controller;
-    setBuiltInFile(fileName);
+    setBuiltInFile(entry.name);
 
     try {
-      const response = await fetch(`${DWG_BASE_URL}${encodeURIComponent(fileName)}`, { signal: controller.signal });
+      const url = await resolveDwgFileUrl(supabase, entry.key);
+      if (controller.signal.aborted) return;
+      if (!url) {
+        throw new Error(`无法获取内置图纸「${entry.name}」的访问链接，请重新登录或稍后重试`);
+      }
+      const response = await fetch(url, { signal: controller.signal });
       if (!response.ok) {
-        throw new Error(response.status === 404
-          ? `未找到内置图纸「${fileName}」，请点击「打开 DWG 文件」选择本地文件`
+        throw new Error(response.status === 400 || response.status === 403
+          ? '图纸访问链接已失效，请重新登录后重试'
           : `图纸加载失败（HTTP ${response.status}）`);
       }
-      await loadBuffer(await response.arrayBuffer(), fileName);
+      await loadBuffer(await response.arrayBuffer(), entry.name);
     } catch (error) {
       if (controller.signal.aborted) return;
       setState({
         phase: 'error',
-        fileName,
+        fileName: entry.name,
         drawing: null,
         error: error instanceof Error ? error.message : '图纸加载失败',
       });
@@ -200,29 +199,24 @@ export function DwgViewerPage() {
 
   /** 下拉切换内置图纸；同一文件也会重新加载，便于加载失败后重试。 */
   const selectBuiltInFile = useCallback((fileName: string) => {
-    if (!fileName) return;
-    window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, fileName));
-    void loadFromUrl(fileName);
-  }, [loadFromUrl]);
+    const entry = availableDrawings.find((drawing) => drawing.name === fileName);
+    if (!entry) return;
+    window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, entry.name));
+    void loadFromUrl(entry);
+  }, [availableDrawings, loadFromUrl]);
 
-  // 首次进入读取图纸清单，按 ?file=、示例图纸、首张图纸的顺序加载
+  // 首次进入读取桶内图纸清单，按 ?file=、示例图纸、首张图纸的顺序加载
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      let files: string[] = [];
-      try {
-        const response = await fetch(MANIFEST_URL, { signal: controller.signal });
-        if (response.ok) files = parseManifest(await response.json());
-      } catch {
-        // 清单缺失或不可用时回退为手动打开本地文件
-      }
+      const entries = await fetchDwgManifest(supabase, controller.signal);
       if (controller.signal.aborted) return;
-      setAvailableFiles(files);
+      setAvailableDrawings(entries);
 
       const requested = getDwgFileFromSearch(window.location.search);
-      const initial = requested && files.includes(requested)
-        ? requested
-        : files.includes(SAMPLE_FILE_NAME) ? SAMPLE_FILE_NAME : files[0];
+      const initial = (requested && entries.find((entry) => entry.name === requested))
+        || entries.find((entry) => entry.name === SAMPLE_FILE_NAME)
+        || entries[0];
       if (!initial) {
         setState({
           phase: 'error',
@@ -233,7 +227,7 @@ export function DwgViewerPage() {
         return;
       }
       // 回写实际加载的图纸，修正无效的 ?file= 并让默认地址也可分享
-      window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, initial));
+      window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, initial.name));
       await loadFromUrl(initial);
     })();
     return () => {
@@ -466,7 +460,7 @@ export function DwgViewerPage() {
             <Layers className="h-3.5 w-3.5" />
             图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}
           </button>
-          {availableFiles.length > 0 && (
+          {availableDrawings.length > 0 && (
             <select
               className="h-8 max-w-56 cursor-pointer rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
               value={state.phase === 'error' ? '' : builtInFile ?? ''}
@@ -474,8 +468,8 @@ export function DwgViewerPage() {
               title="切换内置图纸"
             >
               <option value="">选择图纸…</option>
-              {availableFiles.map((file) => (
-                <option key={file} value={file}>{file}</option>
+              {availableDrawings.map((entry) => (
+                <option key={entry.key} value={entry.name}>{entry.name}</option>
               ))}
             </select>
           )}

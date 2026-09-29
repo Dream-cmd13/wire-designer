@@ -11,6 +11,11 @@ insert into storage.buckets (id, name, public)
 values ('finished-harness-drawings', 'finished-harness-drawings', false)
 on conflict (id) do update set public = excluded.public;
 
+-- DWG 图纸私有桶：由 scripts/upload-dwg-drawings.mjs 写入（dwg/ 前缀与 manifest.json），登录用户通过签名 URL 访问
+insert into storage.buckets (id, name, public)
+values ('dwg-drawings', 'dwg-drawings', false)
+on conflict (id) do update set public = excluded.public;
+
 create or replace function public.get_storage_bootstrap_status()
 returns table (bucket_id text, is_present boolean, is_public boolean)
 language sql
@@ -19,7 +24,7 @@ security definer
 set search_path = ''
 as $$
   with required_buckets(bucket_id) as (
-    values ('catalog-assets'::text)
+    values ('catalog-assets'::text), ('dwg-drawings'::text)
   )
   select
     required_buckets.bucket_id,

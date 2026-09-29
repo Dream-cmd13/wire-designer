@@ -30,8 +30,9 @@ npm run build
 
 「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染（按黑白二色输出：白底全黑、黑底全白），支持块引用、椭圆、文字与填充、尺寸标注与引线（外部参照图片读不到源文件时仅绘制边框），以及缩放/平移、图层面板、黑白底切换和 PNG/PDF 导出。
 
-- `npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-dwg-viewer-assets.mjs`：将 `node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.wasm` 复制到 `public/libredwg/`，把根目录全部 `*.dwg` 复制到 `public/dwg/` 并生成 `manifest.json` 清单（两个目录均已加入 `.gitignore`）。
-- 页面顶部可从清单下拉切换内置图纸，也可用 `/dwg-viewer?file=<文件名>` 直达某张图纸；根目录没有 DWG 时清单缺失，页面提示手动打开本地文件。`tests/dwgViewer.test.ts` 中的真实图纸用例在缺少 `线束设计器.dwg` 时自动跳过。
+- `npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-dwg-viewer-assets.mjs`：将 `node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.wasm` 复制到 `public/libredwg/`（该目录已加入 `.gitignore`）。
+- 内置图纸存于 Supabase Storage 私有桶 `dwg-drawings`：对象在 `dwg/` 前缀下（非 ASCII 文件名会转义为 ASCII 键），清单为 `dwg/manifest.json`；上传命令为 `node scripts/upload-dwg-drawings.mjs`（预览）与 `node scripts/upload-dwg-drawings.mjs --apply`（上传根目录或 `--source=<目录>` 下的全部 `*.dwg`；PowerShell 下不要用 `npm run ... -- --apply`，开头的 `--` 不会透传）。源 DWG 不入库（`/*.dwg` 已加入 `.gitignore`）。
+- 页面需登录后使用，通过签名 URL 加载图纸；顶部下拉切换内置图纸，也可用 `/dwg-viewer?file=<文件名>` 直达。没有清单时页面提示手动打开本地文件。`tests/dwgViewer.test.ts` 中的真实图纸用例在缺少 `线束设计器.dwg` 时自动跳过。
 - 首次进入页面需下载约 9 MB 解析引擎（按需懒加载，之后由浏览器缓存）；解析在浏览器内完成，图纸不会上传到服务端。
 
 ## 图纸字体约定
@@ -61,7 +62,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 
 `catalog_items`、`suppliers`、`material_prices`、成品线束与成品图纸均仅登录用户可读，匿名用户对 `catalog_items` 无任何增删改查权限；登录用户只能向 `catalog_items` 新增 `accessory`（制作图公司辅材）；`projects` 和 `drawings` 仅本人可读写。
 
-存储使用三个桶：私有 `catalog-assets`（目录图片）、私有 `cost-analysis-sources`（成本分析来源 Excel）、私有 `finished-harness-drawings`（成品方案补充 2D 图纸，登录后通过签名 URL 查看）；另有只读 RPC `get_storage_bootstrap_status` 检查目录桶状态。
+存储使用四个桶：私有 `catalog-assets`（目录图片）、私有 `cost-analysis-sources`（成本分析来源 Excel）、私有 `finished-harness-drawings`（成品方案补充 2D 图纸）、私有 `dwg-drawings`（DWG 查看页内置图纸），均登录后通过签名 URL 查看；另有只读 RPC `get_storage_bootstrap_status` 检查必需桶状态。
 
 业务选项以及图纸模板、常用语、图标随前端代码发布。项目和图纸采用硬删除；重复保存以最后一次成功写入为准。详细字段、权限和验收见 [Supabase 集成说明](docs/supabase-backend-database-integration.md)，成本分析口径见[成品方案成本分析文档](docs/finished-harness-cost-analysis-plan.md)，建库步骤与数据约定见 [SQL 执行说明](supabase/sql/README.md)。
 
@@ -69,7 +70,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 
 测试阶段采用清空重建，不保留升级 SQL。必须确认目标项目和测试数据可删除后，按 [SQL 执行顺序](supabase/sql/README.md) 操作。未经明确授权，不应执行重置脚本。
 
-数据库部署后，可在受信任环境幂等确保私有目录桶存在（完整建库会创建全部三个桶，该命令只创建或修复 `catalog-assets`）：
+数据库部署后，可在受信任环境幂等确保私有目录桶存在（完整建库会创建全部四个桶，该命令只创建或修复 `catalog-assets`）：
 
 ```powershell
 npm run supabase:bootstrap-storage

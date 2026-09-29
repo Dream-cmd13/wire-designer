@@ -14,7 +14,7 @@
 6. `10_schema/04_suppliers.sql`：创建供应商表及基础供应商数据（仅登录用户可查询）。
 7. `10_schema/05_finished_harness_materials.sql`：创建现有成品线束物料表（仅已登录用户可查询）。
 8. `10_schema/06_finished_harness_cost_analyses.sql`：创建成品线束成本分析与定价公式推导明细表，并扩充成品线束物料主表价格汇总列与唯一约束。
-9. `20_storage/01_buckets.sql`：确保私有 `catalog-assets`、私有 `cost-analysis-sources` 与私有 `finished-harness-drawings` 桶存在，并安装只读状态 RPC。
+9. `20_storage/01_buckets.sql`：确保私有 `catalog-assets`、私有 `cost-analysis-sources`、私有 `finished-harness-drawings` 与私有 `dwg-drawings` 桶存在，并安装只读状态 RPC。
 10. `30_security/01_rls.sql`：安装项目/图纸 owner 策略，以及仅登录可读的目录、供应商与成品图纸读取策略（匿名用户对 `catalog_items` 无任何增删改查权限）。
 11. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
 12. `40_seed/02_real_harness_catalog.sql`：写入 12 个真实连接器和 10 个真实线材。

@@ -16,9 +16,13 @@ dist-ssr
 !.env.example
 !**/.env.example
 
-# DWG 查看页面的运行时资源（由 scripts/prepare-dwg-viewer-assets.mjs 生成）
+# DWG 查看页运行时资源：解析引擎由 scripts/prepare-dwg-viewer-assets.mjs 生成
+# （public/dwg/ 为旧版本内置图纸目录，已废弃但保留忽略，避免遗留文件被误提交）
 public/libredwg/
 public/dwg/
+
+# DWG 源文件：由 scripts/upload-dwg-drawings.mjs 上传到私有桶 dwg-drawings，不入库
+/*.dwg
 
 # Editor directories and files
 .vscode/*

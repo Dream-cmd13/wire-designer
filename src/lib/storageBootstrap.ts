@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const REQUIRED_STORAGE_BUCKETS = ['catalog-assets'] as const;
+const REQUIRED_STORAGE_BUCKETS = ['catalog-assets', 'dwg-drawings'] as const;
 const STORAGE_STATUS_ERROR_MESSAGE =
   '文件服务状态暂时无法确认，请检查网络后重试；如持续出现，请联系管理员。';
 
@@ -42,9 +42,6 @@ export async function checkStorageBootstrap(
     if (rows.length !== data.length) return errorState();
 
     const rowsById = new Map(rows.map((row) => [row.bucket_id, row]));
-    if (REQUIRED_STORAGE_BUCKETS.some((bucketId) => !rowsById.has(bucketId))) {
-      return errorState();
-    }
 
     const missingBuckets = REQUIRED_STORAGE_BUCKETS.filter(
       (bucketId) => !rowsById.get(bucketId)?.is_present,
