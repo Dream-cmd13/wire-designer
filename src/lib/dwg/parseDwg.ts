@@ -61,6 +61,8 @@ interface ConvertContext {
   layerLineTypes: Map<string, string>;
   /** 全局线型比例（LTSCALE 头变量）。 */
   lineTypeScale: number;
+  /** IMAGEDEF 表：句柄 -> 图片路径（缺失图片时在边框内显示）。 */
+  imageDefPaths: Map<string, string>;
   depth: number;
 }
 
@@ -494,6 +496,7 @@ function expandInsert(entity: DwgEntity, context: ConvertContext, transform: Aff
       linePatterns: context.linePatterns,
       layerLineTypes: context.layerLineTypes,
       lineTypeScale: context.lineTypeScale,
+      imageDefPaths: context.imageDefPaths,
       depth: context.depth + 1,
     };
 
@@ -545,6 +548,7 @@ function expandDimensionBlock(entity: DwgEntity, context: ConvertContext, transf
     linePatterns: context.linePatterns,
     layerLineTypes: context.layerLineTypes,
     lineTypeScale: context.lineTypeScale,
+    imageDefPaths: context.imageDefPaths,
     depth: context.depth + 1,
   };
 
@@ -802,12 +806,14 @@ function convertEntityGeometries(
         : [];
     }
     case 'IMAGE': {
-      // 光栅图像通常是外部参照，浏览器读不到源文件；仅绘制图像边框，保持版面完整
+      // 光栅图像通常是外部参照，浏览器读不到源文件：绘制图像边框，并在框内居中显示
+      // 图片路径（与 CAD 打开缺失图片时的占位表现一致）
       const image = entity as DwgEntity & {
         position?: DwgPoint;
         uPixel?: DwgPoint;
         vPixel?: DwgPoint;
         imageSize?: DwgPoint;
+        imageDefHandle?: string;
       };
       const origin = toPoint(image.position);
       const u = toPoint(image.uPixel);
@@ -821,7 +827,37 @@ function convertEntityGeometries(
         { x: origin.x + u.x * width + v.x * height, y: origin.y + u.y * width + v.y * height },
         { x: origin.x + v.x * height, y: origin.y + v.y * height },
       ].map((point) => applyAffine(transform, point));
-      return [{ kind: 'polyline', points: corners, bulges: corners.map(() => 0), closed: true, color }];
+      const geometries: DwgGeometry[] = [
+        { kind: 'polyline', points: corners, bulges: corners.map(() => 0), closed: true, color },
+      ];
+
+      const imagePath = image.imageDefHandle ? context.imageDefPaths.get(image.imageDefHandle) : undefined;
+      if (imagePath) {
+        const axisU = applyAffineVector(transform, u);
+        const axisV = applyAffineVector(transform, v);
+        const frameWidth = Math.hypot(axisU.x, axisU.y) * width;
+        const frameHeight = Math.hypot(axisV.x, axisV.y) * height;
+        const unitWidth = textWidthOf(imagePath, 1);
+        const textHeight = Math.min(frameHeight / 5, (frameWidth * 0.9) / Math.max(unitWidth, 1));
+        if (textHeight > 0) {
+          geometries.push({
+            kind: 'text',
+            lines: [imagePath],
+            position: applyAffine(transform, {
+              x: origin.x + (u.x * width + v.x * height) / 2,
+              y: origin.y + (u.y * width + v.y * height) / 2,
+            }),
+            height: textHeight,
+            rotation: Math.atan2(axisU.y, axisU.x),
+            align: 'center',
+            baseline: 'middle',
+            color,
+            bold: false,
+            wrapWidth: frameWidth * 0.92,
+          });
+        }
+      }
+      return geometries;
     }
     default:
       return [];
@@ -919,6 +955,11 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
   }
   const headerLineTypeScale = db.header?.LTSCALE;
   const lineTypeScale = typeof headerLineTypeScale === 'number' && headerLineTypeScale > 0 ? headerLineTypeScale : 1;
+  // IMAGEDEF 的图片路径：图片未内嵌时用于在边框内显示路径占位
+  const imageDefPaths = new Map<string, string>();
+  for (const imageDef of db.objects?.IMAGEDEF ?? []) {
+    if (imageDef.handle && imageDef.fileName) imageDefPaths.set(imageDef.handle, imageDef.fileName);
+  }
 
   const blocks = new Map<string, BlockDefinition>();
   const paperSpaceHandles = new Set<string>();
@@ -946,6 +987,7 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     linePatterns,
     layerLineTypes,
     lineTypeScale,
+    imageDefPaths,
     depth: 0,
   };
 

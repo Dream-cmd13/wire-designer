@@ -155,6 +155,7 @@ function makeDatabase(
   blockRecords: unknown[] = [],
   layers: unknown[] = [],
   lineTypes: unknown[] = [],
+  imageDefs: unknown[] = [],
 ): DwgDatabase {
   return {
     tables: {
@@ -168,7 +169,7 @@ function makeDatabase(
     },
     objects: {
       DICTIONARY: [],
-      IMAGEDEF: [],
+      IMAGEDEF: imageDefs,
       LAYER_FILTER: [],
       LAYER_INDEX: [],
       LAYOUT: [],
@@ -1135,6 +1136,37 @@ describe('normalizeDwgDatabase', () => {
     ]);
     expect(entity.bounds).toEqual({ minX: 10, minY: 20, maxX: 12, maxY: 21 });
   });
+
+  it('shows the image path inside the frame when the raster is unavailable', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'IMAGE', handle: 'I2', layer: '0', colorIndex: 256,
+          position: { x: 0, y: 0, z: 0 },
+          uPixel: { x: 0.5, y: 0, z: 0 },
+          vPixel: { x: 0, y: 0.5, z: 0 },
+          imageSize: { x: 4, y: 2 },
+          imageDefHandle: 'ID1',
+        },
+      ],
+      [],
+      layerEntries,
+      [],
+      [{ handle: 'ID1', fileName: 'C:\\Users\\79574\\Desktop\\样品照.jpg' }],
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'image-path.dwg');
+    expect(drawing.entities).toHaveLength(2);
+    const text = drawing.entities.find((entity) => entity.kind === 'text');
+    if (!text || text.kind !== 'text') throw new Error('expected text');
+    expect(text.lines).toEqual(['C:\\Users\\79574\\Desktop\\样品照.jpg']);
+    // 居中显示在图像边框内（框范围 (0,0)-(2,1)）
+    expect(text.position).toEqual({ x: 1, y: 0.5 });
+    expect(text.align).toBe('center');
+    expect(text.baseline).toBe('middle');
+    expect(text.wrapWidth).toBeCloseTo(2 * 0.92, 6);
+    expect(text.height).toBeGreaterThan(0);
+  });
 });
 
 describe('renderDwgToCanvas', () => {
@@ -1358,6 +1390,13 @@ describe.skipIf(m12DrawingNames.every((name) => !existsSync(resolve(process.cwd(
           && entity.bounds.minX > 2800 && entity.bounds.maxX < 2820);
         expect(pinHatch?.kind).toBe('hatch');
         expect(pinHatch?.bounds.minY ?? 0).toBeLessThan(1855.7);
+        // 缺失的外部参照图片在边框内显示图片路径
+        const imagePathText = drawing.entities.find((entity) => {
+          if (entity.kind !== 'text') return false;
+          const joined = entity.lines.join('');
+          return joined.includes('79574') && joined.includes('.jpg');
+        });
+        expect(imagePathText?.kind).toBe('text');
       }
     }
   }, 180_000);
