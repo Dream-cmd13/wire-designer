@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { clearDwgCache, getCachedBuffer, setCachedDrawing } from '@/lib/dwg/dwgCache';
 import {
   DWG_URL_TTL_SECONDS,
   fetchDwgManifest,
   parseDwgManifest,
+  prefetchDwgBuffer,
+  primeDwgSignedUrls,
   resolveDwgFileUrl,
 } from '@/lib/dwg/dwgLibrary';
+import type { DwgDrawing } from '@/lib/dwg/dwgTypes';
 
 function fakeClient(signedUrl: string | null, error: { message: string } | null = null) {
   const createSignedUrl = vi.fn(async () => ({
@@ -48,6 +52,67 @@ describe('resolveDwgFileUrl', () => {
     await expect(resolveDwgFileUrl(null, 'dwg/A.dwg')).resolves.toBeNull();
     const failed = fakeClient(null, { message: 'expired' });
     await expect(resolveDwgFileUrl(failed.client, 'dwg/A.dwg')).resolves.toBeNull();
+  });
+});
+
+describe('primeDwgSignedUrls', () => {
+  it('signs every entry in one batch call and fills the url cache', async () => {
+    const createSignedUrls = vi.fn(async (paths: string[]) => ({
+      data: paths.map((path) => ({ path, signedUrl: `https://assets.test/${path}` })),
+      error: null,
+    }));
+    const client = { storage: { from: vi.fn(() => ({ createSignedUrls })) } };
+    const entries = [
+      { name: 'A.dwg', key: 'dwg/A.dwg' },
+      { name: 'B.dwg', key: 'dwg/B.dwg' },
+    ];
+
+    await primeDwgSignedUrls(client, entries);
+
+    expect(createSignedUrls).toHaveBeenCalledTimes(1);
+    expect(createSignedUrls).toHaveBeenCalledWith(['dwg/A.dwg', 'dwg/B.dwg'], DWG_URL_TTL_SECONDS);
+    await expect(resolveDwgFileUrl(client, 'dwg/A.dwg')).resolves.toBe('https://assets.test/dwg/A.dwg');
+  });
+
+  it('falls back to per-path signing when the batch endpoint is unavailable', async () => {
+    const { client, createSignedUrl } = fakeClient('https://assets.test/single');
+
+    await primeDwgSignedUrls(client, [{ name: 'A.dwg', key: 'dwg/A.dwg' }]);
+
+    expect(createSignedUrl).toHaveBeenCalledTimes(1);
+    await expect(resolveDwgFileUrl(client, 'dwg/A.dwg')).resolves.toBe('https://assets.test/single');
+  });
+});
+
+describe('prefetchDwgBuffer', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    clearDwgCache();
+  });
+
+  it('downloads a drawing into the buffer cache', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(16),
+    } as Response);
+    const { client } = fakeClient('https://assets.test/signed');
+
+    await prefetchDwgBuffer(client, { name: 'A.dwg', key: 'dwg/A.dwg' });
+
+    expect(fetchMock).toHaveBeenCalledWith('https://assets.test/signed');
+    expect(getCachedBuffer('dwg/A.dwg')).not.toBeNull();
+  });
+
+  it('skips the download when the drawing is already cached', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    setCachedDrawing('dwg/A.dwg', {} as DwgDrawing);
+
+    await prefetchDwgBuffer(fakeClient('https://assets.test/signed').client, {
+      name: 'A.dwg',
+      key: 'dwg/A.dwg',
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

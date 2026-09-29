@@ -19,6 +19,20 @@ describe('DWG viewer UI contract', () => {
     expect(pageSource).toContain('selectBuiltInFile');
   });
 
+  it('caches parsed drawings, pre-signs the list and prefetches the next drawing', () => {
+    expect(pageSource).toContain('getCachedDrawing');
+    expect(pageSource).toContain('setCachedDrawing');
+    expect(pageSource).toContain('takeCachedBuffer');
+    expect(pageSource).toContain('prefetchDwgBuffer');
+    expect(pageSource).toContain('primeDwgSignedUrls');
+  });
+
+  it('shows a loading overlay while a drawing is signed, downloaded and parsed', () => {
+    expect(pageSource).toContain("phase: 'loading'");
+    expect(pageSource).toContain('正在加载图纸');
+    expect(pageSource).toContain('正在解析图纸');
+  });
+
   it('uploads root DWG files and the manifest to the bucket before runtime', () => {
     expect(uploadScriptSource).toContain("BUCKET = 'dwg-drawings'");
     expect(uploadScriptSource).toContain('manifest.json');

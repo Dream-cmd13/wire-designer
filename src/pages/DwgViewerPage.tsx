@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, Sun, X } from 'lucide-react';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
-import { fetchDwgManifest, resolveDwgFileUrl, type DwgManifestEntry } from '@/lib/dwg/dwgLibrary';
+import { getCachedDrawing, setCachedDrawing, takeCachedBuffer } from '@/lib/dwg/dwgCache';
+import {
+  fetchDwgManifest,
+  prefetchDwgBuffer,
+  primeDwgSignedUrls,
+  resolveDwgFileUrl,
+  type DwgManifestEntry,
+} from '@/lib/dwg/dwgLibrary';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
 import { parseDwg, type DwgParsePhase } from '@/lib/dwg/parseDwg';
@@ -16,7 +23,7 @@ const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
 const BACKGROUNDS = { light: '#ffffff', dark: '#111827' } as const;
 
-type LoadPhase = DwgParsePhase | 'ready' | 'error';
+type LoadPhase = DwgParsePhase | 'loading' | 'ready' | 'error';
 type BackgroundMode = keyof typeof BACKGROUNDS;
 
 interface ViewerState {
@@ -24,6 +31,13 @@ interface ViewerState {
   fileName: string;
   drawing: DwgDrawing | null;
   error: string | null;
+}
+
+/** 加载遮罩文案：签名/下载、引擎与解析三个阶段分别提示。 */
+function loadPhaseText(phase: LoadPhase): string {
+  if (phase === 'engine') return '正在加载 DWG 解析引擎…';
+  if (phase === 'parsing') return '正在解析图纸…';
+  return '正在加载图纸…';
 }
 
 const INITIAL_STATE: ViewerState = {
@@ -77,6 +91,8 @@ export function DwgViewerPage() {
   const loadTokenRef = useRef(0);
   const urlLoadRef = useRef<AbortController | null>(null);
   const panRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
+  /** 清单的最新值，供后台预取查找相邻图纸，避免回调依赖 state 而反复重建。 */
+  const availableDrawingsRef = useRef<readonly DwgManifestEntry[]>([]);
   /** 加载后布局稳定前保持自动适应窗口，用户缩放/平移后交还控制权。 */
   const autoFitRef = useRef(true);
 
@@ -110,7 +126,22 @@ export function DwgViewerPage() {
     return zoomLimitsFor(fitScale);
   }, []);
 
-  const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string) => {
+  /** 把解析结果或缓存图纸呈现到画布，并恢复自动适应窗口。 */
+  const showDrawing = useCallback((drawing: DwgDrawing, fileName: string) => {
+    autoFitRef.current = true;
+    viewRef.current = null;
+    setView(null);
+    drawingRef.current = drawing;
+    setHiddenLayers(new Set(drawing.hiddenLayers));
+    setLayersOpen(false);
+    const container = containerRef.current;
+    if (container && container.clientWidth > 0) {
+      applyView(fitView(drawing.bounds, { width: container.clientWidth, height: container.clientHeight }, VIEW_PADDING));
+    }
+    setState({ phase: 'ready', fileName, drawing, error: null });
+  }, [applyView]);
+
+  const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string, cacheKey?: string) => {
     const token = ++loadTokenRef.current;
     autoFitRef.current = true;
     viewRef.current = null;
@@ -129,13 +160,8 @@ export function DwgViewerPage() {
       });
       if (token !== loadTokenRef.current) return;
 
-      drawingRef.current = drawing;
-      setHiddenLayers(new Set(drawing.hiddenLayers));
-      const container = containerRef.current;
-      if (container && container.clientWidth > 0) {
-        applyView(fitView(drawing.bounds, { width: container.clientWidth, height: container.clientHeight }, VIEW_PADDING));
-      }
-      setState({ phase: 'ready', fileName, drawing, error: null });
+      if (cacheKey) setCachedDrawing(cacheKey, drawing);
+      showDrawing(drawing, fileName);
     } catch (error) {
       if (token !== loadTokenRef.current) return;
       drawingRef.current = null;
@@ -146,28 +172,54 @@ export function DwgViewerPage() {
         error: error instanceof Error ? error.message : 'DWG 解析失败',
       });
     }
-  }, [applyView]);
+  }, [showDrawing]);
 
-  /** 加载私有桶中的内置图纸（签名 URL）；新请求会中止上一个未完成的加载。 */
+  /** 后台预取列表中下一张图纸的字节，连续切换时只需解析、无需再下载。 */
+  const prefetchNext = useCallback((entry: DwgManifestEntry) => {
+    const entries = availableDrawingsRef.current;
+    const index = entries.findIndex((item) => item.key === entry.key);
+    const next = index >= 0 ? entries[index + 1] : undefined;
+    if (next) void prefetchDwgBuffer(supabase, next);
+  }, []);
+
+  /** 加载私有桶中的内置图纸；已解析的图纸直接复用缓存，预取的字节跳过下载。 */
   const loadFromUrl = useCallback(async (entry: DwgManifestEntry) => {
     urlLoadRef.current?.abort();
-    const controller = new AbortController();
-    urlLoadRef.current = controller;
     setBuiltInFile(entry.name);
 
+    const cachedDrawing = getCachedDrawing(entry.key);
+    if (cachedDrawing) {
+      loadTokenRef.current += 1;
+      showDrawing(cachedDrawing, entry.name);
+      prefetchNext(entry);
+      return;
+    }
+
+    const controller = new AbortController();
+    urlLoadRef.current = controller;
+    // 签名与下载期间立即给出加载反馈，并让进行中的解析结果失效
+    loadTokenRef.current += 1;
+    setState({ phase: 'loading', fileName: entry.name, drawing: null, error: null });
+
     try {
-      const url = await resolveDwgFileUrl(supabase, entry.key);
-      if (controller.signal.aborted) return;
-      if (!url) {
-        throw new Error(`无法获取内置图纸「${entry.name}」的访问链接，请重新登录或稍后重试`);
+      let buffer = takeCachedBuffer(entry.key);
+      if (!buffer) {
+        const url = await resolveDwgFileUrl(supabase, entry.key);
+        if (controller.signal.aborted) return;
+        if (!url) {
+          throw new Error(`无法获取内置图纸「${entry.name}」的访问链接，请重新登录或稍后重试`);
+        }
+        const response = await fetch(url, { signal: controller.signal });
+        if (!response.ok) {
+          throw new Error(response.status === 400 || response.status === 403
+            ? '图纸访问链接已失效，请重新登录后重试'
+            : `图纸加载失败（HTTP ${response.status}）`);
+        }
+        buffer = await response.arrayBuffer();
+        if (controller.signal.aborted) return;
       }
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) {
-        throw new Error(response.status === 400 || response.status === 403
-          ? '图纸访问链接已失效，请重新登录后重试'
-          : `图纸加载失败（HTTP ${response.status}）`);
-      }
-      await loadBuffer(await response.arrayBuffer(), entry.name);
+      await loadBuffer(buffer, entry.name, entry.key);
+      prefetchNext(entry);
     } catch (error) {
       if (controller.signal.aborted) return;
       setState({
@@ -177,11 +229,13 @@ export function DwgViewerPage() {
         error: error instanceof Error ? error.message : '图纸加载失败',
       });
     }
-  }, [loadBuffer]);
+  }, [loadBuffer, prefetchNext, showDrawing]);
 
   const loadFile = useCallback(async (file: File) => {
     urlLoadRef.current?.abort();
     setBuiltInFile(null);
+    loadTokenRef.current += 1;
+    setState({ phase: 'loading', fileName: file.name, drawing: null, error: null });
     if (getDwgFileFromSearch(window.location.search)) {
       window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname));
     }
@@ -211,7 +265,10 @@ export function DwgViewerPage() {
     void (async () => {
       const entries = await fetchDwgManifest(supabase, controller.signal);
       if (controller.signal.aborted) return;
+      availableDrawingsRef.current = entries;
       setAvailableDrawings(entries);
+      // 批量预签名，之后切换图纸无需再等待签名往返
+      void primeDwgSignedUrls(supabase, entries);
 
       const requested = getDwgFileFromSearch(window.location.search);
       const initial = (requested && entries.find((entry) => entry.name === requested))
@@ -601,8 +658,10 @@ export function DwgViewerPage() {
             ) : (
               <>
                 <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                <p className="text-sm">{state.phase === 'engine' ? '正在加载 DWG 解析引擎…' : '正在解析图纸…'}</p>
-                <p className="text-xs text-slate-400">首次加载需下载约 9 MB 解析引擎，之后可离线使用</p>
+                <p className="text-sm">{loadPhaseText(state.phase)}</p>
+                {state.phase === 'engine' && (
+                  <p className="text-xs text-slate-400">首次加载需下载约 9 MB 解析引擎，之后可离线使用</p>
+                )}
               </>
             )}
           </div>
