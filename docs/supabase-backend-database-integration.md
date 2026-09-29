@@ -1,6 +1,6 @@
 # 线束设计系统 Supabase 最小数据库集成
 
-更新日期：2026-09-20
+更新日期：2026-09-29
 
 ## 目标与边界
 
@@ -26,7 +26,7 @@
 
 `catalog_items.kind` 支持 `connector`、`wire`、`protective_sleeve`、`overmold`、`model`、`accessory`、`packaging`。类型专属字段存入 `spec`，由前端运行时解析器校验；供应商通过 `supplier_id` 关联 `suppliers`，价格档位存放在 `material_prices`。图片仅保存私有 `catalog-assets` 中的对象路径。
 
-成品线束成本分析数据由来源 Excel 解析导入，原表缺失值保持 null，不做回退推算；来源 Excel 存放在私有 `cost-analysis-sources`，补充的 2D 图纸存放在私有 `finished-harness-drawings`，登录用户通过签名 URL 查看（`file_2d` 保存对象路径或外部 CRM 链接）。
+成品线束成本分析数据由来源 Excel 解析导入，原表缺失值保持 null，不做回退推算；来源 Excel 存放在私有 `cost-analysis-sources`，补充的 2D 图纸存放在私有 `finished-harness-drawings`，登录用户通过签名 URL 查看（`file_2d` 保存对象路径或外部 CRM 链接）。DWG 查看页的内置图纸存放在私有 `dwg-drawings`，对象统一在 `dwg/` 前缀下（Storage 对象键仅允许 ASCII，中文等文件名会转义为 ASCII 键），`dwg/manifest.json` 清单记录显示名与对象键；图纸同样凭签名 URL 加载，由 `node scripts/upload-dwg-drawings.mjs --apply` 上传。
 
 线材颜色、交期、保护方案、报价规则、数量折扣、图纸模板、常用语和图标属于静态前端资源，随应用版本发布。
 
@@ -41,12 +41,13 @@
 - `catalog-assets`：保持私有；登录用户只能读取被 `catalog_items.image_path` 或 `catalog_items.image_variants` 引用的对象。浏览器没有 Storage 写权限。
 - `cost-analysis-sources`：保持私有，登录用户可读，用于认证下载成本分析来源 Excel。
 - `finished-harness-drawings`：保持私有，登录用户可读，物料库通过签名 URL 查看补充 2D 图纸。
+- `dwg-drawings`：保持私有，登录用户可读，DWG 查看页通过签名 URL 加载内置图纸；仅由受信任脚本（`node scripts/upload-dwg-drawings.mjs --apply`）写入。
 
 项目和图纸均为硬删除。保存不做乐观锁或版本冲突检测，最后一个成功写入覆盖之前内容；浏览器内撤销/重做以及设计文件导入/导出不受影响。
 
 ## 初始化与运维
 
-测试环境不迁移旧数据。得到明确重置授权后，按 [SQL 执行说明](../supabase/sql/README.md) 清理旧结构并从空库创建全部业务表、三个存储桶、RLS 和种子数据。
+测试环境不迁移旧数据。得到明确重置授权后，按 [SQL 执行说明](../supabase/sql/README.md) 清理旧结构并从空库创建全部业务表、四个存储桶、RLS 和种子数据。
 
 创建登录用户使用：
 
@@ -60,7 +61,7 @@ npm run user:create -- user@example.com "password" "显示名"
 
 1. 用户 A 无法读取或修改用户 B 的项目和图纸。
 2. 同一账号更换浏览器后可加载并继续编辑项目与制作图纸。
-3. 匿名用户无法读取目录、价格与成品数据，直接访问受保护路由显示登录引导；匿名仍可进入独立制作图纸，但其中的公共资源、新建向导目录物料与公司物料表需登录后使用。
+3. 匿名用户无法读取目录、价格与成品数据，直接访问受保护路由显示登录引导；匿名仍可进入独立制作图纸，但其中的公共资源、新建向导目录物料与公司物料表需登录后使用；DWG 图纸页需登录后加载内置图纸并支持 `?file=` 直达。
 4. 只有目录表引用的图片路径可通过私有桶读取。
 5. 项目保存、图纸保存、目录加载、BOM/报价、导入导出与 PDF 导出正常。
 6. 远程重置前再次确认目标项目和测试数据可删除；未经授权不执行重置 SQL。
