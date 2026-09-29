@@ -27,10 +27,15 @@ describe('DWG viewer UI contract', () => {
     expect(pageSource).toContain('primeDwgSignedUrls');
   });
 
-  it('shows a loading overlay while a drawing is signed, downloaded and parsed', () => {
+  it('shows a loading overlay while a drawing is signed, downloaded, parsed and first rendered', () => {
     expect(pageSource).toContain("phase: 'loading'");
     expect(pageSource).toContain('正在加载图纸');
     expect(pageSource).toContain('正在解析图纸');
+    expect(pageSource).toContain("phase: 'rendering'");
+    expect(pageSource).toContain('正在渲染图纸');
+    // 遮罩必须等首次绘制完成后才撤下，解析前也要先让遮罩绘制一帧
+    expect(pageSource).toContain('nextPaint');
+    expect(pageSource).toContain('firstRenderRef');
   });
 
   it('uploads root DWG files and the manifest to the bucket before runtime', () => {
@@ -40,6 +45,17 @@ describe('DWG viewer UI contract', () => {
     expect(uploadScriptSource).toContain("extname(entry.name).toLowerCase() === '.dwg'");
     expect(prepareScriptSource).toContain('libredwg-web.wasm');
     expect(prepareScriptSource).not.toContain("endsWith('.dwg')");
+  });
+
+  it('removes stale drawings that are no longer in the source directory', () => {
+    expect(uploadScriptSource).toContain('listExistingObjects');
+    expect(uploadScriptSource).toContain('.remove(');
+    expect(uploadScriptSource).toContain("endsWith('.dwg')");
+  });
+
+  it('explains a missing bucket object instead of a raw 404', () => {
+    expect(pageSource).toContain('未找到内置图纸「');
+    expect(pageSource).toContain('请重新上传或打开本地文件');
   });
 
   it('requires login before built-in drawings can be viewed', () => {

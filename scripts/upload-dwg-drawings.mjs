@@ -76,6 +76,19 @@ const client = createClient(url, secretKey, {
   auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
 });
 
+/** 列出桶内 `dwg/` 前缀下的对象名（相对前缀），分页拉取以覆盖超过一页的情况。 */
+async function listExistingObjects() {
+  const names = [];
+  const pageSize = 1000;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await client.storage.from(BUCKET).list(PREFIX, { limit: pageSize, offset });
+    if (error) throw new Error(`读取桶内对象失败：${error.message}`);
+    const page = data ?? [];
+    names.push(...page.map((item) => item.name));
+    if (page.length < pageSize) return names;
+  }
+}
+
 for (const entry of entries) {
   const { error } = await client.storage
     .from(BUCKET)
@@ -96,4 +109,14 @@ const { error: manifestError } = await client.storage
   });
 if (manifestError) throw new Error(`写入 ${MANIFEST_PATH} 失败：${manifestError.message}`);
 
-console.log(`上传完成：${files.length} 个 DWG + 1 个清单。`);
+// 清理桶内已从源目录移除的旧图纸，避免清单与实际文件长期不一致
+const expectedKeys = new Set(entries.map((entry) => entry.key.slice(PREFIX.length + 1)));
+const staleKeys = (await listExistingObjects())
+  .filter((name) => name.toLowerCase().endsWith('.dwg') && !expectedKeys.has(name));
+if (staleKeys.length > 0) {
+  const { error } = await client.storage.from(BUCKET).remove(staleKeys.map((name) => `${PREFIX}/${name}`));
+  if (error) throw new Error(`清理过期图纸失败：${error.message}`);
+  for (const name of staleKeys) console.log(`已删除过期图纸 ${PREFIX}/${name}`);
+}
+
+console.log(`上传完成：${files.length} 个 DWG + 1 个清单${staleKeys.length > 0 ? `，清理 ${staleKeys.length} 个过期图纸` : ''}。`);

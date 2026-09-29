@@ -23,7 +23,7 @@ const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
 const BACKGROUNDS = { light: '#ffffff', dark: '#111827' } as const;
 
-type LoadPhase = DwgParsePhase | 'loading' | 'ready' | 'error';
+type LoadPhase = DwgParsePhase | 'loading' | 'rendering' | 'ready' | 'error';
 type BackgroundMode = keyof typeof BACKGROUNDS;
 
 interface ViewerState {
@@ -33,15 +33,23 @@ interface ViewerState {
   error: string | null;
 }
 
-/** 加载遮罩文案：签名/下载、引擎与解析三个阶段分别提示。 */
+/** 加载遮罩文案：签名/下载、引擎、解析与首次渲染四个阶段分别提示。 */
 function loadPhaseText(phase: LoadPhase): string {
   if (phase === 'engine') return '正在加载 DWG 解析引擎…';
   if (phase === 'parsing') return '正在解析图纸…';
+  if (phase === 'rendering') return '正在渲染图纸…';
   return '正在加载图纸…';
 }
 
+/** 等待两帧，确保加载遮罩完成绘制后再执行同步的解析/渲染，避免切换时界面看起来没有反应。 */
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
 const INITIAL_STATE: ViewerState = {
-  phase: 'engine',
+  phase: 'loading',
   fileName: SAMPLE_FILE_NAME,
   drawing: null,
   error: null,
@@ -67,6 +75,13 @@ const INTERACTIVE_SELECTOR = 'button, input, textarea, select, a, [role="button"
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
+}
+
+/** 把内置图纸的 HTTP 错误翻译成可操作的中文提示。 */
+function loadErrorMessage(status: number, fileName: string): string {
+  if (status === 400 || status === 403) return '图纸访问链接已失效，请重新登录后重试';
+  if (status === 404) return `未找到内置图纸「${fileName}」，请重新上传或打开本地文件`;
+  return `图纸加载失败（HTTP ${status}）`;
 }
 
 export function DwgViewerPage() {
@@ -95,6 +110,8 @@ export function DwgViewerPage() {
   const availableDrawingsRef = useRef<readonly DwgManifestEntry[]>([]);
   /** 加载后布局稳定前保持自动适应窗口，用户缩放/平移后交还控制权。 */
   const autoFitRef = useRef(true);
+  /** 新图纸的首次画布绘制：先让遮罩绘制一帧，绘制完成后再撤下遮罩。 */
+  const firstRenderRef = useRef(false);
 
   const applyView = useCallback((next: DwgView) => {
     viewRef.current = next;
@@ -129,6 +146,7 @@ export function DwgViewerPage() {
   /** 把解析结果或缓存图纸呈现到画布，并恢复自动适应窗口。 */
   const showDrawing = useCallback((drawing: DwgDrawing, fileName: string) => {
     autoFitRef.current = true;
+    firstRenderRef.current = true;
     viewRef.current = null;
     setView(null);
     drawingRef.current = drawing;
@@ -138,7 +156,8 @@ export function DwgViewerPage() {
     if (container && container.clientWidth > 0) {
       applyView(fitView(drawing.bounds, { width: container.clientWidth, height: container.clientHeight }, VIEW_PADDING));
     }
-    setState({ phase: 'ready', fileName, drawing, error: null });
+    // 保持遮罩直到首次绘制完成，避免同步渲染期间界面看起来没有反应
+    setState({ phase: 'rendering', fileName, drawing, error: null });
   }, [applyView]);
 
   const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string, cacheKey?: string) => {
@@ -148,15 +167,19 @@ export function DwgViewerPage() {
     setView(null);
     setHiddenLayers(new Set<string>());
     setLayersOpen(false);
-    setState({ phase: 'engine', fileName, drawing: null, error: null });
+    setState({ phase: 'loading', fileName, drawing: null, error: null });
 
     try {
       const drawing = await parseDwg(buffer, {
         fileName,
         wasmBase: WASM_BASE,
-        onProgress: (phase) => setState((prev) => (
-          token === loadTokenRef.current && prev.phase !== 'error' ? { ...prev, phase } : prev
-        )),
+        onProgress: async (phase) => {
+          setState((prev) => (
+            token === loadTokenRef.current && prev.phase !== 'error' ? { ...prev, phase } : prev
+          ));
+          // 让遮罩先绘制出来，再继续同步解析
+          if (token === loadTokenRef.current) await nextPaint();
+        },
       });
       if (token !== loadTokenRef.current) return;
 
@@ -211,9 +234,7 @@ export function DwgViewerPage() {
         }
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) {
-          throw new Error(response.status === 400 || response.status === 403
-            ? '图纸访问链接已失效，请重新登录后重试'
-            : `图纸加载失败（HTTP ${response.status}）`);
+          throw new Error(loadErrorMessage(response.status, entry.name));
         }
         buffer = await response.arrayBuffer();
         if (controller.signal.aborted) return;
@@ -315,7 +336,10 @@ export function DwgViewerPage() {
     const drawing = state.drawing;
     if (!canvas || !drawing || !view || viewport.width <= 0 || viewport.height <= 0) return;
 
-    const frame = requestAnimationFrame(() => {
+    let cancelled = false;
+    const draw = () => {
+      if (cancelled) return;
+      firstRenderRef.current = false;
       const ratio = Math.min(2, window.devicePixelRatio || 1);
       const width = Math.max(1, Math.round(viewport.width * ratio));
       const height = Math.max(1, Math.round(viewport.height * ratio));
@@ -323,17 +347,33 @@ export function DwgViewerPage() {
       if (canvas.height !== height) canvas.height = height;
 
       const context = canvas.getContext('2d');
-      if (!context) return;
-      renderDwgToCanvas(context, drawing, {
-        scale: view.scale * ratio,
-        offsetX: view.offsetX * ratio,
-        offsetY: view.offsetY * ratio,
-        lineWidth: Math.max(1, ratio),
-        background: BACKGROUNDS[background],
-        hiddenLayers,
+      if (context) {
+        renderDwgToCanvas(context, drawing, {
+          scale: view.scale * ratio,
+          offsetX: view.offsetX * ratio,
+          offsetY: view.offsetY * ratio,
+          lineWidth: Math.max(1, ratio),
+          background: BACKGROUNDS[background],
+          hiddenLayers,
+        });
+      }
+      // 首次绘制完成后再撤下遮罩，避免同步渲染期间界面看起来没有反应
+      setState((prev) => (prev.phase === 'rendering' ? { ...prev, phase: 'ready' } : prev));
+    };
+
+    let frame = 0;
+    if (firstRenderRef.current) {
+      // 首次绘制多等一帧，让「正在渲染图纸…」遮罩先显示出来
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(draw);
       });
-    });
-    return () => cancelAnimationFrame(frame);
+    } else {
+      frame = requestAnimationFrame(draw);
+    }
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [state.drawing, view, viewport, background, hiddenLayers]);
 
   // 滚轮缩放（以光标为锚点，需非 passive 监听才能阻止默认滚动）
@@ -474,6 +514,14 @@ export function DwgViewerPage() {
           <span className="max-w-56 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
             {state.fileName}
           </span>
+          {state.phase === 'error' ? (
+            <span className="shrink-0 text-xs font-medium text-red-600">加载失败</span>
+          ) : !isReady && (
+            <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-blue-600">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              加载中
+            </span>
+          )}
           {isReady && (
             <span className="hidden text-xs text-slate-500 lg:inline">
               {state.drawing!.stats.rendered} 个图元 · {state.drawing!.stats.text} 处文字 · {state.drawing!.layers.length} 个图层
