@@ -283,6 +283,8 @@ export function DwgViewerPage() {
   // 首次进入读取桶内图纸清单，按 ?file=、示例图纸、首张图纸的顺序加载
   useEffect(() => {
     const controller = new AbortController();
+    // 清单读取期间的加载代次：若用户已打开本地文件，则不再用清单结果覆盖当前画面
+    const manifestToken = loadTokenRef.current;
     void (async () => {
       const entries = await fetchDwgManifest(supabase, controller.signal);
       if (controller.signal.aborted) return;
@@ -290,6 +292,7 @@ export function DwgViewerPage() {
       setAvailableDrawings(entries);
       // 批量预签名，之后切换图纸无需再等待签名往返
       void primeDwgSignedUrls(supabase, entries);
+      if (loadTokenRef.current !== manifestToken) return;
 
       const requested = getDwgFileFromSearch(window.location.search);
       const initial = (requested && entries.find((entry) => entry.name === requested))
