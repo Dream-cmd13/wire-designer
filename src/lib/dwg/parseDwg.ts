@@ -17,6 +17,7 @@ import { TEXT_LINE_SPACING, TEXT_SIZE_RATIO, isWideChar, textWidthOf } from '@/l
 import type {
   DwgBounds,
   DwgDrawing,
+  DwgExternalImage,
   DwgGeometry,
   DwgHatchPath,
   DwgHatchPatternLine,
@@ -29,10 +30,18 @@ import type {
 
 export type DwgParsePhase = 'engine' | 'parsing';
 
+/** 文本测量函数：返回指定字高下文本的宽度（世界单位）；缺省使用内置估算。 */
+export type TextMeasure = (text: string, height: number) => number;
+
 export interface ParseDwgOptions {
   fileName?: string;
   /** wasm 所在目录（浏览器中为 `${BASE_URL}libredwg`）；Node 环境可省略。 */
   wasmBase?: string;
+  /**
+   * 字体可用时传入真实测量函数（与渲染同一字体），使 MTEXT 折行、
+   * Aligned/Fit 拉伸与文字包围盒基于实际字形宽度计算。
+   */
+  measureText?: TextMeasure;
   /**
    * 阶段回调；可返回 Promise，解析会等待其完成后继续，
    * 便于调用方在同步解析前先绘制加载遮罩。
@@ -63,6 +72,10 @@ interface ConvertContext {
   lineTypeScale: number;
   /** IMAGEDEF 表：句柄 -> 图片路径（缺失图片时在边框内显示）。 */
   imageDefPaths: Map<string, string>;
+  /** 缺失的外部参照图片，随转换收集供页面提示。 */
+  externalImages: DwgExternalImage[];
+  /** 真实字体测量函数；缺省用内置估算。 */
+  measureText: TextMeasure | null;
   depth: number;
 }
 
@@ -98,18 +111,24 @@ function breakUnits(line: string): string[] {
  * 按 MTEXT 定义宽度（DXF 组码 41）折行；AutoCAD 会在该宽度处自动换行，
  * 放不下的西文单词整体溢出而不是逐字断行（与 `10` 这类窄框数字串的实测一致）。
  */
-function wrapMTextLines(lines: string[], width: number, height: number): string[] {
+function wrapMTextLines(
+  lines: string[],
+  width: number,
+  height: number,
+  measureText: TextMeasure | null,
+): string[] {
   if (!(width > 0) || !(height > 0)) return lines;
+  const widthOf = (text: string) => measureText?.(text, height) ?? textWidthOf(text, height);
   const wrapped: string[] = [];
   for (const line of lines) {
     let current = '';
     let currentWidth = 0;
     for (const unit of breakUnits(line)) {
-      const unitWidth = textWidthOf(unit, height);
+      const unitWidth = widthOf(unit);
       if (current && currentWidth + unitWidth > width) {
         wrapped.push(current.replace(/\s+$/, ''));
         current = unit.replace(/^\s+/, '');
-        currentWidth = current ? textWidthOf(current, height) : 0;
+        currentWidth = current ? widthOf(current) : 0;
         continue;
       }
       current += unit;
@@ -417,7 +436,12 @@ interface TextLike {
   xScale?: number;
 }
 
-function convertTextLike(text: TextLike, transform: Affine, color: string): DwgGeometry[] {
+function convertTextLike(
+  text: TextLike,
+  transform: Affine,
+  color: string,
+  measureText: TextMeasure | null,
+): DwgGeometry[] {
   if (!text.text) return [];
   const similarity = similarityOf(transform);
   const height = text.textHeight * (similarity?.scale ?? 1);
@@ -444,7 +468,7 @@ function convertTextLike(text: TextLike, transform: Affine, color: string): DwgG
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const length = Math.hypot(dx, dy);
-    const natural = textWidthOf(line, height) * widthFactor;
+    const natural = (measureText?.(line, height) ?? textWidthOf(line, height)) * widthFactor;
     if (length > 0 && natural > 0) {
       widthScale = length / natural;
       // ALIGNED 等比缩放，FIT 只压宽度
@@ -497,6 +521,8 @@ function expandInsert(entity: DwgEntity, context: ConvertContext, transform: Aff
       layerLineTypes: context.layerLineTypes,
       lineTypeScale: context.lineTypeScale,
       imageDefPaths: context.imageDefPaths,
+      externalImages: context.externalImages,
+      measureText: context.measureText,
       depth: context.depth + 1,
     };
 
@@ -549,6 +575,8 @@ function expandDimensionBlock(entity: DwgEntity, context: ConvertContext, transf
     layerLineTypes: context.layerLineTypes,
     lineTypeScale: context.lineTypeScale,
     imageDefPaths: context.imageDefPaths,
+    externalImages: context.externalImages,
+    measureText: context.measureText,
     depth: context.depth + 1,
   };
 
@@ -770,7 +798,7 @@ function convertEntityGeometries(
       const rectWidth = (mtext.rectWidth ?? 0) * (similarityText?.scale ?? 1);
       return [{
         kind: 'text',
-        lines: wrapMTextLines(content.lines, rectWidth, height),
+        lines: wrapMTextLines(content.lines, rectWidth, height, context.measureText),
         position: applyAffine(transform, rawPosition),
         height,
         rotation: (directionAngle ?? mtext.rotation ?? 0) + (similarityText?.rotation ?? 0),
@@ -784,12 +812,12 @@ function convertEntityGeometries(
     }
     case 'TEXT': {
       const text = entity as DwgEntity & TextLike;
-      return convertTextLike(text, transform, color);
+      return convertTextLike(text, transform, color, context.measureText);
     }
     case 'ATTRIB': {
       const attrib = entity as DwgEntity & { flags?: number; text?: TextLike };
       if ((attrib.flags ?? 0) & 1) return [];
-      return attrib.text ? convertTextLike(attrib.text, transform, color) : [];
+      return attrib.text ? convertTextLike(attrib.text, transform, color, context.measureText) : [];
     }
     case 'INSERT':
       return expandInsert(entity, context, transform);
@@ -821,6 +849,8 @@ function convertEntityGeometries(
       const width = image.imageSize?.x ?? 0;
       const height = image.imageSize?.y ?? 0;
       if (!origin || !u || !v || !(width > 0) || !(height > 0)) return [];
+      const imagePath = image.imageDefHandle ? context.imageDefPaths.get(image.imageDefHandle) : undefined;
+      context.externalImages.push({ path: imagePath ?? null });
       const corners = [
         origin,
         { x: origin.x + u.x * width, y: origin.y + u.y * width },
@@ -831,7 +861,6 @@ function convertEntityGeometries(
         { kind: 'polyline', points: corners, bulges: corners.map(() => 0), closed: true, color },
       ];
 
-      const imagePath = image.imageDefHandle ? context.imageDefPaths.get(image.imageDefHandle) : undefined;
       if (imagePath) {
         const axisU = applyAffineVector(transform, u);
         const axisV = applyAffineVector(transform, v);
@@ -874,7 +903,7 @@ function extendBounds(bounds: DwgBounds | null, x: number, y: number): DwgBounds
   };
 }
 
-function geometryBounds(geometry: DwgGeometry): DwgBounds {
+function geometryBounds(geometry: DwgGeometry, measureText: TextMeasure | null): DwgBounds {
   const includePoints = (points: DwgPoint[], initial: DwgBounds | null = null) => (
     points.reduce((bounds, point) => extendBounds(bounds, point.x, point.y), initial)
   );
@@ -898,9 +927,13 @@ function geometryBounds(geometry: DwgGeometry): DwgBounds {
       ) ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     case 'text': {
       // 文字盒按对齐/基线确定相对锚点的位置（锚点位于盒的 left/center/right × top/middle/bottom），
-      // 再按旋转角求轴对齐包围盒，避免用半径膨胀导致整图范围被撑大、适应窗口后图框过小
-      const width = geometry.lines.reduce((max, line) => Math.max(max, textWidthOf(line, geometry.height)), 0)
-        * (geometry.widthScale ?? 1);
+      // 再按旋转角求轴对齐包围盒，避免用半径膨胀导致整图范围被撑大、适应窗口后图框过小。
+      // 宽度必须与折行/拉伸使用同一套度量：真实字体度量与估算不一致时，
+      // 若包围盒按估算计算，视口移动到文字中段会把整段文字当作视口外剔除。
+      const width = geometry.lines.reduce(
+        (max, line) => Math.max(max, measureText?.(line, geometry.height) ?? textWidthOf(line, geometry.height)),
+        0,
+      ) * (geometry.widthScale ?? 1);
       const height = ((Math.max(1, geometry.lines.length) - 1) * geometry.height * TEXT_LINE_SPACING + geometry.height)
         * (geometry.heightScale ?? 1);
       const left = geometry.align === 'center' ? -width / 2 : geometry.align === 'right' ? -width : 0;
@@ -926,7 +959,11 @@ function geometryBounds(geometry: DwgGeometry): DwgBounds {
 /**
  * 将 libredwg 的 DwgDatabase 归一化为可直接渲染的图元列表（纯函数，便于测试）。
  */
-export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDrawing {
+export function normalizeDwgDatabase(
+  db: DwgDatabase,
+  fileName: string,
+  options: { measureText?: TextMeasure } = {},
+): DwgDrawing {
   const layerColors = new Map<string, Rgb>();
   const layers: DwgLayerInfo[] = [];
   const hiddenLayers: string[] = [];
@@ -988,6 +1025,8 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     layerLineTypes,
     lineTypeScale,
     imageDefPaths,
+    externalImages: [],
+    measureText: options.measureText ?? null,
     depth: 0,
   };
 
@@ -1021,7 +1060,7 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     }
     const layer = resolveLayerName(entity, context);
     for (const geometry of geometries) {
-      const entityBounds = geometryBounds(geometry);
+      const entityBounds = geometryBounds(geometry, context.measureText);
       if (geometry.kind === 'text') textCount += 1;
       bounds = extendBounds(bounds, entityBounds.minX, entityBounds.minY);
       bounds = extendBounds(bounds, entityBounds.maxX, entityBounds.maxY);
@@ -1047,6 +1086,7 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
     layers,
     hiddenLayers,
     entities,
+    externalImages: context.externalImages,
     stats: {
       total: allEntities.length,
       rendered: entities.length,
@@ -1060,7 +1100,7 @@ export function normalizeDwgDatabase(db: DwgDatabase, fileName: string): DwgDraw
  * 在浏览器内解析 DWG 文件，输出可直接渲染的归一化图元。
  */
 export async function parseDwg(buffer: ArrayBuffer, options: ParseDwgOptions = {}): Promise<DwgDrawing> {
-  const { fileName = 'drawing.dwg', wasmBase, onProgress } = options;
+  const { fileName = 'drawing.dwg', wasmBase, measureText, onProgress } = options;
 
   if (!hasDwgHeader(buffer)) {
     throw new Error('该文件不是有效的 DWG 图纸（文件头校验失败）');
@@ -1090,7 +1130,7 @@ export async function parseDwg(buffer: ArrayBuffer, options: ParseDwgOptions = {
     }
   }
 
-  const drawing = normalizeDwgDatabase(db, fileName);
+  const drawing = normalizeDwgDatabase(db, fileName, { measureText });
   if (drawing.layers.length === 0) {
     throw new Error('无法解析该 DWG 图纸（文件已损坏或格式不受支持）');
   }

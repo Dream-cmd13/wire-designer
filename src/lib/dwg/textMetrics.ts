@@ -14,9 +14,15 @@ export const TEXT_LATIN_EM_RATIO = 0.5;
 
 const WIDE_CHAR_START = 0x2e80;
 
+/**
+ * 宋体中按全角（1 em）渲染、但码位低于 0x2e80 的常用符号；
+ * 实测 SimSun 下 ° ± × ÷ · — ‰ 为全角，而 µ Ø ® ² ³ 为半角。
+ */
+const FULL_WIDTH_SYMBOLS = new Set(['°', '±', '×', '÷', '·', '—', '‰']);
+
 /** CJK 等全角字符（可独立断行；西文单词则不可从中间断开）。 */
 export function isWideChar(char: string): boolean {
-  return char.charCodeAt(0) > WIDE_CHAR_START;
+  return char.charCodeAt(0) > WIDE_CHAR_START || FULL_WIDTH_SYMBOLS.has(char);
 }
 
 export function textCharWidth(char: string, height: number): number {

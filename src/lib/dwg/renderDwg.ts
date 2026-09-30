@@ -21,7 +21,8 @@ export interface DwgRenderOptions {
   hiddenLayers?: ReadonlySet<string>;
 }
 
-const DEFAULT_FONT_FAMILY = '"SimSun", "宋体", "STSong", "Songti SC", serif';
+/** 图纸文字字体：屏幕渲染、解析期文本测量与导出共用。 */
+export const DEFAULT_FONT_FAMILY = '"SimSun", "宋体", "STSong", "Songti SC", serif';
 
 function boundsIntersect(left: DwgBounds, right: DwgBounds): boolean {
   return left.minX <= right.maxX && left.maxX >= right.minX && left.minY <= right.maxY && left.maxY >= right.minY;
@@ -117,14 +118,17 @@ function renderText(
 
 /**
  * 按图案定义线绘制 HATCH：以边界路径裁剪平行线族，支持图案线自身的虚线。
- * k 范围为相邻线偏移的整数倍，覆盖图元包围盒即可。
+ * k 范围为相邻线偏移的整数倍；每条重复线 p(k) = base + k·offset 的线段范围
+ * 由区域四角在图案线方向上的投影决定。若只按区域对角线向两侧延伸固定长度，
+ * 图案基点沿该方向远离区域时整段会落在裁剪区外，填充整体消失。
  */
 function strokeHatchPattern(context: CanvasRenderingContext2D, entity: HatchEntity, color: string): void {
   const pattern = entity.pattern;
   if (!pattern || pattern.length === 0) return;
   const bounds = entity.bounds;
-  const diagonal = Math.hypot(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) + 1;
-  if (!(diagonal > 0) || !Number.isFinite(diagonal)) return;
+  if (!Number.isFinite(bounds.minX) || !Number.isFinite(bounds.maxX)
+    || !Number.isFinite(bounds.minY) || !Number.isFinite(bounds.maxY)) return;
+  if (!(bounds.maxX > bounds.minX) && !(bounds.maxY > bounds.minY)) return;
 
   const corners: DwgPoint[] = [
     { x: bounds.minX, y: bounds.minY },
@@ -158,13 +162,34 @@ function strokeHatchPattern(context: CanvasRenderingContext2D, entity: HatchEnti
     const startK = Math.floor(minK) - 1;
     const endK = Math.ceil(maxK) + 1;
 
-    context.setLineDash(line.dashes);
+    const dashes = line.dashes;
+    // Canvas 对奇数长度数组会自动重复一次（[2] 按 [2,2] 绘制），实际周期要翻倍，
+    // 否则相位按错误的周期对齐会把实线/空白位置整体错开
+    const dashSum = dashes.length > 0 ? dashes.reduce((sum, value) => sum + value, 0) : 0;
+    const dashPeriod = dashes.length % 2 === 1 ? dashSum * 2 : dashSum;
+
+    context.setLineDash(dashes);
     context.beginPath();
     for (let k = startK; k <= endK; k += 1) {
       const originX = line.base.x + line.offset.x * k;
       const originY = line.base.y + line.offset.y * k;
-      context.moveTo(originX - direction.x * diagonal, originY - direction.y * diagonal);
-      context.lineTo(originX + direction.x * diagonal, originY + direction.y * diagonal);
+      // 区域四角投影到图案线方向，得到该重复线覆盖区域的起止参数
+      let minT = Infinity;
+      let maxT = -Infinity;
+      for (const corner of corners) {
+        const t = (corner.x - originX) * direction.x + (corner.y - originY) * direction.y;
+        minT = Math.min(minT, t);
+        maxT = Math.max(maxT, t);
+      }
+      if (!Number.isFinite(minT) || !Number.isFinite(maxT)) continue;
+      // 虚线相位以该重复线原基点为参照：起点回退到完整 dash 周期处，保持图案相位不变
+      let startT = minT;
+      if (Number.isFinite(dashPeriod) && dashPeriod > 0) {
+        const phase = ((minT % dashPeriod) + dashPeriod) % dashPeriod;
+        startT = minT - phase;
+      }
+      context.moveTo(originX + direction.x * startT, originY + direction.y * startT);
+      context.lineTo(originX + direction.x * maxT, originY + direction.y * maxT);
     }
     context.stroke();
   }

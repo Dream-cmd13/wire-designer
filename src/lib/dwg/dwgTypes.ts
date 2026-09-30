@@ -87,6 +87,12 @@ export interface DwgDrawingStats {
   skipped: Record<string, number>;
 }
 
+/** 图纸引用的外部图片；浏览器无法访问其本地路径，当前只显示占位框。 */
+export interface DwgExternalImage {
+  /** IMAGEDEF 中的原始路径；缺少定义时为 null。 */
+  path: string | null;
+}
+
 export interface DwgDrawing {
   fileName: string;
   version: string;
@@ -96,5 +102,7 @@ export interface DwgDrawing {
   /** 默认隐藏的图层（图纸中处于关闭/冻结状态）。 */
   hiddenLayers: string[];
   entities: DwgRenderEntity[];
+  /** 缺失的外部参照图片（无原始文件时仅绘制占位框与路径）。 */
+  externalImages: DwgExternalImage[];
   stats: DwgDrawingStats;
 }

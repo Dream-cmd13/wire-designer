@@ -86,4 +86,16 @@ describe('DWG viewer UI contract', () => {
     expect(pageSource).toContain('未找到内置图纸');
     expect(pageSource).toContain('打开 DWG 文件');
   });
+
+  it('measures text with the rendering font before wrapping MTEXT', () => {
+    expect(pageSource).toContain('measureText: measureDwgText');
+    expect(pageSource).toContain('DEFAULT_FONT_FAMILY');
+    expect(pageSource).toContain('TEXT_SIZE_RATIO');
+  });
+
+  it('surfaces missing external images instead of claiming a full restore', () => {
+    expect(pageSource).toContain('张外部图片未加载');
+    expect(pageSource).toContain('仅显示占位框');
+    expect(pageSource).toContain('externalImages');
+  });
 });

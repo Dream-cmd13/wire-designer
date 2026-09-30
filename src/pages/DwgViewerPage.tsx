@@ -11,8 +11,9 @@ import {
 } from '@/lib/dwg/dwgLibrary';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
-import { parseDwg, type DwgParsePhase } from '@/lib/dwg/parseDwg';
-import { renderDwgToCanvas } from '@/lib/dwg/renderDwg';
+import { parseDwg, type DwgParsePhase, type TextMeasure } from '@/lib/dwg/parseDwg';
+import { DEFAULT_FONT_FAMILY, renderDwgToCanvas } from '@/lib/dwg/renderDwg';
+import { TEXT_SIZE_RATIO, textWidthOf } from '@/lib/dwg/textMetrics';
 import type { DwgDrawing } from '@/lib/dwg/dwgTypes';
 import { supabase } from '@/lib/supabaseClient';
 import { notify } from '@/stores/noticeStore';
@@ -22,6 +23,26 @@ const WASM_BASE = `${import.meta.env.BASE_URL}libredwg`;
 const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
 const BACKGROUNDS = { light: '#ffffff', dark: '#111827' } as const;
+
+let canvasTextMeasurer: TextMeasure | null = null;
+
+/**
+ * 与渲染共用字体的文本测量：解析期 MTEXT 折行、Aligned/Fit 拉伸与文字包围盒
+ * 都基于实际字形宽度，避免内置估算与画布字体度量不一致导致换行位置偏差。
+ * Canvas 不可用时回落到内置估算。
+ */
+function measureDwgText(text: string, height: number): number {
+  if (!canvasTextMeasurer) {
+    const context = document.createElement('canvas').getContext('2d');
+    canvasTextMeasurer = context
+      ? (value, valueHeight) => {
+        context.font = `${valueHeight * TEXT_SIZE_RATIO}px ${DEFAULT_FONT_FAMILY}`;
+        return context.measureText(value).width;
+      }
+      : textWidthOf;
+  }
+  return canvasTextMeasurer(text, height);
+}
 
 type LoadPhase = DwgParsePhase | 'loading' | 'rendering' | 'ready' | 'error';
 type BackgroundMode = keyof typeof BACKGROUNDS;
@@ -173,6 +194,7 @@ export function DwgViewerPage() {
       const drawing = await parseDwg(buffer, {
         fileName,
         wasmBase: WASM_BASE,
+        measureText: measureDwgText,
         onProgress: async (phase) => {
           setState((prev) => (
             token === loadTokenRef.current && prev.phase !== 'error' ? { ...prev, phase } : prev
@@ -507,6 +529,10 @@ export function DwgViewerPage() {
   const skippedCount = state.drawing
     ? Object.values(state.drawing.stats.skipped).reduce((sum, value) => sum + value, 0)
     : 0;
+  const externalImages = state.drawing?.externalImages ?? [];
+  const externalImageTitle = externalImages
+    .map((image) => image.path ?? '未提供路径')
+    .join('\n');
   const zoomPercent = zoomPercentOf(view, state.drawing, viewport.width, viewport.height);
 
   return (
@@ -529,6 +555,14 @@ export function DwgViewerPage() {
             <span className="hidden text-xs text-slate-500 lg:inline">
               {state.drawing!.stats.rendered} 个图元 · {state.drawing!.stats.text} 处文字 · {state.drawing!.layers.length} 个图层
               {skippedCount > 0 ? ` · 跳过 ${skippedCount}` : ''}
+            </span>
+          )}
+          {isReady && externalImages.length > 0 && (
+            <span
+              className="shrink-0 rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+              title={`此图纸引用了外部图片，当前仅显示占位框：\n${externalImageTitle}`}
+            >
+              {externalImages.length} 张外部图片未加载（仅显示占位框）
             </span>
           )}
         </div>

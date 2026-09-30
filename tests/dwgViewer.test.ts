@@ -8,6 +8,7 @@ import { fitView, panView, zoomLimitsFor, zoomViewAt } from '@/lib/dwg/dwgView';
 import { decodePercentCodes, parseMText } from '@/lib/dwg/mtextFormat';
 import { hasDwgHeader, normalizeDwgDatabase, parseDwg } from '@/lib/dwg/parseDwg';
 import { renderDwgToCanvas, visibleWorldBounds } from '@/lib/dwg/renderDwg';
+import { isWideChar, textWidthOf } from '@/lib/dwg/textMetrics';
 
 describe('aciColor', () => {
   it('resolves standard ACI colors', () => {
@@ -90,6 +91,20 @@ describe('mtextFormat', () => {
     expect(decodePercentCodes('45%%d')).toBe('45°');
     expect(decodePercentCodes('%%c10 %%p0.1 100%%%')).toBe('⌀10 ±0.1 100%');
     expect(decodePercentCodes('%%uUnder%%u %%oOver%%o')).toBe('Under Over');
+  });
+});
+
+describe('textMetrics', () => {
+  it('treats symbols SimSun renders full-width as wide characters', () => {
+    // 实测 SimSun：° ± × ÷ · — ‰ 为全角，² µ Ø ® 为半角
+    for (const char of ['°', '±', '×', '÷', '·', '—', '‰']) {
+      expect(isWideChar(char), char).toBe(true);
+    }
+    for (const char of ['²', 'µ', 'Ø', '®', 'A']) {
+      expect(isWideChar(char), char).toBe(false);
+    }
+    expect(textWidthOf('±', 1.5)).toBeCloseTo(1.5 * 1.35, 6);
+    expect(textWidthOf('²', 1.5)).toBeCloseTo(1.5 * 1.35 * 0.5, 6);
   });
 });
 
@@ -531,6 +546,26 @@ describe('normalizeDwgDatabase', () => {
     expect(entity.widthScale).toBeCloseTo(10 / 2.7, 6);
     expect(entity.position).toEqual({ x: 0, y: 0 });
     expect(entity.bounds.maxX).toBeCloseTo(10, 6);
+  });
+
+  it('computes FIT text bounds with the same measurement used for layout', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'TEXT', handle: 'T6', layer: '0', colorIndex: 256,
+          text: 'AB', startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 40, y: 0, z: 0 },
+          textHeight: 2, halign: 5,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    // 真实度量自然宽度 40（估算仅 2.7）；FIT 后渲染宽度仍为 40，包围盒必须一致
+    const measureText = (text: string, height: number) => text.length * height * 10;
+    const [entity] = normalizeDwgDatabase(database, 'text-fit-measured.dwg', { measureText }).entities;
+    if (entity.kind !== 'text') throw new Error('expected text');
+    expect(entity.widthScale ?? 1).toBeCloseTo(1, 6);
+    expect(entity.bounds.maxX - entity.bounds.minX).toBeCloseTo(40, 6);
   });
 
   it('rotates MTEXT according to its x-axis direction vector', () => {
@@ -1166,6 +1201,55 @@ describe('normalizeDwgDatabase', () => {
     expect(text.baseline).toBe('middle');
     expect(text.wrapWidth).toBeCloseTo(2 * 0.92, 6);
     expect(text.height).toBeGreaterThan(0);
+    expect(drawing.externalImages).toEqual([{ path: 'C:\\Users\\79574\\Desktop\\样品照.jpg' }]);
+  });
+
+  it('records placed images without IMAGEDEF as missing external images', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'IMAGE', handle: 'I3', layer: '0', colorIndex: 256,
+          position: { x: 0, y: 0, z: 0 },
+          uPixel: { x: 0.5, y: 0, z: 0 },
+          vPixel: { x: 0, y: 0.5, z: 0 },
+          imageSize: { x: 4, y: 2 },
+          imageDefHandle: 'ID9',
+        },
+      ],
+      [],
+      layerEntries,
+    );
+
+    const drawing = normalizeDwgDatabase(database, 'image-missing-def.dwg');
+    expect(drawing.entities).toHaveLength(1);
+    expect(drawing.externalImages).toEqual([{ path: null }]);
+  });
+
+  it('wraps MTEXT with the provided font measurement and keeps bounds in sync', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'MTEXT', handle: 'M7', layer: '0', colorIndex: 256,
+          text: 'AB CD EF', insertionPoint: { x: 0, y: 0, z: 0 }, textHeight: 2,
+          attachmentPoint: 1, rectWidth: 10,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    const estimate = normalizeDwgDatabase(database, 'mtext-measure.dwg');
+    const measured = normalizeDwgDatabase(database, 'mtext-measure.dwg', {
+      measureText: (text, height) => textWidthOf(text, height) * 2,
+    });
+    const estimateText = estimate.entities[0];
+    const measuredText = measured.entities[0];
+    if (estimateText.kind !== 'text' || measuredText.kind !== 'text') throw new Error('expected text');
+
+    expect(estimateText.lines).toEqual(['AB CD', 'EF']);
+    expect(measuredText.lines).toEqual(['AB', 'CD', 'EF']);
+    // 折行变化必须同步反映到包围盒（多了一行更高），否则视口裁剪会用到过期范围
+    expect(measuredText.bounds.maxY - measuredText.bounds.minY)
+      .toBeGreaterThan(estimateText.bounds.maxY - estimateText.bounds.minY);
   });
 });
 
@@ -1207,6 +1291,253 @@ describe('renderDwgToCanvas', () => {
     return { context: context as unknown as CanvasRenderingContext2D, calls };
   }
 
+  /** 取出 HATCH 裁剪之后记录的图案线段（moveTo/lineTo 成对出现）。 */
+  function patternSegments(calls: Array<{ method: string; args: unknown[] }>) {
+    const clipIndex = calls.findIndex((call) => call.method === 'clip');
+    const segments: Array<{ a: { x: number; y: number }; b: { x: number; y: number } }> = [];
+    let pending: { x: number; y: number } | null = null;
+    for (let index = clipIndex + 1; index < calls.length; index += 1) {
+      const call = calls[index];
+      if (call.method === 'moveTo') {
+        pending = { x: call.args[0] as number, y: call.args[1] as number };
+      } else if (call.method === 'lineTo' && pending) {
+        segments.push({ a: pending, b: { x: call.args[0] as number, y: call.args[1] as number } });
+        pending = null;
+      }
+    }
+    return segments;
+  }
+
+  function clipSegmentToRect(
+    segment: { a: { x: number; y: number }; b: { x: number; y: number } },
+    rect: { minX: number; minY: number; maxX: number; maxY: number },
+  ): { a: { x: number; y: number }; b: { x: number; y: number } } | null {
+    let t0 = 0;
+    let t1 = 1;
+    const dx = segment.b.x - segment.a.x;
+    const dy = segment.b.y - segment.a.y;
+    const p = [-dx, dx, -dy, dy];
+    const q = [
+      segment.a.x - rect.minX,
+      rect.maxX - segment.a.x,
+      segment.a.y - rect.minY,
+      rect.maxY - segment.a.y,
+    ];
+    for (let index = 0; index < 4; index += 1) {
+      if (p[index] === 0) {
+        if (q[index] < 0) return null;
+        continue;
+      }
+      const r = q[index] / p[index];
+      if (p[index] < 0) t0 = Math.max(t0, r);
+      else t1 = Math.min(t1, r);
+      if (t0 > t1) return null;
+    }
+    return {
+      a: { x: segment.a.x + t0 * dx, y: segment.a.y + t0 * dy },
+      b: { x: segment.a.x + t1 * dx, y: segment.a.y + t1 * dy },
+    };
+  }
+
+  function segmentHitsRect(
+    segment: { a: { x: number; y: number }; b: { x: number; y: number } },
+    rect: { minX: number; minY: number; maxX: number; maxY: number },
+  ): boolean {
+    return clipSegmentToRect(segment, rect) !== null;
+  }
+
+  const regionBounds = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+
+  function renderHatch(
+    definitionLines: Array<{ angle: number; base: { x: number; y: number }; offset: { x: number; y: number }; dashLengths?: number[] }>,
+    translation = { x: 0, y: 0 },
+    boundaryPaths?: unknown[],
+  ) {
+    const { x, y } = translation;
+    const database = makeDatabase(
+      [
+        {
+          type: 'HATCH', handle: 'H30', layer: '0', colorIndex: 256, solidFill: 0,
+          boundaryPaths: boundaryPaths ?? [{
+            isClosed: true,
+            vertices: [
+              { x: x + 0, y: y + 0, bulge: 0 }, { x: x + 10, y: y + 0, bulge: 0 },
+              { x: x + 10, y: y + 10, bulge: 0 }, { x: x + 0, y: y + 10, bulge: 0 },
+            ],
+          }],
+          definitionLines: definitionLines.map((line) => ({
+            angle: line.angle,
+            base: { x: line.base.x + x, y: line.base.y + y },
+            offset: line.offset,
+            dashLengths: line.dashLengths ?? [],
+          })),
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    const drawing = normalizeDwgDatabase(database, 'hatch-render.dwg');
+    const { context, calls } = createMockContext((line) => line.length * 20);
+    // 平移夹具时同步平移视图，避免图元被视口裁剪（屏幕 y 为 -worldY + offsetY）
+    renderDwgToCanvas(context, drawing, {
+      scale: 1,
+      offsetX: -x,
+      offsetY: y,
+      lineWidth: 1,
+      fontFamily: 'test',
+    });
+    return { segments: patternSegments(calls), calls };
+  }
+
+  function translateSegments(
+    segments: Array<{ a: { x: number; y: number }; b: { x: number; y: number } }>,
+    dx: number,
+    dy: number,
+  ) {
+    return segments
+      .map((segment) => ({
+        a: { x: segment.a.x - dx, y: segment.a.y - dy },
+        b: { x: segment.b.x - dx, y: segment.b.y - dy },
+      }))
+      .sort((left, right) => (left.a.x - right.a.x) || (left.a.y - right.a.y) || (left.b.x - right.b.x));
+  }
+
+  it('covers the region when the pattern base is far away along the line direction', () => {
+    // 04-093 锁紧环滚花的实际形态：45°/135° 交叉图案，基点远离区域（合成夹具）
+    const { segments } = renderHatch([
+      { angle: Math.PI / 4, base: { x: 620000, y: 380000 }, offset: { x: -0.6735, y: 0.6735 } },
+      { angle: (3 * Math.PI) / 4, base: { x: 620000, y: 380000 }, offset: { x: -0.6735, y: -0.6735 } },
+    ]);
+
+    const hitting = segments.filter((segment) => segmentHitsRect(segment, regionBounds));
+    expect(hitting.length).toBeGreaterThan(5);
+    for (const segment of hitting) {
+      // 每条线段必须平行于其图案线方向（±45°）
+      const dx = Math.abs(segment.b.x - segment.a.x);
+      const dy = Math.abs(segment.b.y - segment.a.y);
+      expect(Math.abs(dx - dy)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('keeps hatch intersection geometry translation-invariant', () => {
+    const pattern = [
+      { angle: Math.PI / 4, base: { x: 3, y: -2 }, offset: { x: -0.6735, y: 0.6735 } },
+      { angle: (3 * Math.PI) / 4, base: { x: 3, y: -2 }, offset: { x: -0.6735, y: -0.6735 } },
+    ];
+    const clipToRegion = (segments: ReturnType<typeof renderHatch>['segments'], dx: number, dy: number) => (
+      translateSegments(segments, dx, dy)
+        .map((segment) => clipSegmentToRect(segment, regionBounds))
+        .filter((segment): segment is NonNullable<typeof segment> => segment !== null)
+    );
+    const local = clipToRegion(renderHatch(pattern).segments, 0, 0);
+    const shifted = clipToRegion(renderHatch(pattern, { x: 100000, y: -100000 }).segments, 100000, -100000);
+
+    expect(local.length).toBeGreaterThan(5);
+    expect(shifted).toHaveLength(local.length);
+    for (let index = 0; index < local.length; index += 1) {
+      expect(shifted[index].a.x).toBeCloseTo(local[index].a.x, 6);
+      expect(shifted[index].a.y).toBeCloseTo(local[index].a.y, 6);
+      expect(shifted[index].b.x).toBeCloseTo(local[index].b.x, 6);
+      expect(shifted[index].b.y).toBeCloseTo(local[index].b.y, 6);
+    }
+  });
+
+  it('anchors dash phase to the pattern base point when segments are extended', () => {
+    const base = { x: 120000, y: -80000 };
+    const databaseDash = [2, 1];
+    const period = databaseDash[0] + databaseDash[1];
+    const direction = { x: Math.cos(Math.PI / 4), y: Math.sin(Math.PI / 4) };
+    const { segments } = renderHatch([
+      { angle: Math.PI / 4, base, offset: { x: -0.6735, y: 0.6735 }, dashLengths: databaseDash },
+    ]);
+
+    const hitting = segments.filter((segment) => segmentHitsRect(segment, regionBounds));
+    expect(hitting.length).toBeGreaterThan(5);
+    for (const segment of hitting) {
+      const distance = (segment.a.x - base.x) * direction.x + (segment.a.y - base.y) * direction.y;
+      const phase = ((distance % period) + period) % period;
+      expect(Math.min(phase, period - phase)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('repeats odd-length dash arrays when aligning hatch phase', () => {
+    // Canvas 对 [2] 按 [2,2] 绘制，周期为 4；奇数数组必须先补成偶数再算相位。
+    // 区域 x∈[10,20]，k=0 图案线（y=0）minT=10 → 相位 2 → 起点 8。
+    const renderDashed = (dashLengths: number[]) => {
+      const database = makeDatabase(
+        [
+          {
+            type: 'HATCH', handle: 'H9', layer: '0', colorIndex: 256, solidFill: 0,
+            boundaryPaths: [{
+              isClosed: true,
+              vertices: [
+                { x: 10, y: 0.5, bulge: 0 }, { x: 20, y: 0.5, bulge: 0 },
+                { x: 20, y: 10.5, bulge: 0 }, { x: 10, y: 10.5, bulge: 0 },
+              ],
+            }],
+            definitionLines: [{ angle: 0, base: { x: 0, y: 0 }, offset: { x: 0, y: 1 }, dashLengths }],
+          },
+        ],
+        [],
+        layerEntries,
+      );
+      const drawing = normalizeDwgDatabase(database, 'hatch-dash-odd.dwg');
+      const { context, calls } = createMockContext((line) => line.length * 20);
+      // 视口必须覆盖区域（y 0.5..10.5），否则整个填充会被视口剔除
+      renderDwgToCanvas(context, drawing, { scale: 1, offsetX: 0, offsetY: 600, lineWidth: 1, fontFamily: 'test' });
+      return patternSegments(calls);
+    };
+
+    const oddStart = renderDashed([2]).find((segment) => segment.a.y === 0 && segment.b.y === 0);
+    const evenStart = renderDashed([2, 2]).find((segment) => segment.a.y === 0 && segment.b.y === 0);
+    expect(oddStart?.a.x).toBeCloseTo(8, 6);
+    expect(evenStart?.a.x).toBeCloseTo(8, 6);
+  });
+
+  it('handles rotated, negative-spacing and cross patterns inside the region', () => {
+    const cases = [
+      { angle: 0, offset: { x: 0, y: 1 } },
+      { angle: Math.PI / 2, offset: { x: -1, y: 0 } },
+      { angle: Math.PI / 4, offset: { x: 0.6735, y: -0.6735 } },
+      { angle: (3 * Math.PI) / 4, offset: { x: -0.6735, y: -0.6735 } },
+      { angle: Math.PI / 4, offset: { x: 0.3, y: -0.9735 } },
+    ];
+    for (const pattern of cases) {
+      const { segments } = renderHatch([{ ...pattern, base: { x: 50000, y: -30000 } }]);
+      const hitting = segments.filter((segment) => segmentHitsRect(segment, regionBounds));
+      expect(hitting.length, JSON.stringify(pattern)).toBeGreaterThan(3);
+      const direction = { x: Math.cos(pattern.angle), y: Math.sin(pattern.angle) };
+      for (const segment of hitting) {
+        const dx = segment.b.x - segment.a.x;
+        const dy = segment.b.y - segment.a.y;
+        const cross = dx * direction.y - dy * direction.x;
+        expect(Math.abs(cross), JSON.stringify(pattern)).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it('traces island paths before clipping crosshatch patterns', () => {
+    const outer = [
+      { x: 0, y: 0, bulge: 0 }, { x: 10, y: 0, bulge: 0 },
+      { x: 10, y: 10, bulge: 0 }, { x: 0, y: 10, bulge: 0 },
+    ];
+    const hole = [
+      { x: 4, y: 4, bulge: 0 }, { x: 6, y: 4, bulge: 0 },
+      { x: 6, y: 6, bulge: 0 }, { x: 4, y: 6, bulge: 0 },
+    ];
+    const { segments, calls } = renderHatch(
+      [{ angle: Math.PI / 4, base: { x: 80000, y: 60000 }, offset: { x: -0.6735, y: 0.6735 } }],
+      { x: 0, y: 0 },
+      [{ isClosed: true, vertices: outer }, { isClosed: true, vertices: hole }],
+    );
+
+    const clipIndex = calls.findIndex((call) => call.method === 'clip');
+    const boundaryMoves = calls.slice(0, clipIndex).filter((call) => call.method === 'moveTo');
+    expect(boundaryMoves).toHaveLength(2);
+    expect(calls[clipIndex].args[0]).toBe('evenodd');
+    expect(segments.filter((segment) => segmentHitsRect(segment, regionBounds)).length).toBeGreaterThan(5);
+  });
+
   it('rotates text by its direction and squeezes wrapped lines into the reference box', () => {
     const database = makeDatabase(
       [
@@ -1231,6 +1562,28 @@ describe('renderDwgToCanvas', () => {
     expect(scaleCall?.args[0] as number).toBeCloseTo(0.1, 6);
     expect(scaleCall?.args[1]).toBe(1);
     expect(calls.some((call) => call.method === 'fillText' && call.args[0] === 'M12*1')).toBe(true);
+  });
+
+  it('converts device-pixel line width into world units with a hairline floor', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'LINE', handle: 'L10', layer: '0', colorIndex: 256,
+          startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 10, y: 0, z: 0 },
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    const drawing = normalizeDwgDatabase(database, 'line-width.dwg');
+
+    const normal = createMockContext(() => 10);
+    renderDwgToCanvas(normal.context, drawing, { scale: 4, offsetX: 0, offsetY: 0, lineWidth: 2, fontFamily: 'test' });
+    expect(normal.context.lineWidth).toBeCloseTo(0.5, 6);
+
+    const floored = createMockContext(() => 10);
+    renderDwgToCanvas(floored.context, drawing, { scale: 4, offsetX: 0, offsetY: 0, lineWidth: 0.1, fontFamily: 'test' });
+    expect(floored.context.lineWidth).toBeCloseTo(0.75 / 4, 6);
   });
 
   it('strokes dashed linetypes with setLineDash', () => {
@@ -1306,6 +1659,28 @@ describe('renderDwgToCanvas', () => {
 
     const scaleCall = calls.find((call) => call.method === 'scale');
     expect(scaleCall?.args[0] as number).toBeCloseTo(10 / 140, 6);
+  });
+
+  it('does not cull FIT text when the viewport only intersects its measured part', () => {
+    const database = makeDatabase(
+      [
+        {
+          type: 'TEXT', handle: 'T7', layer: '0', colorIndex: 256,
+          text: 'AB', startPoint: { x: 0, y: 0, z: 0 }, endPoint: { x: 40, y: 0, z: 0 },
+          textHeight: 2, halign: 5,
+        },
+      ],
+      [],
+      layerEntries,
+    );
+    const measureText = (text: string, height: number) => text.length * height * 10;
+    const drawing = normalizeDwgDatabase(database, 'text-fit-cull.dwg', { measureText });
+    const { context, calls } = createMockContext((line) => line.length * 20);
+
+    // 视口世界范围 x ∈ [10, 810]：只与真实文字（0..40）相交，不与估算包围盒（0..2.7）相交
+    renderDwgToCanvas(context, drawing, { scale: 1, offsetX: -10, offsetY: 100, lineWidth: 1, fontFamily: 'test' });
+
+    expect(calls.some((call) => call.method === 'fillText')).toBe(true);
   });
 });
 
