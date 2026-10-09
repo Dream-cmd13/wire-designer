@@ -1,7 +1,7 @@
 import type { CatalogSnapshot, CatalogWire } from '@/types/catalog';
 import type { Connector, HarnessConfig, OvermoldSpec } from '@/types/harness';
 import type { MaterialPrice } from '@/repositories/priceRepository';
-import { calculatePrice, type QuoteBreakdown } from './pricing';
+import { calculatePrice, formatQuoteMoney, type QuoteBreakdown } from './pricing';
 import { applyCatalogWireSpec } from './wireCatalog';
 
 export type AutoQuoteEndpointBType = 'connector' | 'cut' | 'strip-tin';
@@ -296,3 +296,36 @@ export function evaluateAutoQuote(
     overmold,
   };
 }
+
+export function buildQuoteSummaryText(
+  form: AutoQuoteFormState,
+  evaluation: AutoQuoteEvaluation,
+  connA?: { name: string; model?: string; pinCount: number },
+  connB?: { name: string; model?: string; pinCount: number },
+  wire?: { name: string },
+  overmoldName?: string,
+): string {
+  if (!evaluation.price) return '';
+  const endpointBDesc =
+    form.endpointBType === 'connector'
+      ? (connB ? `${connB.model || connB.name} (${connB.pinCount}Pin)` : '连接器')
+      : (form.endpointBType === 'cut' ? '切断齐头' : '剥皮沾锡');
+  const moldDesc =
+    form.outerMoldType === 'pvc-45p'
+      ? `${overmoldName || '黑色PVC 45P'} (${form.outerMoldEnds === 2 ? '两端成型' : '单端成型'})`
+      : '无外模';
+
+  return [
+    '【线束询价核算结果】',
+    `• A 端连接器: ${connA ? `${connA.model || connA.name} (${connA.pinCount}Pin)` : '-'}`,
+    `• B 端形式: ${endpointBDesc}`,
+    `• 线材型号: ${wire?.name || '-'}`,
+    `• 外模配置: ${moldDesc}`,
+    `• 报价线长: ${form.lengthMm} mm`,
+    `• 询价数量: ${form.quantity} 条`,
+    `• 含税运单价: ¥${formatQuoteMoney(evaluation.price.unitPrice)} / 条`,
+    `• 订单总价: ¥${formatQuoteMoney(evaluation.price.totalPrice)} 元`,
+    '• 交付条款: 含 13% 增值税专用发票及指定地点标准运费',
+  ].join('\n');
+}
+

@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutoQuote2Page, AutoQuote2Result } from '@/pages/AutoQuote2Page';
 import { getRouteByPath, requiresAuth, shouldKeepRouteAfterLogin } from '@/lib/appRoute';
-import type { AutoQuoteEvaluation } from '@/lib/autoQuote';
+import { DEFAULT_AUTO_QUOTE_FORM, buildQuoteSummaryText, type AutoQuoteEvaluation } from '@/lib/autoQuote';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
 
@@ -51,6 +51,52 @@ describe('自动报价2', () => {
       expect(html).not.toContain(text);
     }
     expect(html).toContain('填写信息后获取报价');
+    // 确认已移除多余提示字体
+    expect(html).not.toContain('首版工业标准公式支持 M8 与 M12 系列连接器选配');
+    expect(html).not.toContain('线束快速询价 · 一屏极速版');
+    expect(html).not.toContain('自顶向下流程录入');
+    expect(html).not.toContain('纯售价模式');
+  });
+
+  it('automatically preselects the first available supported overmold spec', () => {
+    useCatalogStore.setState({
+      status: 'ready',
+      refreshing: false,
+      error: null,
+      snapshot: {
+        connectors: [],
+        wires: [],
+        wireColors: [],
+        overmolds: [
+          {
+            id: 'mold-pvc-m12',
+            resourceItemId: 'res-mold-1',
+            name: 'M12外模 直头 黑色PVC 45P',
+            outerMaterial: '黑色PVC',
+            outerHardness: '45P',
+            outerForm: 'straight',
+          },
+          {
+            id: 'mold-pvc-m8',
+            resourceItemId: 'res-mold-2',
+            name: 'M8外模 直头 黑色PVC 45P',
+            outerMaterial: '黑色PVC',
+            outerHardness: '45P',
+            outerForm: 'straight',
+          },
+        ],
+        leadTimeOptions: [],
+        protectionOptions: [],
+        pricingRules: [],
+        quantityDiscountRules: [],
+        loadedAt: 0,
+      },
+    });
+
+    const html = renderToStaticMarkup(<AutoQuote2Page />);
+    expect(html).toContain('M12外模 直头 黑色PVC 45P');
+    // 选框默认值预选了第一个可用外模
+    expect(html).toContain('value="mold-pvc-m12" selected=""');
   });
 
   it('disables quoting while catalog data is loading or unavailable', () => {
@@ -81,6 +127,54 @@ describe('自动报价2', () => {
     expect(html).toContain('订单总价');
     for (const privateValue of ['内部采购价', '内部焊接工费', '8.765432', '0.765432', '9.543219', '成本', '毛利', '明细']) {
       expect(html).not.toContain(privateValue);
+    }
+  });
+
+  it('builds quote summary text correctly without leaking internal details', () => {
+    const evaluation: AutoQuoteEvaluation = {
+      status: 'ready',
+      issues: [],
+      price: {
+        unitPrice: '25.80',
+        totalPrice: '25800.00',
+        materials: [{ name: '采购料', points: 1, unitPrice: '10.00', amount: '10.00' }],
+        labor: [],
+        materialSubtotal: '10.00',
+        laborSubtotal: '5.00',
+        materialLoss: '0.50',
+        processingLoss: '0.50',
+        cost: '16.00',
+        sellingPrice: '25.00',
+        freight: '0.80',
+      },
+    };
+
+    const text = buildQuoteSummaryText(
+      {
+        ...DEFAULT_AUTO_QUOTE_FORM,
+        lengthMm: 1500,
+        quantity: 1000,
+        endpointBType: 'connector',
+        outerMoldEnds: 2,
+      },
+      evaluation,
+      { name: 'M12-4Pin-公头', model: 'M12-A-4P-M', pinCount: 4 },
+      { name: 'M12-4Pin-母头', model: 'M12-A-4P-F', pinCount: 4 },
+      { name: 'UL2464 24AWG 4芯黑色护套线' },
+      'M12直头 黑色PVC 45P',
+    );
+
+    expect(text).toContain('【线束询价核算结果】');
+    expect(text).toContain('M12-A-4P-M (4Pin)');
+    expect(text).toContain('M12-A-4P-F (4Pin)');
+    expect(text).toContain('UL2464 24AWG 4芯黑色护套线');
+    expect(text).toContain('1500 mm');
+    expect(text).toContain('1000 条');
+    expect(text).toContain('¥25.80 / 条');
+    expect(text).toContain('¥25800.00 元');
+    expect(text).toContain('含 13% 增值税专用发票及指定地点标准运费');
+    for (const privateValue of ['采购料', '内部', '成本', '毛利', '明细']) {
+      expect(text).not.toContain(privateValue);
     }
   });
 
