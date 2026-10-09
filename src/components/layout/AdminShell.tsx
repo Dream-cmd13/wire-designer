@@ -52,6 +52,18 @@ const sidebarItems: SidebarItem[] = [
     access: 'projects',
   },
   {
+    label: '自动报价4',
+    path: appRoutes['auto-quote-4'].path,
+    icon: Calculator,
+    access: 'projects',
+  },
+  {
+    label: '自动报价5',
+    path: appRoutes['auto-quote-5'].path,
+    icon: Calculator,
+    access: 'projects',
+  },
+  {
     label: '线束设计器',
     path: appRoutes['designer-design'].path,
     icon: Cable,

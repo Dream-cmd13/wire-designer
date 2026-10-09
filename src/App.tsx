@@ -51,6 +51,8 @@ const DwgViewerPage = lazy(() => import('@/pages/DwgViewerPage').then((module) =
 const AutoQuotePage = lazy(() => import('@/pages/AutoQuotePage').then((module) => ({ default: module.AutoQuotePage })));
 const AutoQuote2Page = lazy(() => import('@/pages/AutoQuote2Page').then((module) => ({ default: module.AutoQuote2Page })));
 const AutoQuote3Page = lazy(() => import('@/pages/AutoQuote3Page').then((module) => ({ default: module.AutoQuote3Page })));
+const AutoQuote4Page = lazy(() => import('@/pages/AutoQuote4Page').then((module) => ({ default: module.AutoQuote4Page })));
+const AutoQuote5Page = lazy(() => import('@/pages/AutoQuote5Page').then((module) => ({ default: module.AutoQuote5Page })));
 
 function ModuleLoadingState() {
   return (
@@ -1058,6 +1060,14 @@ export default function App() {
 
     if (route.id === 'auto-quote-3') {
       return <AutoQuote3Page />;
+    }
+
+    if (route.id === 'auto-quote-4') {
+      return <AutoQuote4Page />;
+    }
+
+    if (route.id === 'auto-quote-5') {
+      return <AutoQuote5Page />;
     }
 
     if (route.id === 'materials') {
