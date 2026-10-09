@@ -34,6 +34,18 @@ const sidebarItems: SidebarItem[] = [
     icon: Home,
   },
   {
+    label: '自动报价',
+    path: appRoutes['auto-quote'].path,
+    icon: Calculator,
+    access: 'projects',
+  },
+  {
+    label: '自动报价2',
+    path: appRoutes['auto-quote-2'].path,
+    icon: Calculator,
+    access: 'projects',
+  },
+  {
     label: '线束设计器',
     path: appRoutes['designer-design'].path,
     icon: Cable,
@@ -213,11 +225,13 @@ export function AdminShell({
     ? '独立制图 · 新建后导出'
     : route.id === 'dwg-viewer'
       ? 'DWG 图纸 · 浏览器内解析与导出'
-      : route.section === 'designer'
-        ? (currentProjectName || '选择项目后可进入完整设计流程')
-        : route.section === 'home'
-          ? '选择项目后可进入完整设计流程'
-          : '标准元器件与物料规格';
+      : route.section === 'auto-quote'
+        ? (route.id === 'auto-quote-2' ? '填写参数 · 获取价格' : '独立选配与实时测算')
+        : route.section === 'designer'
+          ? (currentProjectName || '选择项目后可进入完整设计流程')
+          : route.section === 'home'
+            ? '选择项目后可进入完整设计流程'
+            : '标准元器件与物料规格';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (

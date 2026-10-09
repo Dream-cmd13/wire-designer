@@ -1,5 +1,7 @@
 export type AppRouteId =
   | 'home'
+  | 'auto-quote'
+  | 'auto-quote-2'
   | 'designer-design'
   | 'designer-product-image'
   | 'drawing-workbench'
@@ -10,7 +12,7 @@ export interface AppRoute {
   id: AppRouteId;
   path: string;
   title: string;
-  section: 'home' | 'designer' | 'drawing' | 'materials';
+  section: 'home' | 'auto-quote' | 'designer' | 'drawing' | 'materials';
 }
 
 export const appRoutes: Record<AppRouteId, AppRoute> = {
@@ -19,6 +21,18 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     path: '/home',
     title: '首页',
     section: 'home',
+  },
+  'auto-quote': {
+    id: 'auto-quote',
+    path: '/auto-quote',
+    title: '自动报价',
+    section: 'auto-quote',
+  },
+  'auto-quote-2': {
+    id: 'auto-quote-2',
+    path: '/auto-quote-2',
+    title: '自动报价2',
+    section: 'auto-quote',
   },
   'designer-design': {
     id: 'designer-design',
@@ -64,11 +78,15 @@ export function requiresAuth(route: AppRoute): boolean {
 
 /**
  * 匿名用户登录成功后是否保留当前路由（而不是被送回首页）。
- * 设计器需要 projectId 才能恢复项目；物料库与制作图纸直接保留。
+ * 设计器需要 projectId 才能恢复项目；物料库、自动报价与制作图纸直接保留。
  */
 export function shouldKeepRouteAfterLogin(route: AppRoute, projectId: string | null): boolean {
   if (route.section === 'designer') return Boolean(projectId);
-  return route.id === 'materials' || route.id === 'drawing-workbench' || route.id === 'dwg-viewer';
+  return route.id === 'materials'
+    || route.id === 'drawing-workbench'
+    || route.id === 'dwg-viewer'
+    || route.id === 'auto-quote'
+    || route.id === 'auto-quote-2';
 }
 
 export const projectIdQueryKey = 'projectId';
