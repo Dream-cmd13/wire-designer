@@ -46,6 +46,12 @@ const sidebarItems: SidebarItem[] = [
     access: 'projects',
   },
   {
+    label: '自动报价3',
+    path: appRoutes['auto-quote-3'].path,
+    icon: Calculator,
+    access: 'projects',
+  },
+  {
     label: '线束设计器',
     path: appRoutes['designer-design'].path,
     icon: Cable,
@@ -226,7 +232,11 @@ export function AdminShell({
     : route.id === 'dwg-viewer'
       ? 'DWG 图纸 · 浏览器内解析与导出'
       : route.section === 'auto-quote'
-        ? (route.id === 'auto-quote-2' ? '填写参数 · 获取价格' : '独立选配与实时测算')
+        ? (route.id === 'auto-quote-2'
+          ? '填写参数 · 获取价格'
+          : route.id === 'auto-quote-3'
+            ? '分步向导 · 实时测算'
+            : '独立选配与实时测算')
         : route.section === 'designer'
           ? (currentProjectName || '选择项目后可进入完整设计流程')
           : route.section === 'home'

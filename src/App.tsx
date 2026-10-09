@@ -50,6 +50,7 @@ const DrawingWorkbenchPage = lazy(() => import('@/pages/DrawingWorkbenchPage').t
 const DwgViewerPage = lazy(() => import('@/pages/DwgViewerPage').then((module) => ({ default: module.DwgViewerPage })));
 const AutoQuotePage = lazy(() => import('@/pages/AutoQuotePage').then((module) => ({ default: module.AutoQuotePage })));
 const AutoQuote2Page = lazy(() => import('@/pages/AutoQuote2Page').then((module) => ({ default: module.AutoQuote2Page })));
+const AutoQuote3Page = lazy(() => import('@/pages/AutoQuote3Page').then((module) => ({ default: module.AutoQuote3Page })));
 
 function ModuleLoadingState() {
   return (
@@ -1053,6 +1054,10 @@ export default function App() {
 
     if (route.id === 'auto-quote-2') {
       return <AutoQuote2Page />;
+    }
+
+    if (route.id === 'auto-quote-3') {
+      return <AutoQuote3Page />;
     }
 
     if (route.id === 'materials') {

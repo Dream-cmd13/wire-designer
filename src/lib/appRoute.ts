@@ -2,6 +2,7 @@ export type AppRouteId =
   | 'home'
   | 'auto-quote'
   | 'auto-quote-2'
+  | 'auto-quote-3'
   | 'designer-design'
   | 'designer-product-image'
   | 'drawing-workbench'
@@ -32,6 +33,12 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     id: 'auto-quote-2',
     path: '/auto-quote-2',
     title: '自动报价2',
+    section: 'auto-quote',
+  },
+  'auto-quote-3': {
+    id: 'auto-quote-3',
+    path: '/auto-quote-3',
+    title: '自动报价3',
     section: 'auto-quote',
   },
   'designer-design': {
@@ -86,7 +93,8 @@ export function shouldKeepRouteAfterLogin(route: AppRoute, projectId: string | n
     || route.id === 'drawing-workbench'
     || route.id === 'dwg-viewer'
     || route.id === 'auto-quote'
-    || route.id === 'auto-quote-2';
+    || route.id === 'auto-quote-2'
+    || route.id === 'auto-quote-3';
 }
 
 export const projectIdQueryKey = 'projectId';

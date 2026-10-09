@@ -45,6 +45,7 @@ describe('AdminShell access menu', () => {
     expect(html).toContain('物料库');
     expect(html).toContain('自动报价');
     expect(html).toContain('自动报价2');
+    expect(html).toContain('自动报价3');
     expect(html).toContain('制作图纸');
   });
 });
