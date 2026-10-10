@@ -3,18 +3,16 @@ import {
   Cable,
   Calculator,
   Database,
-  FileImage,
   Layers,
   Ruler,
   Scissors,
-  Zap,
 } from 'lucide-react';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
 import {
   DEFAULT_AUTO_QUOTE_FORM,
   evaluateAutoQuote,
-  isSupportedConnector,
+  deriveAutoQuoteSelection,
   isSupportedOvermold,
   type AutoQuoteEndpointBType,
   type AutoQuoteFormState,
@@ -24,7 +22,6 @@ import {
 import { ConnectorPickerModal } from '@/components/autoQuote/ConnectorPickerModal';
 import { WirePickerModal } from '@/components/autoQuote/WirePickerModal';
 import { AutoQuotePriceCard } from '@/components/autoQuote/AutoQuotePriceCard';
-import { AutoQuoteDrawingPreview } from '@/components/autoQuote/AutoQuoteDrawingPreview';
 
 export function AutoQuotePage() {
   const catalog = useCatalogStore((state) => state.snapshot);
@@ -35,7 +32,6 @@ export function AutoQuotePage() {
   const { book, loading: priceLoading, load: loadPrices } = priceStore;
 
   const [form, setForm] = useState<AutoQuoteFormState>(DEFAULT_AUTO_QUOTE_FORM);
-  const [activeRightTab, setActiveRightTab] = useState<'quote' | 'drawing'>('quote');
   const [pickerModal, setPickerModal] = useState<'connA' | 'connB' | 'wire' | null>(null);
 
   // 初始化目录与价格
@@ -46,33 +42,8 @@ export function AutoQuotePage() {
     void loadPrices().catch(() => undefined);
   }, [catalogStatus, initializeCatalog, loadPrices]);
 
-  const defaultConnA = useMemo(
-    () => catalog?.connectors.find(isSupportedConnector),
-    [catalog],
-  );
-  const defaultConnB = useMemo(
-    () => catalog?.connectors.filter(isSupportedConnector)[1] || defaultConnA,
-    [catalog, defaultConnA],
-  );
-  const defaultWire = useMemo(
-    () => catalog?.wires[0],
-    [catalog],
-  );
-  const defaultMold = useMemo(
-    () => catalog?.overmolds.find(isSupportedOvermold),
-    [catalog],
-  );
-
-  // 通过渲染期派生状态自动填充默认选配物料，严禁在 useEffect 中触发 setState 引起级联重渲染
-  const effectiveForm = useMemo(() => {
-    return {
-      ...form,
-      connectorAId: form.connectorAId || defaultConnA?.id || '',
-      connectorBId: form.connectorBId || defaultConnB?.id || '',
-      wireResourceId: form.wireResourceId || defaultWire?.resourceItemId || '',
-      outerMoldSpecId: form.outerMoldSpecId || defaultMold?.id || '',
-    };
-  }, [form, defaultConnA, defaultConnB, defaultWire, defaultMold]);
+  const selection = useMemo(() => deriveAutoQuoteSelection(form, catalog), [form, catalog]);
+  const effectiveForm = selection.form;
 
   const prices = useMemo(() => book?.prices || [], [book]);
 
@@ -99,18 +70,11 @@ export function AutoQuotePage() {
   );
 
   const handleUpdate = <K extends keyof AutoQuoteFormState>(field: K, value: AutoQuoteFormState[K]) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm(deriveAutoQuoteSelection({ ...effectiveForm, [field]: value }, catalog).form);
   };
 
   const handleEndpointBChange = (type: AutoQuoteEndpointBType) => {
-    setForm((prev) => {
-      const next: AutoQuoteFormState = { ...prev, endpointBType: type };
-      if (type === 'connector' && !prev.connectorBId && catalog?.connectors) {
-        const candidate = catalog.connectors.find(isSupportedConnector);
-        if (candidate) next.connectorBId = candidate.id;
-      }
-      return next;
-    });
+    handleUpdate('endpointBType', type);
   };
 
   return (
@@ -238,6 +202,11 @@ export function AutoQuotePage() {
                 })}
               </div>
 
+              <p className="text-[11px] text-slate-500">
+                {connA && typeof connA.shielded === 'boolean'
+                  ? `已按 A 端锁定：${connA.pinCount}芯 · ${connA.shielded ? '屏蔽' : '非屏蔽'}；B 端连接器和线材仅显示匹配项`
+                  : '请先选择 A 端连接器并补全目录中的屏蔽属性'}
+              </p>
               {/* 当 B 端为连接器时显示连接器选择 */}
               {form.endpointBType === 'connector' && (
                 <div className="mt-2 space-y-1.5">
@@ -306,6 +275,9 @@ export function AutoQuotePage() {
                 </span>
               </div>
 
+              {connA && selection.wires.length === 0 && (
+                <p className="text-amber-700">没有与 A 端芯数及屏蔽属性一致的线材，请更换 A 端或补充物料目录</p>
+              )}
               {selectedWire ? (
                 <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 p-2.5">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -360,10 +332,9 @@ export function AutoQuotePage() {
 
               {/* 外模单选 */}
               <div className="space-y-1.5">
-                <span className="text-slate-600 font-medium">外模材质</span>
-                <div className="grid grid-cols-3 gap-2">
+                <span className="text-slate-600 font-medium">外模材质（必选）</span>
+                <div className="grid grid-cols-2 gap-2">
                   {[
-                    { key: 'none' as const, label: '无外模' },
                     { key: 'pvc-45p' as const, label: '黑色 PVC 45P' },
                     { key: 'tpe' as const, label: 'TPE (待支持)' },
                   ].map((item) => {
@@ -436,7 +407,7 @@ export function AutoQuotePage() {
 
               {/* 内模单选 */}
               <div className="space-y-1.5">
-                <span className="text-slate-600 font-medium">内模材质</span>
+                <span className="text-slate-600 font-medium">内模材质（可选）</span>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { key: 'none' as const, label: '无内模' },
@@ -462,9 +433,9 @@ export function AutoQuotePage() {
               </div>
             </div>
 
-            {/* 长度与订单数量 */}
+            {/* 线长配置 */}
             <div className="space-y-3 border-t border-slate-100 pt-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div>
                 <label className="block">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-semibold text-slate-700 flex items-center gap-1">
@@ -493,45 +464,23 @@ export function AutoQuotePage() {
                   )}
                 </label>
 
-                <label className="block">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-slate-700 flex items-center gap-1">
-                      <Zap className="h-3.5 w-3.5 text-amber-600" />
-                      订单数量 (条)
-                    </span>
-                  </div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={1000000}
-                    step={100}
-                    value={form.quantity}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      if (Number.isSafeInteger(val) && val >= 1 && val <= 1000000) {
-                        handleUpdate('quantity', val);
-                      }
-                    }}
-                    className="w-full rounded-lg border border-slate-300 p-2 text-xs font-semibold focus:border-blue-500 outline-none"
-                  />
-                </label>
               </div>
 
-              {/* 快捷数量选择 */}
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
-                <span>快捷数量:</span>
-                {[100, 500, 1000, 2000, 5000].map((qty) => (
+              {/* 快捷线长选择 */}
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                <span>快捷线长:</span>
+                {[100, 500, 1000, 2000, 5000].map((lengthMm) => (
                   <button
-                    key={qty}
+                    key={lengthMm}
                     type="button"
-                    onClick={() => handleUpdate('quantity', qty)}
+                    onClick={() => handleUpdate('lengthMm', lengthMm)}
                     className={`rounded px-1.5 py-0.5 border cursor-pointer ${
-                      form.quantity === qty
+                      form.lengthMm === lengthMm
                         ? 'bg-blue-600 text-white border-blue-600'
                         : 'bg-white border-slate-200 hover:bg-slate-50'
                     }`}
                   >
-                    {qty}
+                    {lengthMm} mm
                   </button>
                 ))}
               </div>
@@ -539,36 +488,13 @@ export function AutoQuotePage() {
           </div>
         </div>
 
-        {/* 右侧：展示区 (Tab 切换：成本分析与报价 / 报价确认图) */}
+        {/* 右侧：成本分析与报价 */}
         <div className="flex-1 min-w-0 flex flex-col bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          {/* Tab 导航 */}
           <div className="border-b border-slate-200 px-4 py-2.5 bg-slate-50 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveRightTab('quote')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                  activeRightTab === 'quote'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Calculator className="h-4 w-4" />
-                <span>实时成本分析与报价</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveRightTab('drawing')}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
-                  activeRightTab === 'drawing'
-                    ? 'bg-white text-blue-600 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileImage className="h-4 w-4" />
-                <span>报价确认结构图</span>
-              </button>
-            </div>
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+              <Calculator className="h-4 w-4 text-blue-600" />
+              实时成本分析与报价
+            </h2>
 
             <div className="text-[11px] text-slate-500 hidden sm:flex items-center gap-1">
               <span>当前配置:</span>
@@ -580,32 +506,24 @@ export function AutoQuotePage() {
 
           {/* 内容区 */}
           <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-5">
-            {activeRightTab === 'quote' ? (
-              <div className="max-w-2xl mx-auto">
+            <div className="max-w-2xl mx-auto">
                 <AutoQuotePriceCard
                   evaluation={evaluation}
                   prices={prices}
                   catalog={catalog}
                   loading={priceLoading}
                 />
-              </div>
-            ) : (
-              <div className="h-full">
-                <AutoQuoteDrawingPreview
-                  form={effectiveForm}
-                  catalog={catalog}
-                />
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
 
       {/* 连接器选择弹窗 */}
       <ConnectorPickerModal
+        key={`${pickerModal}-${effectiveForm.connectorAId}`}
         isOpen={pickerModal === 'connA' || pickerModal === 'connB'}
         title={pickerModal === 'connA' ? '选择 A 端连接器' : '选择 B 端连接器'}
-        connectors={catalog?.connectors || []}
+        connectors={pickerModal === 'connA' ? catalog?.connectors || [] : selection.connectorsB}
         selectedId={pickerModal === 'connA' ? effectiveForm.connectorAId : effectiveForm.connectorBId}
         onSelect={(conn) => {
           if (pickerModal === 'connA') {
@@ -619,8 +537,9 @@ export function AutoQuotePage() {
 
       {/* 线材选择弹窗 */}
       <WirePickerModal
+        key={effectiveForm.connectorAId}
         isOpen={pickerModal === 'wire'}
-        wires={catalog?.wires || []}
+        wires={selection.wires}
         selectedResourceId={effectiveForm.wireResourceId}
         onSelect={(wire) => {
           handleUpdate('wireResourceId', wire.resourceItemId);

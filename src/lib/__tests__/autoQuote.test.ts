@@ -4,6 +4,8 @@ import {
   evaluateAutoQuote,
   isSupportedConnector,
   isSupportedOvermold,
+  DEFAULT_AUTO_QUOTE_FORM,
+  deriveAutoQuoteSelection,
   type AutoQuoteFormState,
 } from '@/lib/autoQuote';
 import { getQuoteMaterials } from '@/lib/quoteMaterials';
@@ -18,17 +20,19 @@ const mockCatalog: CatalogSnapshot = {
       name: 'M12-4Pin-公头',
       series: 'M12',
       pinCount: 4,
+      shielded: true,
       type: 'male',
       pinLabels: ['1', '2', '3', '4'],
     },
     {
       id: 'conn-m8',
       resourceItemId: 'res-conn-m8',
-      name: 'M8-3Pin-母头',
+      name: 'M8-4Pin-母头',
       series: 'M8',
-      pinCount: 3,
+      pinCount: 4,
+      shielded: true,
       type: 'female',
-      pinLabels: ['1', '2', '3'],
+      pinLabels: ['1', '2', '3', '4'],
     },
     {
       id: 'conn-db9',
@@ -95,6 +99,76 @@ function createPrices(config: NonNullable<ReturnType<typeof buildAutoQuoteConfig
 }
 
 describe('autoQuote', () => {
+  it.each([true, false])('filters B and cable choices by A and preserves valid selections (shielded=%s)', (shielded) => {
+    const wire = mockCatalog.wires[0];
+    if (wire.spec.kind !== 'jacketed') throw new Error('Expected jacketed fixture');
+    const catalog: CatalogSnapshot = {
+      ...mockCatalog,
+      connectors: [
+        { ...mockCatalog.connectors[0], shielded },
+        { ...mockCatalog.connectors[1], shielded },
+        { ...mockCatalog.connectors[1], id: 'wrong-pins', pinCount: 5, shielded },
+        { ...mockCatalog.connectors[1], id: 'wrong-shield', shielded: !shielded },
+      ],
+      wires: [
+        { ...wire, spec: { ...wire.spec, shielded } },
+        { ...wire, resourceItemId: 'wrong-pins', spec: { ...wire.spec, coreCount: 5, shielded } },
+        { ...wire, resourceItemId: 'wrong-shield', spec: { ...wire.spec, shielded: !shielded } },
+      ],
+    };
+    const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', wireResourceId: 'res-wire-1' };
+    const selected = deriveAutoQuoteSelection(form, catalog);
+    expect(selected.connectorsB.map((item) => item.id)).toEqual(['conn-m12', 'conn-m8']);
+    expect(selected.wires.map((item) => item.resourceItemId)).toEqual(['res-wire-1']);
+    expect(selected.form).toMatchObject({ connectorBId: 'conn-m8', wireResourceId: 'res-wire-1' });
+
+    const changed = deriveAutoQuoteSelection({ ...selected.form, connectorAId: 'wrong-shield' }, catalog);
+    expect(changed.form).toMatchObject({ connectorBId: 'wrong-shield', wireResourceId: 'wrong-shield' });
+  });
+
+  it('leaves unavailable candidates empty instead of retaining mismatched selections', () => {
+    const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', wireResourceId: 'res-wire-1' };
+    const noWires = deriveAutoQuoteSelection(form, { ...mockCatalog, wires: [] });
+    expect(noWires.form.wireResourceId).toBe('');
+    expect(evaluateAutoQuote(noWires.form, [], mockCatalog).status).toBe('incomplete');
+    const unknown = deriveAutoQuoteSelection(form, { ...mockCatalog, connectors: mockCatalog.connectors.map((item) => ({ ...item, shielded: undefined })) });
+    expect(unknown.connectorsB).toEqual([]);
+    expect(unknown.wires).toEqual([]);
+    expect(unknown.form).toMatchObject({ connectorBId: '', wireResourceId: '' });
+    expect(deriveAutoQuoteSelection(form, null).form).toMatchObject({ connectorAId: '', connectorBId: '', wireResourceId: '' });
+  });
+
+  it('rejects a runtime no-mold value and zero molding ends', () => {
+    const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', endpointBType: 'cut' as const, wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' };
+    expect(buildAutoQuoteConfig({ ...form, outerMoldType: 'none' } as unknown as AutoQuoteFormState, mockCatalog).config).toBeNull();
+    expect(buildAutoQuoteConfig({ ...form, outerMoldEnds: 0 } as unknown as AutoQuoteFormState, mockCatalog).config).toBeNull();
+  });
+  it.each([
+    { pinCount: 3, shielded: true },
+    { pinCount: 4, shielded: false },
+    { pinCount: 4, shielded: undefined },
+  ])('rejects incompatible B connectors: %j', (spec) => {
+    const catalog = { ...mockCatalog, connectors: [mockCatalog.connectors[0], { ...mockCatalog.connectors[1], ...spec }] };
+    const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' }, catalog);
+    expect(result.config).toBeNull();
+    expect(result.issues.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    { coreCount: 3, shielded: true },
+    { coreCount: 4, shielded: false },
+  ])('rejects incompatible cable specifications: %j', (spec) => {
+    const wire = mockCatalog.wires[0];
+    if (wire.spec.kind !== 'jacketed') throw new Error('Expected jacketed fixture');
+    const catalog = { ...mockCatalog, wires: [{ ...wire, spec: { ...wire.spec, ...spec } }] };
+    const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' }, catalog);
+    expect(result.config).toBeNull();
+  });
+
+  it('requires an outer mold even without an inner mold', () => {
+    const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', endpointBType: 'cut', wireResourceId: 'res-wire-1', outerMoldSpecId: '' }, mockCatalog);
+    expect(result.config).toBeNull();
+  });
   it('identifies M8 and M12 connector support correctly', () => {
     expect(isSupportedConnector(mockCatalog.connectors[0])).toBe(true);
     expect(isSupportedConnector(mockCatalog.connectors[1])).toBe(true);
@@ -111,8 +185,8 @@ describe('autoQuote', () => {
       connectorAId: '',
       endpointBType: 'connector',
       connectorBId: '',
-      outerMoldType: 'none',
-      outerMoldSpecId: '',
+      outerMoldType: 'pvc-45p',
+      outerMoldSpecId: 'mold-pvc-1',
       outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: '',
@@ -132,8 +206,8 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'strip-tin',
       connectorBId: '',
-      outerMoldType: 'none',
-      outerMoldSpecId: '',
+      outerMoldType: 'pvc-45p',
+      outerMoldSpecId: 'mold-pvc-1',
       outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
@@ -164,7 +238,8 @@ describe('autoQuote', () => {
 
     const formPe: AutoQuoteFormState = {
       ...formTpe,
-      outerMoldType: 'none',
+      outerMoldType: 'pvc-45p',
+      outerMoldSpecId: '',
       innerMoldType: 'pe',
     };
     expect(evaluateAutoQuote(formPe, [], mockCatalog).status).toBe('incomplete');
@@ -247,8 +322,8 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'cut',
       connectorBId: '',
-      outerMoldType: 'none',
-      outerMoldSpecId: '',
+      outerMoldType: 'pvc-45p',
+      outerMoldSpecId: 'mold-pvc-1',
       outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
@@ -269,8 +344,8 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'cut',
       connectorBId: '',
-      outerMoldType: 'none',
-      outerMoldSpecId: '',
+      outerMoldType: 'pvc-45p',
+      outerMoldSpecId: 'mold-pvc-1',
       outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',

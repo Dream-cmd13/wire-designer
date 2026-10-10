@@ -6,7 +6,7 @@ import { applyCatalogWireSpec } from './wireCatalog';
 import { getAvailableInnerMold } from './overmoldSpec';
 
 export type AutoQuoteEndpointBType = 'connector' | 'cut' | 'strip-tin';
-export type AutoQuoteOuterMoldType = 'none' | 'pvc-45p' | 'tpe';
+export type AutoQuoteOuterMoldType = 'pvc-45p' | 'tpe';
 export type AutoQuoteInnerMoldType = 'none' | 'pe';
 
 export interface AutoQuoteFormState {
@@ -54,6 +54,37 @@ export function isSupportedOvermold(spec: OvermoldSpec): boolean {
   return spec.outerMaterial === '黑色PVC' && spec.outerHardness === '45P';
 }
 
+export function matchesAutoQuoteConnector(reference: Connector | undefined, candidate: Connector): boolean {
+  return Boolean(reference && Number.isInteger(reference.pinCount) && reference.pinCount > 0
+    && typeof reference.shielded === 'boolean'
+    && candidate.pinCount === reference.pinCount && candidate.shielded === reference.shielded);
+}
+
+export function matchesAutoQuoteWire(reference: Connector | undefined, wire: CatalogWire): boolean {
+  return Boolean(reference && Number.isInteger(reference.pinCount) && reference.pinCount > 0
+    && typeof reference.shielded === 'boolean' && wire.spec.kind === 'jacketed'
+    && wire.spec.coreCount === reference.pinCount && wire.spec.shielded === reference.shielded);
+}
+
+/** A 端决定候选范围；保留匹配项，否则选取首个匹配项，没有候选时留空。 */
+export function deriveAutoQuoteSelection(form: AutoQuoteFormState, catalog: CatalogSnapshot | null) {
+  const connA = catalog?.connectors.find((item) => item.id === form.connectorAId)
+    ?? (!form.connectorAId ? catalog?.connectors.find(isSupportedConnector) : undefined);
+  const connectorsB = catalog?.connectors.filter((item) => isSupportedConnector(item) && matchesAutoQuoteConnector(connA, item)) ?? [];
+  const wires = catalog?.wires.filter((item) => matchesAutoQuoteWire(connA, item)) ?? [];
+  return {
+    connectorsB,
+    wires,
+    form: {
+      ...form,
+      connectorAId: connA?.id ?? '',
+      connectorBId: (connectorsB.find((item) => item.id === form.connectorBId) ?? connectorsB[0])?.id ?? '',
+      wireResourceId: (wires.find((item) => item.resourceItemId === form.wireResourceId) ?? wires[0])?.resourceItemId ?? '',
+      outerMoldSpecId: form.outerMoldSpecId || catalog?.overmolds.find(isSupportedOvermold)?.id || '',
+    },
+  };
+}
+
 export function buildAutoQuoteConfig(
   form: AutoQuoteFormState,
   catalog: CatalogSnapshot | null,
@@ -94,6 +125,12 @@ export function buildAutoQuoteConfig(
   } else if (!isSupportedConnector(connA)) {
     issues.push('A 端连接器须为 M8 或 M12 系列');
   }
+  if (connA && typeof connA.shielded !== 'boolean') {
+    issues.push('请在物料目录补全 A 端连接器的屏蔽属性');
+  }
+  if (connA && (!Number.isInteger(connA.pinCount) || connA.pinCount <= 0)) {
+    issues.push('A 端连接器芯数必须为正整数');
+  }
 
   let connB: Connector | undefined;
   if (form.endpointBType === 'connector') {
@@ -112,6 +149,18 @@ export function buildAutoQuoteConfig(
     issues.push('请选择线材物料');
   } else if (!wire) {
     issues.push('未找到所选线材物料');
+  }
+  if (connA && connB && !matchesAutoQuoteConnector(connA, connB)) {
+    issues.push('B 端连接器芯数和屏蔽属性必须与 A 端一致');
+  }
+  if (connA && wire && !matchesAutoQuoteWire(connA, wire)) {
+    issues.push('线材芯数和屏蔽属性必须与 A 端连接器一致');
+  }
+  if (form.outerMoldType !== 'pvc-45p' && form.outerMoldType !== 'tpe') {
+    issues.push('外模必选，当前仅支持黑色 PVC 45P');
+  }
+  if (form.outerMoldEnds !== 1 && form.outerMoldEnds !== 2) {
+    issues.push('外模成型端数必须为 1 或 2');
   }
 
   let overmold: OvermoldSpec | undefined;
@@ -314,7 +363,7 @@ export function buildQuoteSummaryText(
   const moldDesc =
     form.outerMoldType === 'pvc-45p'
       ? `${overmoldName || '黑色PVC 45P'} (${form.outerMoldEnds === 2 ? '两端成型' : '单端成型'})`
-      : '无外模';
+      : 'TPE（待支持）';
 
   return [
     '【线束询价核算结果】',

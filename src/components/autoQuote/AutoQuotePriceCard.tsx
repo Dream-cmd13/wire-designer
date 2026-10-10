@@ -153,7 +153,7 @@ export function AutoQuotePriceCard({
       {/* 正式报价结果 */}
       {status === 'ready' && price && (
         <div className="space-y-3.5">
-          {/* 总价与单价主要卡片 */}
+          {/* 单价与交期 */}
           <div className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-4 text-white shadow-sm">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-medium text-blue-100">含税含运费单价</span>
@@ -161,19 +161,9 @@ export function AutoQuotePriceCard({
                 ¥{formatQuoteMoney(price.unitPrice)}
               </span>
             </div>
-            <div className="mt-3 flex items-baseline justify-between border-t border-blue-400/40 pt-2.5">
-              <div>
-                <span className="text-sm font-semibold">
-                  订单总额（{config?.quantity} 条）
-                </span>
-                <p className="text-[11px] text-blue-200">
-                  交期参考：{DEFAULT_QUOTE_LEAD_TIME}
-                </p>
-              </div>
-              <span className="text-xl font-bold tabular-nums">
-                ¥{formatQuoteMoney(price.totalPrice)}
-              </span>
-            </div>
+            <p className="mt-3 border-t border-blue-400/40 pt-2.5 text-[11px] text-blue-200">
+              交期参考：{DEFAULT_QUOTE_LEAD_TIME}
+            </p>
           </div>
 
           {/* 材料成本拆解 */}

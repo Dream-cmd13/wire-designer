@@ -154,6 +154,7 @@ export function ConnectorPickerModal({
                         <span>型号: {connector.model || connector.id}</span>
                         <span>·</span>
                         <span>{connector.pinCount} Pin</span>
+                        <span>· {connector.shielded === undefined ? '屏蔽属性未维护' : connector.shielded ? '屏蔽' : '非屏蔽'}</span>
                         <span>·</span>
                         <span>{connector.type === 'male' ? '公头' : connector.type === 'female' ? '母头' : '插座'}</span>
                         {connector.supplierNo && (
