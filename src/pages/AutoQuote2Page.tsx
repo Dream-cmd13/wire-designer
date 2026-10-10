@@ -10,7 +10,7 @@ import {
 } from '@/lib/autoQuote';
 import { formatQuoteMoney } from '@/lib/pricing';
 
-const initialForm: AutoQuoteFormState = { ...DEFAULT_AUTO_QUOTE_FORM, lengthMm: 0, quantity: 1 };
+const initialForm: AutoQuoteFormState = { ...DEFAULT_AUTO_QUOTE_FORM, lengthMm: 0, quantity: 0 };
 
 const QUICK_LENGTHS = [500, 1000, 1500, 2000, 3000, 5000];
 const QUICK_QUANTITIES = [50, 100, 200, 500, 1000, 2000, 5000];
@@ -49,20 +49,22 @@ function FormSection({
   title,
   children,
   gridCols = 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+  className = '',
 }: {
   number: string;
   title: string;
   children: ReactNode;
   gridCols?: string;
+  className?: string;
 }) {
   return (
-    <fieldset className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-2xs">
+    <fieldset className={`min-w-0 p-4 sm:p-5 ${className}`}>
       <legend className="sr-only">{title}</legend>
       <div className="mb-2.5 flex items-center gap-2" aria-hidden="true">
-        <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">{number}</span>
+        <span className="flex h-5 w-5 items-center justify-center rounded-md bg-blue-50 text-[11px] font-bold text-blue-700">{number}</span>
         <h2 className="text-xs sm:text-sm font-bold text-slate-900 tracking-wide">{title}</h2>
       </div>
-      <div className={`grid gap-3 ${gridCols} items-end`}>{children}</div>
+      <div className={`grid gap-3.5 ${gridCols} items-end`}>{children}</div>
     </fieldset>
   );
 }
@@ -213,8 +215,8 @@ export function AutoQuote2Page() {
   };
 
   return (
-    <div className="h-full flex flex-col justify-between overflow-y-auto lg:overflow-hidden bg-slate-100/70 p-3 sm:p-5 lg:p-6">
-      <div className="mx-auto w-full max-w-[1500px] flex-1 flex flex-col justify-between gap-3">
+    <div className="h-full flex flex-col justify-center overflow-y-auto lg:overflow-hidden bg-slate-100/70 p-3 sm:p-5 lg:p-6">
+      <div className="mx-auto w-full max-w-5xl xl:max-w-6xl flex flex-col gap-3.5 my-auto">
         <h1 className="sr-only">自动报价2</h1>
 
         {/* 状态通知栏（仅在加载/出错/缺少物料时显示） */}
@@ -244,248 +246,252 @@ export function AutoQuote2Page() {
           </header>
         )}
 
-        {/* 纯纵向表单与结果，从上到下全宽高效排版 */}
+        {/* 纯纵向表单与结果 */}
         <form
-          className="flex-1 flex flex-col justify-between gap-3"
+          className="flex flex-col gap-3.5"
           onSubmit={(event) => {
             event.preventDefault();
             if (available) setSubmitted(true);
           }}
         >
-          {/* 01 连接方式 */}
-          <FormSection number="01" title="连接方式" gridCols="sm:grid-cols-3 lg:grid-cols-3">
-            <div className="lg:col-span-1">
-              <label htmlFor="quote2-connector-a" className="text-xs font-semibold text-slate-700">A 端连接器</label>
-              <button
-                id="quote2-connector-a"
-                type="button"
-                disabled={!available}
-                onClick={() => setPicker('a')}
-                className={`${inputClass} flex items-center justify-between gap-2 text-left`}
-              >
-                <span className="truncate">{connA ? `${connA.model || connA.name} · ${connA.pinCount}Pin` : '请选择 A 端料号'}</span>
-                <Search size={14} className="shrink-0 text-slate-400" />
-              </button>
-            </div>
-
-            <div className="lg:col-span-1">
-              <label className="text-xs font-semibold text-slate-700">
-                B 端形式
-                <select
-                  className={inputClass}
-                  value={form.endpointBType}
-                  onChange={(e) => update({ endpointBType: e.target.value as AutoQuoteFormState['endpointBType'], outerMoldEnds: e.target.value === 'connector' ? 2 : 1 })}
-                >
-                  <option value="connector">连接器</option>
-                  <option value="cut">切断（平口齐剪）</option>
-                  <option value="strip-tin" disabled>剥皮沾锡（待支持）</option>
-                </select>
-              </label>
-            </div>
-
-            <div className="lg:col-span-1">
-              <label htmlFor="quote2-connector-b" className="text-xs font-semibold text-slate-700">B 端连接器</label>
-              {form.endpointBType === 'connector' ? (
+          {/* 一体化工作台输入面板 */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs divide-y divide-slate-100 overflow-hidden">
+            {/* 01 连接方式 */}
+            <FormSection number="01" title="连接方式" gridCols="sm:grid-cols-12">
+              <div className="sm:col-span-5">
+                <label htmlFor="quote2-connector-a" className="text-xs font-semibold text-slate-700">A 端连接器</label>
                 <button
-                  id="quote2-connector-b"
+                  id="quote2-connector-a"
                   type="button"
                   disabled={!available}
-                  onClick={() => setPicker('b')}
+                  onClick={() => setPicker('a')}
                   className={`${inputClass} flex items-center justify-between gap-2 text-left`}
                 >
-                  <span className="truncate">{connB ? `${connB.model || connB.name} · ${connB.pinCount}Pin` : '请选择 B 端料号'}</span>
+                  <span className="truncate">{connA ? `${connA.model || connA.name} · ${connA.pinCount}Pin` : '请选择 A 端料号'}</span>
                   <Search size={14} className="shrink-0 text-slate-400" />
                 </button>
-              ) : (
-                <div className={`${inputClass} bg-slate-50 text-slate-400 select-none`}>
-                  单端平剪齐头，无 B 端连接器
-                </div>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="text-xs font-semibold text-slate-700">
+                  B 端形式
+                  <select
+                    className={inputClass}
+                    value={form.endpointBType}
+                    onChange={(e) => update({ endpointBType: e.target.value as AutoQuoteFormState['endpointBType'], outerMoldEnds: e.target.value === 'connector' ? 2 : 1 })}
+                  >
+                    <option value="connector">连接器</option>
+                    <option value="cut">切断（平齐）</option>
+                    <option value="strip-tin" disabled>剥皮沾锡（待支持）</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="sm:col-span-5">
+                <label htmlFor="quote2-connector-b" className="text-xs font-semibold text-slate-700">B 端连接器</label>
+                {form.endpointBType === 'connector' ? (
+                  <button
+                    id="quote2-connector-b"
+                    type="button"
+                    disabled={!available}
+                    onClick={() => setPicker('b')}
+                    className={`${inputClass} flex items-center justify-between gap-2 text-left`}
+                  >
+                    <span className="truncate">{connB ? `${connB.model || connB.name} · ${connB.pinCount}Pin` : '请选择 B 端料号'}</span>
+                    <Search size={14} className="shrink-0 text-slate-400" />
+                  </button>
+                ) : (
+                  <div className={`${inputClass} bg-slate-50 text-slate-400 select-none`}>
+                    单端平剪齐头，无 B 端连接器
+                  </div>
+                )}
+              </div>
+            </FormSection>
+
+            {/* 02 线材与成型模具 */}
+            <FormSection number="02" title="线材与模具" gridCols="sm:grid-cols-12">
+              {/* 上行：线材 (8列) 与 外模 (4列) */}
+              <div className="sm:col-span-12 lg:col-span-8">
+                <label htmlFor="quote2-wire" className="text-xs font-semibold text-slate-700">线材</label>
+                <button
+                  id="quote2-wire"
+                  type="button"
+                  disabled={!available}
+                  onClick={() => setPicker('wire')}
+                  className={`${inputClass} flex items-center justify-between gap-2 text-left`}
+                >
+                  <span className="truncate font-medium">{wire?.name || '请选择线材料号'}</span>
+                  <Search size={14} className="shrink-0 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="sm:col-span-12 lg:col-span-4">
+                <label className="text-xs font-semibold text-slate-700">
+                  外模
+                  <select
+                    className={inputClass}
+                    value={form.outerMoldType}
+                    onChange={(e) => {
+                      const nextType = e.target.value as AutoQuoteFormState['outerMoldType'];
+                      update({
+                        outerMoldType: nextType,
+                        outerMoldSpecId: nextType === 'pvc-45p' ? (molds[0]?.id ?? '') : '',
+                      });
+                    }}
+                  >
+                    <option value="pvc-45p">黑色 PVC 45P</option>
+                    <option value="none">无外模</option>
+                    <option value="tpe" disabled>TPE（待支持）</option>
+                  </select>
+                </label>
+              </div>
+
+              {/* 下行：直/弯头 (4列)、外模位置 (4列)、内模 (4列) */}
+              {form.outerMoldType === 'pvc-45p' && (
+                <>
+                  <div className="sm:col-span-6 lg:col-span-4">
+                    <label htmlFor="quote2-outer-mold-spec" className="text-xs font-semibold text-slate-700">
+                      直/弯头
+                      <select
+                        id="quote2-outer-mold-spec"
+                        className={inputClass}
+                        value={effectiveOuterMoldSpecId}
+                        required
+                        disabled={!available || molds.length === 0}
+                        onChange={(e) => update({ outerMoldSpecId: e.target.value })}
+                      >
+                        {!molds.length && <option value="">暂无适用外模，请先维护</option>}
+                        {molds.map((mold) => (
+                          <option key={mold.id} value={mold.id}>
+                            {mold.outerForm === 'bent' ? '弯头' : (mold.outerForm === 'straight' ? '直头' : mold.name)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="sm:col-span-6 lg:col-span-4">
+                    <label className="text-xs font-semibold text-slate-700">
+                      外模位置
+                      <select
+                        className={inputClass}
+                        value={form.outerMoldEnds}
+                        onChange={(e) => update({ outerMoldEnds: Number(e.target.value) as 1 | 2 })}
+                      >
+                        <option value={1}>A 端单头成型</option>
+                        {form.endpointBType === 'connector' && <option value={2}>A、B 两端成型</option>}
+                      </select>
+                    </label>
+                  </div>
+                </>
               )}
-            </div>
-          </FormSection>
 
-          {/* 02 线材与成型模具 */}
-          <FormSection number="02" title="线材与模具" gridCols="sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-12">
-            <div className="sm:col-span-2 lg:col-span-2 xl:col-span-3">
-              <label htmlFor="quote2-wire" className="text-xs font-semibold text-slate-700">线材</label>
-              <button
-                id="quote2-wire"
-                type="button"
-                disabled={!available}
-                onClick={() => setPicker('wire')}
-                className={`${inputClass} flex items-center justify-between gap-2 text-left`}
-              >
-                <span className="truncate font-medium">{wire?.name || '请选择线材料号'}</span>
-                <Search size={14} className="shrink-0 text-slate-400" />
-              </button>
-            </div>
+              <div className="sm:col-span-12 lg:col-span-4">
+                <label className="text-xs font-semibold text-slate-700">
+                  内模
+                  <select
+                    className={inputClass}
+                    value={form.innerMoldType}
+                    onChange={(e) => update({ innerMoldType: e.target.value as AutoQuoteFormState['innerMoldType'] })}
+                  >
+                    <option value="none">无内模</option>
+                    <option value="pe" disabled>PE（待支持）</option>
+                  </select>
+                </label>
+              </div>
+            </FormSection>
 
-            <div className="sm:col-span-1 lg:col-span-1 xl:col-span-2">
-              <label className="text-xs font-semibold text-slate-700">
-                外模
-                <select
-                  className={inputClass}
-                  value={form.outerMoldType}
-                  onChange={(e) => {
-                    const nextType = e.target.value as AutoQuoteFormState['outerMoldType'];
-                    update({
-                      outerMoldType: nextType,
-                      outerMoldSpecId: nextType === 'pvc-45p' ? (molds[0]?.id ?? '') : '',
-                    });
-                  }}
-                >
-                  <option value="pvc-45p">黑色 PVC 45P</option>
-                  <option value="none">无外模</option>
-                  <option value="tpe" disabled>TPE（待支持）</option>
-                </select>
-              </label>
-            </div>
-
-            {form.outerMoldType === 'pvc-45p' && (
-              <>
-                <div className="sm:col-span-2 lg:col-span-2 xl:col-span-4">
-                  <label htmlFor="quote2-outer-mold-spec" className="text-xs font-semibold text-slate-700">
-                    外模规格
-                    <select
-                      id="quote2-outer-mold-spec"
-                      className={inputClass}
-                      value={effectiveOuterMoldSpecId}
-                      required
-                      disabled={!available || molds.length === 0}
-                      onChange={(e) => update({ outerMoldSpecId: e.target.value })}
-                    >
-                      {!molds.length && <option value="">暂无适用外模，请先维护</option>}
-                      {molds.map((mold) => (
-                        <option key={mold.id} value={mold.id}>
-                          {mold.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="sm:col-span-1 lg:col-span-1 xl:col-span-2">
-                  <label className="text-xs font-semibold text-slate-700">
-                    外模位置
-                    <select
-                      className={inputClass}
-                      value={form.outerMoldEnds}
-                      onChange={(e) => update({ outerMoldEnds: Number(e.target.value) as 1 | 2 })}
-                    >
-                      <option value={1}>A 端单头成型</option>
-                      {form.endpointBType === 'connector' && <option value={2}>A、B 两端成型</option>}
-                    </select>
-                  </label>
-                </div>
-              </>
-            )}
-
-            <div className="sm:col-span-1 lg:col-span-1 xl:col-span-1">
-              <label className="text-xs font-semibold text-slate-700">
-                内模
-                <select
-                  className={inputClass}
-                  value={form.innerMoldType}
-                  onChange={(e) => update({ innerMoldType: e.target.value as AutoQuoteFormState['innerMoldType'] })}
-                >
-                  <option value="none">无内模</option>
-                  <option value="pe" disabled>PE（待支持）</option>
-                </select>
-              </label>
-            </div>
-          </FormSection>
-
-          {/* 03 长度与数量（全宽利用，带快捷点选芯片） */}
-          <fieldset className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-2xs">
-            <legend className="sr-only">长度与数量</legend>
-            <div className="mb-2.5 flex items-center gap-2" aria-hidden="true">
-              <span className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">03</span>
-              <h2 className="text-xs sm:text-sm font-bold text-slate-900 tracking-wide">长度与数量</h2>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+            {/* 03 长度与数量 */}
+            <FormSection number="03" title="长度与数量" gridCols="sm:grid-cols-2" className="bg-slate-50/40">
               {/* 长度 */}
               <div>
-                <div className="flex items-baseline gap-2 text-xs font-semibold text-slate-700 mb-1">
-                  <span>报价线长（mm）</span>
+                <div className="flex items-baseline gap-2 text-xs font-semibold text-slate-700 mb-1.5">
+                  <label htmlFor="quote2-length">线材长度（mm）</label>
                   <span className="text-[11px] text-slate-400 font-normal">（超过 5000 mm 需人工核价）</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    className={`${inputClass} mt-0 flex-1 font-mono font-bold text-slate-800`}
-                    type="number"
-                    min={1}
-                    step={1}
-                    required
-                    placeholder="请输入长度"
-                    value={form.lengthMm || ''}
-                    onChange={(e) => update({ lengthMm: Number(e.target.value) })}
-                  />
-                  <span className="text-xs text-slate-500 shrink-0 font-medium">mm</span>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400 mr-0.5">快捷:</span>
-                  {QUICK_LENGTHS.map((len) => (
-                    <button
-                      key={len}
-                      type="button"
-                      onClick={() => update({ lengthMm: len })}
-                      className={`rounded px-2 py-0.5 text-[11px] font-mono transition cursor-pointer ${
-                        form.lengthMm === len
-                          ? 'bg-blue-600 text-white font-bold'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {len}mm
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                  <div className="flex items-center gap-1.5 w-40 sm:w-44 shrink-0">
+                    <input
+                      id="quote2-length"
+                      className={`${inputClass} mt-0 font-mono font-bold text-slate-800`}
+                      type="number"
+                      min={1}
+                      step={1}
+                      required
+                      placeholder="请输入长度"
+                      value={form.lengthMm || ''}
+                      onChange={(e) => update({ lengthMm: Number(e.target.value) })}
+                    />
+                    <span className="text-xs text-slate-500 shrink-0 font-medium">mm</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-[11px] text-slate-400 mr-0.5">快捷:</span>
+                    {QUICK_LENGTHS.map((len) => (
+                      <button
+                        key={len}
+                        type="button"
+                        onClick={() => update({ lengthMm: len })}
+                        className={`rounded px-2 py-0.5 text-[11px] font-mono transition cursor-pointer ${
+                          form.lengthMm === len
+                            ? 'bg-blue-600 text-white font-bold'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {len}mm
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
               {/* 数量 */}
               <div>
-                <div className="flex items-baseline gap-2 text-xs font-semibold text-slate-700 mb-1">
-                  <span>订单数量（条）</span>
+                <div className="flex items-baseline gap-2 text-xs font-semibold text-slate-700 mb-1.5">
+                  <label htmlFor="quote2-quantity">订单数量（条）</label>
                   <span className="text-[11px] text-slate-400 font-normal">（支持 1 至 1,000,000 条）</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    className={`${inputClass} mt-0 flex-1 font-mono font-bold text-slate-800`}
-                    type="number"
-                    min={1}
-                    max={1000000}
-                    step={1}
-                    required
-                    value={form.quantity || ''}
-                    onChange={(e) => update({ quantity: Number(e.target.value) })}
-                  />
-                  <span className="text-xs text-slate-500 shrink-0 font-medium">条</span>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] text-slate-400 mr-0.5">快捷:</span>
-                  {QUICK_QUANTITIES.map((qty) => (
-                    <button
-                      key={qty}
-                      type="button"
-                      onClick={() => update({ quantity: qty })}
-                      className={`rounded px-2 py-0.5 text-[11px] font-mono transition cursor-pointer ${
-                        form.quantity === qty
-                          ? 'bg-blue-600 text-white font-bold'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {qty}条
-                    </button>
-                  ))}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                  <div className="flex items-center gap-1.5 w-40 sm:w-44 shrink-0">
+                    <input
+                      id="quote2-quantity"
+                      className={`${inputClass} mt-0 font-mono font-bold text-slate-800`}
+                      type="number"
+                      min={1}
+                      max={1000000}
+                      step={1}
+                      required
+                      placeholder="请输入数量"
+                      value={form.quantity || ''}
+                      onChange={(e) => update({ quantity: Number(e.target.value) })}
+                    />
+                    <span className="text-xs text-slate-500 shrink-0 font-medium">条</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <span className="text-[11px] text-slate-400 mr-0.5">快捷:</span>
+                    {QUICK_QUANTITIES.map((qty) => (
+                      <button
+                        key={qty}
+                        type="button"
+                        onClick={() => update({ quantity: qty })}
+                        className={`rounded px-2 py-0.5 text-[11px] font-mono transition cursor-pointer ${
+                          form.quantity === qty
+                            ? 'bg-blue-600 text-white font-bold'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {qty}条
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </fieldset>
+            </FormSection>
+          </div>
 
-          {/* 底部全宽行动栏与大字结果看板 */}
-          <div className="rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-2xs space-y-3">
+          {/* 底部行动栏与大字结果看板 */}
+          <div className="rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-xs space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 {evaluation?.status === 'ready' && evaluation.price ? (
                   <button
                     type="button"

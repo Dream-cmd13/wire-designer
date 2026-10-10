@@ -51,6 +51,12 @@ describe('自动报价2', () => {
       expect(html).not.toContain(text);
     }
     expect(html).toContain('填写信息后获取报价');
+    // 初始状态下所有输入框均为空白并提示占位符
+    expect(html).toContain('placeholder="请输入长度" value=""');
+    expect(html).toContain('placeholder="请输入数量" value=""');
+    expect(html).toContain('请选择 A 端料号');
+    expect(html).toContain('请选择 B 端料号');
+    expect(html).toContain('请选择线材料号');
     // 确认已移除多余提示字体
     expect(html).not.toContain('首版工业标准公式支持 M8 与 M12 系列连接器选配');
     expect(html).not.toContain('线束快速询价 · 一屏极速版');
@@ -94,7 +100,8 @@ describe('自动报价2', () => {
     });
 
     const html = renderToStaticMarkup(<AutoQuote2Page />);
-    expect(html).toContain('M12外模 直头 黑色PVC 45P');
+    expect(html).toContain('直/弯头');
+    expect(html).toContain('直头');
     // 选框默认值预选了第一个可用外模
     expect(html).toContain('value="mold-pvc-m12" selected=""');
   });
