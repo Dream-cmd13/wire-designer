@@ -48,6 +48,7 @@ const QuoteModal = lazy(() => import('@/components/panels/QuotePanel').then((mod
 const MaterialLibraryPage = lazy(() => import('@/pages/MaterialLibraryPage').then((module) => ({ default: module.MaterialLibraryPage })));
 const DrawingWorkbenchPage = lazy(() => import('@/pages/DrawingWorkbenchPage').then((module) => ({ default: module.DrawingWorkbenchPage })));
 const DwgViewerPage = lazy(() => import('@/pages/DwgViewerPage').then((module) => ({ default: module.DwgViewerPage })));
+const AutoQuotePage = lazy(() => import('@/pages/AutoQuotePage').then((module) => ({ default: module.AutoQuotePage })));
 
 function ModuleLoadingState() {
   return (
@@ -242,6 +243,7 @@ export default function App() {
     route.section === 'designer'
     || route.id === 'materials'
     || route.id === 'drawing-workbench'
+    || route.section === 'auto-quote'
     || wizardOpen
   );
 
@@ -1042,6 +1044,10 @@ export default function App() {
 
     if (route.id === 'dwg-viewer') {
       return <DwgViewerPage />;
+    }
+
+    if (route.id === 'auto-quote') {
+      return <AutoQuotePage />;
     }
 
     if (route.id === 'materials') {

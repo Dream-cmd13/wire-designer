@@ -28,6 +28,7 @@ describe('AdminShell access menu', () => {
 
     expect(html).not.toContain('设计图');
     expect(html).not.toContain('物料库');
+    expect(html).not.toContain('自动报价');
     expect(html).toContain('制作图纸');
     expect(html).toContain('首页');
   });
@@ -42,6 +43,11 @@ describe('AdminShell access menu', () => {
 
     expect(html).toContain('设计图');
     expect(html).toContain('物料库');
+    expect(html).toContain('自动报价');
+    expect(html).not.toContain('自动报价2');
+    expect(html).not.toContain('自动报价3');
+    expect(html).not.toContain('自动报价4');
+    expect(html).not.toContain('自动报价5');
     expect(html).toContain('制作图纸');
   });
 });

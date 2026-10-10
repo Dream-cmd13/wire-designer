@@ -20,7 +20,7 @@ export function createQuoteWorkbook(config: HarnessConfig, prices: MaterialPrice
   const p = result.price;
   const materials = getQuoteMaterials(config, catalog);
   const wire = materials.find((row) => row.kind === 'wire')!;
-  const materialCost = (kind: string) => p.materials.reduce((sum, row, index) => materials[index].kind === kind ? sum.plus(row.amount) : sum, new Decimal(0)).toNumber();
+  const materialCost = (kind: string) => p.materials.reduce((sum, row) => row.kind === kind ? sum.plus(row.amount) : sum, new Decimal(0)).toNumber();
   const headers = ['产品名称', '连接器规格', '线材规格', '芯线颜色', '线材外被材质', '订单数量', '交期',
     '连接器含税', '线材含税', '外模 黑色PVC 45P 含税', '内模含税', 'SR含税', '材料损耗',
     ...p.labor.map((row) => row.name), '加工损耗', '产品含税成本', '产品含税售价 20%', '运费 3%', '含税含运费单价', '订单总价'];
@@ -30,7 +30,7 @@ export function createQuoteWorkbook(config: HarnessConfig, prices: MaterialPrice
     formatMaterialSpecification(wire), spec.kind === 'jacketed' ? spec.coreColors.join(' ') : spec.color,
     spec.kind === 'jacketed' ? `${spec.jacketColor === 'black' ? '黑色' : '绿色'}${spec.jacketMaterial}` : '', config.quantity,
     DEFAULT_QUOTE_LEAD_TIME,
-    materialCost('connector'), materialCost('wire'), materialCost('outer-mold'), 0, 0, Number(p.materialLoss),
+    materialCost('connector'), materialCost('wire'), materialCost('outer-mold'), materialCost('inner-mold'), 0, Number(p.materialLoss),
     ...p.labor.map((row) => Number(row.amount)), Number(p.processingLoss), Number(p.cost), Number(p.sellingPrice), Number(p.freight), Number(p.unitPrice), Number(p.totalPrice)];
   const book = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([headers, values]);

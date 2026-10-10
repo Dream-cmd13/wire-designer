@@ -5,7 +5,7 @@ import { UserFacingError } from './userErrorMessage';
 import { validatePrices, type MaterialPrice } from '@/repositories/priceRepository';
 
 const HEADERS = ['物料类型', '物料名称', '规格', '单位', '含税单价'];
-const KIND_LABEL = { connector: '连接器', wire: '线材', 'outer-mold': '外模' } as const;
+const KIND_LABEL = { connector: '连接器', wire: '线材', 'outer-mold': '外模', 'inner-mold': '内模' } as const;
 export function createPriceTemplate(materials: QuoteMaterial[], prices: MaterialPrice[]) {
   const lookup = new Map(prices.map((row) => [materialPriceKey(row), row.taxIncludedPrice]));
   const rows = materials.filter((row) => row.specification).map((row) => {
@@ -63,7 +63,7 @@ export function parsePriceWorkbook(data: ArrayBuffer, candidates: QuoteMaterial[
     if (row.every((cell) => cell === '')) return;
     const rowNumber = offset + 2;
     const kind = Object.entries(KIND_LABEL).find(([, label]) => label === String(row[0]).trim())?.[0];
-    if (!kind) throw new UserFacingError(`第 ${rowNumber} 行物料类型须为连接器、线材或外模`);
+    if (!kind) throw new UserFacingError(`第 ${rowNumber} 行物料类型须为连接器、线材、外模或内模`);
     const name = String(row[1] ?? '').trim();
     const rawSpec = String(row[2] ?? '').trim();
     const { specification, lengthMm } = kind === 'wire' ? splitWireLength(rawSpec, rowNumber) : { specification: rawSpec, lengthMm: 0 };

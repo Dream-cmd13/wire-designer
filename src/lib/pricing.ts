@@ -3,10 +3,11 @@ import type { HarnessConfig } from '@/types/harness';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import { getQuoteMaterials, materialPriceTierKey } from './quoteMaterials';
+import { getAvailableInnerMold } from './overmoldSpec';
 
 const Money = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 export const formatQuoteMoney = (value: string) => new Money(value).toFixed(2);
-export interface QuoteLine { name: string; points: number; unitPrice: string; amount: string }
+export interface QuoteLine { name: string; points: number; unitPrice: string; amount: string; kind?: 'connector' | 'wire' | 'outer-mold' | 'inner-mold' }
 export interface QuoteBreakdown {
   materials: QuoteLine[];
   labor: QuoteLine[];
@@ -38,6 +39,7 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   for (const model of config.models) {
     const spec = catalog?.overmolds.find((entry) => entry.id === model.overmoldSpecId);
     if (!spec || spec.outerMaterial !== '黑色PVC' || spec.outerHardness !== '45P') issues.push('外模须为目录中的黑色 PVC 45P');
+    if (model.includeInnerMold && !getAvailableInnerMold(spec)) issues.push('所选外模没有可用的内模规格');
   }
   const cores = wire?.spec.kind === 'jacketed' ? wire.spec.coreCount : 1;
   if (!Number.isInteger(cores) || cores < 1 || cores > 100) issues.push('线材芯数必须为 1 至 100');
@@ -53,12 +55,13 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
     if (!/^\d{1,9}(\.\d{1,6})?$/.test(selected[0].taxIncludedPrice)) { issues.push(`${row.name}：价格无效`); continue; }
     const amount = new Money(selected[0].taxIncludedPrice);
     if (!amount.isFinite() || amount.isNegative()) { issues.push(`${row.name}：价格无效`); continue; }
-    materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString() });
+    materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString(), kind: row.kind });
   }
   if (issues.length) return { status: 'blocked', issues };
+  const innerMoldCount = config.models.filter((model) => model.includeInnerMold).length;
   const ends = settings!.processingEnds;
   const shield = wire.spec.kind === 'jacketed' && wire.spec.shielded;
-  const molding = config.models.length + config.models.filter((model) => model.includeInnerMold).length + settings!.srPoints;
+  const molding = config.models.length + innerMoldCount + settings!.srPoints;
   const laborInput: [string, number, string][] = [
     ['裁线', Math.ceil(wire.spec.lengthMm / 500), '0.05'], ['去皮', cores * ends, '0.02'],
     ['去外皮', ends, '0.02'], ['处理编织', shield ? ends : 0, '0.10'],
