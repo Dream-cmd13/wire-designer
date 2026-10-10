@@ -657,7 +657,8 @@ function convertEntityGeometries(
         bulges.push(vertex.bulge ?? 0);
       }
       if (points.length < 2) return [];
-      const closed = (polyline.flag & 1) === 1;
+      // LibreDWG uses bit 512 for LWPOLYLINE closure, unlike DXF's bit 1.
+      const closed = (polyline.flag & 512) !== 0;
       if (similarity) {
         return [{
           kind: 'polyline',

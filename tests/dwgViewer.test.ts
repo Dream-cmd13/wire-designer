@@ -1291,6 +1291,38 @@ describe('renderDwgToCanvas', () => {
     return { context: context as unknown as CanvasRenderingContext2D, calls };
   }
 
+  it.each([0, 1, 16, 512, 528])('renders the closing edge only for LibreDWG closed LWPOLYLINE flags (%i)', (flag) => {
+    const drawing = normalizeDwgDatabase(makeDatabase([{
+      type: 'LWPOLYLINE', handle: 'BAG', layer: '0', flag,
+      vertices: [{ x: 0, y: 10 }, { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }],
+    }]), 'bag-frame.dwg');
+    const { context, calls } = createMockContext(() => 0);
+
+    renderDwgToCanvas(context, drawing, { scale: 1, offsetX: 0, offsetY: 20, lineWidth: 1 });
+
+    const lines = calls.filter((call) => call.method === 'lineTo');
+    // bit0 是 LibreDWG 的 extrusion 标志，不能把它当成 DXF 的闭合标志。
+    expect(lines.map((call) => call.args)).toEqual(flag === 512 || flag === 528
+      ? [[0, 0], [10, 0], [10, 10], [0, 10]]
+      : [[0, 0], [10, 0], [10, 10]]);
+  });
+
+  it('renders the final bulge arc of a closed LibreDWG LWPOLYLINE', () => {
+    const drawing = normalizeDwgDatabase(makeDatabase([{
+      type: 'LWPOLYLINE', handle: 'CLOSED-ARC', layer: '0', flag: 528,
+      vertices: [{ x: 0, y: 0, bulge: 0 }, { x: 10, y: 0, bulge: 1 }],
+    }]), 'closed-arc.dwg');
+    const { context, calls } = createMockContext(() => 0);
+
+    renderDwgToCanvas(context, drawing, { scale: 1, offsetX: 0, offsetY: 20, lineWidth: 1 });
+
+    const arcs = calls.filter((call) => call.method === 'arc');
+    expect(arcs).toHaveLength(1);
+    expect(arcs[0].args.slice(0, 3)).toEqual([5, 0, 5]);
+    expect(arcs[0].args[3] as number).toBeCloseTo(0);
+    expect(arcs[0].args[4] as number).toBeCloseTo(Math.PI);
+  });
+
   /** 取出 HATCH 裁剪之后记录的图案线段（moveTo/lineTo 成对出现）。 */
   function patternSegments(calls: Array<{ method: string; args: unknown[] }>) {
     const clipIndex = calls.findIndex((call) => call.method === 'clip');
@@ -1755,6 +1787,14 @@ describe.skipIf(m12DrawingNames.every((name) => !existsSync(resolve(process.cwd(
       expect(drawing.stats.skipped.LEADER ?? 0).toBe(0);
       expect(drawing.stats.skipped.IMAGE ?? 0).toBe(0);
       if (name === 'M12A04-07-093-1-10-500.dwg') {
+        // 实际图纸包装袋（handle=109C）的第四条边必须返回起点。
+        const bagFrame = drawing.entities.find((entity) => entity.kind === 'polyline'
+          && entity.points.length === 4
+          && Math.abs(entity.points[0].x - 2743.438693253436) < 0.001
+          && Math.abs(entity.points[0].y - 2019.761810384926) < 0.001);
+        expect(bagFrame?.kind).toBe('polyline');
+        if (bagFrame?.kind !== 'polyline') throw new Error('expected bag frame');
+        expect(bagFrame.closed).toBe(true);
         // ANSI37 图案填充按定义线绘制，而不是只描边界
         const patterned = drawing.entities.filter((entity) => entity.kind === 'hatch' && (entity.pattern?.length ?? 0) > 0);
         expect(patterned.length).toBeGreaterThan(0);
