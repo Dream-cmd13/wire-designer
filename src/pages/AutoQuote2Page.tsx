@@ -99,34 +99,34 @@ export function AutoQuote2Result({
     );
   }
   return (
-    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 rounded-xl bg-slate-900 px-6 py-4 text-white shadow-md">
+    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 rounded-xl border border-slate-200/90 bg-slate-50/90 px-6 py-4 shadow-2xs">
       <div>
-        <dt className="text-xs text-slate-400 flex items-center gap-2">
+        <dt className="text-xs text-slate-500 font-medium flex items-center gap-2">
           <span>含税含运费单价（元/条）</span>
           {isLive && (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/80 px-1.5 py-0.2 rounded font-normal border border-emerald-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-medium border border-emerald-200">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               实时随动
             </span>
           )}
         </dt>
-        <dd className="mt-1 break-all text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-white">
+        <dd className="mt-1 break-all text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-slate-900">
           ¥{formatQuoteMoney(evaluation.price.unitPrice)}
         </dd>
       </div>
       <div>
-        <dt className="text-xs text-slate-400">订单总价（元）</dt>
-        <dd className="mt-1 break-all text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-blue-300">
+        <dt className="text-xs text-slate-500 font-medium">订单总价（元）</dt>
+        <dd className="mt-1 break-all text-2xl sm:text-3xl font-extrabold tabular-nums tracking-tight text-blue-600">
           ¥{formatQuoteMoney(evaluation.price.totalPrice)}
         </dd>
       </div>
-      <div className="hidden lg:flex flex-col justify-center border-l border-slate-800 pl-4">
-        <dt className="text-xs text-slate-400">发票及开票税率</dt>
-        <dd className="mt-1 text-xs text-slate-200 font-medium">包含 13% 增值税专用发票</dd>
+      <div className="hidden lg:flex flex-col justify-center border-l border-slate-200 pl-4">
+        <dt className="text-xs text-slate-500 font-medium">发票及开票税率</dt>
+        <dd className="mt-1 text-xs text-slate-700 font-medium">包含 13% 增值税专用发票</dd>
       </div>
-      <div className="hidden lg:flex flex-col justify-center border-l border-slate-800 pl-4">
-        <dt className="text-xs text-slate-400">运输与送达条款</dt>
-        <dd className="mt-1 text-xs text-slate-200 font-medium">包含国内指定地点标准运费</dd>
+      <div className="hidden lg:flex flex-col justify-center border-l border-slate-200 pl-4">
+        <dt className="text-xs text-slate-500 font-medium">运输与送达条款</dt>
+        <dd className="mt-1 text-xs text-slate-700 font-medium">包含国内指定地点标准运费</dd>
       </div>
     </dl>
   );
