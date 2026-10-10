@@ -395,7 +395,7 @@ export function AutoQuote2Page() {
                     onChange={(e) => update({ innerMoldType: e.target.value as AutoQuoteFormState['innerMoldType'] })}
                   >
                     <option value="none">无内模</option>
-                    <option value="pe" disabled>PE（待支持）</option>
+                    <option value="pe">PE 内模</option>
                   </select>
                 </label>
               </div>

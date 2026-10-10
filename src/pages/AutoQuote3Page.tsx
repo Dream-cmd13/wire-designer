@@ -332,7 +332,7 @@ export function AutoQuote3Page() {
     { label: 'B 端', value: bSummary, step: 'connection' },
     { label: '线材', value: selectedWire?.name ?? '未选择', step: 'wire' },
     { label: '外模', value: outerMoldSummary, step: 'mold' },
-    { label: '内模', value: form.innerMoldType === 'none' ? '无内模' : 'PE 内模（待支持）', step: 'mold' },
+    { label: '内模', value: form.innerMoldType === 'none' ? '无内模' : 'PE 内模', step: 'mold' },
     { label: '线长', value: `${effectiveForm.lengthMm} mm`, step: 'size' },
     { label: '数量', value: `${effectiveForm.quantity} 条`, step: 'size' },
   ];
@@ -626,7 +626,7 @@ export function AutoQuote3Page() {
                   <div className="grid grid-cols-2 gap-2">
                     {([
                       { key: 'none' as const, label: '无内模', note: '默认不添加' },
-                      { key: 'pe' as const, label: 'PE 内模', note: '待支持' },
+                      { key: 'pe' as const, label: 'PE 内模', note: '按材料价格计费' },
                     ]).map((item) => (
                       <button
                         key={item.key}

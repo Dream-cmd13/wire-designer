@@ -12,7 +12,7 @@ import { generateBOM } from '@/lib/bom';
 import type { HarnessConfig } from '@/types/harness';
 import type { CatalogSnapshot } from '@/types/catalog';
 
-const catalog = { overmolds: [{ id: 'mold', name: '外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight' }] } as CatalogSnapshot;
+const catalog = { overmolds: [{ id: 'mold', name: '外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight', innerMaterial: '低密度透明PE', innerForm: 'straight' }] } as CatalogSnapshot;
 function fixture() {
   const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 2, srPoints: 2 },
     connectors: ['a', 'b'].map((id) => ({ id, label: id, position: { x: 0, y: 0 }, jumpers: [], connector: {
@@ -28,7 +28,7 @@ function fixture() {
   return { config, prices };
 }
 function pricesFor(config: HarnessConfig): MaterialPrice[] {
-  return getQuoteMaterials(config, catalog).map((row) => ({ ...row, taxIncludedPrice: row.kind === 'wire' ? '4' : row.kind === 'connector' ? '2' : '1' }));
+  return getQuoteMaterials(config, catalog).map((row) => ({ ...row, taxIncludedPrice: row.kind === 'wire' ? '4' : row.kind === 'connector' ? '2' : row.kind === 'inner-mold' ? '0.3' : '1' }));
 }
 function ready(config: HarnessConfig, prices = pricesFor(config)) {
   const result = calculatePrice(config, prices, catalog);
@@ -41,13 +41,31 @@ describe('M8/M12 quotation', () => {
     const { config, prices } = fixture();
     const p = ready(config, prices);
     expect(p.labor.map((line) => line.points)).toEqual([2, 8, 2, 2, 2, 10, 6, 1, 1, 1]);
-    expect(p).toMatchObject({ materialSubtotal: '10', laborSubtotal: '4.35', processingLoss: '0.2175', cost: '14.8675', sellingPrice: '18.584375', unitPrice: '19.14', totalPrice: '1914.00' });
+    expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.35', processingLoss: '0.2175', cost: '15.4855', sellingPrice: '19.356875', unitPrice: '19.94', totalPrice: '1994.00' });
+  });
+  it.each([0, 1, 2])('charges %i inner molds using shared prices without changing outer mold costs', (count) => {
+    const { config, prices } = fixture();
+    config.models.forEach((model, index) => { model.includeInnerMold = index < count; });
+    const p = ready(config, prices);
+    const inner = p.materials.find((row) => row.kind === 'inner-mold');
+    if (count === 0) expect(inner).toBeUndefined();
+    else expect(inner).toMatchObject({ points: count, unitPrice: '0.3', amount: String(count * 0.3) });
+    expect(p.materialSubtotal).toBe(String(10 + count * 0.3));
+    expect(p.materials.find((row) => row.kind === 'outer-mold')?.amount).toBe('2');
+    expect(p.labor.find((row) => row.name === '成型')?.points).toBe(4 + count);
+  });
+  it('uses the database inner mold price and blocks missing prices instead of defaulting to 0.30', () => {
+    const { config, prices } = fixture();
+    const changed = prices.map((row) => row.kind === 'inner-mold' ? { ...row, taxIncludedPrice: '0.45' } : row);
+    expect(ready(config, changed).materials.find((row) => row.kind === 'inner-mold'))
+      .toMatchObject({ unitPrice: '0.45', amount: '0.9' });
+    expect(calculatePrice(config, prices.filter((row) => row.kind !== 'inner-mold'), catalog).status).toBe('blocked');
   });
   it.each([[1, 1], [500, 1], [501, 2], [600, 2], [1000, 2], [5000, 10]])('rounds %i mm cutting to %i points without scaling cable price', (length, points) => {
     const { config } = fixture(); config.materials[0].spec.lengthMm = length;
     const p = ready(config);
     expect(p.labor[0].points).toBe(points);
-    expect(p.materialSubtotal).toBe('10');
+    expect(p.materialSubtotal).toBe('10.6');
   });
   it('charges all nominal cores on a single nonshielded end', () => {
     const { config } = fixture(); config.connectors.pop(); config.models.pop(); config.quotation = { processingEnds: 1, srPoints: 0 };
@@ -121,7 +139,7 @@ describe('price workbook and repository', () => {
   it('round-trips a filled current-design template', () => {
     const { config, prices } = fixture();
     const result = parsePriceWorkbook(bytes(createPriceTemplate(getQuoteMaterials(config, catalog), prices)), getPriceImportCandidates(config, catalog));
-    expect(result.map((row) => row.taxIncludedPrice)).toEqual(['2', '4', '1']);
+    expect(result.map((row) => row.taxIncludedPrice)).toEqual(['2', '4', '1', '0.3']);
   });
   it('rejects empty prices, duplicate rows, wrong units and formulas', () => {
     const { config, prices } = fixture();
@@ -171,7 +189,7 @@ describe('price workbook and repository', () => {
     const imported = parsePriceWorkbook(bytes(exported), [...getPriceImportCandidates(config, catalog), ...rows]);
     expect(imported.map(({ lengthMm, taxIncludedPrice }) => ({ lengthMm, taxIncludedPrice })))
       .toEqual(shared.map(({ lengthMm, taxIncludedPrice }) => ({ lengthMm, taxIncludedPrice })));
-    expect(imported).toHaveLength(5);
+    expect(imported).toHaveLength(6);
   });
   it('rejects unknown names, missing lengths, ambiguous materials and duplicate keys', () => {
     const { config, prices } = fixture(); const materials = getQuoteMaterials(config, catalog);
@@ -199,8 +217,8 @@ describe('price workbook and repository', () => {
     expect(result.SheetNames).toEqual(['成本分析-M12单线']);
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(result.Sheets[result.SheetNames[0]])[0];
     expect(row).toMatchObject({ '产品名称': config.name, '连接器含税': 4, '线材含税': 4, '外模 黑色PVC 45P 含税': 2,
-      '内模含税': 0, 'SR含税': 0, '材料损耗': 0.3, '加工损耗': 0.2175,
-      '产品含税成本': 14.8675, '含税含运费单价': 19.14, '订单总价': 1914, '交期': '7日' });
+      '内模含税': 0.6, 'SR含税': 0, '材料损耗': 0.318, '加工损耗': 0.2175,
+      '产品含税成本': 15.4855, '含税含运费单价': 19.94, '订单总价': 1994, '交期': '7日' });
     expect(row['交期']).toBe(DEFAULT_QUOTE_LEAD_TIME);
     expect(row['线材规格']).toContain('0.6m');
     expect(JSON.stringify(row)).not.toContain('wire-resource');

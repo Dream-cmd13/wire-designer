@@ -211,7 +211,7 @@ export function QuoteContent() {
         <span>·</span>
         <span>内模：{config.models.filter((model) => model.includeInnerMold).length} 点</span>
         <span>·</span>
-        <span>内模/SR材料：¥0.00</span>
+        <span>内模材料：{config.models.some((model) => model.includeInnerMold) ? price?.materials.filter((row) => row.kind === 'inner-mold').map((row) => `¥${formatQuoteMoney(row.amount)}`).join(' + ') || '待核价' : '¥0.00'} · SR材料：¥0.00</span>
       </div>
 
       {/* 初始加载中骨架占位（避免尺寸抖动） */}

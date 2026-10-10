@@ -3,6 +3,7 @@ import type { Connector, HarnessConfig, OvermoldSpec } from '@/types/harness';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import { calculatePrice, formatQuoteMoney, type QuoteBreakdown } from './pricing';
 import { applyCatalogWireSpec } from './wireCatalog';
+import { getAvailableInnerMold } from './overmoldSpec';
 
 export type AutoQuoteEndpointBType = 'connector' | 'cut' | 'strip-tin';
 export type AutoQuoteOuterMoldType = 'none' | 'pvc-45p' | 'tpe';
@@ -75,9 +76,6 @@ export function buildAutoQuoteConfig(
   if (form.outerMoldType === 'tpe') {
     unsupportedIssues.push('TPE 外模计费待支持，当前仅支持黑色 PVC 45P');
   }
-  if (form.innerMoldType === 'pe') {
-    unsupportedIssues.push('PE 内模材料尚未独立计价，首版暂不提供正式报价');
-  }
 
   // 2. 基础输入校验
   if (!Number.isSafeInteger(form.lengthMm) || form.lengthMm <= 0) {
@@ -126,6 +124,9 @@ export function buildAutoQuoteConfig(
     } else if (!isSupportedOvermold(overmold)) {
       issues.push('外模须为目录中的黑色 PVC 45P');
     }
+  }
+  if (form.innerMoldType === 'pe' && (!overmold || !getAvailableInnerMold(overmold))) {
+    issues.push('请选择包含低密度透明 PE 内模的外模规格');
   }
 
   if (issues.length > 0 || unsupportedIssues.length > 0 || !connA || !wire) {
@@ -198,7 +199,7 @@ export function buildAutoQuoteConfig(
     width: 30,
     height: 30,
     overmoldSpecId: overmold!.id,
-    includeInnerMold: false,
+    includeInnerMold: form.innerMoldType === 'pe',
   }));
 
   const nameParts = [connA.name];
@@ -321,6 +322,7 @@ export function buildQuoteSummaryText(
     `• B 端形式: ${endpointBDesc}`,
     `• 线材型号: ${wire?.name || '-'}`,
     `• 外模配置: ${moldDesc}`,
+    `• 内模配置: ${form.innerMoldType === 'pe' ? 'PE 内模' : '无内模'}`,
     `• 报价线长: ${form.lengthMm} mm`,
     `• 询价数量: ${form.quantity} 条`,
     `• 含税运单价: ¥${formatQuoteMoney(evaluation.price.unitPrice)} / 条`,

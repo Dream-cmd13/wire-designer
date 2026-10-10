@@ -440,7 +440,7 @@ export function AutoQuotePage() {
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { key: 'none' as const, label: '无内模' },
-                    { key: 'pe' as const, label: 'PE 内模 (待支持)' },
+                    { key: 'pe' as const, label: 'PE 内模' },
                   ].map((item) => {
                     const active = form.innerMoldType === item.key;
                     return (

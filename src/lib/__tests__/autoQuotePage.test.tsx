@@ -99,7 +99,7 @@ describe('AutoQuotePage', () => {
     expect(html).toContain('黑色 PVC 45P');
     expect(html).toContain('TPE (待支持)');
     expect(html).toContain('无内模');
-    expect(html).toContain('PE 内模 (待支持)');
+    expect(html).toContain('PE 内模');
     expect(html).toContain('报价线长 (mm)');
     expect(html).toContain('订单数量 (条)');
 

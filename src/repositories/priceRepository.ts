@@ -13,7 +13,7 @@ export function validatePrices(value: unknown): MaterialPrice[] {
   const keys = new Set<string>();
   return value.map((raw, index) => {
     const row = raw as MaterialPrice;
-    if (!row || !['connector', 'wire', 'outer-mold'].includes(row.kind)
+    if (!row || !['connector', 'wire', 'outer-mold', 'inner-mold'].includes(row.kind)
       || typeof row.resourceId !== 'string' || !row.resourceId.trim()
       || typeof row.name !== 'string' || !row.name.trim()
       || typeof row.specification !== 'string' || !row.specification.trim()

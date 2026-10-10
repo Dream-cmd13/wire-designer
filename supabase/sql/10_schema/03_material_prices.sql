@@ -1,7 +1,7 @@
 create table public.material_prices (
   id uuid primary key default gen_random_uuid(),
   resource_id uuid not null references public.catalog_items(id) on delete cascade,
-  kind text not null check (kind in ('connector', 'wire', 'outer-mold')),
+  kind text not null check (kind in ('connector', 'wire', 'outer-mold', 'inner-mold')),
   name text not null check (length(btrim(name)) between 1 and 200),
   specification text not null check (length(specification) between 1 and 1000 and jsonb_typeof(specification::jsonb) = 'array'),
   length_mm bigint not null check (length_mm between 0 and 9007199254740991),
@@ -14,13 +14,13 @@ create table public.material_prices (
   unique (kind, resource_id, specification, length_mm, unit)
 );
 
-comment on column public.material_prices.length_mm is '线材整条价格档位上限（毫米）：实际长度向上取最近档，边界使用本档；连接器及外模为0。超过5000毫米由报价逻辑转人工核价。';
+comment on column public.material_prices.length_mm is '线材整条价格档位上限（毫米）：实际长度向上取最近档，边界使用本档；连接器、外模及内模为0。超过5000毫米由报价逻辑转人工核价。';
 
 create function public.validate_material_price() returns trigger
 language plpgsql set search_path = '' as $$
 begin
   if not exists (select 1 from public.catalog_items where id = new.resource_id
-    and kind = case when new.kind = 'outer-mold' then 'overmold' else new.kind end) then
+    and kind = case when new.kind in ('outer-mold', 'inner-mold') then 'overmold' else new.kind end) then
     raise exception 'Price material does not match catalog kind';
   end if;
   new.updated_at := now();

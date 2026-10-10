@@ -66,6 +66,8 @@ const mockCatalog: CatalogSnapshot = {
       outerMaterial: '黑色PVC',
       outerHardness: '45P',
       outerForm: 'straight',
+      innerMaterial: '低密度透明PE',
+      innerForm: 'straight',
     },
     {
       id: 'mold-tpe-1',
@@ -88,7 +90,7 @@ function createPrices(config: NonNullable<ReturnType<typeof buildAutoQuoteConfig
   return getQuoteMaterials(config, mockCatalog).map((row) => ({
     ...row,
     lengthMm: row.lengthMm,
-    taxIncludedPrice: row.kind === 'wire' ? '4.50' : row.kind === 'connector' ? '2.80' : '1.20',
+    taxIncludedPrice: row.kind === 'wire' ? '4.50' : row.kind === 'connector' ? '2.80' : row.kind === 'inner-mold' ? '0.30' : '1.20',
   }));
 }
 
@@ -145,7 +147,7 @@ describe('autoQuote', () => {
     expect(evaluation.price).toBeUndefined();
   });
 
-  it('reports unsupported when outer mold is TPE or inner mold is PE', () => {
+  it('keeps TPE unsupported and requires an outer mold for PE inner molds', () => {
     const formTpe: AutoQuoteFormState = {
       connectorAId: 'conn-m12',
       endpointBType: 'cut',
@@ -165,7 +167,23 @@ describe('autoQuote', () => {
       outerMoldType: 'none',
       innerMoldType: 'pe',
     };
-    expect(evaluateAutoQuote(formPe, [], mockCatalog).status).toBe('unsupported');
+    expect(evaluateAutoQuote(formPe, [], mockCatalog).status).toBe('incomplete');
+  });
+  it.each(['connector', 'cut'] as const)('quotes PE inner molds at 0.30 per molded end for %s', (endpointBType) => {
+    const form: AutoQuoteFormState = {
+      connectorAId: 'conn-m12', endpointBType, connectorBId: 'conn-m8',
+      outerMoldType: 'pvc-45p', outerMoldSpecId: 'mold-pvc-1', outerMoldEnds: 2,
+      innerMoldType: 'pe', wireResourceId: 'res-wire-1', lengthMm: 1000, quantity: 100,
+    };
+    const config = buildAutoQuoteConfig(form, mockCatalog).config!;
+    const count = endpointBType === 'connector' ? 2 : 1;
+    expect(config.models.map((model) => model.includeInnerMold)).toEqual(Array(count).fill(true));
+    const result = evaluateAutoQuote(form, createPrices(config), mockCatalog);
+    expect(result.status).toBe('ready');
+    expect(result.price?.materials.find((row) => row.kind === 'inner-mold'))
+      .toMatchObject({ points: count, unitPrice: '0.3', amount: count === 2 ? '0.6' : '0.3' });
+    const withoutInnerMetadata = { ...mockCatalog, overmolds: mockCatalog.overmolds.map((mold) => ({ ...mold, innerMaterial: undefined, innerForm: undefined })) };
+    expect(evaluateAutoQuote(form, createPrices(config), withoutInnerMetadata).status).toBe('incomplete');
   });
 
   it('calculates price successfully for single-end cut configuration (A 端 + B 端切断)', () => {

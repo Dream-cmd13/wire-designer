@@ -3,9 +3,10 @@ import type { CatalogSnapshot } from '@/types/catalog';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import { applyCatalogWireSpec } from './wireCatalog';
 import { resolveColor } from './canvasMaterials';
+import { getAvailableInnerMold } from './overmoldSpec';
 
 export interface QuoteMaterial {
-  kind: 'connector' | 'wire' | 'outer-mold';
+  kind: 'connector' | 'wire' | 'outer-mold' | 'inner-mold';
   resourceId: string;
   name: string;
   specification: string;
@@ -40,6 +41,8 @@ export function formatMaterialSpecification(row: Omit<QuoteMaterial, 'quantity'>
     tokens = [model, series, `${pins}Pin`, gender === 'male' ? '公头' : gender === 'female' ? '母头' : '插座'];
   } else if (row.kind === 'outer-mold') {
     tokens = [fields[0], fields[1], fields[2] === 'straight' ? '直头' : '弯头'];
+  } else if (row.kind === 'inner-mold') {
+    tokens = [fields[0], fields[1] === 'straight' ? '直头' : '弯头'];
   } else if (fields[0] === 'jacketed') {
     const [, awg, cores, shielded, jacket, color, od, ul, colors, area] = fields;
     tokens = [ul, jacket, `${cores}芯`, area == null ? `${awg}AWG` : `${area}mm²`, shielded ? '屏蔽' : '非屏蔽',
@@ -64,7 +67,7 @@ export function getPriceImportCandidates(config: HarnessConfig, catalog: Catalog
     materials: (catalog.wires ?? []).map((wire) => ({ id: wire.id, resourceItemId: wire.resourceItemId, name: wire.name,
       position: { x: 0, y: 0 }, width: 1, circuits: [], spec: applyCatalogWireSpec(baseSpec, wire.spec) })),
     models: catalog.overmolds.map((mold) => ({ id: mold.id, kind: 'outer-box', position: { x: 0, y: 0 }, width: 1, height: 1,
-      overmoldSpecId: mold.id, includeInnerMold: false })),
+      overmoldSpecId: mold.id, includeInnerMold: Boolean(getAvailableInnerMold(mold)) })),
   };
   return [...current, ...getQuoteMaterials(catalogConfig, catalog)];
 }
@@ -89,6 +92,11 @@ export function getQuoteMaterials(config: HarnessConfig, catalog: CatalogSnapsho
     rows.push({ kind: 'outer-mold', resourceId: spec?.resourceItemId || model.resourceItemId || model.overmoldSpecId,
       name: spec?.name || model.overmoldSpecId,
       specification: spec ? JSON.stringify([spec.outerMaterial, spec.outerHardness || '', spec.outerForm]) : '',
+      lengthMm: 0, unit: '元/个', quantity: 1 });
+    const inner = model.includeInnerMold ? getAvailableInnerMold(spec) : null;
+    if (inner) rows.push({ kind: 'inner-mold', resourceId: spec?.resourceItemId || spec!.id,
+      name: `${inner.material}${inner.formLabel}内模`,
+      specification: JSON.stringify([inner.material, inner.form]),
       lengthMm: 0, unit: '元/个', quantity: 1 });
   }
   const grouped = new Map<string, QuoteMaterial>();
@@ -155,6 +163,13 @@ export function getCatalogPriceCandidates(catalog: CatalogSnapshot | null): Quot
       lengthMm: 0,
       unit: '元/个',
       quantity: 1,
+    });
+    const inner = getAvailableInnerMold(mold);
+    if (inner) rows.push({
+      kind: 'inner-mold', resourceId: mold.resourceItemId || mold.id,
+      name: `${inner.material}${inner.formLabel}内模`,
+      specification: JSON.stringify([inner.material, inner.form]),
+      lengthMm: 0, unit: '元/个', quantity: 1,
     });
   }
 
