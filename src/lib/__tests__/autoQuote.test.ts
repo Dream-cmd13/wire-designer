@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAutoQuoteConfig,
-  evaluateAutoQuote,
   isSupportedConnector,
   isSupportedOvermold,
   DEFAULT_AUTO_QUOTE_FORM,
@@ -11,6 +10,15 @@ import {
 import { getQuoteMaterials } from '@/lib/quoteMaterials';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { MaterialPrice } from '@/repositories/priceRepository';
+import { calculatePrice } from '../../../server/pricing';
+// Exercise form construction together with the authoritative server calculator.
+function evaluateAutoQuote(form: AutoQuoteFormState, prices: MaterialPrice[], catalog: CatalogSnapshot) {
+  const built = buildAutoQuoteConfig(form, catalog);
+  if (built.unsupportedIssues.length) return { ...built, status: 'unsupported', issues: built.unsupportedIssues, price: undefined };
+  if (!built.config) return { ...built, status: 'incomplete', price: undefined };
+  const result = calculatePrice(built.config, prices, catalog);
+  return result.status === 'ready' ? { ...built, ...result, issues: [] } : { ...built, ...result, price: undefined };
+}
 
 const mockCatalog: CatalogSnapshot = {
   connectors: [

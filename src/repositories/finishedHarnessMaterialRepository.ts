@@ -8,7 +8,7 @@ import type {
 } from '@/types/finishedHarnessMaterial';
 
 export const FINISHED_HARNESS_MATERIAL_COLUMNS =
-  'id,source_material_id,source_goods_id,platform_no,son_name,supplier_id,file_2d,packing_way,packing,son_unit,son_price_low,total_cost,sales_price,sample_price,quote_price,has_cost_analysis,source_excel_url,created_at,updated_at,supplier:suppliers(supplier_no)';
+  'id,source_material_id,source_goods_id,platform_no,son_name,supplier_id,file_2d,packing_way,packing,son_unit,son_price_low,total_cost,sales_price,sample_price,quote_price,has_cost_analysis,source_excel_url,created_at,updated_at,supplier';
 
 export const FINISHED_HARNESS_COST_ANALYSIS_COLUMNS =
   'id,harness_material_id,platform_no,source_excel_file,source_sheet_name,customer_name,customer_part_no,material_cost,material_loss,labor_cost,labor_loss,total_cost,tax_cost,sales_price,sample_price,quote_price,formula_config,calculation_steps,bom_items,labor_items,source_excel_url,source_excel_path,created_at,updated_at';
@@ -170,7 +170,7 @@ export class FinishedHarnessMaterialRepository {
 
     for (let offset = 0; ; offset += 1000) {
       let request = client
-        .from('finished_harness_materials')
+        .from('finished_harness_materials_visible')
         .select(FINISHED_HARNESS_MATERIAL_COLUMNS)
         .order('platform_no')
         .range(offset, offset + 999);
@@ -218,7 +218,7 @@ export class FinishedHarnessMaterialRepository {
 
   async getById(id: string): Promise<FinishedHarnessMaterial | null> {
     const { data, error } = await this.requireClient()
-      .from('finished_harness_materials')
+      .from('finished_harness_materials_visible')
       .select(FINISHED_HARNESS_MATERIAL_COLUMNS)
       .eq('id', id)
       .maybeSingle();
@@ -234,7 +234,7 @@ export class FinishedHarnessMaterialRepository {
 
   async getByPlatformNo(platformNo: string): Promise<FinishedHarnessMaterial | null> {
     const { data, error } = await this.requireClient()
-      .from('finished_harness_materials')
+      .from('finished_harness_materials_visible')
       .select(FINISHED_HARNESS_MATERIAL_COLUMNS)
       .eq('platform_no', platformNo)
       .maybeSingle();

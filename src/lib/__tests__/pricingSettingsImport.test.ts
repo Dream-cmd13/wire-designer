@@ -1,0 +1,15 @@
+import { describe, expect, it } from 'vitest';
+import { parsePricingSettingsImport } from '../pricingSettingsImport';
+import { DEFAULT_PRICING_SETTINGS } from '../../../server/pricing';
+
+describe('pricing parameter import', () => {
+  it('imports valid parameters without trusting the file version', () => {
+    const imported = { ...DEFAULT_PRICING_SETTINGS, version: 999, marginRate: '0.3' };
+    expect(parsePricingSettingsImport(JSON.stringify(imported), DEFAULT_PRICING_SETTINGS)).toEqual({ ...imported, version: DEFAULT_PRICING_SETTINGS.version });
+  });
+  it('rejects unknown fields, missing labor rates, negative and imprecise values', () => {
+    for (const change of [{ extra: '1' }, { marginRate: '1' }, { freightRate: '-0.1' }, { materialLossRate: '0.1234567' }, { laborRates: {} }]) {
+      expect(() => parsePricingSettingsImport(JSON.stringify({ ...DEFAULT_PRICING_SETTINGS, ...change }), DEFAULT_PRICING_SETTINGS)).toThrow();
+    }
+  });
+});

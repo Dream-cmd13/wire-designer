@@ -1,7 +1,6 @@
 import type { CatalogSnapshot, CatalogWire } from '@/types/catalog';
 import type { Connector, HarnessConfig, OvermoldSpec } from '@/types/harness';
-import type { MaterialPrice } from '@/repositories/priceRepository';
-import { calculatePrice, formatQuoteMoney, type QuoteBreakdown } from './pricing';
+import { formatQuoteMoney, type QuotePrice } from './pricing';
 import { applyCatalogWireSpec } from './wireCatalog';
 import { getAvailableInnerMold } from './overmoldSpec';
 
@@ -25,7 +24,7 @@ export interface AutoQuoteFormState {
 export interface AutoQuoteEvaluation {
   status: 'ready' | 'blocked' | 'manual' | 'unsupported' | 'incomplete';
   issues: string[];
-  price?: QuoteBreakdown;
+  price?: QuotePrice;
   config?: HarnessConfig;
   connA?: Connector;
   connB?: Connector;
@@ -285,61 +284,6 @@ export function buildAutoQuoteConfig(
     config,
     issues: [],
     unsupportedIssues: [],
-    connA,
-    connB,
-    wire,
-    overmold,
-  };
-}
-
-export function evaluateAutoQuote(
-  form: AutoQuoteFormState,
-  prices: MaterialPrice[],
-  catalog: CatalogSnapshot | null,
-): AutoQuoteEvaluation {
-  const { config, issues, unsupportedIssues, connA, connB, wire, overmold } = buildAutoQuoteConfig(form, catalog);
-
-  if (unsupportedIssues.length > 0) {
-    return {
-      status: 'unsupported',
-      issues: unsupportedIssues,
-      connA,
-      connB,
-      wire,
-      overmold,
-    };
-  }
-
-  if (issues.length > 0 || !config) {
-    return {
-      status: 'incomplete',
-      issues,
-      connA,
-      connB,
-      wire,
-      overmold,
-    };
-  }
-
-  const result = calculatePrice(config, prices, catalog);
-
-  if (result.status === 'ready') {
-    return {
-      status: 'ready',
-      issues: [],
-      price: result.price,
-      config,
-      connA,
-      connB,
-      wire,
-      overmold,
-    };
-  }
-
-  return {
-    status: result.status,
-    issues: result.issues,
-    config,
     connA,
     connB,
     wire,

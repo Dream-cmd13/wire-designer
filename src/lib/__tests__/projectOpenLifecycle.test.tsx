@@ -148,7 +148,7 @@ function installWindow(pathname = '/home'): { pushState: ReturnType<typeof vi.fn
 
 function signIn(id: string | null): void {
   useUserStore.setState({
-    currentUser: id ? { id, name: id, email: `${id}@test`, createdAt: 1 } : null,
+    currentUser: id ? { id, name: id, email: `${id}@test`, createdAt: 1, role: 'engineer' } : null,
     authReady: true,
   });
 }

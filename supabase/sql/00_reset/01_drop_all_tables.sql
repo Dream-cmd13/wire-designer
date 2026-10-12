@@ -3,6 +3,18 @@
 -- Storage protects its metadata tables from direct deletion. Run
 -- `npm run supabase:reset-project-assets` before this SQL when removing the obsolete bucket.
 
+drop view if exists public.finished_harness_materials_visible;
+drop function if exists public.quote_snapshot(uuid);
+drop function if exists public.save_pricing_settings(integer,jsonb);
+drop function if exists public.import_material_prices(jsonb,text);
+drop function if exists public.assign_user_role(uuid,text);
+drop function if exists public.list_app_users();
+drop function if exists public.can_manage_pricing() cascade;
+drop function if exists public.current_app_role() cascade;
+drop function if exists public.audit_pricing_change() cascade;
+drop table if exists public.pricing_audit cascade;
+drop table if exists public.pricing_settings cascade;
+drop table if exists public.user_roles cascade;
 drop table if exists public.finished_harness_cost_analyses cascade;
 drop table if exists public.finished_harness_materials cascade;
 drop table if exists public.material_prices cascade;

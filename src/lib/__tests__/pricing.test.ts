@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { calculatePrice, formatQuoteMoney } from '@/lib/pricing';
+import { formatQuoteMoney } from '@/lib/pricing';
+import { calculatePrice } from '../../../server/pricing';
 import { formatMaterialSpecification, getPriceImportCandidates, getQuoteMaterials } from '@/lib/quoteMaterials';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
@@ -213,16 +214,14 @@ describe('price workbook and repository', () => {
   });
   it('exports one product cost-analysis row with no internal identifiers and correct rounded total', () => {
     const { config, prices } = fixture();
-    const result = XLSX.read(bytes(createQuoteWorkbook(config, prices, catalog)), { type: 'array' });
-    expect(result.SheetNames).toEqual(['成本分析-M12单线']);
+    const p = ready(config, prices);
+    const result = XLSX.read(bytes(createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'engineer')), { type: 'array' });
+    expect(result.SheetNames).toEqual(['成本分析']);
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(result.Sheets[result.SheetNames[0]])[0];
-    expect(row).toMatchObject({ '产品名称': config.name, '连接器含税': 4, '线材含税': 4, '外模 黑色PVC 45P 含税': 2,
-      '内模含税': 0.6, 'SR含税': 0, '材料损耗': 0.318, '加工损耗': 0.2175,
-      '产品含税成本': 15.4855, '含税含运费单价': 19.94, '订单总价': 1994, '交期': '7日' });
+    expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.2175',
+      '产品含税成本': '15.4855', '含税含运费单价': '19.94', '订单总价': '1994.00', '交期': '7日' });
     expect(row['交期']).toBe(DEFAULT_QUOTE_LEAD_TIME);
-    expect(row['线材规格']).toContain('0.6m');
     expect(JSON.stringify(row)).not.toContain('wire-resource');
-    config.materials[0].spec.lengthMm = 5001;
-    expect(() => createQuoteWorkbook(config, prices, catalog)).toThrow('人工核价');
+    expect(() => createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'sales')).toThrow('权限');
   });
 });

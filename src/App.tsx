@@ -178,7 +178,14 @@ function LoadErrorBanner({ message, recoveryRaw, projectName, onClose }: LoadErr
 }
 
 export default function App() {
-  const { route, projectId, navigate } = useAppRoute();
+  const currentUser = useUserStore((state) => state.currentUser);
+  const restricted = Boolean(currentUser && currentUser.role !== 'engineer' && currentUser.role !== 'admin');
+  const { route: requestedRoute, projectId: requestedProjectId, navigate } = useAppRoute();
+  const route = restricted ? appRoutes['auto-quote'] : requestedRoute;
+  const projectId = restricted ? null : requestedProjectId;
+  useEffect(() => {
+    if (currentUser?.role === 'sales' && requestedRoute.id !== 'auto-quote') navigate(appRoutes['auto-quote'].path);
+  }, [currentUser?.role, requestedRoute.id, navigate]);
   const [authOpen, setAuthOpen] = useState(false);
   const [bomModalOpen, setBomModalOpen] = useState(false);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
@@ -215,7 +222,6 @@ export default function App() {
   const switchConfirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const restoreFailed = Boolean(projectId && failedProjectId === projectId);
 
-  const currentUser = useUserStore((state) => state.currentUser);
   const currentUserId = currentUser?.id;
   const authReady = useUserStore((state) => state.authReady);
   const initializeAuth = useUserStore((state) => state.initialize);
@@ -572,15 +578,15 @@ export default function App() {
     void initializeCatalog().catch(() => {
       // The catalog store exposes the error state to the shell; no mock fallback is used.
     });
-    void loadPrices().catch(() => {
+    if (!restricted) void loadPrices().catch(() => {
       // Background preload; QuoteModal handles loading/fallback gracefully.
     });
-  }, [needsCatalog, initializeCatalog, loadPrices]);
+  }, [needsCatalog, initializeCatalog, loadPrices, restricted]);
 
   // 必须在账号重置（resetWorkspaceForUser 使旧会话代次失效）之后执行，否则新账号的列表请求会捕获旧代次并被丢弃。
   useEffect(() => {
     const requestId = ++projectsLoadRequestRef.current;
-    if (!authReady || !currentUserId) {
+    if (!authReady || !currentUserId || restricted) {
       return;
     }
 
@@ -599,7 +605,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, currentUserId, loadProjects]);
+  }, [authReady, currentUserId, loadProjects, restricted]);
 
   useEffect(() => {
     if (saveState.status !== 'dirty' || !currentProject || saveBlocked) {
@@ -1047,11 +1053,11 @@ export default function App() {
     }
 
     if (route.id === 'auto-quote') {
-      return <AutoQuotePage />;
+      return <AutoQuotePage key={`${currentUser?.id}:${currentUser?.role}`} />;
     }
 
     if (route.id === 'materials') {
-      return <MaterialLibraryPage />;
+      return <MaterialLibraryPage key={`${currentUser?.id}:${currentUser?.role}`} />;
     }
 
     return (
@@ -1194,7 +1200,7 @@ export default function App() {
         />
       )}
 
-      {wizardOpen && (
+      {!restricted && wizardOpen && (
         <ProjectWizard
           onComplete={handleWizardComplete}
           onCancel={() => setWizardOpen(false)}
@@ -1202,15 +1208,16 @@ export default function App() {
       )}
 
       <Suspense fallback={null}>
-        {bomModalOpen && (
+        {!restricted && bomModalOpen && (
           <BomModal
             isOpen
             onClose={() => setBomModalOpen(false)}
           />
         )}
 
-        {quoteModalOpen && (
+        {!restricted && quoteModalOpen && (
           <QuoteModal
+            key={`${currentUser?.id}:${currentUser?.role}`}
             isOpen
             onClose={() => setQuoteModalOpen(false)}
           />

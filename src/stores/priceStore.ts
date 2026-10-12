@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { priceRepository, type MaterialPrice, type PriceBook } from '@/repositories/priceRepository';
+import { canViewPricing } from '@/lib/permissions';
+import { useUserStore } from './userStore';
 
 interface PriceState {
   book: PriceBook | null;
@@ -21,6 +23,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   error: null,
 
   async load(options = {}) {
+    if (!canViewPricing(useUserStore.getState().currentUser?.role)) { get().reset(); return; }
     const epoch = loadEpoch;
     const hasExisting = Boolean(get().book);
     if (!hasExisting) {
@@ -47,6 +50,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   },
 
   async merge(prices, source) {
+    if (!canViewPricing(useUserStore.getState().currentUser?.role)) throw new Error('无物料价格维护权限');
     const epoch = loadEpoch;
     set({ loading: true });
     try {

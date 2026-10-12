@@ -1,5 +1,25 @@
 # Supabase SQL 执行顺序
 
+权限实施新增必跑脚本：在第 8 步之后执行 `10_schema/07_pricing_permissions.sql`，
+在第 10 步之后执行 `30_security/02_pricing_permissions.sql`。后者必须晚于旧策略文件，
+否则旧文件会重新安装宽松策略。全部脚本完成后才能部署前端。
+
+部署报价 Edge Function：先运行 `npm run quote:build`，再由已授权的部署人员执行
+`supabase functions deploy quote`。浏览器只调用该函数，不再本地计算成本。
+函数内部校验访问令牌，`verify_jwt = false` 仅关闭网关旧 JWT 校验，不允许匿名核价。
+第一个管理员由受信任的 SQL 管理控制台显式设置（使用准确账号 UUID）：
+
+```sql
+insert into public.user_roles(user_id, role)
+values ('替换为准确的管理员账号UUID'::uuid, 'admin');
+```
+
+其余账号默认业务员；管理员在物料库的“定价参数与用户权限”中分配角色。
+业务员只显示自动报价入口；工程师、管理员保留其他入口，且仍只能访问自己的项目。
+业务员不能访问价格、成本分析、定价参数、成本 Excel；普通报价只返回单价和总价。
+成品安全视图只公开正式 `quote_price`，内部参考价不作兜底。
+账号角色每 30 秒及页面恢复焦点时刷新，变更后清理成本缓存并卸载旧页面；服务端每次请求实时判权。
+
 当前项目处于测试阶段，只维护一条空库重建路径，不维护旧结构升级链。
 
 ## 开发环境重建

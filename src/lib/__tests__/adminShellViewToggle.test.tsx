@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { AdminShell } from '@/components/layout/AdminShell';
 import { appRoutes } from '@/lib/appRoute';
 
+const engineer = { id: 'u-1', name: '测试用户', email: 'test@example.com', createdAt: 1, role: 'engineer' as const };
+
 describe('AdminShell view toggle buttons', () => {
   it('renders design drawing and product image toggle buttons to the left of project name when project exists', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes['designer-design']}
-        currentUser={{ id: 'u-1', name: '测试用户', email: 'test@example.com', createdAt: Date.now() }}
+        currentUser={engineer}
         currentProjectName="测试线束项目"
         saveBlocked={false}
         canUndo={false}
@@ -42,7 +44,7 @@ describe('AdminShell view toggle buttons', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes['designer-design']}
-        currentUser={null}
+        currentUser={engineer}
         currentProjectName="项目A"
         saveBlocked={false}
         canUndo={false}
@@ -65,7 +67,7 @@ describe('AdminShell view toggle buttons', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes['designer-product-image']}
-        currentUser={null}
+        currentUser={engineer}
         currentProjectName="项目B"
         saveBlocked={false}
         canUndo={false}
@@ -88,7 +90,7 @@ describe('AdminShell view toggle buttons', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes.home}
-        currentUser={null}
+        currentUser={engineer}
         saveBlocked={false}
         canUndo={false}
         canRedo={false}
@@ -121,7 +123,7 @@ describe('AdminShell view toggle buttons', () => {
       const html = renderToStaticMarkup(
         <AdminShell
           route={route}
-          currentUser={null}
+          currentUser={engineer}
           currentProjectName="test"
           saveBlocked={false}
           canUndo={false}
@@ -151,7 +153,7 @@ describe('AdminShell view toggle buttons', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes['designer-design']}
-        currentUser={null}
+        currentUser={engineer}
         currentProjectName="test"
         saveBlocked={false}
         canUndo={false}
@@ -180,7 +182,7 @@ describe('AdminShell view toggle buttons', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes['designer-design']}
-        currentUser={{ id: 'u-1', name: '测试用户', email: 'test@example.com', createdAt: Date.now() }}
+        currentUser={engineer}
         currentProjectName="超长测试线束项目名称用于测试极端排版"
         saveBlocked={false}
         canUndo={true}

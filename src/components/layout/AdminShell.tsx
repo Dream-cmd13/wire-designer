@@ -210,11 +210,12 @@ export function AdminShell({
   const accessProjects = canAccessProjects ?? Boolean(currentUser);
   const accessMaterials = canAccessMaterials ?? Boolean(currentUser);
   const visibleSidebarItems = sidebarItems.filter((item) => {
+    if (currentUser && currentUser.role !== 'engineer' && currentUser.role !== 'admin') return item.path === appRoutes['auto-quote'].path;
     if (item.access === 'projects') return accessProjects;
     if (item.access === 'materials') return accessMaterials;
     return true;
   });
-  const showDesignerActions = route.section === 'designer' && Boolean(currentProjectName);
+  const showDesignerActions = (currentUser?.role === 'engineer' || currentUser?.role === 'admin') && route.section === 'designer' && Boolean(currentProjectName);
   const contextLabel = route.id === 'drawing-workbench'
     ? '独立制图 · 新建后导出'
     : route.id === 'dwg-viewer'

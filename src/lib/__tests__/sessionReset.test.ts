@@ -23,6 +23,7 @@ vi.mock('@/repositories/finishedHarnessMaterialRepository', () => ({
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
 import { usePriceStore } from '@/stores/priceStore';
+import { useUserStore } from '@/stores/userStore';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -41,6 +42,7 @@ describe('session data reset', () => {
     useCatalogStore.getState().reset();
     usePriceStore.getState().reset();
     useFinishedHarnessStore.getState().reset();
+    useUserStore.setState({ currentUser: { id: 'engineer', name: '工程师', email: 'engineer@test', createdAt: 1, role: 'engineer' } });
   });
 
   it('clears catalog, price and finished harness state on reset', () => {
@@ -94,6 +96,7 @@ describe('session data reset', () => {
     mocks.priceLoad.mockReturnValue(pending.promise);
 
     const task = usePriceStore.getState().load();
+    expect(mocks.priceLoad).toHaveBeenCalledOnce();
     usePriceStore.getState().reset();
     pending.resolve({ importedAt: '', sourceName: '', prices: [] });
     await task;

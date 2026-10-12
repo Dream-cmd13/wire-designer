@@ -3,6 +3,7 @@
 // ============================================================
 
 export interface User {
+  role?: import('@/lib/permissions').AppRole;
   id: string;
   name: string;
   email: string;

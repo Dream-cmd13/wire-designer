@@ -1,0 +1,101 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { PGlite } from '@electric-sql/pglite';
+
+const sales = '00000000-0000-4000-8000-000000000001';
+const engineer = '00000000-0000-4000-8000-000000000002';
+const admin = '00000000-0000-4000-8000-000000000003';
+const material = '00000000-0000-4000-8000-000000000004';
+const db = new PGlite();
+async function asUser(id: string) {
+  await db.exec(`reset role; set role authenticated; select set_config('request.jwt.claim.sub', '${id}', false);`);
+}
+async function scalar(sql: string) { return (await db.query<Record<string, unknown>>(sql)).rows[0]; }
+
+describe('real PostgreSQL pricing permissions', () => {
+  beforeAll(async () => {
+    await db.exec(`
+      create role anon; create role authenticated; create role service_role bypassrls;
+      create schema auth; create table auth.users(id uuid primary key, email text);
+      create function auth.uid() returns uuid language sql stable as
+        $$select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid$$;
+      grant usage on schema auth to anon, authenticated, service_role;
+      grant execute on function auth.uid() to anon, authenticated, service_role;
+      create schema storage; create table storage.objects(id uuid default gen_random_uuid(), bucket_id text, name text);
+      alter table storage.objects enable row level security;
+      grant usage on schema storage to anon, authenticated, service_role;
+      grant select on storage.objects to authenticated;
+      insert into auth.users values ('${sales}','sales@test'), ('${engineer}','engineer@test'), ('${admin}','admin@test');
+    `);
+    for (const file of ['10_schema/01_core', '10_schema/02_catalog', '10_schema/03_material_prices',
+      '10_schema/04_suppliers', '10_schema/05_finished_harness_materials', '10_schema/06_finished_harness_cost_analyses',
+      '10_schema/07_pricing_permissions', '30_security/01_rls', '30_security/02_pricing_permissions']) {
+      await db.exec(readFileSync(`supabase/sql/${file}.sql`, 'utf8').replace('create extension if not exists pgcrypto;', ''));
+    }
+    await db.exec(`
+      insert into public.user_roles values ('${engineer}','engineer'), ('${admin}','admin');
+      insert into public.catalog_items(id,kind,code,name,model,spec) values ('${material}','connector','test','M12','M12','{"connectorType":"male","pinCount":4,"pinLabels":["1","2","3","4"],"series":"M12","shielded":true}');
+      insert into public.material_prices(resource_id,kind,name,specification,length_mm,unit,tax_included_price,source_name)
+        values ('${material}','connector','M12','[]',0,'元/个',2,'test');
+      insert into public.finished_harness_materials(platform_no,son_name,total_cost,quote_price,sales_price,son_price_low,has_cost_analysis,source_excel_url)
+        values ('TEST','test',10,20,15,12,true,'secret.xlsx');
+      insert into public.finished_harness_cost_analyses(platform_no,source_excel_file,source_sheet_name,total_cost)
+        values ('TEST','secret.xlsx','TEST',10);
+      insert into storage.objects(bucket_id,name) values ('cost-analysis-sources','secret.xlsx');
+    `);
+  }, 30000);
+  afterAll(async () => { await db.close(); });
+  it('denies direct sensitive reads and writes to sales while allowing catalog and safe quote', async () => {
+    await asUser(sales);
+    expect(await scalar('select public.current_app_role() as role')).toEqual({ role: 'sales' });
+    for (const table of ['material_prices','pricing_settings','finished_harness_materials','finished_harness_cost_analyses']) {
+      expect(await scalar(`select count(*)::int as count from public.${table}`)).toEqual({ count: 0 });
+    }
+    expect(await scalar('select count(*)::int as count from storage.objects')).toEqual({ count: 0 });
+    expect(await scalar('select total_cost, quote_price, sales_price, son_price_low, source_excel_url from public.finished_harness_materials_visible')).toEqual({
+      total_cost: null, quote_price: '20', sales_price: null, son_price_low: null, source_excel_url: null,
+    });
+    await expect(db.exec(`insert into public.user_roles values ('${sales}','admin')`)).rejects.toThrow();
+    await expect(db.exec(`select public.assign_user_role('${sales}','admin')`)).rejects.toThrow('Forbidden');
+    await expect(db.exec(`select public.quote_snapshot('${admin}')`)).rejects.toThrow();
+    await expect(db.exec(`insert into public.material_prices(resource_id,kind,name,specification,length_mm,unit,tax_included_price,source_name)
+      values ('${material}','connector','M12','[1]',0,'元/个',3,'hack')`)).rejects.toThrow();
+  });
+  it('engineers can read, update prices and save parameters, with version checks and auditing', async () => {
+    await asUser(engineer);
+    expect(await scalar('select count(*)::int as count from public.material_prices')).toEqual({ count: 1 });
+    expect(await scalar('select count(*)::int as count from storage.objects')).toEqual({ count: 1 });
+    await db.exec('update public.material_prices set tax_included_price = 3');
+    const result = await scalar(`select public.save_pricing_settings(1, (select settings from public.pricing_settings)) as version`);
+    expect(result).toEqual({ version: 2 });
+    await expect(db.exec(`select public.save_pricing_settings(1, (select settings from public.pricing_settings))`)).rejects.toThrow('修改');
+    await expect(db.exec(`select public.save_pricing_settings(2, '{"marginRate":"1"}'::jsonb)`)).rejects.toThrow('Invalid');
+    await expect(db.exec(`select public.assign_user_role('${sales}','admin')`)).rejects.toThrow('Forbidden');
+    await expect(db.exec(`update public.pricing_settings set version = 999`)).rejects.toThrow();
+  });
+  it('validates price imports in the database and rolls back invalid batches', async () => {
+    await asUser(engineer);
+    const entry = { kind: 'connector', resourceId: material, name: 'M12', specification: '[]', lengthMm: 0, unit: '元/个', taxIncludedPrice: '4' };
+    const merge = (rows: unknown[]) => db.query('select public.import_material_prices($1::jsonb, $2::text)', [JSON.stringify(rows), 'import.xlsx']);
+    await expect(merge([entry, entry])).rejects.toThrow('Duplicate');
+    await expect(merge([])).rejects.toThrow('Invalid');
+    await expect(merge(Array.from({ length: 10001 }, () => entry))).rejects.toThrow('Invalid');
+    await expect(merge([entry, { ...entry, specification: '[1]', taxIncludedPrice: '0.1234567' }])).rejects.toThrow();
+    await expect(merge([entry, { ...entry, resourceId: sales }])).rejects.toThrow();
+    expect(await scalar('select tax_included_price from public.material_prices')).toEqual({ tax_included_price: '3' });
+    await merge([entry]);
+    expect(await scalar('select tax_included_price from public.material_prices')).toEqual({ tax_included_price: '4' });
+    await asUser(sales);
+    await expect(merge([entry])).rejects.toThrow('Forbidden');
+  });
+  it('admins assign roles and downgrades take effect for the next database request', async () => {
+    await asUser(admin);
+    expect((await db.query('select * from public.list_app_users()')).rows).toHaveLength(3);
+    expect(Number((await scalar('select count(*) as count from public.pricing_audit'))?.count)).toBeGreaterThan(0);
+    await db.exec(`select public.assign_user_role('${engineer}','sales')`);
+    await expect(db.exec(`select public.assign_user_role('${admin}','sales')`)).rejects.toThrow('自己');
+    await asUser(engineer);
+    expect(await scalar('select count(*)::int as count from public.material_prices')).toEqual({ count: 0 });
+    expect(await scalar('select count(*)::int as count from storage.objects')).toEqual({ count: 0 });
+  });
+});

@@ -6,12 +6,12 @@ import { createQuoteWorkbook } from '@/lib/quoteExport';
 import { safeFilename } from '@/lib/designFile';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import type { AutoQuoteEvaluation } from '@/lib/autoQuote';
-import type { MaterialPrice } from '@/repositories/priceRepository';
+import { useUserStore } from '@/stores/userStore';
+import { canViewPricing } from '@/lib/permissions';
 import type { CatalogSnapshot } from '@/types/catalog';
 
 interface AutoQuotePriceCardProps {
   evaluation: AutoQuoteEvaluation;
-  prices: MaterialPrice[];
   catalog: CatalogSnapshot | null;
   loading: boolean;
 }
@@ -47,22 +47,22 @@ function Lines({ lines }: { lines: QuoteLine[] }) {
 
 export function AutoQuotePriceCard({
   evaluation,
-  prices,
-  catalog,
   loading,
 }: AutoQuotePriceCardProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
   const { status, issues, price, config } = evaluation;
+  const role = useUserStore(s => s.currentUser?.role);
+  const internal = canViewPricing(role) ? price?.breakdown : undefined;
 
-  const handleExportExcel = () => {
+  const handleExportExcel = (mode: 'public' | 'internal' = 'public') => {
     if (!config || !price) return;
     try {
       setExporting(true);
       setExportError(null);
-      const workbook = createQuoteWorkbook(config, prices, catalog);
-      const filename = safeFilename(`${config.name}_自动报价成本分析.xlsx`);
+      const workbook = createQuoteWorkbook(config, price, mode, role);
+      const filename = safeFilename(`${config.name}_${mode === 'internal' ? '成本分析' : '报价单'}.xlsx`);
       XLSX.writeFile(workbook, filename);
     } catch (err) {
       setExportError(err instanceof Error ? err.message : '导出 Excel 失败');
@@ -75,9 +75,9 @@ export function AutoQuotePriceCard({
     <div className="space-y-4">
       {/* 加载中状态 */}
       {loading && (
-        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-700">
+        <div aria-busy="true" className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-700">
           <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          <span>正在加载价格表与计算实时报价...</span>
+          <span>正在核算报价...</span>
         </div>
       )}
 
@@ -167,15 +167,16 @@ export function AutoQuotePriceCard({
           </div>
 
           {/* 材料成本拆解 */}
+          {internal && <>
           <details open className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
             <summary className="cursor-pointer font-semibold text-slate-800 select-none flex justify-between items-center text-xs">
               <span>材料成本拆解</span>
               <span className="text-blue-600 font-bold tabular-nums">
-                合计 ¥{formatQuoteMoney(price.materialSubtotal)}
+                合计 ¥{formatQuoteMoney(internal.materialSubtotal)}
               </span>
             </summary>
             <div className="mt-2.5">
-              <Lines lines={price.materials} />
+              <Lines lines={internal.materials} />
             </div>
           </details>
 
@@ -184,11 +185,11 @@ export function AutoQuotePriceCard({
             <summary className="cursor-pointer font-semibold text-slate-800 select-none flex justify-between items-center text-xs">
               <span>加工费工序明细</span>
               <span className="text-blue-600 font-bold tabular-nums">
-                合计 ¥{formatQuoteMoney(price.laborSubtotal)}
+                合计 ¥{formatQuoteMoney(internal.laborSubtotal)}
               </span>
             </summary>
             <div className="mt-2.5">
-              <Lines lines={price.labor} />
+              <Lines lines={internal.labor} />
             </div>
           </details>
 
@@ -197,18 +198,20 @@ export function AutoQuotePriceCard({
             <div className="font-semibold text-slate-700 text-xs mb-1">
               成本与损耗分析
             </div>
-            <AmountRow name="材料损耗 (3%)" amount={price.materialLoss} />
-            <AmountRow name="加工损耗 (5%)" amount={price.processingLoss} />
-            <AmountRow name="产品含税成本" amount={price.cost} />
-            <AmountRow name="产品含税售价 (毛利 20%)" amount={price.sellingPrice} />
-            <AmountRow name="运费 (3%)" amount={price.freight} />
+            <AmountRow name="材料损耗" amount={internal.materialLoss} />
+            <AmountRow name="加工损耗" amount={internal.processingLoss} />
+            <AmountRow name="产品含税成本" amount={internal.cost} />
+            <AmountRow name="产品含税售价" amount={internal.sellingPrice} />
+            <AmountRow name="运费" amount={internal.freight} />
           </div>
+          <button onClick={() => handleExportExcel('internal')} className="text-sm text-blue-700">导出内部成本分析表</button>
+          </>}
 
           {/* 导出按钮 */}
           <button
             type="button"
             disabled={exporting}
-            onClick={handleExportExcel}
+            onClick={() => handleExportExcel()}
             className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 px-4 text-xs font-semibold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50"
           >
             {exporting ? (
@@ -217,7 +220,7 @@ export function AutoQuotePriceCard({
               <Download className="h-4 w-4" />
             )}
             <FileSpreadsheet className="h-4 w-4" />
-            <span>导出报价 Excel (成本分析表)</span>
+            <span>导出报价 Excel</span>
           </button>
 
           {exportError && (

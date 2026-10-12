@@ -63,10 +63,7 @@ export function createDatabasePriceRepository(client: SupabaseClient | null): Pr
   return { load, async merge(prices, sourceName) {
     const incoming = validatePrices(prices);
     if (!sourceName.trim() || sourceName.length > 255) throw new UserFacingError('价格文件名无效');
-    const { error } = await requireClient().from('material_prices').upsert(incoming.map((row) => ({
-      kind: row.kind, resource_id: row.resourceId, name: row.name, specification: row.specification,
-      length_mm: row.lengthMm, unit: row.unit, tax_included_price: row.taxIncludedPrice, source_name: sourceName,
-    })), { onConflict: 'kind,resource_id,specification,length_mm,unit' });
+    const { error } = await requireClient().rpc('import_material_prices', { price_rows: incoming, source_name: sourceName });
     if (error) throw new Error(`导入共享价格失败：${error.message}`);
     const book = await load();
     if (!book) throw new UserFacingError('价格已提交，但未能读取共享价格，请刷新重试');

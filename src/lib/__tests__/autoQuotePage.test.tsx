@@ -6,6 +6,37 @@ import { usePriceStore } from '@/stores/priceStore';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { PriceBook } from '@/repositories/priceRepository';
 
+import { useUserStore } from '@/stores/userStore';
+import { useServerQuote } from '@/lib/useServerQuote';
+import { isValidElement, type ReactNode } from 'react';
+import * as XLSX from 'xlsx';
+
+const hookHarness = vi.hoisted(() => ({ active: false, index: 0, states: [] as unknown[] }));
+vi.mock('react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react')>();
+  return {
+    ...actual,
+    useState: (initial: unknown) => {
+      if (!hookHarness.active) return actual.useState(initial);
+      const index = hookHarness.index++;
+      if (!(index in hookHarness.states)) hookHarness.states[index] = initial;
+      return [hookHarness.states[index], (value: unknown) => { hookHarness.states[index] = value; }];
+    },
+    useMemo: (factory: () => unknown, deps: unknown[]) => hookHarness.active ? factory() : actual.useMemo(factory, deps),
+    useEffect: (effect: () => void, deps: unknown[]) => { if (!hookHarness.active) actual.useEffect(effect, deps); },
+  };
+});
+vi.mock('xlsx', async (importOriginal) => ({ ...await importOriginal<typeof import('xlsx')>(), writeFile: vi.fn() }));
+
+function findStickyExport(node: ReactNode): (() => void) | undefined {
+  if (Array.isArray(node)) {
+    for (const child of node) { const found = findStickyExport(child); if (found) return found; }
+  } else if (isValidElement<{ children?: ReactNode; onClick?: () => void }>(node)) {
+    if (node.type === 'button' && node.props.onClick?.name === 'handleExportPublicExcel') return node.props.onClick;
+    return findStickyExport(node.props.children);
+  }
+}
+
 // SSR 读取 Zustand 的初始快照，测试改为读取真实 store 的当前目录与价格。
 vi.mock('@/stores/catalogStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/stores/catalogStore')>();
@@ -21,6 +52,24 @@ vi.mock('@/stores/priceStore', async (importOriginal) => {
   const store = actual.usePriceStore;
   return { ...actual, usePriceStore: Object.assign(() => store.getState(), store) };
 });
+
+vi.mock('@/stores/userStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/stores/userStore')>();
+  const store = actual.useUserStore;
+  return { ...actual, useUserStore: Object.assign(
+    <T,>(selector: (state: ReturnType<typeof store.getState>) => T) => selector(store.getState()),
+    store,
+  ) };
+});
+
+vi.mock('@/lib/useServerQuote', () => ({
+  useServerQuote: vi.fn(() => ({
+    result: undefined,
+    loading: false,
+    error: undefined,
+    retry: vi.fn(),
+  })),
+}));
 
 const mockCatalog: CatalogSnapshot = {
   connectors: [
@@ -91,8 +140,52 @@ const mockPriceBook: PriceBook = {
 
 describe('AutoQuotePage', () => {
   beforeEach(() => {
+    hookHarness.active = false;
+    hookHarness.states = [];
+    hookHarness.index = 0;
     useCatalogStore.setState({ snapshot: mockCatalog, status: 'ready', error: null });
     usePriceStore.setState({ book: mockPriceBook, loading: false, error: null });
+    useUserStore.setState({ currentUser: null });
+    vi.mocked(useServerQuote).mockReturnValue({
+      result: undefined,
+      loading: false,
+      error: undefined,
+      retry: vi.fn(),
+    });
+  });
+
+  it('shows request failures and retry in the sticky bar rather than blaming the input', () => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: undefined, loading: false, error: '服务端报价失败', retry: vi.fn() });
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    const bar = html.slice(html.indexOf('data-testid="auto-quote-sticky-bar"'));
+    expect(bar).toContain('服务端报价失败');
+    expect(bar).toContain('重试');
+    expect(bar).not.toContain('请完善选配输入');
+  });
+
+  it('shows sticky export failures and clears the error after a successful retry', () => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: { status: 'ready', price: { unitPrice: '10', totalPrice: '10000' }, settingsVersion: 1, calculatedAt: '2026-10-12' }, loading: false, error: undefined, retry: vi.fn() });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(XLSX.writeFile).mockImplementationOnce(() => { throw new Error('write failed'); });
+    hookHarness.active = true;
+    try {
+      const exportQuote = findStickyExport(AutoQuotePage());
+      expect(exportQuote).toBeTypeOf('function');
+      exportQuote!();
+      hookHarness.index = 0;
+      const failedTree = AutoQuotePage();
+      hookHarness.active = false;
+      expect(renderToStaticMarkup(failedTree)).toContain('导出报价失败，请重试。');
+      hookHarness.active = true;
+      findStickyExport(failedTree)!();
+      hookHarness.index = 0;
+      const retriedTree = AutoQuotePage();
+      hookHarness.active = false;
+      expect(renderToStaticMarkup(retriedTree)).not.toContain('导出报价失败，请重试。');
+    } finally {
+      hookHarness.active = false;
+      log.mockRestore();
+    }
   });
 
   it('defaults to matching connectors and cable instead of the second incompatible connector', () => {
@@ -147,7 +240,7 @@ describe('AutoQuotePage', () => {
     }
 
     // 右侧报价区域
-    expect(html).toContain('实时成本分析与报价');
+    expect(html).toContain('实时报价');
     expect(html).not.toContain('报价确认结构图');
   });
 
@@ -160,5 +253,160 @@ describe('AutoQuotePage', () => {
 
     const html = renderToStaticMarkup(<AutoQuotePage />);
     expect(html).toContain('待支持');
+  });
+
+  it('renders single-column layout with sticky bottom bar for sales user', () => {
+    useUserStore.setState({
+      currentUser: {
+        id: 'u-sales',
+        name: 'Sales Rep',
+        email: 'sales@example.com',
+        role: 'sales',
+        createdAt: 0,
+      },
+    });
+
+    vi.mocked(useServerQuote).mockReturnValue({
+      result: {
+        status: 'ready',
+        price: {
+          unitPrice: '58.50',
+          totalPrice: '58500.00',
+          breakdown: {
+            materials: [{ name: 'M12 公头', points: 1, unitPrice: '10', amount: '10' }],
+            labor: [{ name: '焊锡工序', points: 1, unitPrice: '5', amount: '5' }],
+            materialLoss: '1.20',
+            processingLoss: '0.80',
+            cost: '30.00',
+            sellingPrice: '50.00',
+            freight: '8.50',
+            materialSubtotal: '20.00',
+            laborSubtotal: '10.00',
+            unitPrice: '58.50',
+            totalPrice: '58500.00',
+          },
+        },
+        settingsVersion: 1,
+        calculatedAt: '2026-10-12',
+      },
+      loading: false,
+      error: undefined,
+      retry: vi.fn(),
+    });
+
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+
+    // 结构：单列容器与底部吸附栏存在，双列容器不存在
+    expect(html).toContain('data-testid="auto-quote-single-column"');
+    expect(html).not.toContain('data-testid="auto-quote-dual-column"');
+    expect(html).toContain('data-testid="auto-quote-sticky-bar"');
+    expect(html).toContain('max-w-3xl');
+
+    // 业务员可见内容：选配参数、最终单价、交期参考、导出报价
+    expect(html).toContain('选配参数与端部工艺');
+    expect(html).toContain('含税含运费单价');
+    expect(html).toContain('¥58.50');
+    expect(html).not.toContain('订单总价');
+    expect(html).toContain('交期参考');
+    expect(html).toContain('导出报价 Excel');
+
+    // 业务员严禁看到内部成本拆解与工序明细
+    expect(html).not.toContain('材料成本拆解');
+    expect(html).not.toContain('加工费工序明细');
+    expect(html).not.toContain('成本与损耗分析');
+    expect(html).not.toContain('导出内部成本分析表');
+  });
+
+  it('renders dual-column layout with internal breakdown for engineer or admin', () => {
+    useUserStore.setState({
+      currentUser: {
+        id: 'u-eng',
+        name: 'Engineer Lee',
+        email: 'eng@example.com',
+        role: 'engineer',
+        createdAt: 0,
+      },
+    });
+
+    vi.mocked(useServerQuote).mockReturnValue({
+      result: {
+        status: 'ready',
+        price: {
+          unitPrice: '58.50',
+          totalPrice: '58500.00',
+          breakdown: {
+            materials: [{ name: 'M12 公头', points: 1, unitPrice: '10', amount: '10' }],
+            labor: [{ name: '焊锡工序', points: 1, unitPrice: '5', amount: '5' }],
+            materialLoss: '1.20',
+            processingLoss: '0.80',
+            cost: '30.00',
+            sellingPrice: '50.00',
+            freight: '8.50',
+            materialSubtotal: '20.00',
+            laborSubtotal: '10.00',
+            unitPrice: '58.50',
+            totalPrice: '58500.00',
+          },
+        },
+        settingsVersion: 1,
+        calculatedAt: '2026-10-12',
+      },
+      loading: false,
+      error: undefined,
+      retry: vi.fn(),
+    });
+
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+
+    // 结构：双列容器存在，单列容器与业务员底部吸附栏不存在
+    expect(html).toContain('data-testid="auto-quote-dual-column"');
+    expect(html).not.toContain('data-testid="auto-quote-single-column"');
+    expect(html).not.toContain('data-testid="auto-quote-sticky-bar"');
+    expect(html).toContain('lg:w-[480px]');
+
+    // 工程师可见内容：产品选配、最终报价、成本拆解、加工工序和内部导出
+    expect(html).toContain('选配参数与端部工艺');
+    expect(html).toContain('实时报价');
+    expect(html).toContain('材料成本拆解');
+    expect(html).toContain('加工费工序明细');
+    expect(html).toContain('成本与损耗分析');
+    expect(html).toContain('导出内部成本分析表');
+  });
+
+  it('retains role-based layout consistently even during incomplete or blocked states', () => {
+    // 即使在 blocked 状态下，业务员依然是单列，工程师依然是双列，不会因缺价来回跳动
+    useUserStore.setState({
+      currentUser: {
+        id: 'u-sales',
+        name: 'Sales Rep',
+        email: 'sales@example.com',
+        role: 'sales',
+        createdAt: 0,
+      },
+    });
+    vi.mocked(useServerQuote).mockReturnValue({
+      result: { status: 'blocked', issues: ['请选择连接器与线材'] },
+      loading: false,
+      error: undefined,
+      retry: vi.fn(),
+    });
+
+    const salesHtml = renderToStaticMarkup(<AutoQuotePage />);
+    expect(salesHtml).toContain('data-testid="auto-quote-single-column"');
+    expect(salesHtml).not.toContain('data-testid="auto-quote-dual-column"');
+
+    useUserStore.setState({
+      currentUser: {
+        id: 'u-admin',
+        name: 'Admin User',
+        email: 'admin@example.com',
+        role: 'admin',
+        createdAt: 0,
+      },
+    });
+
+    const adminHtml = renderToStaticMarkup(<AutoQuotePage />);
+    expect(adminHtml).toContain('data-testid="auto-quote-dual-column"');
+    expect(adminHtml).not.toContain('data-testid="auto-quote-single-column"');
   });
 });

@@ -72,10 +72,23 @@ describe('Project restoration UI state', () => {
   beforeEach(() => {
     useProjectStore.getState().resetProjects();
     useUserStore.setState({
-      currentUser: { id: 'user-a', name: 'user-a', email: 'user-a@test', createdAt: 1 },
+      currentUser: { id: 'user-a', name: 'user-a', email: 'user-a@test', createdAt: 1, role: 'engineer' },
       authReady: true,
     });
     setMockLocation('/home');
+  });
+
+  it('renders only auto quote when sales directly opens an internal route', () => {
+    useUserStore.setState({ currentUser: { id: 'sales', name: '业务员', email: 'sales@test', createdAt: 1, role: 'sales' } });
+    for (const path of ['/home', '/designer/design', '/materials', '/drawing-workbench', '/dwg-viewer']) {
+      setMockLocation(path, '?projectId=other-project');
+      const html = renderToStaticMarkup(<App />);
+      expect(html).toContain('自动报价');
+      expect(html).not.toContain('data-testid="harness-canvas"');
+      expect(html).not.toContain('data-testid="project-list"');
+      expect(html).not.toContain('正在加载项目...');
+      expect(html).not.toContain('title="物料库"');
+    }
   });
 
   it('shows "尚未打开项目" when visiting designer route without projectId and no active project', () => {

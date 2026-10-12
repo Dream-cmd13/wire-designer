@@ -139,7 +139,7 @@ function installWindow(): WindowMock {
 
 function signIn(id: string): void {
   useUserStore.setState({
-    currentUser: { id, name: id, email: `${id}@test`, createdAt: 1 },
+    currentUser: { id, name: id, email: `${id}@test`, createdAt: 1, role: 'engineer' },
     authReady: true,
   });
 }
@@ -193,6 +193,21 @@ describe('workspace exit protection', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it.each([undefined, 'sales'] as const)('only redirects a resolved sales role (%s)', (role) => {
+    window.location.pathname = '/materials';
+    useUserStore.setState({ currentUser: { id: 'user-a', name: 'user-a', email: 'a@test', createdAt: 1, role } });
+    reactState.effects.length = 0;
+    App();
+    // useAppRoute registers the location effect before App registers its role guard.
+    reactState.effects[1]();
+    if (role === 'sales') {
+      expect(window.history.pushState).toHaveBeenCalled();
+    } else {
+      expect(window.history.pushState).not.toHaveBeenCalled();
+      expect(window.history.replaceState).not.toHaveBeenCalled();
+    }
   });
 
   it('does not block unload or write drafts when everything is saved', () => {

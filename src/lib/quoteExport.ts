@@ -1,42 +1,26 @@
 import * as XLSX from 'xlsx';
-import Decimal from 'decimal.js';
 import type { HarnessConfig } from '@/types/harness';
-import type { CatalogSnapshot } from '@/types/catalog';
-import type { MaterialPrice } from '@/repositories/priceRepository';
+import type { QuotePrice } from './pricing';
+import { canViewPricing } from './permissions';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
-import { calculatePrice } from './pricing';
-import { formatMaterialSpecification, getQuoteMaterials } from './quoteMaterials';
 
-/** Snapshot export: formulas and rounding are owned by the tested quote calculator. */
-export function createQuoteWorkbook(config: HarnessConfig, prices: MaterialPrice[], catalog: CatalogSnapshot | null) {
-  const autoEnds = (config.connectors.length === 1 || config.connectors.length === 2)
-    ? (config.connectors.length as 1 | 2)
-    : undefined;
-  const effectiveConfig = (!config.quotation && autoEnds)
-    ? { ...config, quotation: { processingEnds: autoEnds, srPoints: 0 } }
-    : config;
-  const result = calculatePrice(effectiveConfig, prices, catalog);
-  if (result.status !== 'ready') throw new Error(result.issues.join('；'));
-  const p = result.price;
-  const materials = getQuoteMaterials(config, catalog);
-  const wire = materials.find((row) => row.kind === 'wire')!;
-  const materialCost = (kind: string) => p.materials.reduce((sum, row) => row.kind === kind ? sum.plus(row.amount) : sum, new Decimal(0)).toNumber();
-  const headers = ['产品名称', '连接器规格', '线材规格', '芯线颜色', '线材外被材质', '订单数量', '交期',
-    '连接器含税', '线材含税', '外模 黑色PVC 45P 含税', '内模含税', 'SR含税', '材料损耗',
-    ...p.labor.map((row) => row.name), '加工损耗', '产品含税成本', '产品含税售价 20%', '运费 3%', '含税含运费单价', '订单总价'];
-  const spec = config.materials[0].spec;
-  const values = [config.name,
-    materials.filter((row) => row.kind === 'connector').map((row) => `${row.name} ${formatMaterialSpecification(row)} × ${row.quantity}`).join('；'),
-    formatMaterialSpecification(wire), spec.kind === 'jacketed' ? spec.coreColors.join(' ') : spec.color,
-    spec.kind === 'jacketed' ? `${spec.jacketColor === 'black' ? '黑色' : '绿色'}${spec.jacketMaterial}` : '', config.quantity,
-    DEFAULT_QUOTE_LEAD_TIME,
-    materialCost('connector'), materialCost('wire'), materialCost('outer-mold'), materialCost('inner-mold'), 0, Number(p.materialLoss),
-    ...p.labor.map((row) => Number(row.amount)), Number(p.processingLoss), Number(p.cost), Number(p.sellingPrice), Number(p.freight), Number(p.unitPrice), Number(p.totalPrice)];
+/** Exports the displayed server snapshot without calculating a second price. */
+export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mode: 'public' | 'internal' = 'public', role?: unknown) {
+  const headers = ['产品名称', '订单数量', '交期', '含税含运费单价', '订单总价'];
+  const values: (string | number)[] = [config.name, config.quantity, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice, price.totalPrice];
+  if (mode === 'internal') {
+    if (!canViewPricing(role) || !price.breakdown) throw new Error('无内部成本导出权限');
+    const p = price.breakdown;
+    for (const row of [...p.materials, ...p.labor]) {
+      headers.push(row.name + ' 用量', row.name + ' 单价', row.name + ' 金额');
+      values.push(row.points, row.unitPrice, row.amount);
+    }
+    headers.push('材料损耗', '加工损耗', '产品含税成本', '产品含税售价', '运费');
+    values.push(p.materialLoss, p.processingLoss, p.cost, p.sellingPrice, p.freight);
+  }
   const book = XLSX.utils.book_new();
   const sheet = XLSX.utils.aoa_to_sheet([headers, values]);
-  sheet['!cols'] = headers.map((_, index) => ({ wch: index === 1 || index === 2 ? 80 : index === 0 ? 30 : 20 }));
-  for (let column = 7; column < headers.length; column++) sheet[XLSX.utils.encode_cell({ r: 1, c: column })].z = '0.00';
-  sheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(headers.length - 1)}2` };
-  XLSX.utils.book_append_sheet(book, sheet, config.connectors.every(({ connector }) => /M8(?!\d)/i.test(connector.series || connector.name)) ? '成本分析-M8单线' : '成本分析-M12单线');
+  sheet['!cols'] = headers.map(() => ({ wch: 24 }));
+  XLSX.utils.book_append_sheet(book, sheet, mode === 'internal' ? '成本分析' : '报价单');
   return book;
 }

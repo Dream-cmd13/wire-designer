@@ -12,11 +12,11 @@ const row = { kind: price.kind, resource_id: price.resourceId, name: price.name,
 function database(pages: unknown[][] = [[row]], failure: string | null = null) {
   const range = vi.fn();
   for (const data of pages) range.mockResolvedValueOnce({ data, error: null });
-  const upsert = vi.fn().mockResolvedValue({ error: failure ? { message: failure } : null });
+  const rpc = vi.fn().mockResolvedValue({ error: failure ? { message: failure } : null });
   const from = vi.fn().mockReturnValue({
-    select: () => ({ order: () => ({ range }) }), upsert,
+    select: () => ({ order: () => ({ range }) }),
   });
-  return { client: { from } as unknown as SupabaseClient, from, upsert, range };
+  return { client: { from, rpc } as unknown as SupabaseClient, from, rpc, range };
 }
 
 describe('shared database prices', () => {
@@ -27,14 +27,12 @@ describe('shared database prices', () => {
     expect(book?.prices[500]).toEqual(price);
     expect(db.range.mock.calls).toEqual([[0, 499], [500, 999]]);
   });
-  it('submits the complete batch once with the exact conflict key and reloads shared data', async () => {
+  it('submits the complete batch to the validated RPC once and reloads shared data', async () => {
     const db = database();
     const result = await createDatabasePriceRepository(db.client).merge([price, { ...price, lengthMm: 500 }], 'import.xlsx');
-    expect(db.upsert).toHaveBeenCalledOnce();
-    const [rows, options] = db.upsert.mock.calls[0];
-    expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ resource_id: 'wire-id', length_mm: 1000, tax_included_price: '1.123456', source_name: 'import.xlsx' });
-    expect(options.onConflict).toBe('kind,resource_id,specification,length_mm,unit');
+    expect(db.rpc).toHaveBeenCalledExactlyOnceWith('import_material_prices', {
+      price_rows: [price, { ...price, lengthMm: 500 }], source_name: 'import.xlsx',
+    });
     expect(result.sourceName).toBe('shared.xlsx');
   });
   it('rejects invalid and duplicate batches before any database writes', async () => {
@@ -42,7 +40,7 @@ describe('shared database prices', () => {
     const repo = createDatabasePriceRepository(db.client);
     await expect(repo.merge([price, { ...price, taxIncludedPrice: '-1' }], 'bad')).rejects.toThrow();
     await expect(repo.merge([price, price], 'duplicate')).rejects.toThrow('重复');
-    expect(db.upsert).not.toHaveBeenCalled();
+    expect(db.rpc).not.toHaveBeenCalled();
   });
   it('reports failed writes and reads without using local prices', async () => {
     const db = database([], 'permission denied');

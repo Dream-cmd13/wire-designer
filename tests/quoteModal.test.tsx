@@ -1,14 +1,23 @@
 import React from 'react';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QuoteModal } from '@/components/panels/QuotePanel';
 import { BomModal } from '@/components/panels/BomPanel';
 import { BomPreviewModal, type BomPreviewItem } from '@/components/panels/BomPreviewModal';
 import { useHarnessStore } from '@/stores/harnessStore';
-import { usePriceStore } from '@/stores/priceStore';
+import { useServerQuote } from '@/lib/useServerQuote';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { alignHarnessConfig } from '@/lib/canvasMaterials';
+vi.mock('@/lib/useServerQuote', () => ({ useServerQuote: vi.fn() }));
+vi.mock('@/stores/harnessStore', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/stores/harnessStore')>();
+  const hook = (selector?: (state: ReturnType<typeof actual.useHarnessStore.getState>) => unknown) => selector ? selector(actual.useHarnessStore.getState()) : actual.useHarnessStore.getState();
+  return { ...actual, useHarnessStore: Object.assign(hook, actual.useHarnessStore) };
+});
+beforeEach(() => {
+  vi.mocked(useServerQuote).mockReturnValue({ result: { status: 'ready', price: { unitPrice: '10', totalPrice: '100' }, settingsVersion: 1, calculatedAt: '2026-10-10' }, loading: false, error: undefined, retry: vi.fn() });
+});
 
 describe('QuoteModal component & anti-jitter behavior', () => {
   it('does not render when isOpen is false', () => {
@@ -70,7 +79,7 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     const html2 = renderToStaticMarkup(<QuoteModal isOpen={true} onClose={() => {}} />);
     expect(html2).not.toContain('已按连接器自动选择');
     expect(html2).not.toContain('已自动选择');
-    expect(html2).toContain('<option value="2" selected="">双头 / 2 端</option>');
+    expect(html2).toContain('加工端数：2');
 
     // 1 connector: should automatically select 1 end without redundant explanation text
     const configWith1 = {
@@ -83,7 +92,7 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     const html1 = renderToStaticMarkup(<QuoteModal isOpen={true} onClose={() => {}} />);
     expect(html1).not.toContain('已按连接器自动选择');
     expect(html1).not.toContain('已自动选择');
-    expect(html1).toContain('<option value="1" selected="">单头 / 1 端</option>');
+    expect(html1).toContain('加工端数：1');
   });
 
   it('alignHarnessConfig keeps quotation.processingEnds synced with connector count', () => {
@@ -100,10 +109,11 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     expect(aligned.quotation?.processingEnds).toBe(2);
   });
 
-  it('binds DEFAULT_QUOTE_LEAD_TIME in the total price card of QuotePanel', () => {
-    const source = readFileSync('src/components/panels/QuotePanel.tsx', 'utf8');
-    expect(source).toContain('交期：{DEFAULT_QUOTE_LEAD_TIME}');
-    expect(source).toContain('订单总价（{config.quantity} 件）');
+  it('binds DEFAULT_QUOTE_LEAD_TIME in the price card of QuotePanel', () => {
+    const source = readFileSync('src/components/autoQuote/AutoQuotePriceCard.tsx', 'utf8');
+    expect(source).toContain('交期参考：{DEFAULT_QUOTE_LEAD_TIME}');
+    expect(source).toContain('price.unitPrice');
+    expect(source).not.toContain('订单总价');
     expect(DEFAULT_QUOTE_LEAD_TIME).toBe('7日');
   });
 
@@ -114,15 +124,11 @@ describe('QuoteModal component & anti-jitter behavior', () => {
   });
 
   it('renders loading skeleton and suppresses missing price warning during initial loading', () => {
-    usePriceStore.setState({ book: null, loading: true, error: null });
-    usePriceStore.getInitialState = () => usePriceStore.getState();
+    vi.mocked(useServerQuote).mockReturnValue({ result: undefined, loading: true, error: undefined, retry: vi.fn() });
     const html = renderToStaticMarkup(<QuoteModal isOpen={true} onClose={() => {}} />);
     expect(html).toContain('正在核算报价');
     expect(html).toContain('aria-busy="true"');
     expect(html).not.toContain('缺少');
-    // reset
-    usePriceStore.setState({ book: null, loading: false, error: null });
-    usePriceStore.getInitialState = () => usePriceStore.getState();
   });
 
   it('preloads price store alongside catalog initialization in App.tsx', () => {

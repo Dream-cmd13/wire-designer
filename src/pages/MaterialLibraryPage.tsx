@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PricingManagement } from '@/components/materials/PricingManagement';
 import {
   Cable,
   Check,
@@ -719,6 +720,7 @@ export function MaterialLibraryPage({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-100 p-3 sm:p-4 gap-2.5 sm:gap-3">
+      <PricingManagement />
       {/* 顶部标题与操作卡片 */}
       <section className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 pt-3 pb-0 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-3">
