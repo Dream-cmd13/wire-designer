@@ -40,6 +40,7 @@ public/dwg/
 .pnpm-store/
 .pnpm-store/v11/files/
 .tmp/
+.playwright-cli/
 output/
 outputs/
 wire-harness-designer图片备份/
