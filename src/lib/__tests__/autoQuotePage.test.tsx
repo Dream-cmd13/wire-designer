@@ -211,6 +211,10 @@ describe('AutoQuotePage', () => {
     expect(html).toContain('报价已更新');
     expect(html).toContain('¥10.00');
     expect(html).not.toContain('请完善选配输入');
+    expect(html).toContain('核价时间');
+    expect(html).toContain('2026-10-12');
+    expect(html).toContain('重新核价');
+    expect(html).toContain('导出当前核价结果');
   });
 
   it('recovers from a failed quote through loading to a ready result', () => {
@@ -226,6 +230,13 @@ describe('AutoQuotePage', () => {
     expect(ready).toContain('¥12.00');
     expect(ready).not.toContain('正在核算报价');
     expect(ready).not.toContain('核算连接失败');
+  });
+
+  it('shows the previous and current unit price after a manual refresh changes the amount', () => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: { status: 'ready', price: { unitPrice: '12.00', totalPrice: '12000.00' }, settingsVersion: 2, calculatedAt: '2026-10-12T01:02:03Z' }, previousUnitPrice: '10.00', loading: false, error: undefined, retry: vi.fn() });
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    expect(html).toContain('单价由 ¥10.00 更新为 ¥12.00');
+    expect(html).toContain('2026-10-12 09:02:03 (北京时间)');
   });
 
   it.each(['sales', 'engineer'] as const)('keeps %s failure and loading messages mutually exclusive', (role) => {
@@ -273,11 +284,15 @@ describe('AutoQuotePage', () => {
       findStickyExport(AutoQuotePage())!();
       const book = vi.mocked(XLSX.writeFile).mock.calls[0][0];
       const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]]);
-      expect(rows).toEqual([{
+      expect(rows).toMatchObject([{
         产品名称: expect.any(String),
         交期: '7日',
         含税含运费单价: '10.00',
+        核价时间: '2026-10-12 08:00:00 (北京时间)',
       }]);
+      expect(rows[0]).not.toHaveProperty('订单数量');
+      expect(rows[0]).not.toHaveProperty('订单总价');
+      expect(rows[0]).not.toHaveProperty('计价规则版本');
     } finally {
       hookHarness.active = false;
     }

@@ -16,7 +16,7 @@ export function QuoteContent() {
   const evaluation: AutoQuoteEvaluation = {
     config: effectiveConfig, status: quote.error ? 'error' : quote.loading ? 'loading' : quote.result?.status ?? 'incomplete',
     issues: quote.error ? [quote.error] : quote.result && quote.result.status !== 'ready' ? quote.result.issues : [],
-    ...(quote.result?.status === 'ready' ? { price: quote.result.price } : {}),
+    ...(quote.result?.status === 'ready' ? { price: quote.result.price, calculatedAt: quote.result.calculatedAt, settingsVersion: quote.result.settingsVersion, previousUnitPrice: quote.previousUnitPrice } : {}),
   };
   return <div className="space-y-4">
     <label className="block text-sm">订单数量

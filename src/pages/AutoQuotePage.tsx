@@ -484,7 +484,7 @@ export function AutoQuotePage() {
       : status === 'unsupported' ? built.unsupportedIssues
       : status === 'incomplete' ? built.issues
       : quote.result && quote.result.status !== 'ready' ? quote.result.issues : [],
-    ...(status === 'ready' && quote.result?.status === 'ready' ? { price: quote.result.price } : {}),
+    ...(status === 'ready' && quote.result?.status === 'ready' ? { price: quote.result.price, calculatedAt: quote.result.calculatedAt, settingsVersion: quote.result.settingsVersion, previousUnitPrice: quote.previousUnitPrice } : {}),
   };
   const retry = catalogStatus === 'error'
     ? () => { void initializeCatalog().catch(() => undefined); }
@@ -527,7 +527,7 @@ export function AutoQuotePage() {
     try {
       setExporting(true);
       setExportError(null);
-      const workbook = createQuoteWorkbook(built.config, evaluation.price, 'public', role, 'unit');
+      const workbook = createQuoteWorkbook(built.config, evaluation.price, 'public', role, 'unit', { catalog, calculatedAt: evaluation.calculatedAt, settingsVersion: evaluation.settingsVersion });
       const filename = safeFilename(`${built.config.name}_报价单.xlsx`);
       XLSX.writeFile(workbook, filename);
     } catch (err) {

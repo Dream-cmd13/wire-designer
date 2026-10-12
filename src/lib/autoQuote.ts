@@ -25,6 +25,9 @@ export interface AutoQuoteEvaluation {
   status: 'ready' | 'blocked' | 'manual' | 'unsupported' | 'incomplete' | 'catalog-loading' | 'loading' | 'error' | 'waiting';
   issues: string[];
   price?: QuotePrice;
+  calculatedAt?: string;
+  settingsVersion?: number;
+  previousUnitPrice?: string;
   config?: HarnessConfig;
   connA?: Connector;
   connB?: Connector;

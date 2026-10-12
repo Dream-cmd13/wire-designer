@@ -24,6 +24,39 @@ function fixture() {
   return { catalog, config, prices };
 }
 describe('server quote boundary', () => {
+  it('exports distinct configurations with server time and internal-only rule version', () => {
+    const { catalog, config, prices } = fixture();
+    const result = quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer');
+    if (!('price' in result)) throw new Error('not ready');
+    const molds: CatalogSnapshot['overmolds'] = [{ id: 'MOLD-1', resourceItemId: 'private-mold-id', name: '直头外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight', innerMaterial: '低密度透明PE', innerForm: 'straight' }];
+    config.models = [{ id: 'm', kind: 'outer-box', overmoldSpecId: 'MOLD-1', includeInnerMold: true, position: { x: 0, y: 0 }, width: 30, height: 30 }];
+    const context = { catalog: { ...catalog, overmolds: molds }, calculatedAt: '2026-10-12T01:02:03Z', settingsVersion: 7 };
+    const read = (mode: 'public' | 'internal') => {
+      const book = createQuoteWorkbook(config, result.price, mode, 'engineer', 'unit', context);
+      const restored = XLSX.read(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
+      return XLSX.utils.sheet_to_json<Record<string, unknown>>(restored.Sheets[restored.SheetNames[0]])[0];
+    };
+    const first = read('public');
+    expect(first['核价时间']).toBe('2026-10-12 09:02:03 (北京时间)');
+    expect(first['B端配置']).toBe('切断端');
+    expect(first['线材配置']).toContain('24AWG 屏蔽');
+    expect(first['线材配置']).toContain('1m');
+    expect(first['外模配置']).toContain('MOLD-1');
+    expect(first['内模配置']).toContain('低密度透明PE');
+    expect(first).not.toHaveProperty('计价规则版本');
+    expect(first).not.toHaveProperty('产品含税成本');
+    expect(JSON.stringify(first)).not.toContain('private-mold-id');
+    expect(read('internal')['计价规则版本']).toBe(7);
+    const wire = config.materials[0].spec;
+    if (wire.kind !== 'jacketed') throw new Error('expected jacketed wire');
+    wire.shielded = false;
+    config.models[0].includeInnerMold = false;
+    const second = read('public');
+    expect(second['产品名称']).toBe(first['产品名称']);
+    expect(second['线材配置']).toContain('非屏蔽');
+    expect(second['线材配置']).not.toBe(first['线材配置']);
+    expect(second['内模配置']).toBe('无');
+  });
   it('returns only final amounts to sales and never includes cost fields or rules', () => {
     const { catalog, config, prices } = fixture();
     for (const role of ['sales']) {
@@ -71,7 +104,7 @@ describe('server quote boundary', () => {
     if (!('price' in result)) throw new Error('not ready');
     const book = createQuoteWorkbook(config, result.price);
     const row = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]])[0];
-    expect(Object.keys(row as object)).toEqual(['产品名称','订单数量','交期','含税含运费单价','订单总价']);
+    expect(Object.keys(row as object)).toEqual(['产品名称','订单数量','交期','含税含运费单价','订单总价','A端配置','B端配置','线材配置','外模配置','内模配置','SR点数','核价时间']);
     expect(() => createQuoteWorkbook(config, result.price, 'internal', 'sales')).toThrow('权限');
   });
 
@@ -87,6 +120,6 @@ describe('server quote boundary', () => {
     expect(row).not.toHaveProperty('订单总价');
     expect(row['含税含运费单价']).toBe(result.price.unitPrice);
     if (mode === 'internal') expect(row['产品含税成本']).toBe(result.price.breakdown?.cost);
-    else expect(Object.keys(row)).toEqual(['产品名称', '交期', '含税含运费单价']);
+    else expect(Object.keys(row)).toEqual(['产品名称', '交期', '含税含运费单价','A端配置','B端配置','线材配置','外模配置','内模配置','SR点数','核价时间']);
   });
 });

@@ -3,18 +3,50 @@ import type { HarnessConfig } from '@/types/harness';
 import type { QuotePrice } from './pricing';
 import { canViewPricing } from './permissions';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
+import type { CatalogSnapshot } from '@/types/catalog';
+import { formatMaterialSpecification, getQuoteMaterials } from './quoteMaterials';
+
+export function formatQuoteTime(value?: string): string {
+  if (!value || !Number.isFinite(Date.parse(value))) return '未提供';
+  const parts = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).format(new Date(value));
+  return `${parts} (北京时间)`;
+}
+
+export interface QuoteExportContext {
+  catalog: CatalogSnapshot | null;
+  calculatedAt?: string;
+  settingsVersion?: number;
+}
 
 /** Exports the displayed server snapshot without calculating a second price. */
-export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mode: 'public' | 'internal' = 'public', role?: unknown, scope: 'unit' | 'order' = 'order') {
+export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mode: 'public' | 'internal' = 'public', role?: unknown, scope: 'unit' | 'order' = 'order', context?: QuoteExportContext) {
   const headers = scope === 'unit'
     ? ['产品名称', '交期', '含税含运费单价']
     : ['产品名称', '订单数量', '交期', '含税含运费单价', '订单总价'];
   const values: (string | number)[] = scope === 'unit'
     ? [config.name, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice]
     : [config.name, config.quantity, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice, price.totalPrice];
+  const connectorLabel = (index: number) => {
+    const c = config.connectors[index]?.connector;
+    return c ? `${c.id} · ${c.model || c.name} · ${c.pinCount}Pin · ${c.type === 'male' ? '公头' : c.type === 'female' ? '母头' : '插座'} · ${c.shielded === undefined ? '屏蔽属性未提供' : c.shielded ? '屏蔽' : '非屏蔽'}` : '切断端';
+  };
+  const materials = getQuoteMaterials(config, context?.catalog ?? null);
+  const describe = (kind: 'wire' | 'outer-mold' | 'inner-mold') => materials.filter(row => row.kind === kind)
+    .map(row => {
+      const code = kind === 'wire' ? context?.catalog?.wires.find(w => w.resourceItemId === row.resourceId)?.id
+        : context?.catalog?.overmolds.find(m => (m.resourceItemId || m.id) === row.resourceId)?.id;
+      return `${row.name}${code ? ` (${code})` : ''} · ${row.specification ? formatMaterialSpecification(row) : '规格未提供'} × ${row.quantity}${kind === 'wire' ? '条' : '个'}`;
+    }).join('；') || '无';
+  headers.push('A端配置', 'B端配置', '线材配置', '外模配置', '内模配置', 'SR点数', '核价时间');
+  values.push(connectorLabel(0), connectorLabel(1), describe('wire'), describe('outer-mold'), describe('inner-mold'), config.quotation?.srPoints ?? 0, formatQuoteTime(context?.calculatedAt));
   if (mode === 'internal') {
     if (!canViewPricing(role) || !price.breakdown) throw new Error('无内部成本导出权限');
     const p = price.breakdown;
+    headers.push('计价规则版本');
+    values.push(context?.settingsVersion ?? '未提供');
     for (const row of [...p.materials, ...p.labor]) {
       headers.push(row.name + ' 用量', row.name + ' 单价', row.name + ' 金额');
       values.push(row.points, row.unitPrice, row.amount);

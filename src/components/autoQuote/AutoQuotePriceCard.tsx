@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AlertCircle, AlertTriangle, Download, FileSpreadsheet, Info, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { formatQuoteMoney, type QuoteLine } from '@/lib/pricing';
-import { createQuoteWorkbook } from '@/lib/quoteExport';
+import { createQuoteWorkbook, formatQuoteTime } from '@/lib/quoteExport';
 import { safeFilename } from '@/lib/designFile';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import type { AutoQuoteEvaluation } from '@/lib/autoQuote';
@@ -49,6 +49,7 @@ function Lines({ lines }: { lines: QuoteLine[] }) {
 
 export function AutoQuotePriceCard({
   evaluation,
+  catalog,
   loading,
   exportScope = 'order',
   onRetry,
@@ -66,7 +67,7 @@ export function AutoQuotePriceCard({
     try {
       setExporting(true);
       setExportError(null);
-      const workbook = createQuoteWorkbook(config, price, mode, role, exportScope);
+      const workbook = createQuoteWorkbook(config, price, mode, role, exportScope, { catalog, calculatedAt: evaluation.calculatedAt, settingsVersion: evaluation.settingsVersion });
       const filename = safeFilename(`${config.name}_${mode === 'internal' ? '成本分析' : '报价单'}.xlsx`);
       XLSX.writeFile(workbook, filename);
     } catch (err) {
@@ -169,6 +170,12 @@ export function AutoQuotePriceCard({
       {/* 正式报价结果 */}
       {status === 'ready' && price && (
         <div className="space-y-3.5">
+          <div className="space-y-2 text-xs text-slate-600">
+            <p>核价时间：{formatQuoteTime(evaluation.calculatedAt)}</p>
+            {onRetry && <button type="button" onClick={onRetry} className="cursor-pointer text-blue-600 underline">重新核价</button>}
+            <p>导出当前核价结果；需要最新价格请先重新核价。</p>
+            {evaluation.previousUnitPrice && <p role="status" className="text-amber-700">单价由 ¥{formatQuoteMoney(evaluation.previousUnitPrice)} 更新为 ¥{formatQuoteMoney(price.unitPrice)}</p>}
+          </div>
           {/* 单价与交期 */}
           <div className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-4 text-white shadow-sm">
             <div className="flex items-baseline justify-between">
