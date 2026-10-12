@@ -269,7 +269,7 @@ export function generateAutoQuoteDrawingSvg(
           <text class="draw-text draw-subtext" x="-38" y="12" text-anchor="middle" font-size="10" fill="#ef4444">无加工 / 无连接器</text>
         `
           : `
-          <!-- B 端剥皮沾锡待支持示意 -->
+          <!-- B 端剥皮沾锡示意 -->
           <g>
             <line x1="-90" y1="-8" x2="-50" y2="-8" stroke="#3b82f6" stroke-width="2" />
             <line x1="-90" y1="0" x2="-45" y2="0" stroke="#ef4444" stroke-width="2" />
@@ -280,7 +280,7 @@ export function generateAutoQuoteDrawingSvg(
             <rect x="-35" y="-20" width="90" height="40" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8" />
             <text class="draw-text draw-badge" x="10" y="-32" text-anchor="middle" fill="#64748b">【B 端】</text>
             <text class="draw-text draw-label" x="10" y="-2" text-anchor="middle" font-weight="600">剥皮沾锡</text>
-            <text class="draw-text draw-subtext" x="10" y="12" text-anchor="middle" font-size="10" fill="#f59e0b">工艺计费待支持</text>
+            <text class="draw-text draw-subtext" x="10" y="12" text-anchor="middle" font-size="10" fill="#f59e0b">不成型</text>
           </g>
         `
     }

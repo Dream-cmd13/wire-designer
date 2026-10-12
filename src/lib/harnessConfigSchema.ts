@@ -727,6 +727,8 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
   if (!isPositiveInteger(input.quantity)) issues.push('quantity must be a positive integer');
   if (input.quotation !== undefined && (!isRecord(input.quotation)
     || ![1, 2].includes(input.quotation.processingEnds as number)
+    || (input.quotation.endpointBType !== undefined
+      && !['connector', 'cut', 'strip-tin'].includes(input.quotation.endpointBType as string))
     || !Number.isInteger(input.quotation.srPoints)
     || (input.quotation.srPoints as number) < 0
     || (input.quotation.srPoints as number) > (input.quotation.processingEnds as number))) {

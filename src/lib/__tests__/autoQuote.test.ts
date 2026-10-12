@@ -11,6 +11,7 @@ import { getQuoteMaterials } from '@/lib/quoteMaterials';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import { calculatePrice } from '../../../server/pricing';
+import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
 // Exercise form construction together with the authoritative server calculator.
 function evaluateAutoQuote(form: AutoQuoteFormState, prices: MaterialPrice[], catalog: CatalogSnapshot) {
   const built = buildAutoQuoteConfig(form, catalog);
@@ -146,7 +147,7 @@ describe('autoQuote', () => {
     expect(deriveAutoQuoteSelection(form, null).form).toMatchObject({ connectorAId: '', connectorBId: '', wireResourceId: '' });
   });
 
-  it.each(['connector', 'cut'] as const)('rejects missing outer molds for %s in form and server', (endpointBType) => {
+  it.each(['connector', 'cut', 'strip-tin'] as const)('rejects missing outer molds for %s in form and server', (endpointBType) => {
     const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', endpointBType,
       wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' };
     const invalid = { ...form, outerMoldType: 'none' } as unknown as AutoQuoteFormState;
@@ -227,7 +228,7 @@ describe('autoQuote', () => {
     expect(evaluation.issues).toContain('请选择线材物料');
   });
 
-  it('reports unsupported when B endpoint is strip-tin (剥皮沾锡)', () => {
+  it('quotes a tinned B end without B connector or mold', () => {
     const form: AutoQuoteFormState = {
       connectorAId: 'conn-m12',
       endpointBType: 'strip-tin',
@@ -240,10 +241,15 @@ describe('autoQuote', () => {
       quantity: 1000,
     };
 
-    const evaluation = evaluateAutoQuote(form, [], mockCatalog);
-    expect(evaluation.status).toBe('unsupported');
-    expect(evaluation.issues[0]).toContain('剥皮沾锡工艺计费待支持');
-    expect(evaluation.price).toBeUndefined();
+    const config = buildAutoQuoteConfig(form, mockCatalog).config!;
+    expect(config.connectors).toHaveLength(1);
+    expect(config.models).toHaveLength(1);
+    const saved = parseHarnessConfig(JSON.parse(JSON.stringify(config)));
+    expect(saved.success).toBe(true);
+    if (saved.success) expect(saved.data.quotation?.endpointBType).toBe('strip-tin');
+    const evaluation = evaluateAutoQuote(form, createPrices(config), mockCatalog);
+    expect(evaluation.status).toBe('ready');
+    expect(evaluation.price?.labor.find(row => row.name === '沾锡')).toMatchObject({ points: 5, amount: '0.25' });
   });
 
   it('keeps TPE unsupported and requires an outer mold for PE inner molds', () => {
@@ -268,7 +274,7 @@ describe('autoQuote', () => {
     };
     expect(evaluateAutoQuote(formPe, [], mockCatalog).status).toBe('incomplete');
   });
-  it.each(['connector', 'cut'] as const)('quotes PE inner molds at 0.30 per molded end for %s', (endpointBType) => {
+  it.each(['connector', 'cut', 'strip-tin'] as const)('quotes PE inner molds at 0.30 per molded end for %s', (endpointBType) => {
     const form: AutoQuoteFormState = {
       connectorAId: 'conn-m12', endpointBType, connectorBId: 'conn-m8',
       outerMoldType: 'pvc-45p', outerMoldSpecId: 'mold-pvc-1',

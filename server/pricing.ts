@@ -10,7 +10,7 @@ import { validatePricingSettings } from '@/lib/pricingSettingsImport';
 import type { PricingSettings } from '@/types/pricingSettings';
 export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   version: 1, materialLossRate: '0.03', processingLossRate: '0.05', marginRate: '0.20', freightRate: '0.03',
-  laborRates: { '裁线': '0.05', '去皮': '0.02', '去外皮': '0.02', '处理编织': '0.10', '热缩编织': '0.10', '焊接': '0.20', '成型': '0.20' },
+  laborRates: { '裁线': '0.05', '去皮': '0.05', '去外皮': '0.02', '处理编织': '0.10', '热缩编织': '0.10', '焊接': '0.20', '成型': '0.20', '沾锡': '0.05' },
   finishingLaborRates: {
     '500': { 电测: '0.05', 外观: '0.05', 包装人工: '0.05' },
     '1000': { 电测: '0.10', 外观: '0.20', 包装人工: '0.10' },
@@ -47,6 +47,12 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   if (!config.connectors.length || config.connectors.length > 2) issues.push('第一版仅支持单头或双头连接器');
   if (config.connectors.some(({ connector: c }) => !/\bM(?:8|12)(?!\d)/i.test(c.series || c.name))) issues.push('自动报价仅支持 M8、M12 连接器');
   const settings = config.quotation;
+  const endpointBType = settings?.endpointBType ?? (config.connectors.length === 2 ? 'connector' : 'cut');
+  const tinningEnds = endpointBType === 'strip-tin' ? 1 : 0;
+  if (!['connector', 'cut', 'strip-tin'].includes(endpointBType)
+    || config.connectors.length !== (endpointBType === 'connector' ? 2 : 1)) {
+    issues.push('B 端形式与连接器数量不一致');
+  }
   if (!settings || ![1, 2].includes(settings.processingEnds)) issues.push('请确认加工端数与 SR 点数');
   if (settings && (settings.processingEnds !== config.connectors.length
     || !Number.isInteger(settings.srPoints) || settings.srPoints < 0 || settings.srPoints > settings.processingEnds)) issues.push('加工端数须与连接器个数一致，SR 点数不能超过端数');
@@ -77,14 +83,16 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
     materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString(), kind: row.kind });
   }
   if (issues.length) return { status: 'blocked', issues };
-  const ends = settings!.processingEnds;
+  const weldingEnds = settings!.processingEnds;
+  const ends = weldingEnds + tinningEnds;
   const shield = wire.spec.kind === 'jacketed' && wire.spec.shielded;
-  const molding = config.models.length + innerMoldCount + settings!.srPoints;
+  const molding = config.models.length + innerMoldCount;
   const laborInput: [string, number][] = [
     ['裁线', Math.ceil(wire.spec.lengthMm / 500)], ['去皮', cores * ends],
     ['去外皮', ends], ['处理编织', shield ? ends : 0],
-    ['热缩编织', shield ? ends : 0], ['焊接', (cores + (shield ? 1 : 0)) * ends],
+    ['热缩编织', shield ? ends : 0], ['焊接', (cores + (shield ? 1 : 0)) * weldingEnds],
     ['成型', molding],
+    ['沾锡', (cores + (shield ? 1 : 0)) * tinningEnds],
   ];
   const labor = laborInput.map(([name, points]) => ({ name, points, unitPrice: parameters.laborRates[name], amount: new Money(parameters.laborRates[name]).mul(points).toString() }));
   // 入口已限制为 1–5000mm；实际价格来自当前数据库配置快照。

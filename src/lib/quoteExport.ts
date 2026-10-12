@@ -31,7 +31,8 @@ export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mo
     : [config.name, config.quantity, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice, price.totalPrice];
   const connectorLabel = (index: number) => {
     const c = config.connectors[index]?.connector;
-    return c ? `${c.id} · ${c.model || c.name} · ${c.pinCount}Pin · ${c.type === 'male' ? '公头' : c.type === 'female' ? '母头' : '插座'} · ${c.shielded === undefined ? '屏蔽属性未提供' : c.shielded ? '屏蔽' : '非屏蔽'}` : '切断端';
+    return c ? `${c.id} · ${c.model || c.name} · ${c.pinCount}Pin · ${c.type === 'male' ? '公头' : c.type === 'female' ? '母头' : '插座'} · ${c.shielded === undefined ? '屏蔽属性未提供' : c.shielded ? '屏蔽' : '非屏蔽'}`
+      : index === 1 && config.quotation?.endpointBType === 'strip-tin' ? '剥皮沾锡' : '切断端';
   };
   const materials = getQuoteMaterials(config, context?.catalog ?? null);
   const describe = (kind: 'wire' | 'outer-mold' | 'inner-mold') => materials.filter(row => row.kind === kind)
@@ -40,8 +41,8 @@ export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mo
         : context?.catalog?.overmolds.find(m => (m.resourceItemId || m.id) === row.resourceId)?.id;
       return `${row.name}${code ? ` (${code})` : ''} · ${row.specification ? formatMaterialSpecification(row) : '规格未提供'} × ${row.quantity}${kind === 'wire' ? '条' : '个'}`;
     }).join('；') || '无';
-  headers.push('A端配置', 'B端配置', '线材配置', '外模配置', '内模配置', 'SR点数', '核价时间');
-  values.push(connectorLabel(0), connectorLabel(1), describe('wire'), describe('outer-mold'), describe('inner-mold'), config.quotation?.srPoints ?? 0, formatQuoteTime(context?.calculatedAt));
+  headers.push('A端配置', 'B端配置', '线材配置', '外模配置', '内模配置', '核价时间');
+  values.push(connectorLabel(0), connectorLabel(1), describe('wire'), describe('outer-mold'), describe('inner-mold'), formatQuoteTime(context?.calculatedAt));
   if (mode === 'internal') {
     if (!canViewPricing(role) || !price.breakdown) throw new Error('无内部成本导出权限');
     const p = price.breakdown;

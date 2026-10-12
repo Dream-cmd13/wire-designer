@@ -11,7 +11,7 @@ export function QuoteContent() {
   const setConfig = useHarnessStore(s => s.setConfig);
   const catalog = useCatalogStore(s => s.snapshot);
   const ends = config.connectors.length === 1 ? 1 : config.connectors.length === 2 ? 2 : undefined;
-  const effectiveConfig = ends ? { ...config, quotation: { processingEnds: ends as 1 | 2, srPoints: Math.min(config.quotation?.srPoints ?? 0, ends) } } : config;
+  const effectiveConfig = ends ? { ...config, quotation: { ...config.quotation, processingEnds: ends as 1 | 2, srPoints: Math.min(config.quotation?.srPoints ?? 0, ends) } } : config;
   const quote = useServerQuote(effectiveConfig);
   const evaluation: AutoQuoteEvaluation = {
     config: effectiveConfig, status: quote.error ? 'error' : quote.loading ? 'loading' : quote.result?.status ?? 'incomplete',
@@ -23,11 +23,8 @@ export function QuoteContent() {
       <input aria-label="订单数量" type="number" min={1} max={1000000} value={config.quantity}
         onChange={e => setConfig({ quantity: Number(e.target.value) })} className="ml-2 rounded border p-1" />
     </label>
-    <p className="text-sm">加工端数：{ends ?? '请配置单头或双头连接器'}</p>
-    {ends && <label className="block text-sm">SR 点数
-      <input aria-label="SR 点数" type="number" min={0} max={ends} value={effectiveConfig.quotation?.srPoints ?? 0}
-        onChange={e => setConfig({ quotation: { processingEnds: ends, srPoints: Number(e.target.value) } })} className="ml-2 rounded border p-1" />
-    </label>}
+    <p className="text-sm">连接器加工端数：{ends ?? '请配置单头或双头连接器'}</p>
+    <p className="text-xs text-slate-500">成型按外模、内模分别计费，SR 不计费。</p>
     <AutoQuotePriceCard evaluation={evaluation} catalog={catalog} loading={quote.loading} onRetry={quote.retry} />
   </div>;
 }

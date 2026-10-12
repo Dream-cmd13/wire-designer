@@ -38,6 +38,43 @@ function ready(config: HarnessConfig, prices = pricesFor(config)) {
   return result.price;
 }
 describe('M8/M12 quotation', () => {
+  it.each([false, true])('charges a tinned B end separately from molded A (shielded=%s)', (shielded) => {
+    const { config } = fixture();
+    config.connectors.pop(); config.models.pop();
+    config.quotation = { processingEnds: 1, srPoints: 1, endpointBType: 'strip-tin' };
+    const spec = config.materials[0].spec;
+    if (spec.kind !== 'jacketed') throw new Error('Expected jacketed cable');
+    spec.shielded = shielded;
+    const p = ready(config);
+    const amount = (name: string) => p.labor.find(row => row.name === name)?.amount;
+    expect(amount('去皮')).toBe('0.4');
+    expect(amount('去外皮')).toBe('0.04');
+    expect(amount('沾锡')).toBe(shielded ? '0.25' : '0.2');
+    expect(amount('焊接')).toBe(shielded ? '1' : '0.8');
+    expect(amount('处理编织')).toBe(shielded ? '0.2' : '0');
+    expect(amount('热缩编织')).toBe(shielded ? '0.2' : '0');
+    expect(amount('成型')).toBe('0.4');
+    expect(p.materials.find(row => row.kind === 'outer-mold')?.points).toBe(1);
+  });
+  it('does not charge SR molding', () => {
+    const { config } = fixture();
+    const withSr = ready(config);
+    config.quotation!.srPoints = 0;
+    expect(ready(config)).toEqual(withSr);
+    expect(withSr.labor.find(row => row.name === '成型')?.amount).toBe('0.8');
+  });
+  it.each([false, true])('charges only the selected molds at one molded end (inner=%s)', (includeInnerMold) => {
+    const { config } = fixture();
+    config.connectors.pop(); config.models.pop();
+    config.models[0].includeInnerMold = includeInnerMold;
+    config.quotation = { processingEnds: 1, srPoints: 1, endpointBType: 'strip-tin' };
+    const prices = pricesFor(config).map(row => ['inner-mold', 'outer-mold'].includes(row.kind)
+      ? { ...row, taxIncludedPrice: '0.30' } : row);
+    const p = ready(config, prices);
+    const materials = p.materials.filter(row => row.kind === 'inner-mold' || row.kind === 'outer-mold');
+    expect(materials.map(row => row.amount)).toEqual(includeInnerMold ? ['0.3', '0.3'] : ['0.3']);
+    expect(p.labor.find(row => row.name === '成型')?.amount).toBe(includeInnerMold ? '0.4' : '0.2');
+  });
   it.each([
     [1, '0.05', '0.05', '0.05'], [500, '0.05', '0.05', '0.05'],
     [501, '0.10', '0.20', '0.10'], [1000, '0.10', '0.20', '0.10'],
@@ -49,14 +86,14 @@ describe('M8/M12 quotation', () => {
     config.materials[0].spec.lengthMm = Number(length);
     const p = ready(config);
     for (const [index, rate] of [electrical, appearance, packaging].entries()) {
-      expect(p.labor[index + 7]).toMatchObject({ points: 1, unitPrice: rate, amount: String(Number(rate)) });
+      expect(p.labor[index + 8]).toMatchObject({ points: 1, unitPrice: rate, amount: String(Number(rate)) });
     }
   });
   it('matches the authoritative example and rounds unit price before quantity', () => {
     const { config, prices } = fixture();
     const p = ready(config, prices);
-    expect(p.labor.map((line) => line.points)).toEqual([2, 8, 2, 2, 2, 10, 6, 1, 1, 1]);
-    expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.3', processingLoss: '0.215', cost: '15.433', sellingPrice: '19.29125', unitPrice: '19.87', totalPrice: '1987.00' });
+    expect(p.labor.map((line) => line.points)).toEqual([2, 8, 2, 2, 2, 10, 4, 0, 1, 1, 1]);
+    expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.14', processingLoss: '0.207', cost: '15.265', sellingPrice: '19.08125', unitPrice: '19.65', totalPrice: '1965.00' });
   });
   it('uses database finishing prices at actual wire length regardless of the material price tier', () => {
     const { config, prices } = fixture();
@@ -90,7 +127,7 @@ describe('M8/M12 quotation', () => {
     else expect(inner).toMatchObject({ points: count, unitPrice: '0.3', amount: String(count * 0.3) });
     expect(p.materialSubtotal).toBe(String(10 + count * 0.3));
     expect(p.materials.find((row) => row.kind === 'outer-mold')?.amount).toBe('2');
-    expect(p.labor.find((row) => row.name === '成型')?.points).toBe(4 + count);
+    expect(p.labor.find((row) => row.name === '成型')?.points).toBe(2 + count);
   });
   it('blocks a single inner mold on a double-ended harness', () => {
     const { config, prices } = fixture();
@@ -116,7 +153,7 @@ describe('M8/M12 quotation', () => {
     const { config } = fixture(); config.connectors.pop(); config.models.pop(); config.quotation = { processingEnds: 1, srPoints: 0 };
     const spec = config.materials[0].spec;
     if (spec.kind === 'jacketed') { spec.shielded = false; spec.coreCount = 5; }
-    expect(ready(config).labor.map((line) => line.points)).toEqual([2, 5, 1, 0, 0, 5, 2, 1, 1, 1]);
+    expect(ready(config).labor.map((line) => line.points)).toEqual([2, 5, 1, 0, 0, 5, 2, 0, 1, 1, 1]);
   });
   it('requires manual pricing beyond 5m even when prices are missing', () => {
     const { config } = fixture(); config.materials[0].spec.lengthMm = 5001;
@@ -262,8 +299,8 @@ describe('price workbook and repository', () => {
     const result = XLSX.read(bytes(createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'engineer')), { type: 'array' });
     expect(result.SheetNames).toEqual(['成本分析']);
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(result.Sheets[result.SheetNames[0]])[0];
-    expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.215',
-      '产品含税成本': '15.433', '含税含运费单价': '19.87', '订单总价': '1987.00', '交期': '7日' });
+    expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.207',
+      '产品含税成本': '15.265', '含税含运费单价': '19.65', '订单总价': '1965.00', '交期': '7日' });
     expect(row['交期']).toBe(DEFAULT_QUOTE_LEAD_TIME);
     expect(JSON.stringify(row)).not.toContain('wire-resource');
     expect(() => createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'sales')).toThrow('权限');

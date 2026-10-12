@@ -101,9 +101,6 @@ export function buildAutoQuoteConfig(
   const unsupportedIssues: string[] = [];
 
   // 1. 待支持功能拦截（首版不提供正式报价，避免漏算费用）
-  if (form.endpointBType === 'strip-tin') {
-    unsupportedIssues.push('B端剥皮沾锡工艺计费待支持，首版暂不提供正式报价');
-  }
   if (form.outerMoldType === 'tpe') {
     unsupportedIssues.push('TPE 外模计费待支持，当前仅支持黑色 PVC 45P');
   }
@@ -275,6 +272,7 @@ export function buildAutoQuoteConfig(
     quotation: {
       processingEnds,
       srPoints: 0,
+      endpointBType: form.endpointBType,
     },
   };
 

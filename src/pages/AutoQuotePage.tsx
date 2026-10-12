@@ -131,7 +131,7 @@ function AutoQuoteConfigForm({
           {[
             { key: 'connector' as const, label: '连接器', note: '双端连接' },
             { key: 'cut' as const, label: '切断', note: '平齐无加工' },
-            { key: 'strip-tin' as const, label: '剥皮沾锡', note: '待支持', badge: true },
+            { key: 'strip-tin' as const, label: '剥皮沾锡', note: '尾端沾锡，不成型', badge: false },
           ].map((item) => {
             const active = form.endpointBType === item.key;
             return (
@@ -216,7 +216,7 @@ function AutoQuoteConfigForm({
 
         {form.endpointBType === 'strip-tin' && (
           <div className="rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800 border border-amber-200/80">
-            剥皮沾锡工艺计费待支持，首版暂不提供正式报价。
+            A 端焊接成型，B 端剥皮沾锡；屏蔽线两端均计处理编织和热缩编织费用。
           </div>
         )}
       </div>

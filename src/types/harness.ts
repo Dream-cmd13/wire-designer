@@ -371,7 +371,7 @@ export interface HarnessConfig {
   models: CanvasModel[];
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
-  quotation?: { processingEnds: 1 | 2; srPoints: number };
+  quotation?: { processingEnds: 1 | 2; srPoints: number; endpointBType?: 'connector' | 'cut' | 'strip-tin' };
   twoDImages?: TwoDImage[];
   drawingFrame?: ProductionDrawingFrame;
 }

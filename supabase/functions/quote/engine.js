@@ -2856,7 +2856,7 @@ function getQuoteMaterials(config2, catalog) {
 // src/lib/finishingLaborRates.ts
 var FINISHING_LABOR_NAMES = ["\u7535\u6D4B", "\u5916\u89C2", "\u5305\u88C5\u4EBA\u5DE5"];
 var FINISHING_LENGTHS_MM = [500, 1e3, 2e3, 3e3, 5e3];
-var STANDARD_LABOR_NAMES = ["\u88C1\u7EBF", "\u53BB\u76AE", "\u53BB\u5916\u76AE", "\u5904\u7406\u7F16\u7EC7", "\u70ED\u7F29\u7F16\u7EC7", "\u710A\u63A5", "\u6210\u578B"];
+var STANDARD_LABOR_NAMES = ["\u88C1\u7EBF", "\u53BB\u76AE", "\u53BB\u5916\u76AE", "\u5904\u7406\u7F16\u7EC7", "\u70ED\u7F29\u7F16\u7EC7", "\u710A\u63A5", "\u6210\u578B", "\u6CBE\u9521"];
 
 // src/lib/pricingSettingsImport.ts
 function validatePricingSettings(value) {
@@ -2879,7 +2879,7 @@ var DEFAULT_PRICING_SETTINGS = {
   processingLossRate: "0.05",
   marginRate: "0.20",
   freightRate: "0.03",
-  laborRates: { "\u88C1\u7EBF": "0.05", "\u53BB\u76AE": "0.02", "\u53BB\u5916\u76AE": "0.02", "\u5904\u7406\u7F16\u7EC7": "0.10", "\u70ED\u7F29\u7F16\u7EC7": "0.10", "\u710A\u63A5": "0.20", "\u6210\u578B": "0.20" },
+  laborRates: { "\u88C1\u7EBF": "0.05", "\u53BB\u76AE": "0.05", "\u53BB\u5916\u76AE": "0.02", "\u5904\u7406\u7F16\u7EC7": "0.10", "\u70ED\u7F29\u7F16\u7EC7": "0.10", "\u710A\u63A5": "0.20", "\u6210\u578B": "0.20", "\u6CBE\u9521": "0.05" },
   finishingLaborRates: {
     "500": { \u7535\u6D4B: "0.05", \u5916\u89C2: "0.05", \u5305\u88C5\u4EBA\u5DE5: "0.05" },
     "1000": { \u7535\u6D4B: "0.10", \u5916\u89C2: "0.20", \u5305\u88C5\u4EBA\u5DE5: "0.10" },
@@ -2899,6 +2899,11 @@ function calculatePrice(config2, prices, catalog, parameters = DEFAULT_PRICING_S
   if (!config2.connectors.length || config2.connectors.length > 2) issues.push("\u7B2C\u4E00\u7248\u4EC5\u652F\u6301\u5355\u5934\u6216\u53CC\u5934\u8FDE\u63A5\u5668");
   if (config2.connectors.some(({ connector: c }) => !/\bM(?:8|12)(?!\d)/i.test(c.series || c.name))) issues.push("\u81EA\u52A8\u62A5\u4EF7\u4EC5\u652F\u6301 M8\u3001M12 \u8FDE\u63A5\u5668");
   const settings = config2.quotation;
+  const endpointBType = settings?.endpointBType ?? (config2.connectors.length === 2 ? "connector" : "cut");
+  const tinningEnds = endpointBType === "strip-tin" ? 1 : 0;
+  if (!["connector", "cut", "strip-tin"].includes(endpointBType) || config2.connectors.length !== (endpointBType === "connector" ? 2 : 1)) {
+    issues.push("B \u7AEF\u5F62\u5F0F\u4E0E\u8FDE\u63A5\u5668\u6570\u91CF\u4E0D\u4E00\u81F4");
+  }
   if (!settings || ![1, 2].includes(settings.processingEnds)) issues.push("\u8BF7\u786E\u8BA4\u52A0\u5DE5\u7AEF\u6570\u4E0E SR \u70B9\u6570");
   if (settings && (settings.processingEnds !== config2.connectors.length || !Number.isInteger(settings.srPoints) || settings.srPoints < 0 || settings.srPoints > settings.processingEnds)) issues.push("\u52A0\u5DE5\u7AEF\u6570\u987B\u4E0E\u8FDE\u63A5\u5668\u4E2A\u6570\u4E00\u81F4\uFF0CSR \u70B9\u6570\u4E0D\u80FD\u8D85\u8FC7\u7AEF\u6570");
   if (config2.models.length !== config2.connectors.length) issues.push("\u6BCF\u4E2A\u52A0\u5DE5\u7AEF\u5FC5\u987B\u6709\u4E00\u4E2A\u5916\u6A21\uFF0C\u5916\u6A21\u4E2A\u6570\u987B\u4E0E\u52A0\u5DE5\u7AEF\u6570\u4E00\u81F4");
@@ -2936,17 +2941,19 @@ function calculatePrice(config2, prices, catalog, parameters = DEFAULT_PRICING_S
     materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString(), kind: row.kind });
   }
   if (issues.length) return { status: "blocked", issues };
-  const ends = settings.processingEnds;
+  const weldingEnds = settings.processingEnds;
+  const ends = weldingEnds + tinningEnds;
   const shield = wire.spec.kind === "jacketed" && wire.spec.shielded;
-  const molding = config2.models.length + innerMoldCount + settings.srPoints;
+  const molding = config2.models.length + innerMoldCount;
   const laborInput = [
     ["\u88C1\u7EBF", Math.ceil(wire.spec.lengthMm / 500)],
     ["\u53BB\u76AE", cores * ends],
     ["\u53BB\u5916\u76AE", ends],
     ["\u5904\u7406\u7F16\u7EC7", shield ? ends : 0],
     ["\u70ED\u7F29\u7F16\u7EC7", shield ? ends : 0],
-    ["\u710A\u63A5", (cores + (shield ? 1 : 0)) * ends],
-    ["\u6210\u578B", molding]
+    ["\u710A\u63A5", (cores + (shield ? 1 : 0)) * weldingEnds],
+    ["\u6210\u578B", molding],
+    ["\u6CBE\u9521", (cores + (shield ? 1 : 0)) * tinningEnds]
   ];
   const labor = laborInput.map(([name, points]) => ({ name, points, unitPrice: parameters.laborRates[name], amount: new Money(parameters.laborRates[name]).mul(points).toString() }));
   const finishingLength = FINISHING_LENGTHS_MM.find((length) => wire.spec.lengthMm <= length);

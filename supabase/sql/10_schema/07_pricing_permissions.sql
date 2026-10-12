@@ -27,7 +27,7 @@ create table public.pricing_settings (
 );
 insert into public.pricing_settings (settings) values ('{
   "materialLossRate":"0.03","processingLossRate":"0.05","marginRate":"0.20","freightRate":"0.03",
-  "laborRates":{"裁线":"0.05","去皮":"0.02","去外皮":"0.02","处理编织":"0.10","热缩编织":"0.10","焊接":"0.20","成型":"0.20"},
+  "laborRates":{"裁线":"0.05","去皮":"0.05","去外皮":"0.02","处理编织":"0.10","热缩编织":"0.10","焊接":"0.20","成型":"0.20","沾锡":"0.05"},
   "finishingLaborRates":{
     "500":{"电测":"0.05","外观":"0.05","包装人工":"0.05"},
     "1000":{"电测":"0.10","外观":"0.20","包装人工":"0.10"},
@@ -77,14 +77,14 @@ begin
     or jsonb_typeof(new_settings->'laborRates') is distinct from 'object'
     or jsonb_typeof(new_settings->'finishingLaborRates') is distinct from 'object' then raise exception 'Invalid settings'; end if;
   if (select count(*) from jsonb_object_keys(new_settings)) <> 6
-    or (select count(*) from jsonb_object_keys(new_settings->'laborRates')) <> 7
+    or (select count(*) from jsonb_object_keys(new_settings->'laborRates')) <> 8
     or (select count(*) from jsonb_object_keys(new_settings->'finishingLaborRates')) <> 5 then raise exception 'Invalid settings fields'; end if;
   foreach k in array array['materialLossRate','processingLossRate','marginRate','freightRate'] loop
     v := new_settings->>k;
     if jsonb_typeof(new_settings->k) is distinct from 'string' or v !~ '^[0-9]{1,9}(\.[0-9]{1,6})?$' then raise exception 'Invalid rate'; end if;
     if v::numeric >= 1 then raise exception 'Invalid rate'; end if;
   end loop;
-  foreach k in array array['裁线','去皮','去外皮','处理编织','热缩编织','焊接','成型'] loop
+  foreach k in array array['裁线','去皮','去外皮','处理编织','热缩编织','焊接','成型','沾锡'] loop
     v := new_settings->'laborRates'->>k;
     if jsonb_typeof(new_settings->'laborRates'->k) is distinct from 'string' or v !~ '^[0-9]{1,9}(\.[0-9]{1,6})?$' then raise exception 'Invalid labor rate'; end if;
   end loop;

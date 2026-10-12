@@ -105,6 +105,31 @@ describe('real PostgreSQL pricing permissions', () => {
     });
     await db.exec(update);
     expect(await scalar('select version, settings from public.pricing_settings')).toEqual(after);
+    await db.exec(readFileSync('supabase/updates/20261012_tinning_labor_rates.sql', 'utf8'));
+  });
+  it('upgrades tinning rates once, preserves existing data and validates the new rate', async () => {
+    await db.exec('reset role');
+    await db.exec(`update public.pricing_settings set settings = jsonb_set(settings, '{laborRates}',
+      ((settings->'laborRates') - '沾锡') || '{"去皮":"0.02","处理编织":"0.20","热缩编织":"0.30"}'::jsonb)`);
+    const before = await scalar('select version, settings from public.pricing_settings');
+    const materialBefore = await scalar('select count(*)::int as count from public.material_prices');
+    const migration = readFileSync('supabase/updates/20261012_tinning_labor_rates.sql', 'utf8');
+    await db.exec(migration);
+    const after = await scalar('select version, settings from public.pricing_settings');
+    const original = before!.settings as typeof DEFAULT_PRICING_SETTINGS;
+    expect(after).toEqual({ version: Number(before!.version) + 1, settings: {
+      ...original, laborRates: { ...original.laborRates, 去皮: '0.05', 沾锡: '0.05', 处理编织: '0.10', 热缩编织: '0.10' },
+    } });
+    expect(await scalar('select count(*)::int as count from public.material_prices')).toEqual(materialBefore);
+    await db.exec(migration);
+    expect(await scalar('select version, settings from public.pricing_settings')).toEqual(after);
+    await asUser(engineer);
+    for (const rate of [null, '-0.05', '0.1234567', 0.05]) {
+      const settings = after!.settings as typeof DEFAULT_PRICING_SETTINGS;
+      await expect(db.query('select public.save_pricing_settings($1, $2::jsonb)',
+        [after!.version as number, JSON.stringify({ ...settings, laborRates: { ...settings.laborRates, 沾锡: rate } })])).rejects.toThrow('Invalid');
+    }
+    expect(await scalar('select version, settings from public.pricing_settings')).toEqual(after);
   });
   it('persists editable finishing tiers and rejects malformed data atomically', async () => {
     await asUser(engineer);
