@@ -14,8 +14,8 @@ export function QuoteContent() {
   const effectiveConfig = ends ? { ...config, quotation: { processingEnds: ends as 1 | 2, srPoints: Math.min(config.quotation?.srPoints ?? 0, ends) } } : config;
   const quote = useServerQuote(effectiveConfig);
   const evaluation: AutoQuoteEvaluation = {
-    config: effectiveConfig, status: quote.result?.status ?? 'incomplete',
-    issues: quote.result && quote.result.status !== 'ready' ? quote.result.issues : [],
+    config: effectiveConfig, status: quote.error ? 'error' : quote.loading ? 'loading' : quote.result?.status ?? 'incomplete',
+    issues: quote.error ? [quote.error] : quote.result && quote.result.status !== 'ready' ? quote.result.issues : [],
     ...(quote.result?.status === 'ready' ? { price: quote.result.price } : {}),
   };
   return <div className="space-y-4">
@@ -28,8 +28,7 @@ export function QuoteContent() {
       <input aria-label="SR 点数" type="number" min={0} max={ends} value={effectiveConfig.quotation?.srPoints ?? 0}
         onChange={e => setConfig({ quotation: { processingEnds: ends, srPoints: Number(e.target.value) } })} className="ml-2 rounded border p-1" />
     </label>}
-    <AutoQuotePriceCard evaluation={evaluation} catalog={catalog} loading={quote.loading} />
-    {quote.error && <p role="alert">{quote.error} <button onClick={quote.retry}>重试</button></p>}
+    <AutoQuotePriceCard evaluation={evaluation} catalog={catalog} loading={quote.loading} onRetry={quote.retry} />
   </div>;
 }
 

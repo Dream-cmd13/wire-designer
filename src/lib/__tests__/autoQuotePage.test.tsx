@@ -174,6 +174,70 @@ describe('AutoQuotePage', () => {
     expect(bar).toContain('服务端报价失败');
     expect(bar).toContain('重试');
     expect(bar).not.toContain('请完善选配输入');
+    expect(html).not.toContain('请完善选配输入');
+    expect(html).not.toContain('实时公式引擎就绪');
+  });
+
+  it('shows quotation loading without an incomplete-input warning', () => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: undefined, loading: true, error: undefined, retry: vi.fn() });
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    expect(html).toContain('正在核算报价');
+    expect(html).not.toContain('请完善选配输入');
+    expect(html).not.toContain('实时公式引擎就绪');
+    expect(html).not.toContain('导出报价 Excel');
+  });
+
+  it.each(['idle', 'loading'] as const)('shows catalog loading for %s rather than missing selections', (status) => {
+    useCatalogStore.setState({ snapshot: null, status });
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    expect(html).toContain('正在加载物料目录');
+    expect(html).not.toContain('请完善选配输入');
+    expect(html).not.toContain('请选择线材物料');
+    expect(html).not.toContain('实时公式引擎就绪');
+  });
+
+  it('shows catalog failure with retry and no misleading input warning', () => {
+    useCatalogStore.setState({ snapshot: null, status: 'error', error: '物料目录连接失败' });
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    expect(html).toContain('物料目录连接失败');
+    expect(html).toContain('重试');
+    expect(html).not.toContain('请完善选配输入');
+    expect(html).not.toContain('实时公式引擎就绪');
+  });
+
+  it('shows successful quotation status only after receiving a ready result', () => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: { status: 'ready', price: { unitPrice: '10.00', totalPrice: '10000.00' }, settingsVersion: 1, calculatedAt: '2026-10-12' }, loading: false, error: undefined, retry: vi.fn() });
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    expect(html).toContain('报价已更新');
+    expect(html).toContain('¥10.00');
+    expect(html).not.toContain('请完善选配输入');
+  });
+
+  it('recovers from a failed quote through loading to a ready result', () => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: undefined, loading: false, error: '核算连接失败', retry: vi.fn() });
+    expect(renderToStaticMarkup(<AutoQuotePage />)).toContain('核算连接失败');
+    vi.mocked(useServerQuote).mockReturnValue({ result: undefined, loading: true, error: undefined, retry: vi.fn() });
+    const loading = renderToStaticMarkup(<AutoQuotePage />);
+    expect(loading).toContain('正在核算报价');
+    expect(loading).not.toContain('核算连接失败');
+    expect(loading).not.toContain('请完善选配输入');
+    vi.mocked(useServerQuote).mockReturnValue({ result: { status: 'ready', price: { unitPrice: '12.00', totalPrice: '12000.00' }, settingsVersion: 1, calculatedAt: '2026-10-12' }, loading: false, error: undefined, retry: vi.fn() });
+    const ready = renderToStaticMarkup(<AutoQuotePage />);
+    expect(ready).toContain('¥12.00');
+    expect(ready).not.toContain('正在核算报价');
+    expect(ready).not.toContain('核算连接失败');
+  });
+
+  it.each(['sales', 'engineer'] as const)('keeps %s failure and loading messages mutually exclusive', (role) => {
+    useUserStore.setState({ currentUser: { id: 'user', name: 'User', email: 'user@example.com', role, createdAt: 0 } });
+    for (const pending of [true, false]) {
+      vi.mocked(useServerQuote).mockReturnValue({ result: undefined, loading: pending, error: pending ? undefined : '核算失败', retry: vi.fn() });
+      const html = renderToStaticMarkup(<AutoQuotePage />);
+      expect(html).toContain(pending ? '正在核算报价' : '核算失败');
+      expect(html).not.toContain(pending ? '核算失败' : '正在核算报价');
+      expect(html).not.toContain('请完善选配输入');
+      expect(html).not.toContain('导出报价 Excel');
+    }
   });
 
   it('shows sticky export failures and clears the error after a successful retry', () => {

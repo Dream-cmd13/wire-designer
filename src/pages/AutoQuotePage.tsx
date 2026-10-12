@@ -446,6 +446,7 @@ function AutoQuoteConfigForm({
 export function AutoQuotePage() {
   const catalog = useCatalogStore((state) => state.snapshot);
   const catalogStatus = useCatalogStore((state) => state.status);
+  const catalogError = useCatalogStore((state) => state.error);
   const initializeCatalog = useCatalogStore((state) => state.initialize);
 
   const role = useUserStore((state) => state.currentUser?.role);
@@ -467,12 +468,32 @@ export function AutoQuotePage() {
   const effectiveForm = selection.form;
 
   const built = useMemo(() => buildAutoQuoteConfig(effectiveForm, catalog), [effectiveForm, catalog]);
-  const quote = useServerQuote(built.config);
+  const catalogLoading = catalogStatus === 'idle' || catalogStatus === 'loading';
+  const quote = useServerQuote(catalogStatus === 'ready' ? built.config : null);
+  const status: AutoQuoteEvaluation['status'] = catalogLoading ? 'catalog-loading'
+    : catalogStatus === 'error' ? 'error'
+    : built.unsupportedIssues.length ? 'unsupported'
+    : !built.config ? 'incomplete'
+    : quote.error ? 'error'
+    : quote.loading ? 'loading'
+    : quote.result?.status ?? 'waiting';
   const evaluation: AutoQuoteEvaluation = {
     ...built, config: built.config ?? undefined,
-    status: built.unsupportedIssues.length ? 'unsupported' : !built.config ? 'incomplete' : quote.result?.status ?? 'incomplete',
-    issues: built.unsupportedIssues.length ? built.unsupportedIssues : built.issues,
-    ...(quote.result?.status === 'ready' ? { price: quote.result.price } : quote.result ? { issues: quote.result.issues } : {}),
+    status,
+    issues: status === 'error' ? [catalogStatus === 'error' ? catalogError || '物料目录加载失败，请重试。' : quote.error!]
+      : status === 'unsupported' ? built.unsupportedIssues
+      : status === 'incomplete' ? built.issues
+      : quote.result && quote.result.status !== 'ready' ? quote.result.issues : [],
+    ...(status === 'ready' && quote.result?.status === 'ready' ? { price: quote.result.price } : {}),
+  };
+  const retry = catalogStatus === 'error'
+    ? () => { void initializeCatalog().catch(() => undefined); }
+    : quote.retry;
+  const statusLabels: Record<AutoQuoteEvaluation['status'], string> = {
+    'catalog-loading': '正在加载物料目录', loading: '正在核算报价',
+    error: catalogStatus === 'error' ? '物料目录加载失败' : '报价失败',
+    incomplete: '请完善选配输入', ready: '报价已更新', waiting: '等待报价',
+    manual: '需人工核价', unsupported: '所选工艺暂不支持', blocked: '报价受阻',
   };
 
   const connA = useMemo(
@@ -534,8 +555,8 @@ export function AutoQuotePage() {
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
-            <span>实时公式引擎就绪</span>
+            <span className={`flex h-2 w-2 rounded-full ${status === 'ready' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-slate-400'}`} />
+            <span role="status">{statusLabels[status]}</span>
           </div>
         </div>
       </div>
@@ -590,14 +611,10 @@ export function AutoQuotePage() {
                 <AutoQuotePriceCard
                   evaluation={evaluation}
                   catalog={catalog}
-                  loading={quote.loading}
+                  loading={status === 'loading'}
                   exportScope="unit"
+                  onRetry={retry}
                 />
-                {quote.error && (
-                  <p role="alert" className="text-sm text-red-700 mt-2">
-                    {quote.error} <button onClick={quote.retry} className="text-blue-600 underline ml-1 cursor-pointer">重试</button>
-                  </p>
-                )}
               </div>
             </div>
           </div>
@@ -651,14 +668,10 @@ export function AutoQuotePage() {
                   <AutoQuotePriceCard
                     evaluation={evaluation}
                     catalog={catalog}
-                    loading={quote.loading}
+                    loading={status === 'loading'}
                     exportScope="unit"
+                    onRetry={retry}
                   />
-                  {quote.error && (
-                    <p role="alert" className="text-sm text-red-700 mt-2">
-                      {quote.error} <button onClick={quote.retry} className="text-blue-600 underline ml-1 cursor-pointer">重试</button>
-                    </p>
-                  )}
                 </div>
               </div>
             </div>
@@ -667,16 +680,16 @@ export function AutoQuotePage() {
           {/* 底部吸附简洁报价栏：调整参数时仍能看到金额 */}
           <div data-testid="auto-quote-sticky-bar" className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur-xs px-4 py-2.5 sm:px-6 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] z-20">
             <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-3">
-              {quote.error ? (
+              {status === 'error' ? (
                 <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-red-700 py-1">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{quote.error}</span>
-                  <button type="button" onClick={quote.retry} className="text-blue-600 underline cursor-pointer">重试</button>
+                  <span>{evaluation.issues.join('；')}</span>
+                  <button type="button" onClick={retry} className="text-blue-600 underline cursor-pointer">重试</button>
                 </div>
-              ) : quote.loading ? (
+              ) : status === 'loading' || status === 'catalog-loading' ? (
                 <div className="flex items-center gap-2 text-xs text-blue-600 py-1">
                   <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                  <span>正在核算实时报价...</span>
+                  <span>{statusLabels[status]}...</span>
                 </div>
               ) : evaluation.status === 'ready' && evaluation.price ? (
                 <>
@@ -732,7 +745,7 @@ export function AutoQuotePage() {
                   ) : (
                     <>
                       <Info className="h-4 w-4 text-slate-400 shrink-0" />
-                      <span>请完善选配输入</span>
+                      <span>{statusLabels[status]}</span>
                     </>
                   )}
                 </div>

@@ -22,7 +22,7 @@ export interface AutoQuoteFormState {
 }
 
 export interface AutoQuoteEvaluation {
-  status: 'ready' | 'blocked' | 'manual' | 'unsupported' | 'incomplete';
+  status: 'ready' | 'blocked' | 'manual' | 'unsupported' | 'incomplete' | 'catalog-loading' | 'loading' | 'error' | 'waiting';
   issues: string[];
   price?: QuotePrice;
   config?: HarnessConfig;

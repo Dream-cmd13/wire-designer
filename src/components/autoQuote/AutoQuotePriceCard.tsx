@@ -15,6 +15,7 @@ interface AutoQuotePriceCardProps {
   catalog: CatalogSnapshot | null;
   loading: boolean;
   exportScope?: 'unit' | 'order';
+  onRetry?: () => void;
 }
 
 function AmountRow({ name, amount }: { name: string; amount: string }) {
@@ -50,11 +51,13 @@ export function AutoQuotePriceCard({
   evaluation,
   loading,
   exportScope = 'order',
+  onRetry,
 }: AutoQuotePriceCardProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
-  const { status, issues, price, config } = evaluation;
+  const { issues, price, config } = evaluation;
+  const status = loading ? 'loading' : evaluation.status;
   const role = useUserStore(s => s.currentUser?.role);
   const internal = canViewPricing(role) ? price?.breakdown : undefined;
 
@@ -76,11 +79,22 @@ export function AutoQuotePriceCard({
   return (
     <div className="space-y-4">
       {/* 加载中状态 */}
-      {loading && (
+      {(status === 'loading' || status === 'catalog-loading') && (
         <div aria-busy="true" className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-700">
           <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          <span>正在核算报价...</span>
+          <span>{status === 'catalog-loading' ? '正在加载物料目录...' : '正在核算报价...'}</span>
         </div>
+      )}
+
+      {status === 'error' && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          <p>{issues.join('；')}</p>
+          {onRetry && <button type="button" onClick={onRetry} className="mt-2 cursor-pointer text-blue-600 underline">重试</button>}
+        </div>
+      )}
+
+      {status === 'waiting' && (
+        <p role="status" className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">等待报价，请确认已登录且报价权限就绪。</p>
       )}
 
       {/* 待支持状态提示 */}

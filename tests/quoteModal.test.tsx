@@ -27,6 +27,14 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     expect(html).toBe('');
   });
 
+  it.each([true, false])('does not mistake a pending or failed request for incomplete input (loading=%s)', (loading) => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: undefined, loading, error: loading ? undefined : '报价请求失败', retry: vi.fn() });
+    const html = renderToStaticMarkup(<QuoteModal isOpen={true} onClose={() => {}} />);
+    expect(html).toContain(loading ? '正在核算报价' : '报价请求失败');
+    expect(html).not.toContain('请完善选配输入');
+    expect(html).not.toContain('导出报价 Excel');
+  });
+
   it('renders quote modal dialog when isOpen is true', () => {
     const html = renderToStaticMarkup(
       <QuoteModal isOpen={true} onClose={() => {}} />,
