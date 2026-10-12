@@ -11,9 +11,10 @@ import * as XLSX from 'xlsx';
 function fixture() {
   const connector = { id: 'c', resourceItemId: 'c-id', name: 'M12', series: 'M12', pinCount: 4, shielded: true, type: 'male' as const, pinLabels: ['1','2','3','4'] };
   const wire = { id: 'w', resourceItemId: 'w-id', name: 'wire', spec: { kind: 'jacketed' as const, awg: 24, coreCount: 4, shielded: true, jacketMaterial: 'PVC' as const, jacketColor: 'black' as const, coreColors: ['红色','黑色','绿色','白色'] as const, outerDiameterMm: 5 } };
-  const catalog = { connectors: [connector], wires: [{ ...wire, spec: { ...wire.spec, coreColors: [...wire.spec.coreColors] } }], overmolds: [], loadedAt: 0,
+  const catalog = { connectors: [connector], wires: [{ ...wire, spec: { ...wire.spec, coreColors: [...wire.spec.coreColors] } }], overmolds: [{ id: 'mold', resourceItemId: 'mold-id', name: '外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight' }], loadedAt: 0,
     wireColors: [], leadTimeOptions: [], protectionOptions: [], pricingRules: [], quantityDiscountRules: [] } satisfies CatalogSnapshot;
   const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 1, srPoints: 0 },
+    models: [{ id: 'm', kind: 'outer-box', overmoldSpecId: 'mold', includeInnerMold: false, position: { x: 0, y: 0 }, width: 30, height: 30 }],
     connectors: [{ id: 'a', connector, label: 'A', position: { x: 0, y: 0 }, jumpers: [] }],
     materials: [{ id: 'w', resourceItemId: 'w-id', name: 'wire', position: { x: 0, y: 0 }, width: 100, circuits: [], spec: {
       ...wire.spec, coreColors: [...wire.spec.coreColors], odMm: 5, lengthMm: 1000,

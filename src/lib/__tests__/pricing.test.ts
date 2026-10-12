@@ -44,7 +44,7 @@ describe('M8/M12 quotation', () => {
     expect(p.labor.map((line) => line.points)).toEqual([2, 8, 2, 2, 2, 10, 6, 1, 1, 1]);
     expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.35', processingLoss: '0.2175', cost: '15.4855', sellingPrice: '19.356875', unitPrice: '19.94', totalPrice: '1994.00' });
   });
-  it.each([0, 1, 2])('charges %i inner molds using shared prices without changing outer mold costs', (count) => {
+  it.each([0, 2])('charges %i inner molds using shared prices without changing outer mold costs', (count) => {
     const { config, prices } = fixture();
     config.models.forEach((model, index) => { model.includeInnerMold = index < count; });
     const p = ready(config, prices);
@@ -54,6 +54,13 @@ describe('M8/M12 quotation', () => {
     expect(p.materialSubtotal).toBe(String(10 + count * 0.3));
     expect(p.materials.find((row) => row.kind === 'outer-mold')?.amount).toBe('2');
     expect(p.labor.find((row) => row.name === '成型')?.points).toBe(4 + count);
+  });
+  it('blocks a single inner mold on a double-ended harness', () => {
+    const { config, prices } = fixture();
+    config.models[1].includeInnerMold = false;
+    expect(calculatePrice(config, prices, catalog)).toEqual({
+      status: 'blocked', issues: ['双端内模必须两端都有或两端都没有'],
+    });
   });
   it('uses the database inner mold price and blocks missing prices instead of defaulting to 0.30', () => {
     const { config, prices } = fixture();

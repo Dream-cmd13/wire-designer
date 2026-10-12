@@ -1,6 +1,7 @@
 import { binaryString, buildImagePdf, downloadBlob } from '@/lib/drawingExport';
 import { safeFilename } from '@/lib/designFile';
 import type { CatalogSnapshot } from '@/types/catalog';
+import { getAvailableInnerMold } from './overmoldSpec';
 import type { AutoQuoteFormState } from './autoQuote';
 
 function escapeXml(value: string): string {
@@ -92,7 +93,7 @@ export function generateAutoQuoteDrawingSvg(
     });
   }
   if (form.outerMoldType === 'pvc-45p' && overmold) {
-    const moldQty = form.endpointBType === 'connector' ? form.outerMoldEnds : 1;
+    const moldQty = form.endpointBType === 'connector' ? 2 : 1;
     bomRows.push({
       no: bomRows.length + 1,
       name: overmold.name,
@@ -101,6 +102,14 @@ export function generateAutoQuoteDrawingSvg(
       unit: 'PCS',
       note: moldQty === 2 ? 'A/B 双端成型' : 'A 端成型',
     });
+    const inner = form.innerMoldType === 'pe' ? getAvailableInnerMold(overmold) : null;
+    if (inner) {
+      bomRows.push({
+        no: bomRows.length + 1, name: 'PE 内模',
+        model: `${inner.material} ${inner.formLabel}`, qty: String(moldQty), unit: 'PCS',
+        note: moldQty === 2 ? 'A/B 双端内模' : 'A 端内模',
+      });
+    }
   }
 
   // 坐标定义
@@ -226,7 +235,7 @@ export function generateAutoQuoteDrawingSvg(
         ? `
           <!-- B 端外模成型 (若有且配置了2端) -->
           ${
-            form.outerMoldType === 'pvc-45p' && overmold && form.outerMoldEnds === 2
+            form.outerMoldType === 'pvc-45p' && overmold
               ? `<rect x="-90" y="-18" width="55" height="36" rx="3" fill="url(#moldGrad)" stroke="#0f172a" stroke-width="1" />
                  <line x1="-48" y1="-18" x2="-48" y2="18" stroke="#475569" stroke-width="1" />
                  <line x1="-42" y1="-18" x2="-42" y2="18" stroke="#475569" stroke-width="1" />

@@ -47,6 +47,8 @@ const mockCatalog: CatalogSnapshot = {
       outerMaterial: '黑色PVC',
       outerHardness: '45P',
       outerForm: 'straight',
+      innerMaterial: '低密度透明PE',
+      innerForm: 'straight',
     },
   ],
   wireColors: [],
@@ -65,7 +67,6 @@ describe('autoQuoteDrawing', () => {
       connectorBId: 'conn-2',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-1',
-      outerMoldEnds: 2,
       innerMoldType: 'none',
       wireResourceId: 'wire-res-1',
       lengthMm: 1200,
@@ -81,6 +82,11 @@ describe('autoQuoteDrawing', () => {
     expect(svg).toContain('PVC 45P 外模');
     expect(svg).toContain('结构物料清单（BOM 清单）');
     expect(svg).toContain('报价确认结构示意图');
+    expect(svg.match(/>PVC 45P 外模</g)).toHaveLength(2);
+    const withInner = generateAutoQuoteDrawingSvg({ ...form, innerMoldType: 'pe' }, mockCatalog);
+    expect(withInner).toContain('A/B 双端内模');
+    expect(withInner.match(/x="425" y="14">2</g)).toHaveLength(2);
+
   });
 
   it('generates valid SVG for cut endpoint (单端切断)', () => {
@@ -90,7 +96,6 @@ describe('autoQuoteDrawing', () => {
       connectorBId: '',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-1',
-      outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'wire-res-1',
       lengthMm: 800,

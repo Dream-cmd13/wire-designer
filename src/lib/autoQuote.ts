@@ -14,7 +14,6 @@ export interface AutoQuoteFormState {
   connectorBId: string;
   outerMoldType: AutoQuoteOuterMoldType;
   outerMoldSpecId: string;
-  outerMoldEnds: 1 | 2;
   innerMoldType: AutoQuoteInnerMoldType;
   wireResourceId: string;
   lengthMm: number;
@@ -41,7 +40,6 @@ export const DEFAULT_AUTO_QUOTE_FORM: AutoQuoteFormState = {
   connectorBId: '',
   outerMoldType: 'pvc-45p',
   outerMoldSpecId: '',
-  outerMoldEnds: 2,
   innerMoldType: 'none',
   wireResourceId: '',
   lengthMm: 1000,
@@ -161,9 +159,6 @@ export function buildAutoQuoteConfig(
   if (form.outerMoldType !== 'pvc-45p' && form.outerMoldType !== 'tpe') {
     issues.push('外模必选，当前仅支持黑色 PVC 45P');
   }
-  if (form.outerMoldEnds !== 1 && form.outerMoldEnds !== 2) {
-    issues.push('外模成型端数必须为 1 或 2');
-  }
 
   let overmold: OvermoldSpec | undefined;
   if (form.outerMoldType === 'pvc-45p') {
@@ -240,7 +235,7 @@ export function buildAutoQuoteConfig(
   ];
 
   const moldCount = form.outerMoldType === 'pvc-45p' && overmold
-    ? Math.min(form.outerMoldEnds, processingEnds)
+    ? processingEnds
     : 0;
 
   const models = Array.from({ length: moldCount }, (_, index) => ({
@@ -309,7 +304,7 @@ export function buildQuoteSummaryText(
       : (form.endpointBType === 'cut' ? '切断齐头' : '剥皮沾锡');
   const moldDesc =
     form.outerMoldType === 'pvc-45p'
-      ? `${overmoldName || '黑色PVC 45P'} (${form.outerMoldEnds === 2 ? '两端成型' : '单端成型'})`
+      ? `${overmoldName || '黑色PVC 45P'} (${form.endpointBType === 'connector' ? '两端成型' : '单端成型'})`
       : 'TPE（待支持）';
 
   return [

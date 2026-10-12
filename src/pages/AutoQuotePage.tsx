@@ -329,39 +329,16 @@ function AutoQuoteConfigForm({
                 </select>
               </label>
 
-              {form.endpointBType === 'connector' && (
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <span className="text-slate-600">外模成型端数</span>
-                  <div className="flex gap-2">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="outerMoldEnds"
-                        checked={form.outerMoldEnds === 2}
-                        onChange={() => onUpdate('outerMoldEnds', 2)}
-                        className="text-blue-600"
-                      />
-                      <span>双端成型 (2个)</span>
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="outerMoldEnds"
-                        checked={form.outerMoldEnds === 1}
-                        onChange={() => onUpdate('outerMoldEnds', 1)}
-                        className="text-blue-600"
-                      />
-                      <span>仅A端成型 (1个)</span>
-                    </label>
-                  </div>
-                </div>
-              )}
+              <p className="text-xs text-slate-600">
+                {form.endpointBType === 'connector' ? 'A/B 双端成型（2 个外模）' : 'A 端成型（1 个外模）'}
+              </p>
             </div>
           )}
         </div>
 
         {/* 内模单选 */}
         <div className="space-y-1.5">
+          <p className="text-xs text-slate-500">外模必选：单头 1 个、双头 2 个；内模可选，双头启用时两端都有。</p>
           <span className="text-slate-600 font-medium">内模材质（可选）</span>
           <div className="grid grid-cols-2 gap-2">
             {[
@@ -515,7 +492,8 @@ export function AutoQuotePage() {
 
   const handleUpdate = <K extends keyof AutoQuoteFormState>(field: K, value: AutoQuoteFormState[K]) => {
     setExportError(null);
-    setForm(deriveAutoQuoteSelection({ ...effectiveForm, [field]: value }, catalog).form);
+    const nextForm = { ...effectiveForm, [field]: value };
+    setForm(deriveAutoQuoteSelection(nextForm, catalog).form);
   };
 
   const handleEndpointBChange = (type: AutoQuoteEndpointBType) => {

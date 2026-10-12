@@ -2874,7 +2874,11 @@ function calculatePrice(config2, prices, catalog, parameters = DEFAULT_PRICING_S
   const settings = config2.quotation;
   if (!settings || ![1, 2].includes(settings.processingEnds)) issues.push("\u8BF7\u786E\u8BA4\u52A0\u5DE5\u7AEF\u6570\u4E0E SR \u70B9\u6570");
   if (settings && (settings.processingEnds !== config2.connectors.length || !Number.isInteger(settings.srPoints) || settings.srPoints < 0 || settings.srPoints > settings.processingEnds)) issues.push("\u52A0\u5DE5\u7AEF\u6570\u987B\u4E0E\u8FDE\u63A5\u5668\u4E2A\u6570\u4E00\u81F4\uFF0CSR \u70B9\u6570\u4E0D\u80FD\u8D85\u8FC7\u7AEF\u6570");
-  if (settings && config2.models.length > settings.processingEnds) issues.push("\u5916\u6A21\u4E2A\u6570\u4E0D\u80FD\u8D85\u8FC7\u52A0\u5DE5\u7AEF\u6570");
+  if (config2.models.length !== config2.connectors.length) issues.push("\u6BCF\u4E2A\u52A0\u5DE5\u7AEF\u5FC5\u987B\u6709\u4E00\u4E2A\u5916\u6A21\uFF0C\u5916\u6A21\u4E2A\u6570\u987B\u4E0E\u52A0\u5DE5\u7AEF\u6570\u4E00\u81F4");
+  const innerMoldCount = config2.models.filter((model) => model.includeInnerMold).length;
+  if (config2.connectors.length === 2) {
+    if (innerMoldCount === 1) issues.push("\u53CC\u7AEF\u5185\u6A21\u5FC5\u987B\u4E24\u7AEF\u90FD\u6709\u6216\u4E24\u7AEF\u90FD\u6CA1\u6709");
+  }
   for (const model of config2.models) {
     const spec = catalog?.overmolds.find((entry) => entry.id === model.overmoldSpecId);
     if (!spec || spec.outerMaterial !== "\u9ED1\u8272PVC" || spec.outerHardness !== "45P") issues.push("\u5916\u6A21\u987B\u4E3A\u76EE\u5F55\u4E2D\u7684\u9ED1\u8272 PVC 45P");
@@ -2905,7 +2909,6 @@ function calculatePrice(config2, prices, catalog, parameters = DEFAULT_PRICING_S
     materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString(), kind: row.kind });
   }
   if (issues.length) return { status: "blocked", issues };
-  const innerMoldCount = config2.models.filter((model) => model.includeInnerMold).length;
   const ends = settings.processingEnds;
   const shield = wire.spec.kind === "jacketed" && wire.spec.shielded;
   const molding = config2.models.length + innerMoldCount + settings.srPoints;

@@ -40,7 +40,11 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   if (!settings || ![1, 2].includes(settings.processingEnds)) issues.push('请确认加工端数与 SR 点数');
   if (settings && (settings.processingEnds !== config.connectors.length
     || !Number.isInteger(settings.srPoints) || settings.srPoints < 0 || settings.srPoints > settings.processingEnds)) issues.push('加工端数须与连接器个数一致，SR 点数不能超过端数');
-  if (settings && config.models.length > settings.processingEnds) issues.push('外模个数不能超过加工端数');
+  if (config.models.length !== config.connectors.length) issues.push('每个加工端必须有一个外模，外模个数须与加工端数一致');
+  const innerMoldCount = config.models.filter((model) => model.includeInnerMold).length;
+  if (config.connectors.length === 2) {
+    if (innerMoldCount === 1) issues.push('双端内模必须两端都有或两端都没有');
+  }
   for (const model of config.models) {
     const spec = catalog?.overmolds.find((entry) => entry.id === model.overmoldSpecId);
     if (!spec || spec.outerMaterial !== '黑色PVC' || spec.outerHardness !== '45P') issues.push('外模须为目录中的黑色 PVC 45P');
@@ -63,7 +67,6 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
     materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString(), kind: row.kind });
   }
   if (issues.length) return { status: 'blocked', issues };
-  const innerMoldCount = config.models.filter((model) => model.includeInnerMold).length;
   const ends = settings!.processingEnds;
   const shield = wire.spec.kind === 'jacketed' && wire.spec.shielded;
   const molding = config.models.length + innerMoldCount + settings!.srPoints;

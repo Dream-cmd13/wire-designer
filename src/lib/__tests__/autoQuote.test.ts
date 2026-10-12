@@ -146,11 +146,30 @@ describe('autoQuote', () => {
     expect(deriveAutoQuoteSelection(form, null).form).toMatchObject({ connectorAId: '', connectorBId: '', wireResourceId: '' });
   });
 
-  it('rejects a runtime no-mold value and zero molding ends', () => {
-    const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', endpointBType: 'cut' as const, wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' };
-    expect(buildAutoQuoteConfig({ ...form, outerMoldType: 'none' } as unknown as AutoQuoteFormState, mockCatalog).config).toBeNull();
-    expect(buildAutoQuoteConfig({ ...form, outerMoldEnds: 0 } as unknown as AutoQuoteFormState, mockCatalog).config).toBeNull();
+  it.each(['connector', 'cut'] as const)('rejects missing outer molds for %s in form and server', (endpointBType) => {
+    const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', endpointBType,
+      wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' };
+    const invalid = { ...form, outerMoldType: 'none' } as unknown as AutoQuoteFormState;
+    expect(buildAutoQuoteConfig(invalid, mockCatalog)).toMatchObject({ config: null,
+      issues: ['外模必选，当前仅支持黑色 PVC 45P'] });
+    const config = buildAutoQuoteConfig(form, mockCatalog).config!;
+    const prices = createPrices(config);
+    config.models = [];
+    expect(calculatePrice(config, prices, mockCatalog)).toMatchObject({ status: 'blocked',
+      issues: ['每个加工端必须有一个外模，外模个数须与加工端数一致'] });
   });
+
+  it.each(['outer', 'inner'])('blocks asymmetric double-ended %s molds on the server', (kind) => {
+    const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8',
+      wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1', innerMoldType: 'pe' as const };
+    const config = buildAutoQuoteConfig(form, mockCatalog).config!;
+    const prices = createPrices(config);
+    if (kind === 'outer') { config.models.pop(); config.models[0].includeInnerMold = false; }
+    else config.models[1].includeInnerMold = false;
+    expect(calculatePrice(config, prices, mockCatalog)).toMatchObject({ status: 'blocked',
+      issues: [kind === 'outer' ? '每个加工端必须有一个外模，外模个数须与加工端数一致' : '双端内模必须两端都有或两端都没有'] });
+  });
+
   it.each([
     { pinCount: 3, shielded: true },
     { pinCount: 4, shielded: false },
@@ -173,7 +192,7 @@ describe('autoQuote', () => {
     expect(result.config).toBeNull();
   });
 
-  it('requires an outer mold even without an inner mold', () => {
+  it('requires a catalog specification when PVC molding is selected', () => {
     const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', endpointBType: 'cut', wireResourceId: 'res-wire-1', outerMoldSpecId: '' }, mockCatalog);
     expect(result.config).toBeNull();
   });
@@ -195,7 +214,6 @@ describe('autoQuote', () => {
       connectorBId: '',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
-      outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: '',
       lengthMm: 1000,
@@ -216,7 +234,6 @@ describe('autoQuote', () => {
       connectorBId: '',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
-      outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
       lengthMm: 1000,
@@ -236,7 +253,6 @@ describe('autoQuote', () => {
       connectorBId: '',
       outerMoldType: 'tpe',
       outerMoldSpecId: 'mold-tpe-1',
-      outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
       lengthMm: 1000,
@@ -255,7 +271,7 @@ describe('autoQuote', () => {
   it.each(['connector', 'cut'] as const)('quotes PE inner molds at 0.30 per molded end for %s', (endpointBType) => {
     const form: AutoQuoteFormState = {
       connectorAId: 'conn-m12', endpointBType, connectorBId: 'conn-m8',
-      outerMoldType: 'pvc-45p', outerMoldSpecId: 'mold-pvc-1', outerMoldEnds: 2,
+      outerMoldType: 'pvc-45p', outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'pe', wireResourceId: 'res-wire-1', lengthMm: 1000, quantity: 100,
     };
     const config = buildAutoQuoteConfig(form, mockCatalog).config!;
@@ -276,7 +292,6 @@ describe('autoQuote', () => {
       connectorBId: '',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
-      outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
       lengthMm: 1000,
@@ -304,7 +319,6 @@ describe('autoQuote', () => {
       connectorBId: 'conn-m8',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
-      outerMoldEnds: 2,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
       lengthMm: 1500,
@@ -332,7 +346,6 @@ describe('autoQuote', () => {
       connectorBId: '',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
-      outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
       lengthMm: 5001,
@@ -354,7 +367,6 @@ describe('autoQuote', () => {
       connectorBId: '',
       outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
-      outerMoldEnds: 1,
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
       lengthMm: 1000,
