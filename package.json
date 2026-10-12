@@ -4,6 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:check": "node scripts/deploy.mjs --dry-run",
     "quote:build": "node scripts/build-quote-function.mjs",
     "predev": "node scripts/prepare-dwg-viewer-assets.mjs",
     "dev": "vite",

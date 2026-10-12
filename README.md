@@ -26,6 +26,12 @@ npm run lint
 npm run build
 ```
 
+## 一键部署到宝塔
+
+在项目根目录执行 `npm run deploy`，自动检查、测试、构建、打包并通过 SSH 发布。只做本地验证使用 `npm run deploy:check`，启动时显示“本地验证模式”。正式构建使用 `npm run build`；`npm run dev` 不更新发布用的 `dist`。
+
+服务器配置、密钥登录、备份与回滚步骤见 [一键部署说明](docs/deployment.md)。此命令仅发布前端，SQL 和 Supabase 报价函数须按对应变更要求另行部署。
+
 ## DWG 图纸页
 
 「DWG 图纸」页面在浏览器内使用 [LibreDWG](https://www.gnu.org/software/libredwg/)（WASM 构建，GPL-3.0）解析 DWG 并矢量渲染（按黑白二色输出：白底全黑、黑底全白），支持块引用、椭圆、文字、实体/图案填充、线型虚线（CENTER 等）、尺寸标注与引线（外部参照图片读不到源文件时绘制边框并在框内居中显示图片路径），以及缩放/平移、图层面板、黑白底切换和 PNG/PDF 导出。
