@@ -48,7 +48,7 @@ describe('M8/M12 quotation', () => {
     const p = ready(config);
     const amount = (name: string) => p.labor.find(row => row.name === name)?.amount;
     expect(amount('去皮')).toBe('0.4');
-    expect(amount('去外皮')).toBe('0.04');
+    expect(amount('去外皮')).toBe('0.1');
     expect(amount('沾锡')).toBe(shielded ? '0.25' : '0.2');
     expect(amount('焊接')).toBe(shielded ? '1' : '0.8');
     expect(amount('处理编织')).toBe(shielded ? '0.2' : '0');
@@ -93,7 +93,7 @@ describe('M8/M12 quotation', () => {
     const { config, prices } = fixture();
     const p = ready(config, prices);
     expect(p.labor.map((line) => line.points)).toEqual([2, 8, 2, 2, 2, 10, 4, 0, 1, 1, 1]);
-    expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.14', processingLoss: '0.207', cost: '15.265', sellingPrice: '19.08125', unitPrice: '19.65', totalPrice: '1965.00' });
+    expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.2', processingLoss: '0.21', cost: '15.328', sellingPrice: '19.16', unitPrice: '19.73', totalPrice: '1973.00' });
   });
   it('uses database finishing prices at actual wire length regardless of the material price tier', () => {
     const { config, prices } = fixture();
@@ -299,8 +299,8 @@ describe('price workbook and repository', () => {
     const result = XLSX.read(bytes(createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'engineer')), { type: 'array' });
     expect(result.SheetNames).toEqual(['成本分析']);
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(result.Sheets[result.SheetNames[0]])[0];
-    expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.207',
-      '产品含税成本': '15.265', '含税含运费单价': '19.65', '订单总价': '1965.00', '交期': '7日' });
+    expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.21',
+      '产品含税成本': '15.328', '含税含运费单价': '19.73', '订单总价': '1973.00', '交期': '7日' });
     expect(row['交期']).toBe(DEFAULT_QUOTE_LEAD_TIME);
     expect(JSON.stringify(row)).not.toContain('wire-resource');
     expect(() => createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'sales')).toThrow('权限');

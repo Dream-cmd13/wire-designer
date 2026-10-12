@@ -131,6 +131,20 @@ describe('real PostgreSQL pricing permissions', () => {
     }
     expect(await scalar('select version, settings from public.pricing_settings')).toEqual(after);
   });
+  it('updates only outer stripping and does not repeat the version change', async () => {
+    await db.exec('reset role');
+    await db.exec(`update public.pricing_settings set settings = jsonb_set(settings, '{laborRates,去外皮}', '"0.02"'::jsonb)`);
+    const before = await scalar('select version, settings from public.pricing_settings');
+    const migration = readFileSync('supabase/updates/20261012_outer_strip_rate.sql', 'utf8');
+    await db.exec(migration);
+    const after = await scalar('select version, settings from public.pricing_settings');
+    const original = before!.settings as typeof DEFAULT_PRICING_SETTINGS;
+    expect(after).toEqual({ version: Number(before!.version) + 1, settings: {
+      ...original, laborRates: { ...original.laborRates, 去外皮: '0.05' },
+    } });
+    await db.exec(migration);
+    expect(await scalar('select version, settings from public.pricing_settings')).toEqual(after);
+  });
   it('persists editable finishing tiers and rejects malformed data atomically', async () => {
     await asUser(engineer);
     const before = await scalar('select version, settings from public.pricing_settings');

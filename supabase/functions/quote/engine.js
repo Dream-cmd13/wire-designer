@@ -2879,7 +2879,7 @@ var DEFAULT_PRICING_SETTINGS = {
   processingLossRate: "0.05",
   marginRate: "0.20",
   freightRate: "0.03",
-  laborRates: { "\u88C1\u7EBF": "0.05", "\u53BB\u76AE": "0.05", "\u53BB\u5916\u76AE": "0.02", "\u5904\u7406\u7F16\u7EC7": "0.10", "\u70ED\u7F29\u7F16\u7EC7": "0.10", "\u710A\u63A5": "0.20", "\u6210\u578B": "0.20", "\u6CBE\u9521": "0.05" },
+  laborRates: { "\u88C1\u7EBF": "0.05", "\u53BB\u76AE": "0.05", "\u53BB\u5916\u76AE": "0.05", "\u5904\u7406\u7F16\u7EC7": "0.10", "\u70ED\u7F29\u7F16\u7EC7": "0.10", "\u710A\u63A5": "0.20", "\u6210\u578B": "0.20", "\u6CBE\u9521": "0.05" },
   finishingLaborRates: {
     "500": { \u7535\u6D4B: "0.05", \u5916\u89C2: "0.05", \u5305\u88C5\u4EBA\u5DE5: "0.05" },
     "1000": { \u7535\u6D4B: "0.10", \u5916\u89C2: "0.20", \u5305\u88C5\u4EBA\u5DE5: "0.10" },

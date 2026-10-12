@@ -10,7 +10,7 @@ import { validatePricingSettings } from '@/lib/pricingSettingsImport';
 import type { PricingSettings } from '@/types/pricingSettings';
 export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   version: 1, materialLossRate: '0.03', processingLossRate: '0.05', marginRate: '0.20', freightRate: '0.03',
-  laborRates: { '裁线': '0.05', '去皮': '0.05', '去外皮': '0.02', '处理编织': '0.10', '热缩编织': '0.10', '焊接': '0.20', '成型': '0.20', '沾锡': '0.05' },
+  laborRates: { '裁线': '0.05', '去皮': '0.05', '去外皮': '0.05', '处理编织': '0.10', '热缩编织': '0.10', '焊接': '0.20', '成型': '0.20', '沾锡': '0.05' },
   finishingLaborRates: {
     '500': { 电测: '0.05', 外观: '0.05', 包装人工: '0.05' },
     '1000': { 电测: '0.10', 外观: '0.20', 包装人工: '0.10' },
