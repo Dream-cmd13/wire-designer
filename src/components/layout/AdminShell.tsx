@@ -40,6 +40,12 @@ const sidebarItems: SidebarItem[] = [
     access: 'projects',
   },
   {
+    label: '物料库',
+    path: appRoutes.materials.path,
+    icon: Database,
+    access: 'materials',
+  },
+  {
     label: '线束设计器',
     path: appRoutes['designer-design'].path,
     icon: Cable,
@@ -58,12 +64,6 @@ const sidebarItems: SidebarItem[] = [
     label: 'DWG 图纸',
     path: appRoutes['dwg-viewer'].path,
     icon: DraftingCompass,
-  },
-  {
-    label: '物料库',
-    path: appRoutes.materials.path,
-    icon: Database,
-    access: 'materials',
   },
 ];
 
