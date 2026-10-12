@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { formatQuoteMoney } from '@/lib/pricing';
-import { calculatePrice } from '../../../server/pricing';
+import { calculatePrice, DEFAULT_PRICING_SETTINGS } from '../../../server/pricing';
 import { formatMaterialSpecification, getPriceImportCandidates, getQuoteMaterials } from '@/lib/quoteMaterials';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
@@ -38,11 +38,48 @@ function ready(config: HarnessConfig, prices = pricesFor(config)) {
   return result.price;
 }
 describe('M8/M12 quotation', () => {
+  it.each([
+    [1, '0.05', '0.05', '0.05'], [500, '0.05', '0.05', '0.05'],
+    [501, '0.10', '0.20', '0.10'], [1000, '0.10', '0.20', '0.10'],
+    [1001, '0.10', '0.20', '0.20'], [2000, '0.10', '0.20', '0.20'],
+    [2001, '0.10', '0.20', '0.20'], [3000, '0.10', '0.20', '0.20'],
+    [3001, '0.10', '0.20', '0.30'], [5000, '0.10', '0.20', '0.30'],
+  ])('charges finishing fees for %i mm using the next length tier', (length, electrical, appearance, packaging) => {
+    const { config } = fixture();
+    config.materials[0].spec.lengthMm = Number(length);
+    const p = ready(config);
+    for (const [index, rate] of [electrical, appearance, packaging].entries()) {
+      expect(p.labor[index + 7]).toMatchObject({ points: 1, unitPrice: rate, amount: String(Number(rate)) });
+    }
+  });
   it('matches the authoritative example and rounds unit price before quantity', () => {
     const { config, prices } = fixture();
     const p = ready(config, prices);
     expect(p.labor.map((line) => line.points)).toEqual([2, 8, 2, 2, 2, 10, 6, 1, 1, 1]);
-    expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.35', processingLoss: '0.2175', cost: '15.4855', sellingPrice: '19.356875', unitPrice: '19.94', totalPrice: '1994.00' });
+    expect(p).toMatchObject({ materialSubtotal: '10.6', materialLoss: '0.318', laborSubtotal: '4.3', processingLoss: '0.215', cost: '15.433', sellingPrice: '19.29125', unitPrice: '19.87', totalPrice: '1987.00' });
+  });
+  it('uses database finishing prices at actual wire length regardless of the material price tier', () => {
+    const { config, prices } = fixture();
+    config.materials[0].spec.lengthMm = 500;
+    const tierPrices = prices.map(row => row.kind === 'wire' ? { ...row, lengthMm: 5000 } : row);
+    const parameters = { ...DEFAULT_PRICING_SETTINGS, laborRates: {
+      ...DEFAULT_PRICING_SETTINGS.laborRates, 裁线: '0.07',
+    }, finishingLaborRates: { ...DEFAULT_PRICING_SETTINGS.finishingLaborRates,
+      '500': { 电测: '0.12', 外观: '0.23', 包装人工: '0.34' },
+    } };
+    const result = calculatePrice(config, tierPrices, catalog, parameters);
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') throw new Error(JSON.stringify(result));
+    expect(result.price.labor.slice(-3).map(row => row.amount)).toEqual(['0.12', '0.23', '0.34']);
+    expect(result.price.labor[0].amount).toBe('0.07');
+    const original = ready(config, tierPrices);
+    expect(Number(result.price.laborSubtotal) - Number(original.laborSubtotal)).toBeCloseTo(0.56);
+    expect(Number(result.price.processingLoss) - Number(original.processingLoss)).toBeCloseTo(0.028);
+  });
+  it('blocks missing tier configuration instead of falling back to hardcoded prices', () => {
+    const { config, prices } = fixture();
+    const broken = { ...DEFAULT_PRICING_SETTINGS, finishingLaborRates: undefined };
+    expect(calculatePrice(config, prices, catalog, broken as unknown as typeof DEFAULT_PRICING_SETTINGS).status).toBe('blocked');
   });
   it.each([0, 2])('charges %i inner molds using shared prices without changing outer mold costs', (count) => {
     const { config, prices } = fixture();
@@ -225,8 +262,8 @@ describe('price workbook and repository', () => {
     const result = XLSX.read(bytes(createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'engineer')), { type: 'array' });
     expect(result.SheetNames).toEqual(['成本分析']);
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(result.Sheets[result.SheetNames[0]])[0];
-    expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.2175',
-      '产品含税成本': '15.4855', '含税含运费单价': '19.94', '订单总价': '1994.00', '交期': '7日' });
+    expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.215',
+      '产品含税成本': '15.433', '含税含运费单价': '19.87', '订单总价': '1987.00', '交期': '7日' });
     expect(row['交期']).toBe(DEFAULT_QUOTE_LEAD_TIME);
     expect(JSON.stringify(row)).not.toContain('wire-resource');
     expect(() => createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'sales')).toThrow('权限');

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
+import { DEFAULT_PRICING_SETTINGS } from '../../../server/pricing';
 
 const sales = '00000000-0000-4000-8000-000000000001';
 const engineer = '00000000-0000-4000-8000-000000000002';
@@ -87,6 +88,47 @@ describe('real PostgreSQL pricing permissions', () => {
     expect(await scalar('select tax_included_price from public.material_prices')).toEqual({ tax_included_price: '4' });
     await asUser(sales);
     await expect(merge([entry])).rejects.toThrow('Forbidden');
+  });
+  it('upgrades existing settings without losing other prices and can safely run twice', async () => {
+    await db.exec('reset role');
+    await db.exec(`update public.pricing_settings set settings =
+      jsonb_set(settings - 'finishingLaborRates', '{laborRates}',
+        (settings->'laborRates') || '{"电测":"9","外观":"8","包装人工":"7","裁线":"0.08"}'::jsonb)`);
+    const before = await scalar('select version from public.pricing_settings');
+    const update = readFileSync('supabase/updates/20261012_finishing_labor_rates.sql', 'utf8');
+    await db.exec(update);
+    const after = await scalar('select version, settings from public.pricing_settings');
+    expect(after?.version).toBe(Number(before?.version) + 1);
+    expect(after?.settings).toEqual({
+      ...DEFAULT_PRICING_SETTINGS, version: undefined,
+      laborRates: { ...DEFAULT_PRICING_SETTINGS.laborRates, 裁线: '0.08' },
+    });
+    await db.exec(update);
+    expect(await scalar('select version, settings from public.pricing_settings')).toEqual(after);
+  });
+  it('persists editable finishing tiers and rejects malformed data atomically', async () => {
+    await asUser(engineer);
+    const before = await scalar('select version, settings from public.pricing_settings');
+    const settings = before!.settings as typeof DEFAULT_PRICING_SETTINGS;
+    const changed = { ...settings, finishingLaborRates: { ...settings.finishingLaborRates,
+      '500': { 电测: '0.123456', 外观: '0', 包装人工: '0.45' },
+    } };
+    await db.query('select public.save_pricing_settings($1, $2::jsonb)', [before!.version as number, JSON.stringify(changed)]);
+    const saved = await scalar('select version, settings from public.pricing_settings');
+    expect(saved?.settings).toEqual(changed);
+    for (const invalid of [null, {}, [], { ...changed.finishingLaborRates, '6000': {} },
+      ...[null, {}, { 电测: 0.1, 外观: '0.2', 包装人工: '0.3' },
+        { 电测: '-1', 外观: '0.2', 包装人工: '0.3' },
+        { 电测: '0.1234567', 外观: '0.2', 包装人工: '0.3' },
+      ].map(tier => ({ ...changed.finishingLaborRates, '500': tier })),
+    ]) {
+      await expect(db.query('select public.save_pricing_settings($1, $2::jsonb)',
+        [saved!.version as number, JSON.stringify({ ...changed, finishingLaborRates: invalid })])).rejects.toThrow('Invalid');
+    }
+    expect(await scalar('select version, settings from public.pricing_settings')).toEqual(saved);
+    await asUser(sales);
+    await expect(db.query('select public.save_pricing_settings($1, $2::jsonb)',
+      [saved!.version as number, JSON.stringify(changed)])).rejects.toThrow('Forbidden');
   });
   it('admins assign roles and downgrades take effect for the next database request', async () => {
     await asUser(admin);

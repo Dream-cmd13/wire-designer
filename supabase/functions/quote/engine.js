@@ -2853,6 +2853,25 @@ function getQuoteMaterials(config2, catalog) {
   return [...grouped.values()];
 }
 
+// src/lib/finishingLaborRates.ts
+var FINISHING_LABOR_NAMES = ["\u7535\u6D4B", "\u5916\u89C2", "\u5305\u88C5\u4EBA\u5DE5"];
+var FINISHING_LENGTHS_MM = [500, 1e3, 2e3, 3e3, 5e3];
+var STANDARD_LABOR_NAMES = ["\u88C1\u7EBF", "\u53BB\u76AE", "\u53BB\u5916\u76AE", "\u5904\u7406\u7F16\u7EC7", "\u70ED\u7F29\u7F16\u7EC7", "\u710A\u63A5", "\u6210\u578B"];
+
+// src/lib/pricingSettingsImport.ts
+function validatePricingSettings(value) {
+  const object2 = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  if (!object2(value)) return false;
+  const input = value;
+  const rates = ["materialLossRate", "processingLossRate", "marginRate", "freightRate"];
+  if (Object.keys(input).some((k) => ![...rates, "laborRates", "finishingLaborRates", "version"].includes(k))) return false;
+  const valid = (v) => typeof v === "string" && /^[0-9]{1,9}(\.[0-9]{1,6})?$/.test(v);
+  if (rates.some((k) => !valid(input[k]) || Number(input[k]) >= 1)) return false;
+  const validRates = (v, names) => object2(v) && Object.keys(v).length === names.length && names.every((k) => valid(v[k]));
+  const tiers = input.finishingLaborRates;
+  return validRates(input.laborRates, STANDARD_LABOR_NAMES) && object2(tiers) && Object.keys(tiers).length === FINISHING_LENGTHS_MM.length && FINISHING_LENGTHS_MM.every((length) => validRates(tiers[length], FINISHING_LABOR_NAMES));
+}
+
 // server/pricing.ts
 var DEFAULT_PRICING_SETTINGS = {
   version: 1,
@@ -2860,10 +2879,18 @@ var DEFAULT_PRICING_SETTINGS = {
   processingLossRate: "0.05",
   marginRate: "0.20",
   freightRate: "0.03",
-  laborRates: { "\u88C1\u7EBF": "0.05", "\u53BB\u76AE": "0.02", "\u53BB\u5916\u76AE": "0.02", "\u5904\u7406\u7F16\u7EC7": "0.10", "\u70ED\u7F29\u7F16\u7EC7": "0.10", "\u710A\u63A5": "0.20", "\u6210\u578B": "0.20", "\u7535\u6D4B": "0.05", "\u5916\u89C2": "0.20", "\u5305\u88C5\u4EBA\u5DE5": "0.20" }
+  laborRates: { "\u88C1\u7EBF": "0.05", "\u53BB\u76AE": "0.02", "\u53BB\u5916\u76AE": "0.02", "\u5904\u7406\u7F16\u7EC7": "0.10", "\u70ED\u7F29\u7F16\u7EC7": "0.10", "\u710A\u63A5": "0.20", "\u6210\u578B": "0.20" },
+  finishingLaborRates: {
+    "500": { \u7535\u6D4B: "0.05", \u5916\u89C2: "0.05", \u5305\u88C5\u4EBA\u5DE5: "0.05" },
+    "1000": { \u7535\u6D4B: "0.10", \u5916\u89C2: "0.20", \u5305\u88C5\u4EBA\u5DE5: "0.10" },
+    "2000": { \u7535\u6D4B: "0.10", \u5916\u89C2: "0.20", \u5305\u88C5\u4EBA\u5DE5: "0.20" },
+    "3000": { \u7535\u6D4B: "0.10", \u5916\u89C2: "0.20", \u5305\u88C5\u4EBA\u5DE5: "0.20" },
+    "5000": { \u7535\u6D4B: "0.10", \u5916\u89C2: "0.20", \u5305\u88C5\u4EBA\u5DE5: "0.30" }
+  }
 };
 var Money = decimal_default.clone({ precision: 40, rounding: decimal_default.ROUND_HALF_UP });
 function calculatePrice(config2, prices, catalog, parameters = DEFAULT_PRICING_SETTINGS) {
+  if (!validatePricingSettings(parameters)) return { status: "blocked", issues: ["\u5B9A\u4EF7\u53C2\u6570\u65E0\u6548\uFF0C\u8BF7\u68C0\u67E5\u5DE5\u827A\u5355\u4EF7\u53CA\u4E94\u6863\u7EBF\u957F\u4EF7\u683C"] };
   const issues = [];
   const wire = config2.materials[0];
   if (config2.materials.length !== 1) issues.push("\u81EA\u52A8\u62A5\u4EF7\u4EC5\u652F\u6301\u4E00\u6839\u5B9E\u4F53\u7EBF\u6750");
@@ -2913,18 +2940,23 @@ function calculatePrice(config2, prices, catalog, parameters = DEFAULT_PRICING_S
   const shield = wire.spec.kind === "jacketed" && wire.spec.shielded;
   const molding = config2.models.length + innerMoldCount + settings.srPoints;
   const laborInput = [
-    ["\u88C1\u7EBF", Math.ceil(wire.spec.lengthMm / 500), "0.05"],
-    ["\u53BB\u76AE", cores * ends, "0.02"],
-    ["\u53BB\u5916\u76AE", ends, "0.02"],
-    ["\u5904\u7406\u7F16\u7EC7", shield ? ends : 0, "0.10"],
-    ["\u70ED\u7F29\u7F16\u7EC7", shield ? ends : 0, "0.10"],
-    ["\u710A\u63A5", (cores + (shield ? 1 : 0)) * ends, "0.20"],
-    ["\u6210\u578B", molding, "0.20"],
-    ["\u7535\u6D4B", 1, "0.05"],
-    ["\u5916\u89C2", 1, "0.20"],
-    ["\u5305\u88C5\u4EBA\u5DE5", 1, "0.20"]
+    ["\u88C1\u7EBF", Math.ceil(wire.spec.lengthMm / 500)],
+    ["\u53BB\u76AE", cores * ends],
+    ["\u53BB\u5916\u76AE", ends],
+    ["\u5904\u7406\u7F16\u7EC7", shield ? ends : 0],
+    ["\u70ED\u7F29\u7F16\u7EC7", shield ? ends : 0],
+    ["\u710A\u63A5", (cores + (shield ? 1 : 0)) * ends],
+    ["\u6210\u578B", molding]
   ];
   const labor = laborInput.map(([name, points]) => ({ name, points, unitPrice: parameters.laborRates[name], amount: new Money(parameters.laborRates[name]).mul(points).toString() }));
+  const finishingLength = FINISHING_LENGTHS_MM.find((length) => wire.spec.lengthMm <= length);
+  const finishingRates = parameters.finishingLaborRates[finishingLength];
+  labor.push(...FINISHING_LABOR_NAMES.map((name) => ({
+    name,
+    points: 1,
+    unitPrice: finishingRates[name],
+    amount: new Money(finishingRates[name]).toString()
+  })));
   const sum2 = (lines) => lines.reduce((total, row) => total.plus(row.amount), new Money(0));
   const m = sum2(materialLines), p = sum2(labor);
   const materialLoss = m.mul(parameters.materialLossRate), processingLoss = p.mul(parameters.processingLossRate);

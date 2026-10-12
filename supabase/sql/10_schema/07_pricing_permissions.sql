@@ -27,7 +27,14 @@ create table public.pricing_settings (
 );
 insert into public.pricing_settings (settings) values ('{
   "materialLossRate":"0.03","processingLossRate":"0.05","marginRate":"0.20","freightRate":"0.03",
-  "laborRates":{"裁线":"0.05","去皮":"0.02","去外皮":"0.02","处理编织":"0.10","热缩编织":"0.10","焊接":"0.20","成型":"0.20","电测":"0.05","外观":"0.20","包装人工":"0.20"}
+  "laborRates":{"裁线":"0.05","去皮":"0.02","去外皮":"0.02","处理编织":"0.10","热缩编织":"0.10","焊接":"0.20","成型":"0.20"},
+  "finishingLaborRates":{
+    "500":{"电测":"0.05","外观":"0.05","包装人工":"0.05"},
+    "1000":{"电测":"0.10","外观":"0.20","包装人工":"0.10"},
+    "2000":{"电测":"0.10","外观":"0.20","包装人工":"0.20"},
+    "3000":{"电测":"0.10","外观":"0.20","包装人工":"0.20"},
+    "5000":{"电测":"0.10","外观":"0.20","包装人工":"0.30"}
+  }
 }');
 alter table public.pricing_settings enable row level security;
 revoke all on public.pricing_settings from anon, authenticated;
@@ -63,19 +70,32 @@ create trigger roles_audit after insert or update on public.user_roles for each 
 
 create function public.save_pricing_settings(expected_version integer, new_settings jsonb) returns integer
 language plpgsql security definer set search_path = '' as $$
-declare k text; v text; next_version integer;
+declare k text; v text; next_version integer; tier text; tier_rates jsonb;
 begin
   if not public.can_manage_pricing() then raise exception 'Forbidden' using errcode = '42501'; end if;
-  if jsonb_typeof(new_settings) <> 'object' or jsonb_typeof(new_settings->'laborRates') <> 'object' then raise exception 'Invalid settings'; end if;
-  if (select count(*) from jsonb_object_keys(new_settings)) <> 5
-    or (select count(*) from jsonb_object_keys(new_settings->'laborRates')) <> 10 then raise exception 'Invalid settings fields'; end if;
+  if jsonb_typeof(new_settings) is distinct from 'object'
+    or jsonb_typeof(new_settings->'laborRates') is distinct from 'object'
+    or jsonb_typeof(new_settings->'finishingLaborRates') is distinct from 'object' then raise exception 'Invalid settings'; end if;
+  if (select count(*) from jsonb_object_keys(new_settings)) <> 6
+    or (select count(*) from jsonb_object_keys(new_settings->'laborRates')) <> 7
+    or (select count(*) from jsonb_object_keys(new_settings->'finishingLaborRates')) <> 5 then raise exception 'Invalid settings fields'; end if;
   foreach k in array array['materialLossRate','processingLossRate','marginRate','freightRate'] loop
     v := new_settings->>k;
-    if v is null or v !~ '^[0-9]{1,9}(\.[0-9]{1,6})?$' or v::numeric >= 1 then raise exception 'Invalid rate'; end if;
+    if jsonb_typeof(new_settings->k) is distinct from 'string' or v !~ '^[0-9]{1,9}(\.[0-9]{1,6})?$' then raise exception 'Invalid rate'; end if;
+    if v::numeric >= 1 then raise exception 'Invalid rate'; end if;
   end loop;
-  foreach k in array array['裁线','去皮','去外皮','处理编织','热缩编织','焊接','成型','电测','外观','包装人工'] loop
+  foreach k in array array['裁线','去皮','去外皮','处理编织','热缩编织','焊接','成型'] loop
     v := new_settings->'laborRates'->>k;
-    if v is null or v !~ '^[0-9]{1,9}(\.[0-9]{1,6})?$' then raise exception 'Invalid labor rate'; end if;
+    if jsonb_typeof(new_settings->'laborRates'->k) is distinct from 'string' or v !~ '^[0-9]{1,9}(\.[0-9]{1,6})?$' then raise exception 'Invalid labor rate'; end if;
+  end loop;
+  foreach tier in array array['500','1000','2000','3000','5000'] loop
+    tier_rates := new_settings->'finishingLaborRates'->tier;
+    if jsonb_typeof(tier_rates) is distinct from 'object' then raise exception 'Invalid finishing tier'; end if;
+    if (select count(*) from jsonb_object_keys(tier_rates)) <> 3 then raise exception 'Invalid finishing fields'; end if;
+    foreach k in array array['电测','外观','包装人工'] loop
+      v := tier_rates->>k;
+      if jsonb_typeof(tier_rates->k) is distinct from 'string' or v !~ '^[0-9]{1,9}(\.[0-9]{1,6})?$' then raise exception 'Invalid finishing rate'; end if;
+    end loop;
   end loop;
   update public.pricing_settings set settings = new_settings - 'version', version = version + 1,
     updated_at = now(), updated_by = auth.uid() where id = 1 and version = expected_version

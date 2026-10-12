@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { useUserStore } from '@/stores/userStore';
 import { canManageUsers, canViewPricing, type AppRole } from '@/lib/permissions';
 import type { PricingSettings } from '@/types/pricingSettings';
-import { parsePricingSettingsImport } from '@/lib/pricingSettingsImport';
+import { parsePricingSettingsImport, validatePricingSettings } from '@/lib/pricingSettingsImport';
+import { FINISHING_LABOR_NAMES, FINISHING_LENGTHS_MM } from '@/lib/finishingLaborRates';
 
 interface RoleRow { user_id: string; email: string; role: AppRole }
 const labels: Record<string, string> = {
@@ -26,6 +27,7 @@ export function PricingManagement() {
     void (async () => {
       const { data, error } = await supabase!.from('pricing_settings').select('version,settings').eq('id', 1).single();
       if (error) throw error;
+      if (!validatePricingSettings(data.settings)) throw new Error('定价参数格式无效');
       if (!cancelled) setSettings({ ...data.settings, version: data.version });
       if (canManageUsers(role)) {
         const result = await supabase!.rpc('list_app_users');
@@ -41,6 +43,7 @@ export function PricingManagement() {
     setBusy(true); setMessage('');
     const { version, ...values } = settings;
     try {
+      if (!validatePricingSettings(values)) throw new Error('参数无效');
       const { error } = await supabase.rpc('save_pricing_settings', { expected_version: version, new_settings: values });
       if (error) throw error;
       setMessage('参数已保存，新报价使用新版本。');
@@ -90,6 +93,19 @@ export function PricingManagement() {
               onChange={e => setSettings({ ...settings, laborRates: { ...settings.laborRates, [name]: e.target.value } })} />
           </label>)}
         </div>
+        <p className="text-xs text-slate-500">电测、外观、包装人工按以下线长档位计费（元/条），修改后保存生效。非整档长度向上匹配，超过 5 米需人工核价。</p>
+        <table className="w-full text-left text-xs">
+          <thead><tr><th>线长上限</th>{FINISHING_LABOR_NAMES.map(name => <th key={name}>{name}</th>)}</tr></thead>
+          <tbody>{FINISHING_LENGTHS_MM.map(length => <tr key={length}>
+            <td>{length / 1000} 米</td>{FINISHING_LABOR_NAMES.map(name => <td key={name}>
+              <input aria-label={`${length / 1000}米${name}单价`} className="my-1 w-full rounded border p-1.5" type="number"
+                min="0" max="999999999.999999" step="0.000001" disabled={busy} value={settings.finishingLaborRates[length][name]}
+                onChange={e => setSettings({ ...settings, finishingLaborRates: {
+                  ...settings.finishingLaborRates, [length]: { ...settings.finishingLaborRates[length], [name]: e.target.value },
+                } })} />
+            </td>)}
+          </tr>)}</tbody>
+        </table>
         <button onClick={() => void save()} disabled={busy} className="flex items-center gap-2 text-sm text-blue-700"><Save size={16} />保存参数</button>
       </>}
       {canManageUsers(role) && <div className="space-y-2">

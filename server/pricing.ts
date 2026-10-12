@@ -4,11 +4,20 @@ import type { CatalogSnapshot } from '@/types/catalog';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import { getQuoteMaterials, materialPriceTierKey } from '@/lib/quoteMaterials';
 import { getAvailableInnerMold } from '@/lib/overmoldSpec';
+import { FINISHING_LABOR_NAMES, FINISHING_LENGTHS_MM } from '@/lib/finishingLaborRates';
+import { validatePricingSettings } from '@/lib/pricingSettingsImport';
 
 import type { PricingSettings } from '@/types/pricingSettings';
 export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   version: 1, materialLossRate: '0.03', processingLossRate: '0.05', marginRate: '0.20', freightRate: '0.03',
-  laborRates: { '裁线': '0.05', '去皮': '0.02', '去外皮': '0.02', '处理编织': '0.10', '热缩编织': '0.10', '焊接': '0.20', '成型': '0.20', '电测': '0.05', '外观': '0.20', '包装人工': '0.20' },
+  laborRates: { '裁线': '0.05', '去皮': '0.02', '去外皮': '0.02', '处理编织': '0.10', '热缩编织': '0.10', '焊接': '0.20', '成型': '0.20' },
+  finishingLaborRates: {
+    '500': { 电测: '0.05', 外观: '0.05', 包装人工: '0.05' },
+    '1000': { 电测: '0.10', 外观: '0.20', 包装人工: '0.10' },
+    '2000': { 电测: '0.10', 外观: '0.20', 包装人工: '0.20' },
+    '3000': { 电测: '0.10', 外观: '0.20', 包装人工: '0.20' },
+    '5000': { 电测: '0.10', 外观: '0.20', 包装人工: '0.30' },
+  },
 };
 const Money = Decimal.clone({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
 export const formatQuoteMoney = (value: string) => new Money(value).toFixed(2);
@@ -29,6 +38,7 @@ export interface QuoteBreakdown {
 export type QuoteResult = { status: 'blocked' | 'manual'; issues: string[] } | { status: 'ready'; price: QuoteBreakdown };
 
 export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], catalog: CatalogSnapshot | null, parameters: PricingSettings = DEFAULT_PRICING_SETTINGS): QuoteResult {
+  if (!validatePricingSettings(parameters)) return { status: 'blocked', issues: ['定价参数无效，请检查工艺单价及五档线长价格'] };
   const issues: string[] = [];
   const wire = config.materials[0];
   if (config.materials.length !== 1) issues.push('自动报价仅支持一根实体线材');
@@ -70,13 +80,19 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   const ends = settings!.processingEnds;
   const shield = wire.spec.kind === 'jacketed' && wire.spec.shielded;
   const molding = config.models.length + innerMoldCount + settings!.srPoints;
-  const laborInput: [string, number, string][] = [
-    ['裁线', Math.ceil(wire.spec.lengthMm / 500), '0.05'], ['去皮', cores * ends, '0.02'],
-    ['去外皮', ends, '0.02'], ['处理编织', shield ? ends : 0, '0.10'],
-    ['热缩编织', shield ? ends : 0, '0.10'], ['焊接', (cores + (shield ? 1 : 0)) * ends, '0.20'],
-    ['成型', molding, '0.20'], ['电测', 1, '0.05'], ['外观', 1, '0.20'], ['包装人工', 1, '0.20'],
+  const laborInput: [string, number][] = [
+    ['裁线', Math.ceil(wire.spec.lengthMm / 500)], ['去皮', cores * ends],
+    ['去外皮', ends], ['处理编织', shield ? ends : 0],
+    ['热缩编织', shield ? ends : 0], ['焊接', (cores + (shield ? 1 : 0)) * ends],
+    ['成型', molding],
   ];
   const labor = laborInput.map(([name, points]) => ({ name, points, unitPrice: parameters.laborRates[name], amount: new Money(parameters.laborRates[name]).mul(points).toString() }));
+  // 入口已限制为 1–5000mm；实际价格来自当前数据库配置快照。
+  const finishingLength = FINISHING_LENGTHS_MM.find((length) => wire.spec.lengthMm <= length)!;
+  const finishingRates = parameters.finishingLaborRates[finishingLength];
+  labor.push(...FINISHING_LABOR_NAMES.map((name) => ({
+    name, points: 1, unitPrice: finishingRates[name], amount: new Money(finishingRates[name]).toString(),
+  })));
   const sum = (lines: QuoteLine[]) => lines.reduce((total, row) => total.plus(row.amount), new Money(0));
   const m = sum(materialLines), p = sum(labor);
   const materialLoss = m.mul(parameters.materialLossRate), processingLoss = p.mul(parameters.processingLossRate);

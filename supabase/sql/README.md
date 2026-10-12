@@ -15,6 +15,8 @@ values ('替换为准确的管理员账号UUID'::uuid, 'admin');
 ```
 
 其余账号默认业务员；管理员在物料库的“定价参数与用户权限”中分配角色。
+
+现有测试库更新电测、外观、包装人工的线长档位配置时，执行 `supabase/updates/20261012_finishing_labor_rates.sql`，同时部署重新构建的 `quote` 函数和前端。该事务更新 `save_pricing_settings` 校验规则，并仅在缺少 `finishingLaborRates` 时初始化五档价格、删除三项统一工价及递增版本；重复执行不覆盖已编辑的档位价格。全新建库已在 `10_schema/07_pricing_permissions.sql` 中包含相同结构。
 业务员只显示自动报价入口；工程师、管理员保留其他入口，且仍只能访问自己的项目。
 业务员不能访问价格、成本分析、定价参数、成本 Excel；普通报价只返回单价和总价。
 成品安全视图只公开正式 `quote_price`，内部参考价不作兜底。
