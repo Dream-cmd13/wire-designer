@@ -10,6 +10,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useServerQuote } from '@/lib/useServerQuote';
 import { isValidElement, type ReactNode } from 'react';
 import * as XLSX from 'xlsx';
+import { AutoQuotePriceCard } from '@/components/autoQuote/AutoQuotePriceCard';
 
 const hookHarness = vi.hoisted(() => ({ active: false, index: 0, states: [] as unknown[] }));
 vi.mock('react', async (importOriginal) => {
@@ -34,6 +35,18 @@ function findStickyExport(node: ReactNode): (() => void) | undefined {
   } else if (isValidElement<{ children?: ReactNode; onClick?: () => void }>(node)) {
     if (node.type === 'button' && node.props.onClick?.name === 'handleExportPublicExcel') return node.props.onClick;
     return findStickyExport(node.props.children);
+  }
+}
+
+function findPriceCard(node: ReactNode): ReactNode {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const found = findPriceCard(child);
+      if (found) return found;
+    }
+  } else if (isValidElement<{ children?: ReactNode }>(node)) {
+    if (node.type === AutoQuotePriceCard) return node;
+    return findPriceCard(node.props.children);
   }
 }
 
@@ -185,6 +198,35 @@ describe('AutoQuotePage', () => {
     } finally {
       hookHarness.active = false;
       log.mockRestore();
+    }
+  });
+
+  it('exports the displayed unit price without an unconfirmed order quantity or total', () => {
+    vi.mocked(useServerQuote).mockReturnValue({ result: { status: 'ready', price: { unitPrice: '10.00', totalPrice: '10000.00' }, settingsVersion: 1, calculatedAt: '2026-10-12' }, loading: false, error: undefined, retry: vi.fn() });
+    vi.mocked(XLSX.writeFile).mockClear();
+    hookHarness.active = true;
+    try {
+      findStickyExport(AutoQuotePage())!();
+      const book = vi.mocked(XLSX.writeFile).mock.calls[0][0];
+      const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]]);
+      expect(rows).toEqual([{
+        产品名称: expect.any(String),
+        交期: '7日',
+        含税含运费单价: '10.00',
+      }]);
+    } finally {
+      hookHarness.active = false;
+    }
+  });
+
+  it.each(['sales', 'engineer', 'admin'] as const)('uses unit-price export in the %s quotation card', (role) => {
+    useUserStore.setState({ currentUser: { id: 'user', name: 'User', email: 'user@example.com', role, createdAt: 0 } });
+    hookHarness.active = true;
+    try {
+      const card = findPriceCard(AutoQuotePage());
+      expect(isValidElement<{ exportScope: string }>(card) && card.props.exportScope).toBe('unit');
+    } finally {
+      hookHarness.active = false;
     }
   });
 

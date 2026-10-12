@@ -74,4 +74,19 @@ describe('server quote boundary', () => {
     expect(Object.keys(row as object)).toEqual(['产品名称','订单数量','交期','含税含运费单价','订单总价']);
     expect(() => createQuoteWorkbook(config, result.price, 'internal', 'sales')).toThrow('权限');
   });
+
+  it.each(['public', 'internal'] as const)('unit-price %s Excel omits order fields and retains the quoted unit price', (mode) => {
+    const { catalog, config, prices } = fixture();
+    const result = quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer');
+    if (!('price' in result)) throw new Error('not ready');
+    const book = createQuoteWorkbook(config, result.price, mode, 'engineer', 'unit');
+    const serialized = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' });
+    const restored = XLSX.read(serialized, { type: 'buffer' });
+    const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(restored.Sheets[restored.SheetNames[0]])[0];
+    expect(row).not.toHaveProperty('订单数量');
+    expect(row).not.toHaveProperty('订单总价');
+    expect(row['含税含运费单价']).toBe(result.price.unitPrice);
+    if (mode === 'internal') expect(row['产品含税成本']).toBe(result.price.breakdown?.cost);
+    else expect(Object.keys(row)).toEqual(['产品名称', '交期', '含税含运费单价']);
+  });
 });

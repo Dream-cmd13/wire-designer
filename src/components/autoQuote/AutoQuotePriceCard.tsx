@@ -14,6 +14,7 @@ interface AutoQuotePriceCardProps {
   evaluation: AutoQuoteEvaluation;
   catalog: CatalogSnapshot | null;
   loading: boolean;
+  exportScope?: 'unit' | 'order';
 }
 
 function AmountRow({ name, amount }: { name: string; amount: string }) {
@@ -48,6 +49,7 @@ function Lines({ lines }: { lines: QuoteLine[] }) {
 export function AutoQuotePriceCard({
   evaluation,
   loading,
+  exportScope = 'order',
 }: AutoQuotePriceCardProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export function AutoQuotePriceCard({
     try {
       setExporting(true);
       setExportError(null);
-      const workbook = createQuoteWorkbook(config, price, mode, role);
+      const workbook = createQuoteWorkbook(config, price, mode, role, exportScope);
       const filename = safeFilename(`${config.name}_${mode === 'internal' ? '成本分析' : '报价单'}.xlsx`);
       XLSX.writeFile(workbook, filename);
     } catch (err) {

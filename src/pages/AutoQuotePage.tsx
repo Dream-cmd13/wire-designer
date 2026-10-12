@@ -506,7 +506,7 @@ export function AutoQuotePage() {
     try {
       setExporting(true);
       setExportError(null);
-      const workbook = createQuoteWorkbook(built.config, evaluation.price, 'public', role);
+      const workbook = createQuoteWorkbook(built.config, evaluation.price, 'public', role, 'unit');
       const filename = safeFilename(`${built.config.name}_报价单.xlsx`);
       XLSX.writeFile(workbook, filename);
     } catch (err) {
@@ -591,6 +591,7 @@ export function AutoQuotePage() {
                   evaluation={evaluation}
                   catalog={catalog}
                   loading={quote.loading}
+                  exportScope="unit"
                 />
                 {quote.error && (
                   <p role="alert" className="text-sm text-red-700 mt-2">
@@ -651,6 +652,7 @@ export function AutoQuotePage() {
                     evaluation={evaluation}
                     catalog={catalog}
                     loading={quote.loading}
+                    exportScope="unit"
                   />
                   {quote.error && (
                     <p role="alert" className="text-sm text-red-700 mt-2">

@@ -5,9 +5,13 @@ import { canViewPricing } from './permissions';
 import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 
 /** Exports the displayed server snapshot without calculating a second price. */
-export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mode: 'public' | 'internal' = 'public', role?: unknown) {
-  const headers = ['产品名称', '订单数量', '交期', '含税含运费单价', '订单总价'];
-  const values: (string | number)[] = [config.name, config.quantity, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice, price.totalPrice];
+export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mode: 'public' | 'internal' = 'public', role?: unknown, scope: 'unit' | 'order' = 'order') {
+  const headers = scope === 'unit'
+    ? ['产品名称', '交期', '含税含运费单价']
+    : ['产品名称', '订单数量', '交期', '含税含运费单价', '订单总价'];
+  const values: (string | number)[] = scope === 'unit'
+    ? [config.name, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice]
+    : [config.name, config.quantity, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice, price.totalPrice];
   if (mode === 'internal') {
     if (!canViewPricing(role) || !price.breakdown) throw new Error('无内部成本导出权限');
     const p = price.breakdown;
