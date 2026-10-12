@@ -26,7 +26,6 @@ import {
   getCatalogConnectors,
   getCatalogWires,
   getCatalogOvermolds,
-  getCatalogProtectionOptions,
   getCatalogSnapshot,
 } from '@/lib/catalogRuntime';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
@@ -103,7 +102,6 @@ export function MaterialLibraryPage({
   const connectors = useMemo(() => getCatalogConnectors(snapshot), [snapshot]);
   const wires = useMemo(() => getCatalogWires(snapshot), [snapshot]);
   const overmolds = useMemo(() => getCatalogOvermolds(snapshot), [snapshot]);
-  const protectionOptions = useMemo(() => getCatalogProtectionOptions(snapshot), [snapshot]);
 
   const {
     book: storeBook,
@@ -156,7 +154,7 @@ export function MaterialLibraryPage({
   const [wirePage, setWirePage] = useState(initialWirePage);
   const [wirePageSize, setWirePageSize] = useState(20);
 
-  // 辅材筛选与分页
+  // 模具筛选与分页
   const [accQuery, setAccQuery] = useState('');
   const [accPage, setAccPage] = useState(initialAccPage);
   const [accPageSize, setAccPageSize] = useState(20);
@@ -479,7 +477,7 @@ export function MaterialLibraryPage({
     return filteredWires.slice(start, start + wirePageSize);
   }, [filteredWires, safeWirePage, wirePageSize]);
 
-  // 辅材过滤
+  // 模具过滤
   const filteredOvermolds = useMemo(() => {
     const q = accQuery.trim().toLowerCase();
     if (!q) return overmolds;
@@ -491,44 +489,16 @@ export function MaterialLibraryPage({
     );
   }, [overmolds, accQuery]);
 
-  const filteredProtections = useMemo(() => {
-    const q = accQuery.trim().toLowerCase();
-    if (!q) return protectionOptions;
-    return protectionOptions.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q),
-    );
-  }, [protectionOptions, accQuery]);
-
-  // 辅材合并列表与分页
-  const filteredAccessories = useMemo<
-    Array<
-      | { kind: 'overmold'; item: OvermoldSpec }
-      | { kind: 'protection'; item: (typeof protectionOptions)[number] }
-    >
-  >(() => {
-    const list: Array<
-      | { kind: 'overmold'; item: OvermoldSpec }
-      | { kind: 'protection'; item: (typeof protectionOptions)[number] }
-    > = [];
-    for (const m of filteredOvermolds) {
-      list.push({ kind: 'overmold', item: m });
-    }
-    for (const p of filteredProtections) {
-      list.push({ kind: 'protection', item: p });
-    }
-    return list;
-  }, [filteredOvermolds, filteredProtections]);
-
-  const totalAccPages = Math.max(1, Math.ceil(filteredAccessories.length / accPageSize));
+  const totalAccPages = Math.max(1, Math.ceil(filteredOvermolds.length / accPageSize));
   const safeAccPage = Math.min(Math.max(1, accPage), totalAccPages);
   if (accPage > totalAccPages) {
     setAccPage(totalAccPages);
   }
 
-  const paginatedAccessories = useMemo(() => {
+  const paginatedOvermolds = useMemo(() => {
     const start = (safeAccPage - 1) * accPageSize;
-    return filteredAccessories.slice(start, start + accPageSize);
-  }, [filteredAccessories, safeAccPage, accPageSize]);
+    return filteredOvermolds.slice(start, start + accPageSize);
+  }, [filteredOvermolds, safeAccPage, accPageSize]);
 
   // 现有成品线束供应商选项
   const finishedSupplierNos = useMemo(() => {
@@ -885,9 +855,9 @@ export function MaterialLibraryPage({
             }`}
           >
             <Layers className="h-4 w-4" />
-            <span>模具与套管</span>
+            <span>模具</span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-              {overmolds.length + protectionOptions.length}
+              {overmolds.length}
             </span>
           </button>
 
@@ -1402,7 +1372,7 @@ export function MaterialLibraryPage({
           </div>
         )}
 
-        {/* Tab 3: 模具与辅材 */}
+        {/* Tab 3: 模具 */}
         {activeTab === 'accessories' && (
           <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
             <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
@@ -1415,7 +1385,7 @@ export function MaterialLibraryPage({
                     setAccQuery(e.target.value);
                     setAccPage(1);
                   }}
-                  placeholder="搜索模具名称、材质、套管名称"
+                  placeholder="搜索模具名称、代号、材质"
                   className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                 />
               </label>
@@ -1443,69 +1413,39 @@ export function MaterialLibraryPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {paginatedAccessories.map((entry) => {
-                      if (entry.kind === 'overmold') {
-                        const m = entry.item;
-                        const price = getOvermoldPrice(m);
-                        return (
-                          <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-4 py-3">
-                              <p className="font-semibold text-slate-900">{m.name}</p>
-                              <p className="mt-0.5 font-mono text-[11px] text-blue-600">{m.id}</p>
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">
-                              <span className="rounded bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-                                成型外模 (共享价格库)
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">
-                              <p>{m.outerForm === 'bent' ? '90°弯头成型' : '直头成型'}</p>
-                            </td>
-                            <td className="px-4 py-3 text-slate-600">
-                              <p>{m.outerMaterial || '-'}</p>
-                              {m.outerHardness && (
-                                <p className="text-[11px] text-slate-400">硬度: {m.outerHardness}</p>
-                              )}
-                            </td>
-                            <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
-                              {price ? (
-                                <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
-                                  ¥ {Number(price.taxIncludedPrice).toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="inline-block px-2 py-1 text-xs text-slate-400">待定价</span>
-                              )}
-                            </td>
-                            <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
-                              {price?.unit ?? '元/个'}
-                            </td>
-                          </tr>
-                        );
-                      }
-
-                      const p = entry.item;
+                    {paginatedOvermolds.map((m) => {
+                      const price = getOvermoldPrice(m);
                       return (
-                        <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-3">
-                            <p className="font-semibold text-slate-900">{p.name}</p>
-                            <p className="mt-0.5 font-mono text-[11px] text-blue-600">{p.id}</p>
+                            <p className="font-semibold text-slate-900">{m.name}</p>
+                            <p className="mt-0.5 font-mono text-[11px] text-blue-600">{m.id}</p>
                           </td>
                           <td className="px-4 py-3 text-slate-600">
-                            <span className="rounded bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                              防护辅材 (系统配置标准价)
+                            <span className="rounded bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                              成型外模 (共享价格库)
                             </span>
                           </td>
                           <td className="px-4 py-3 text-slate-600">
-                            <p>线束防护套管 / 波纹管 / 热缩管</p>
+                            <p>{m.outerForm === 'bent' ? '90°弯头成型' : '直头成型'}</p>
                           </td>
-                          <td className="px-4 py-3 text-slate-400">-</td>
+                          <td className="px-4 py-3 text-slate-600">
+                            <p>{m.outerMaterial || '-'}</p>
+                            {m.outerHardness && (
+                              <p className="text-[11px] text-slate-400">硬度: {m.outerHardness}</p>
+                            )}
+                          </td>
                           <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
-                            <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
-                              ¥ {Number(p.price || 0).toFixed(2)}
-                            </span>
+                            {price ? (
+                              <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
+                                ¥ {Number(price.taxIncludedPrice).toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-1 text-xs text-slate-400">待定价</span>
+                            )}
                           </td>
                           <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
-                            元/米
+                            {price?.unit ?? '元/个'}
                           </td>
                         </tr>
                       );
@@ -1513,16 +1453,16 @@ export function MaterialLibraryPage({
                   </tbody>
                 </table>
 
-                {catalogStatus === 'loading' && overmolds.length === 0 && protectionOptions.length === 0 && (
+                {catalogStatus === 'loading' && overmolds.length === 0 && (
                   <div className="py-14 text-center text-sm text-slate-500">
-                    正在加载模具与辅材物料...
+                    正在加载模具物料...
                   </div>
                 )}
 
-                {filteredAccessories.length === 0 &&
-                  (catalogStatus !== 'loading' || overmolds.length > 0 || protectionOptions.length > 0) && (
+                {filteredOvermolds.length === 0 &&
+                  (catalogStatus !== 'loading' || overmolds.length > 0) && (
                     <div className="py-14 text-center text-sm text-slate-500">
-                      未找到匹配的模具或辅材。
+                      未找到匹配的模具。
                     </div>
                   )}
               </div>
@@ -1530,7 +1470,7 @@ export function MaterialLibraryPage({
               <MaterialPagination
                 currentPage={safeAccPage}
                 pageSize={accPageSize}
-                totalCount={filteredAccessories.length}
+                totalCount={filteredOvermolds.length}
                 onPageChange={setAccPage}
                 onPageSizeChange={(size) => {
                   setAccPageSize(size);

@@ -179,7 +179,7 @@ describe('MaterialLibraryPage', () => {
     // Tabs
     expect(html).toContain('连接器');
     expect(html).toContain('线材');
-    expect(html).toContain('模具与套管');
+    expect(html).toContain('模具');
     expect(html).toContain('现有成品线束方案');
 
     // 默认展示连接器列表和单价
@@ -220,7 +220,7 @@ describe('MaterialLibraryPage', () => {
     expect(html).toContain('20 条/页');
   });
 
-  it('renders accessories tab correctly with overmolds and sleeves', () => {
+  it('renders molds tab without sleeve rows', () => {
     setCatalogSnapshot(mockSnapshot);
     useCatalogStore.setState({ status: 'ready', snapshot: mockSnapshot });
     useCatalogStore.getInitialState = () => useCatalogStore.getState();
@@ -230,13 +230,13 @@ describe('MaterialLibraryPage', () => {
     const html = renderToStaticMarkup(<MaterialLibraryPage initialTab="accessories" />);
     expect(html).toContain('直头外模');
     expect(html).toContain('成型外模 (共享价格库)');
-    expect(html).toContain('波纹套管');
-    expect(html).toContain('防护辅材 (系统配置标准价)');
-    expect(html).toContain('¥ 1.80');
-    expect(html).toContain('元/米');
+    expect(html).not.toContain('波纹套管');
+    expect(html).not.toContain('防护辅材 (系统配置标准价)');
+    expect(html).not.toContain('¥ 1.80');
+    expect(html).not.toContain('元/米');
 
     // 统一分页组件
-    expect(html).toContain('显示 1 - 2 条');
+    expect(html).toContain('显示 1 - 1 条');
     expect(html).toContain('20 条/页');
   });
 
@@ -743,7 +743,7 @@ describe('MaterialLibraryPage', () => {
     expect(htmlWire).toContain('正在加载线缆物料...');
 
     const htmlAcc = renderToStaticMarkup(<MaterialLibraryPage initialTab="accessories" />);
-    expect(htmlAcc).toContain('正在加载模具与辅材物料...');
+    expect(htmlAcc).toContain('正在加载模具物料...');
   });
 
   it('撤销过期的“重试保存”通知，避免重试已取消或已替换的价格文件', () => {
