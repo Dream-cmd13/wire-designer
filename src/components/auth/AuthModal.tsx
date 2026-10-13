@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { LogIn, LogOut, X } from 'lucide-react';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { useUserStore } from '@/stores/userStore';
+import { PasswordForm } from './PasswordForm';
+import { ResetPasswordForm } from './ResetPasswordForm';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -14,6 +16,7 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const { currentUser, signIn, signOut } = useUserStore();
 
   if (!isOpen) return null;
@@ -53,7 +56,7 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation">
       <section
-        className="w-full max-w-sm overflow-hidden rounded-xl bg-white shadow-xl"
+        className="max-h-[90vh] w-full max-w-sm overflow-y-auto rounded-xl bg-white shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-dialog-title"
@@ -128,6 +131,11 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
             </>
           )}
 
+          {currentUser && <>
+            <button type="button" aria-expanded={passwordOpen} onClick={() => setPasswordOpen(value => !value)} className="w-full cursor-pointer rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">修改密码</button>
+            {passwordOpen && <PasswordForm key={`password-${currentUser.id}`} onDone={onClose} />}
+            <ResetPasswordForm key={`reset-${currentUser.id}`} />
+          </>}
           {error && <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         </div>
 

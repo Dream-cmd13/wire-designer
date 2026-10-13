@@ -44,3 +44,33 @@ it('fails closed when the server cannot confirm the role', async () => {
   await useUserStore.getState().refreshRole();
   expect(useUserStore.getState().currentUser?.role).toBeUndefined();
 });
+
+it('recognizes a reset from live server state even with stale token metadata', async () => {
+  mocks.rpc.mockResolvedValue({ data: 'password_required', error: null });
+  await useUserStore.getState().refreshRole();
+  expect(useUserStore.getState().currentUser?.mustChangePassword).toBe(true);
+  expect(useUserStore.getState().currentUser?.role).toBeUndefined();
+});
+
+it('clears a forced change only when the server confirms it', async () => {
+  useUserStore.setState({ currentUser: { ...useUserStore.getState().currentUser!, mustChangePassword: true } });
+  mocks.rpc.mockResolvedValue({ data: null, error: new Error('offline') });
+  await useUserStore.getState().refreshRole();
+  expect(useUserStore.getState().currentUser?.mustChangePassword).toBe(true);
+  mocks.rpc.mockResolvedValue({ data: 'engineer', error: null });
+  await useUserStore.getState().refreshRole();
+  expect(useUserStore.getState().currentUser?.mustChangePassword).toBe(false);
+});
+
+it('reads the server-owned first-login flag from the authenticated user', () => {
+  mocks.callback?.('SIGNED_IN', { user: { id: 'new', email: 'new@test', user_metadata: {}, app_metadata: { must_change_password: true }, created_at: '2026-01-01' } });
+  expect(useUserStore.getState().currentUser?.mustChangePassword).toBe(true);
+});
+
+it('does not release the password gate on an unrecognized server response', async () => {
+  useUserStore.setState({ currentUser: { ...useUserStore.getState().currentUser!, mustChangePassword: true, passwordCheckComplete: false } });
+  mocks.rpc.mockResolvedValue({ data: null, error: null });
+  await useUserStore.getState().refreshRole();
+  expect(useUserStore.getState().currentUser?.mustChangePassword).toBe(true);
+  expect(useUserStore.getState().currentUser?.passwordCheckComplete).toBe(false);
+});

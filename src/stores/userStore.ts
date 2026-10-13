@@ -45,6 +45,8 @@ function toAppUser(user: SupabaseAuthUser, previousUser?: User | null): User {
     name: displayName || email.split('@')[0] || '用户',
     email,
     createdAt: Date.parse(user.created_at) || Date.now(),
+    mustChangePassword: user.app_metadata?.must_change_password === true || (previousUser?.id === user.id && previousUser.mustChangePassword === true),
+    passwordCheckComplete: previousUser?.id === user.id && (previousUser.passwordCheckComplete === true || Boolean(previousUser.role)),
     role: previousUser?.id === user.id ? previousUser.role : undefined,
   };
 }
@@ -61,12 +63,14 @@ export const useUserStore = create<UserState>((set, get) => ({
     const { data, error } = await Promise.resolve(supabase.rpc('current_app_role')).catch(() => ({ data: null, error: new Error('Role unavailable') }));
     if (epoch !== roleEpoch || get().currentUser?.id !== user.id) return;
     const role: AppRole | undefined = !error && ['sales', 'engineer', 'admin'].includes(data) ? data : undefined;
-    if (get().currentUser?.role !== role) {
+    const confirmed = !error && (Boolean(role) || data === 'password_required');
+    const mustChangePassword = confirmed ? data === 'password_required' : user.mustChangePassword;
+    if (get().currentUser?.role !== role || mustChangePassword !== user.mustChangePassword) {
       clearSignedAssetCaches();
       usePriceStore.getState().reset();
       useFinishedHarnessStore.getState().reset();
     }
-    set({ currentUser: { ...user, role } });
+    set({ currentUser: { ...user, role, mustChangePassword, passwordCheckComplete: confirmed || user.passwordCheckComplete } });
   },
 
   initialize: () => {
@@ -127,7 +131,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     });
     if (error) throw error;
 
-    set({ currentUser: data.user ? toAppUser(data.user) : null, authReady: true });
+    set({ currentUser: data.user ? toAppUser(data.user, get().currentUser) : null, authReady: true });
     await get().refreshRole();
   },
 

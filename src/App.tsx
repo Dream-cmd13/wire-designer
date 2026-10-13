@@ -6,7 +6,6 @@ import { AdminShell } from '@/components/layout/AdminShell';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
-import { NoticeHost } from '@/components/shared/NoticeHost';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
@@ -224,7 +223,6 @@ export default function App() {
 
   const currentUserId = currentUser?.id;
   const authReady = useUserStore((state) => state.authReady);
-  const initializeAuth = useUserStore((state) => state.initialize);
   const initializeCatalog = useCatalogStore((state) => state.initialize);
   const refreshCatalogIfStale = useCatalogStore((state) => state.refreshIfStale);
   const catalogStatus = useCatalogStore((state) => state.status);
@@ -292,7 +290,6 @@ export default function App() {
     await performStorageBootstrapCheck();
   }, [performStorageBootstrapCheck]);
 
-  useEffect(() => initializeAuth(), [initializeAuth]);
 
   useEffect(() => {
     if (!needsStorageBootstrap) return;
@@ -1114,7 +1111,6 @@ export default function App() {
         </ErrorBoundary>
       </AdminShell>
 
-      <NoticeHost />
 
       {switchConfirmOpen && (
         <ActionToast

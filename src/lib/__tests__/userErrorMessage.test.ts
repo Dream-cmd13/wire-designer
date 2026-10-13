@@ -97,7 +97,7 @@ describe('user-facing error handling contract', () => {
 
   it('mounts the unified notice host at the app root', () => {
     const appSource = readFileSync('src/App.tsx', 'utf8');
-    expect(appSource).toContain('<NoticeHost />');
+    expect(readFileSync('src/main.tsx', 'utf8')).toContain('<NoticeHost />');
     expect(appSource).toContain("from '@/stores/noticeStore'");
   });
 });

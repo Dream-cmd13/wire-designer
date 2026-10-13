@@ -3,6 +3,8 @@
 // ============================================================
 
 export interface User {
+  mustChangePassword?: boolean;
+  passwordCheckComplete?: boolean;
   role?: import('@/lib/permissions').AppRole;
   id: string;
   name: string;
