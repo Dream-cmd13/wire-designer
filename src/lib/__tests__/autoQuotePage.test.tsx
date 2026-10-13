@@ -357,7 +357,8 @@ describe('AutoQuotePage', () => {
     expect(html).not.toContain('订单数量');
     expect(html).not.toContain('快捷数量');
     expect(html).toContain('快捷线长:');
-    for (const length of [100, 500, 1000, 2000, 5000]) {
+    expect(html).not.toContain('>100 mm</button>');
+    for (const length of [500, 1000, 2000, 3000, 5000]) {
       expect(html).toContain(`${length} mm`);
     }
 

@@ -400,7 +400,7 @@ function AutoQuoteConfigForm({
         {/* 快捷线长选择 */}
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
           <span>快捷线长:</span>
-          {[100, 500, 1000, 2000, 5000].map((lengthMm) => (
+          {[500, 1000, 2000, 3000, 5000].map((lengthMm) => (
             <button
               key={lengthMm}
               type="button"

@@ -25,6 +25,22 @@ function fixture() {
   return { catalog, config, prices };
 }
 describe('server quote boundary', () => {
+  it.each(['public', 'internal'] as const)('deduplicates endpoint codes case-insensitively in %s Excel while retaining distinct codes', mode => {
+    const { config, catalog, prices } = fixture();
+    const result = quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer');
+    if (!('price' in result)) throw new Error('not ready');
+    config.connectors[0].connector = { ...config.connectors[0].connector, id: 'm12a04-07-093', model: 'M12A04-07-093', shielded: false };
+    config.connectors.push({ ...config.connectors[0], id: 'b' });
+    const exportRow = () => {
+      const book = createQuoteWorkbook(config, result.price, mode, 'engineer');
+      return XLSX.utils.sheet_to_json<Record<string, unknown>>(book.Sheets[book.SheetNames[0]])[0];
+    };
+    const row = exportRow();
+    expect(row['A端配置']).toBe('M12A04-07-093 · 4Pin · 公头 · 非屏蔽');
+    expect(row['B端配置']).toBe(row['A端配置']);
+    config.connectors[1].connector = { ...config.connectors[1].connector, id: 'CATALOG-42' };
+    expect(exportRow()['B端配置']).toBe('CATALOG-42 · M12A04-07-093 · 4Pin · 公头 · 非屏蔽');
+  });
   it('quotes and exports the tinned endpoint through the server boundary', () => {
     const { config, catalog, prices } = fixture();
     config.quotation!.endpointBType = 'strip-tin';

@@ -31,8 +31,12 @@ export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mo
     : [config.name, config.quantity, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice, price.totalPrice];
   const connectorLabel = (index: number) => {
     const c = config.connectors[index]?.connector;
-    return c ? `${c.id} · ${c.model || c.name} · ${c.pinCount}Pin · ${c.type === 'male' ? '公头' : c.type === 'female' ? '母头' : '插座'} · ${c.shielded === undefined ? '屏蔽属性未提供' : c.shielded ? '屏蔽' : '非屏蔽'}`
-      : index === 1 && config.quotation?.endpointBType === 'strip-tin' ? '剥皮沾锡' : '切断端';
+    if (!c) return index === 1 && config.quotation?.endpointBType === 'strip-tin' ? '剥皮沾锡' : '切断端';
+    const id = c.id.trim();
+    const model = c.model?.trim() || c.name.trim();
+    const identifier = id.toLowerCase() === model.toLowerCase()
+      ? model : [id, model].filter(Boolean).join(' · ');
+    return `${identifier} · ${c.pinCount}Pin · ${c.type === 'male' ? '公头' : c.type === 'female' ? '母头' : '插座'} · ${c.shielded === undefined ? '屏蔽属性未提供' : c.shielded ? '屏蔽' : '非屏蔽'}`;
   };
   const materials = getQuoteMaterials(config, context?.catalog ?? null);
   const describe = (kind: 'wire' | 'outer-mold' | 'inner-mold') => materials.filter(row => row.kind === kind)
