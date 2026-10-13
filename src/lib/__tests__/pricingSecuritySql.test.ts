@@ -248,5 +248,21 @@ describe('real PostgreSQL pricing permissions', () => {
     await asUser(sales);
     expect(await scalar('select count(*)::int as count from public.material_prices')).toEqual({ count: 0 });
   });
+  it('records initial price entry and replaces metadata with the latest editor', async () => {
+    const entry = { kind: 'connector', resourceId: material, name: 'M12', specification: '["metadata-lifecycle"]',
+      lengthMm: 0, unit: '元/个', taxIncludedPrice: '10', expectedUpdatedAt: null as string | null };
+    await asUser(engineer);
+    await db.query('select public.save_material_prices($1::jsonb)', [JSON.stringify([entry])]);
+    const first = await scalar(`select updated_at::text as stamp, updated_by, updated_by_name,
+      updated_at > '2020-01-01'::timestamptz as fresh from public.material_prices where specification = '["metadata-lifecycle"]'`);
+    expect(first).toMatchObject({ updated_by: engineer, updated_by_name: '张工', fresh: true });
+    await asUser(admin);
+    await db.query('select public.save_material_prices($1::jsonb)', [JSON.stringify([{ ...entry,
+      taxIncludedPrice: '11', expectedUpdatedAt: first.stamp }])]);
+    const latest = await scalar(`select updated_at::text as stamp, updated_by, updated_by_name,
+      tax_included_price from public.material_prices where specification = '["metadata-lifecycle"]'`);
+    expect(latest).toMatchObject({ updated_by: admin, updated_by_name: 'admin', tax_included_price: '11' });
+    expect(Date.parse(String(latest.stamp))).toBeGreaterThan(Date.parse(String(first.stamp)));
+  });
 
 });

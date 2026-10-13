@@ -12,7 +12,7 @@ export function PriceUpdateInfo({ price, field }: { price?: MaterialPrice; field
   if (field === 'time') return <span title="北京时间（UTC+8）">{time}</span>;
   if (field === 'user') return <span className="break-all" title={price.updatedBy ?? undefined}>{price.updatedByName || price.updatedBy || '未记录'}</span>;
   return <div className="mt-1 text-left text-[11px] font-normal leading-4 text-slate-500">
-    <p>更新时间：<span title="北京时间（UTC+8）">{time}</span></p>
-    <p className="break-all">更新人：<span title={price.updatedBy ?? undefined}>{price.updatedByName || price.updatedBy || '未记录'}</span></p>
+    <p>价格更新时间：<span title="北京时间（UTC+8）">{time}</span></p>
+    <p className="break-all">价格更新人：<span title={price.updatedBy ?? undefined}>{price.updatedByName || price.updatedBy || '未记录'}</span></p>
   </div>;
 }

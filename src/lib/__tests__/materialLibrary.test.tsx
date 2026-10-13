@@ -260,8 +260,8 @@ describe('MaterialLibraryPage', () => {
     expect(inner).toContain('所属外模：');
     expect(inner).not.toContain('硬度：45P');
     expect(html).toContain('显示 1 - 2 条');
-    expect(html).toContain('>更新时间</th>');
-    expect(html).toContain('>更新人</th>');
+    expect(html).toContain('>价格更新时间</th>');
+    expect(html).toContain('>价格更新人</th>');
   });
 
   it('generates price template rows containing unpriced catalog items for batch pricing', () => {

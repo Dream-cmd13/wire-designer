@@ -1015,9 +1015,10 @@ export function MaterialLibraryPage({
                       <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">类型 / 屏蔽</th>
                       <th className="w-[100px] min-w-[90px] px-4 py-3 font-semibold">PIN / 间距</th>
                       <th className="w-[140px] min-w-[130px] px-4 py-3 font-semibold">电气与防护规格</th>
-                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">材质</th>
                       <th className="w-[120px] min-w-[110px] px-4 py-3 font-semibold text-right">含税单价</th>
                       <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
+                      <th className="min-w-[170px] px-4 py-3 font-semibold">价格更新时间</th>
+                      <th className="min-w-[110px] px-4 py-3 font-semibold">价格更新人</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1077,14 +1078,6 @@ export function MaterialLibraryPage({
                                 .join(' · ') || '-'}
                             </p>
                           </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <div
-                              className="max-w-[160px] truncate"
-                              title={c.housingMaterial ?? c.contactMaterial ?? '-'}
-                            >
-                              {c.housingMaterial ?? c.contactMaterial ?? '-'}
-                            </div>
-                          </td>
                           <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
                             {price ? (
                               <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
@@ -1093,12 +1086,13 @@ export function MaterialLibraryPage({
                             ) : (
                               <span className="inline-block px-2 py-1 text-xs text-slate-400">待定价</span>
                             )}
-                            <PriceUpdateInfo price={price} />
                             {editPriceButton(c.resourceItemId || c.id, 'connector')}
                           </td>
                           <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
                             {price?.unit ?? '元/个'}
                           </td>
+                          <td className="px-4 py-3 whitespace-nowrap"><PriceUpdateInfo price={price} field="time" /></td>
+                          <td className="px-4 py-3"><PriceUpdateInfo price={price} field="user" /></td>
                         </tr>
                       );
                     })}
@@ -1424,8 +1418,8 @@ export function MaterialLibraryPage({
                       <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">材质与硬度</th>
                       <th className="w-[120px] min-w-[110px] px-4 py-3 font-semibold text-right">含税单价</th>
                       <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
-                      <th className="min-w-[170px] px-4 py-3 font-semibold">更新时间</th>
-                      <th className="min-w-[110px] px-4 py-3 font-semibold">更新人</th>
+                      <th className="min-w-[170px] px-4 py-3 font-semibold">价格更新时间</th>
+                      <th className="min-w-[110px] px-4 py-3 font-semibold">价格更新人</th>
                       <th className="min-w-[90px] px-4 py-3 font-semibold">操作</th>
                     </tr>
                   </thead>
