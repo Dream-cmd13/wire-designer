@@ -36,7 +36,8 @@ function fixture(mode: 'success' | 'health-failure' | 'bad-hash' | 'well-known')
   return { base, id, result }
 }
 
-describe('部署文件切换与恢复', () => {
+// 真实 Bash/tar/mv 子进程在 Windows 全量并行测试下可能超过默认 5 秒。
+describe('部署文件切换与恢复', { timeout: 20000 }, () => {
   it('发布新首页并保留验证文件、旧资源和旧版本备份', () => {
     const { base, id, result } = fixture('success')
     expect(result.status, result.stderr + result.stdout).toBe(0)
