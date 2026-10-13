@@ -134,7 +134,7 @@ describe('server quote boundary', () => {
     if (!('price' in result)) throw new Error('not ready');
     const book = createQuoteWorkbook(config, result.price);
     const row = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]])[0];
-    expect(Object.keys(row as object)).toEqual(['产品名称','订单数量','交期','含税含运费单价','订单总价','A端配置','B端配置','线材配置','外模配置','内模配置','核价时间']);
+    expect(Object.keys(row as object)).toEqual(['产品名称','订单数量','含税含运费单价','订单总价','A端配置','B端配置','线材配置','外模配置','内模配置','核价时间']);
     expect(() => createQuoteWorkbook(config, result.price, 'internal', 'sales')).toThrow('权限');
   });
 
@@ -146,10 +146,11 @@ describe('server quote boundary', () => {
     const serialized = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' });
     const restored = XLSX.read(serialized, { type: 'buffer' });
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(restored.Sheets[restored.SheetNames[0]])[0];
+    expect(row).not.toHaveProperty('交期');
     expect(row).not.toHaveProperty('订单数量');
     expect(row).not.toHaveProperty('订单总价');
     expect(row['含税含运费单价']).toBe(result.price.unitPrice);
     if (mode === 'internal') expect(row['产品含税成本']).toBe(result.price.breakdown?.cost);
-    else expect(Object.keys(row)).toEqual(['产品名称', '交期', '含税含运费单价','A端配置','B端配置','线材配置','外模配置','内模配置','核价时间']);
+    else expect(Object.keys(row)).toEqual(['产品名称', '含税含运费单价','A端配置','B端配置','线材配置','外模配置','内模配置','核价时间']);
   });
 });

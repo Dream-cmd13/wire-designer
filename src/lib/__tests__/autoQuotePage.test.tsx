@@ -286,10 +286,10 @@ describe('AutoQuotePage', () => {
       const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]]);
       expect(rows).toMatchObject([{
         产品名称: expect.any(String),
-        交期: '7日',
         含税含运费单价: '10.00',
         核价时间: '2026-10-12 08:00:00 (北京时间)',
       }]);
+      expect(rows[0]).not.toHaveProperty('交期');
       expect(rows[0]).not.toHaveProperty('订单数量');
       expect(rows[0]).not.toHaveProperty('订单总价');
       expect(rows[0]).not.toHaveProperty('计价规则版本');
@@ -426,12 +426,13 @@ describe('AutoQuotePage', () => {
     expect(html).toContain('data-testid="auto-quote-sticky-bar"');
     expect(html).toContain('max-w-3xl');
 
-    // 业务员可见内容：选配参数、最终单价、交期参考、导出报价
+    // 业务员可见内容：选配参数、最终单价、导出报价
     expect(html).toContain('选配参数与端部工艺');
     expect(html).toContain('含税含运费单价');
     expect(html).toContain('¥58.50');
     expect(html).not.toContain('订单总价');
-    expect(html).toContain('交期参考');
+    expect(html).not.toContain('交期参考');
+    expect(html).not.toContain('7日');
     expect(html).toContain('导出报价 Excel');
 
     // 业务员严禁看到内部成本拆解与工序明细

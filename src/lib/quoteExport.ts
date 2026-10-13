@@ -2,7 +2,6 @@ import * as XLSX from 'xlsx';
 import type { HarnessConfig } from '@/types/harness';
 import type { QuotePrice } from './pricing';
 import { canViewPricing } from './permissions';
-import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import type { CatalogSnapshot } from '@/types/catalog';
 import { formatMaterialSpecification, getQuoteMaterials } from './quoteMaterials';
 
@@ -24,11 +23,11 @@ export interface QuoteExportContext {
 /** Exports the displayed server snapshot without calculating a second price. */
 export function createQuoteWorkbook(config: HarnessConfig, price: QuotePrice, mode: 'public' | 'internal' = 'public', role?: unknown, scope: 'unit' | 'order' = 'order', context?: QuoteExportContext) {
   const headers = scope === 'unit'
-    ? ['产品名称', '交期', '含税含运费单价']
-    : ['产品名称', '订单数量', '交期', '含税含运费单价', '订单总价'];
+    ? ['产品名称', '含税含运费单价']
+    : ['产品名称', '订单数量', '含税含运费单价', '订单总价'];
   const values: (string | number)[] = scope === 'unit'
-    ? [config.name, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice]
-    : [config.name, config.quantity, DEFAULT_QUOTE_LEAD_TIME, price.unitPrice, price.totalPrice];
+    ? [config.name, price.unitPrice]
+    : [config.name, config.quantity, price.unitPrice, price.totalPrice];
   const connectorLabel = (index: number) => {
     const c = config.connectors[index]?.connector;
     if (!c) return index === 1 && config.quotation?.endpointBType === 'strip-tin' ? '剥皮沾锡' : '切断端';

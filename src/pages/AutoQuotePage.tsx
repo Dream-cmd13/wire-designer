@@ -20,7 +20,6 @@ import { canViewPricing } from '@/lib/permissions';
 import { formatQuoteMoney } from '@/lib/pricing';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
 import { safeFilename } from '@/lib/designFile';
-import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import {
   DEFAULT_AUTO_QUOTE_FORM,
   buildAutoQuoteConfig,
@@ -208,8 +207,9 @@ function AutoQuoteConfigForm({
         )}
 
         {form.endpointBType === 'strip-tin' && (
-          <div className="rounded-lg bg-amber-50 p-2.5 text-[11px] text-amber-800 border border-amber-200/80">
-            A 端焊接成型，B 端剥皮沾锡；屏蔽线两端均计处理编织和热缩编织费用。
+          <div className="rounded-lg bg-slate-50 p-2.5 text-[11px] text-slate-500 flex items-center gap-2 border border-slate-200/60">
+            <Info className="h-4 w-4 text-slate-400 shrink-0" />
+            <span>A 端焊接成型，B 端剥皮沾锡；屏蔽线两端均计处理编织和热缩编织费用。</span>
           </div>
         )}
       </div>
@@ -636,20 +636,11 @@ export function AutoQuotePage() {
                 </div>
               ) : evaluation.status === 'ready' && evaluation.price ? (
                 <>
-                  <div className="flex items-center gap-3 sm:gap-6 min-w-0">
-                    <div>
-                      <span className="text-[10px] text-slate-500 block leading-tight">含税单价</span>
-                      <span className="text-base sm:text-lg font-bold text-blue-600 tabular-nums leading-none">
-                        ¥{formatQuoteMoney(evaluation.price.unitPrice)}
-                      </span>
-                    </div>
-                    <div className="h-6 w-px bg-slate-200" />
-                    <div>
-                      <span className="text-[10px] text-slate-400 block leading-tight">交期参考</span>
-                      <span className="text-xs font-medium text-slate-700 leading-none">
-                        {DEFAULT_QUOTE_LEAD_TIME}
-                      </span>
-                    </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-slate-500 block leading-tight">含税单价</span>
+                    <span className="text-base sm:text-lg font-bold text-blue-600 tabular-nums leading-none">
+                      ¥{formatQuoteMoney(evaluation.price.unitPrice)}
+                    </span>
                   </div>
 
                   <button

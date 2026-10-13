@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { AlertCircle, Download, FileSpreadsheet, Info, Loader2 } from 'lucide-react';
+import { AlertCircle, Download, FileSpreadsheet, Info, Loader2, RefreshCw } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { formatQuoteMoney, type QuoteLine } from '@/lib/pricing';
 import { createQuoteWorkbook, formatQuoteTime } from '@/lib/quoteExport';
 import { safeFilename } from '@/lib/designFile';
-import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import type { AutoQuoteEvaluation } from '@/lib/autoQuote';
 import { useUserStore } from '@/stores/userStore';
 import { canViewPricing } from '@/lib/permissions';
@@ -153,12 +152,23 @@ export function AutoQuotePriceCard({
       {status === 'ready' && price && (
         <div className="space-y-3.5">
           <div className="space-y-2 text-xs text-slate-600">
-            <p>核价时间：{formatQuoteTime(evaluation.calculatedAt)}</p>
-            {onRetry && <button type="button" onClick={onRetry} className="cursor-pointer text-blue-600 underline">重新核价</button>}
-            <p>导出当前核价结果；需要最新价格请先重新核价。</p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>核价时间：{formatQuoteTime(evaluation.calculatedAt)}</span>
+              {onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-2xs hover:border-blue-300 hover:bg-blue-50/50 hover:text-blue-600 transition cursor-pointer"
+                >
+                  <RefreshCw className="h-3 w-3 text-slate-400" />
+                  <span>重新核价</span>
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">导出当前核价结果；需要最新价格请先重新核价。</p>
             {evaluation.previousUnitPrice && <p role="status" className="text-amber-700">单价由 ¥{formatQuoteMoney(evaluation.previousUnitPrice)} 更新为 ¥{formatQuoteMoney(price.unitPrice)}</p>}
           </div>
-          {/* 单价与交期 */}
+          {/* 单价 */}
           <div className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-4 text-white shadow-sm">
             <div className="flex items-baseline justify-between">
               <span className="text-xs font-medium text-blue-100">含税含运费单价</span>
@@ -166,9 +176,6 @@ export function AutoQuotePriceCard({
                 ¥{formatQuoteMoney(price.unitPrice)}
               </span>
             </div>
-            <p className="mt-3 border-t border-blue-400/40 pt-2.5 text-[11px] text-blue-200">
-              交期参考：{DEFAULT_QUOTE_LEAD_TIME}
-            </p>
           </div>
 
           {/* 材料成本拆解 */}

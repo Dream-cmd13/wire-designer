@@ -5,7 +5,6 @@ import { calculatePrice, DEFAULT_PRICING_SETTINGS } from '../../../server/pricin
 import { formatMaterialSpecification, getPriceImportCandidates, getQuoteMaterials } from '@/lib/quoteMaterials';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
-import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { validatePrices, type MaterialPrice } from '@/repositories/priceRepository';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
@@ -300,8 +299,8 @@ describe('price workbook and repository', () => {
     expect(result.SheetNames).toEqual(['成本分析']);
     const row = XLSX.utils.sheet_to_json<Record<string, unknown>>(result.Sheets[result.SheetNames[0]])[0];
     expect(row).toMatchObject({ '产品名称': config.name, '材料损耗': '0.318', '加工损耗': '0.21',
-      '产品含税成本': '15.328', '含税含运费单价': '19.73', '订单总价': '1973.00', '交期': '7日' });
-    expect(row['交期']).toBe(DEFAULT_QUOTE_LEAD_TIME);
+      '产品含税成本': '15.328', '含税含运费单价': '19.73', '订单总价': '1973.00' });
+    expect(row).not.toHaveProperty('交期');
     expect(JSON.stringify(row)).not.toContain('wire-resource');
     expect(() => createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'sales')).toThrow('权限');
   });

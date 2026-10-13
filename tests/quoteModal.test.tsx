@@ -7,7 +7,6 @@ import { BomModal } from '@/components/panels/BomPanel';
 import { BomPreviewModal, type BomPreviewItem } from '@/components/panels/BomPreviewModal';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { useServerQuote } from '@/lib/useServerQuote';
-import { DEFAULT_QUOTE_LEAD_TIME } from '@/data/catalogOptions';
 import { alignHarnessConfig } from '@/lib/canvasMaterials';
 vi.mock('@/lib/useServerQuote', () => ({ useServerQuote: vi.fn() }));
 vi.mock('@/stores/harnessStore', async (importOriginal) => {
@@ -117,12 +116,12 @@ describe('QuoteModal component & anti-jitter behavior', () => {
     expect(aligned.quotation?.processingEnds).toBe(2);
   });
 
-  it('binds DEFAULT_QUOTE_LEAD_TIME in the price card of QuotePanel', () => {
+  it('displays unit price in the price card without lead time or order total', () => {
     const source = readFileSync('src/components/autoQuote/AutoQuotePriceCard.tsx', 'utf8');
-    expect(source).toContain('交期参考：{DEFAULT_QUOTE_LEAD_TIME}');
     expect(source).toContain('price.unitPrice');
+    expect(source).not.toContain('交期参考');
+    expect(source).not.toContain('DEFAULT_QUOTE_LEAD_TIME');
     expect(source).not.toContain('订单总价');
-    expect(DEFAULT_QUOTE_LEAD_TIME).toBe('7日');
   });
 
   it('applies anti-jitter minimum height classes to QuoteModal container', () => {
