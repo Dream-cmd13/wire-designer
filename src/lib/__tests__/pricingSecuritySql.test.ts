@@ -89,6 +89,49 @@ describe('real PostgreSQL pricing permissions', () => {
     await asUser(sales);
     await expect(merge([entry])).rejects.toThrow('Forbidden');
   });
+  it('saves manual prices atomically with conflict checks, audit and role enforcement', async () => {
+    await db.exec('reset role');
+    const migration = readFileSync('supabase/updates/20261012_material_price_edit.sql', 'utf8');
+    expect(migration).toBe(readFileSync('supabase/sql/10_schema/08_material_price_edit.sql', 'utf8'));
+    const before = await db.query('select * from public.material_prices order by id');
+    await db.exec(migration);
+    await db.exec(migration);
+    expect(await db.query('select * from public.material_prices order by id')).toEqual(before);
+    await asUser(engineer);
+    const current = await scalar('select updated_at::text as stamp from public.material_prices');
+    const entry = { kind: 'connector', resourceId: material, name: 'M12', specification: '[]',
+      lengthMm: 0, unit: '元/个', taxIncludedPrice: '0.123456', expectedUpdatedAt: current?.stamp };
+    const save = (rows: unknown[]) => db.query('select public.save_material_prices($1::jsonb)', [JSON.stringify(rows)]);
+    await save([entry]);
+    expect(await scalar('select tax_included_price from public.material_prices')).toEqual({ tax_included_price: '0.123456' });
+    await expect(save([{ ...entry, taxIncludedPrice: '9' }])).rejects.toThrow('Price conflict');
+    await expect(save([{ ...entry, expectedUpdatedAt: null }])).rejects.toThrow('Price conflict');
+    const fresh = await scalar('select updated_at::text as stamp from public.material_prices');
+    await expect(save([{ ...entry, expectedUpdatedAt: fresh?.stamp, taxIncludedPrice: '5' },
+      { ...entry, specification: '[1]', expectedUpdatedAt: null, taxIncludedPrice: '-1' }])).rejects.toThrow();
+    expect(await scalar('select tax_included_price from public.material_prices')).toEqual({ tax_included_price: '0.123456' });
+    await expect(save([{ ...entry, expectedUpdatedAt: fresh?.stamp, taxIncludedPrice: '1.1234567' }])).rejects.toThrow();
+    await expect(save([entry, entry])).rejects.toThrow();
+    await save([{ ...entry, expectedUpdatedAt: fresh?.stamp, taxIncludedPrice: '0' }]);
+    await asUser(sales);
+    await expect(save([{ ...entry, specification: '[1]', expectedUpdatedAt: null }])).rejects.toThrow('Forbidden');
+    await asUser(admin);
+    await save([{ ...entry, specification: '[1]', expectedUpdatedAt: null }]);
+    expect(await scalar("select count(*)::int as count from public.pricing_audit where after_value->>'source_name' = '页面编辑'"))
+      .toEqual({ count: 3 });
+    const snapshot = await db.query('select * from public.material_prices order by specification');
+    const audit = await scalar('select count(*)::int as count from public.pricing_audit');
+    const stamps = await db.query<{ specification: string; stamp: string }>('select specification, updated_at::text as stamp from public.material_prices');
+    const firstStamp = stamps.rows.find(r => r.specification === '[1]')!.stamp;
+    // '[1]' sorts before '[]': the first update really executes before the stale second row fails.
+    await expect(save([
+      { ...entry, specification: '[1]', expectedUpdatedAt: firstStamp, taxIncludedPrice: '99' },
+      { ...entry, expectedUpdatedAt: '2000-01-01T00:00:00Z', taxIncludedPrice: '88' },
+    ])).rejects.toThrow('Price conflict');
+    expect(await db.query('select * from public.material_prices order by specification')).toEqual(snapshot);
+    expect(await scalar('select count(*)::int as count from public.pricing_audit')).toEqual(audit);
+
+  });
   it('upgrades existing settings without losing other prices and can safely run twice', async () => {
     await db.exec('reset role');
     await db.exec(`update public.pricing_settings set settings =
@@ -179,4 +222,31 @@ describe('real PostgreSQL pricing permissions', () => {
     expect(await scalar('select count(*)::int as count from public.material_prices')).toEqual({ count: 0 });
     expect(await scalar('select count(*)::int as count from storage.objects')).toEqual({ count: 0 });
   });
+  it('records the authenticated updater for edits and imports without rewriting historical prices', async () => {
+    await db.exec('reset role');
+    await db.exec("alter table auth.users add column raw_user_meta_data jsonb default '{}'::jsonb");
+    await db.query("update public.user_roles set role = 'engineer' where user_id = $1", [engineer]);
+    await db.query("update auth.users set raw_user_meta_data = $1::jsonb where id = $2", [JSON.stringify({ display_name: '张工' }), engineer]);
+    const before = await db.query('select id, tax_included_price, updated_at::text from public.material_prices order by id');
+    const migration = readFileSync('supabase/updates/20261012_material_price_updater.sql', 'utf8');
+    expect(migration).toBe(readFileSync('supabase/sql/10_schema/09_material_price_updater.sql', 'utf8'));
+    await db.exec(migration);
+    await db.exec(migration);
+    expect(await db.query('select id, tax_included_price, updated_at::text from public.material_prices order by id')).toEqual(before);
+    expect(await scalar('select count(*)::int as count from public.material_prices where updated_by is not null')).toEqual({ count: 0 });
+    await asUser(engineer);
+    // Attempting to spoof the updater and timestamp must be overwritten by database triggers.
+    await db.query("update public.material_prices set tax_included_price = 12, updated_by = $1, updated_by_name = '伪造用户', updated_at = '2000-01-01' where specification = '[]'", [admin]);
+    expect(await scalar("select updated_by, updated_by_name, updated_at > '2000-01-02'::timestamptz as fresh from public.material_prices where specification = '[]'"))
+      .toEqual({ updated_by: engineer, updated_by_name: '张工', fresh: true });
+    await asUser(admin);
+    await db.query('select public.import_material_prices($1::jsonb, $2)', [JSON.stringify([{ kind: 'connector', resourceId: material, name: 'M12', specification: '[]', lengthMm: 0, unit: '元/个', taxIncludedPrice: '13' }]), 'test.xlsx']);
+    expect(await scalar("select updated_by, updated_by_name from public.material_prices where specification = '[]'"))
+      .toEqual({ updated_by: admin, updated_by_name: 'admin' });
+    expect(await scalar("select after_value->>'updated_by' as actor from public.pricing_audit where action = 'material_prices:UPDATE' order by id desc limit 1"))
+      .toEqual({ actor: admin });
+    await asUser(sales);
+    expect(await scalar('select count(*)::int as count from public.material_prices')).toEqual({ count: 0 });
+  });
+
 });

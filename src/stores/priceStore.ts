@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
-import { priceRepository, type MaterialPrice, type PriceBook } from '@/repositories/priceRepository';
+import { priceRepository, type MaterialPriceEdit, type MaterialPrice, type PriceBook } from '@/repositories/priceRepository';
 import { canViewPricing } from '@/lib/permissions';
 import { useUserStore } from './userStore';
 
@@ -11,6 +11,7 @@ interface PriceState {
   error: string | null;
   load: (options?: { forceRefresh?: boolean }) => Promise<void>;
   merge: (prices: MaterialPrice[], source: string) => Promise<void>;
+  saveEdits: (prices: MaterialPriceEdit[]) => Promise<void>;
   reset: () => void;
 }
 
@@ -23,6 +24,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   error: null,
 
   async load(options = {}) {
+    if (get().loading) return;
     if (!canViewPricing(useUserStore.getState().currentUser?.role)) { get().reset(); return; }
     const epoch = loadEpoch;
     const hasExisting = Boolean(get().book);
@@ -66,6 +68,20 @@ export const usePriceStore = create<PriceState>((set, get) => ({
       if (epoch === loadEpoch) {
         set({ loading: false });
       }
+    }
+  },
+
+  async saveEdits(prices) {
+    if (!canViewPricing(useUserStore.getState().currentUser?.role)) throw new Error('无物料价格维护权限');
+    // Invalidate any in-flight read so it cannot replace freshly saved prices.
+    const epoch = ++loadEpoch;
+    set({ loading: true, refreshing: false });
+    try {
+      const book = await priceRepository.saveEdits(prices);
+      if (epoch !== loadEpoch) throw new Error('价格会话已变化，请刷新。');
+      set({ book, error: null });
+    } finally {
+      if (epoch === loadEpoch) set({ loading: false });
     }
   },
 

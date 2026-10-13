@@ -1,4 +1,10 @@
+import { PriceUpdateInfo } from '@/components/materials/PriceUpdateInfo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { MaterialPriceEditDialog } from '@/components/materials/MaterialPriceEditDialog';
+import { formatMaterialPrice } from '@/lib/materialPriceEdit';
+import { canViewPricing } from '@/lib/permissions';
+import { useUserStore } from '@/stores/userStore';
+import type { QuoteMaterial } from '@/lib/quoteMaterials';
 import { PricingManagement } from '@/components/materials/PricingManagement';
 import {
   Cable,
@@ -38,7 +44,7 @@ import { applyCatalogWireSpec } from '@/lib/wireCatalog';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
-import type { Connector, OvermoldSpec } from '@/types/harness';
+import type { Connector } from '@/types/harness';
 import type { CatalogWire } from '@/types/catalog';
 
 type MaterialTab = 'connectors' | 'wires' | 'accessories' | 'finished-harnesses';
@@ -89,6 +95,8 @@ export function MaterialLibraryPage({
   initialConnPriceStatus = 'all',
   initialWirePriceStatus = 'all',
 }: MaterialLibraryPageProps = {}) {
+  const canEditPrices = canViewPricing(useUserStore(state => state.currentUser?.role));
+  const [priceEditor, setPriceEditor] = useState<{ candidates: QuoteMaterial[]; prices: MaterialPrice[] } | null>(null);
   const storeSnapshot = useCatalogStore((state) => state.snapshot);
   const rawCatalogStatus = useCatalogStore((state) => state.status);
   const rawCatalogRefreshing = useCatalogStore((state) => state.refreshing);
@@ -116,6 +124,17 @@ export function MaterialLibraryPage({
   const loading = rawLoading || currentPriceState.loading;
   const priceRefreshing = rawPriceRefreshing || currentPriceState.refreshing;
   const prices = useMemo(() => book?.prices ?? [], [book]);
+
+  const priceCandidates = useMemo(() => getCatalogPriceCandidates(snapshot), [snapshot]);
+  const editPriceButton = (resourceId: string, kind: QuoteMaterial['kind']) => {
+    if (!canEditPrices) return null;
+    const candidates = priceCandidates.filter(row => row.resourceId === resourceId &&
+      row.kind === kind);
+    return <button type="button" disabled={loading || priceRefreshing || Boolean(error) || !candidates.length}
+      className="mt-1 block w-full text-right text-xs text-blue-700 disabled:opacity-40"
+      aria-label={`编辑${candidates[0]?.name ?? '物料'}单价`}
+      onClick={() => setPriceEditor({ candidates, prices })}>编辑单价</button>;
+  };
 
   const storeFinishedItems = useFinishedHarnessStore((state) => state.items);
   const currentFinishedState = useFinishedHarnessStore.getState();
@@ -280,7 +299,7 @@ export function MaterialLibraryPage({
       const tierKey = materialPriceTierKey(p);
       if (p.kind === 'connector') {
         connMap.set(tierKey, p);
-      } else if (p.kind === 'outer-mold') {
+      } else if (p.kind === 'outer-mold' || p.kind === 'inner-mold') {
         moldMap.set(tierKey, p);
       } else if (p.kind === 'wire') {
         const list = wireTiersMap.get(tierKey) ?? [];
@@ -331,17 +350,6 @@ export function MaterialLibraryPage({
       return priceIndex.wireTiersMap.get(tierKey) ?? [];
     },
     [priceIndex.wireTiersMap],
-  );
-
-  // 获取外模价格（严格精确匹配）
-  const getOvermoldPrice = useCallback(
-    (m: OvermoldSpec): MaterialPrice | undefined => {
-      const resId = m.resourceItemId || m.id;
-      const spec = JSON.stringify([m.outerMaterial, m.outerHardness || '', m.outerForm]);
-      const tierKey = JSON.stringify(['outer-mold', resId, spec, '元/个']);
-      return priceIndex.moldMap.get(tierKey);
-    },
-    [priceIndex.moldMap],
   );
 
   // 连接器筛选选项
@@ -477,17 +485,18 @@ export function MaterialLibraryPage({
     return filteredWires.slice(start, start + wirePageSize);
   }, [filteredWires, safeWirePage, wirePageSize]);
 
-  // 模具过滤
+  const moldRows = useMemo(() => priceCandidates
+    .filter(candidate => candidate.kind === 'outer-mold' || candidate.kind === 'inner-mold')
+    .flatMap(candidate => {
+      const parent = overmolds.find(mold => (mold.resourceItemId || mold.id) === candidate.resourceId);
+      return parent ? [{ candidate, parent }] : [];
+    }), [priceCandidates, overmolds]);
   const filteredOvermolds = useMemo(() => {
     const q = accQuery.trim().toLowerCase();
-    if (!q) return overmolds;
-    return overmolds.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.id.toLowerCase().includes(q) ||
-        m.outerMaterial.toLowerCase().includes(q),
-    );
-  }, [overmolds, accQuery]);
+    return moldRows.filter(({ candidate, parent }) => !q ||
+      [candidate.name, parent.name, parent.id, candidate.specification,
+        candidate.kind === 'inner-mold' ? '内模' : '外模'].some(value => value.toLowerCase().includes(q)));
+  }, [moldRows, accQuery]);
 
   const totalAccPages = Math.max(1, Math.ceil(filteredOvermolds.length / accPageSize));
   const safeAccPage = Math.min(Math.max(1, accPage), totalAccPages);
@@ -857,7 +866,7 @@ export function MaterialLibraryPage({
             <Layers className="h-4 w-4" />
             <span>模具</span>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-              {overmolds.length}
+              {moldRows.length}
             </span>
           </button>
 
@@ -1079,11 +1088,13 @@ export function MaterialLibraryPage({
                           <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
                             {price ? (
                               <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
-                                ¥ {Number(price.taxIncludedPrice).toFixed(2)}
+                                ¥ {formatMaterialPrice(price.taxIncludedPrice)}
                               </span>
                             ) : (
                               <span className="inline-block px-2 py-1 text-xs text-slate-400">待定价</span>
                             )}
+                            <PriceUpdateInfo price={price} />
+                            {editPriceButton(c.resourceItemId || c.id, 'connector')}
                           </td>
                           <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
                             {price?.unit ?? '元/个'}
@@ -1297,32 +1308,34 @@ export function MaterialLibraryPage({
                               <div className="flex flex-col items-end">
                                 {wireTiers.length === 1 ? (
                                   <div
-                                    className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs whitespace-nowrap shadow-2xs"
-                                    title={`线长档位 ≤ ${formatWireTierLength(wireTiers[0].lengthMm)} (${wireTiers[0].lengthMm}mm): 含税单价 ¥${Number(wireTiers[0].taxIncludedPrice).toFixed(2)} / 条`}
+                                    className="inline-flex flex-wrap items-center gap-1.5 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs whitespace-nowrap shadow-2xs"
+                                    title={`线长档位 ≤ ${formatWireTierLength(wireTiers[0].lengthMm)} (${wireTiers[0].lengthMm}mm): 含税单价 ¥${formatMaterialPrice(wireTiers[0].taxIncludedPrice)} / 条`}
                                   >
                                     <span className="font-mono text-xs font-semibold text-emerald-700">
                                       {formatWireTierLength(wireTiers[0].lengthMm)}:
                                     </span>
                                     <span className="tabular-nums font-bold text-emerald-800">
-                                      ¥ {Number(wireTiers[0].taxIncludedPrice).toFixed(2)}
+                                      ¥ {formatMaterialPrice(wireTiers[0].taxIncludedPrice)}
                                     </span>
+                                    <div className="w-full"><PriceUpdateInfo price={wireTiers[0]} /></div>
                                   </div>
                                 ) : (
-                                  <div className="grid grid-cols-2 gap-1.5 w-full min-w-[200px] max-w-[230px]">
+                                  <div className="grid grid-cols-1 gap-1.5 w-full min-w-[230px]">
                                     {wireTiers.map((tier) => {
                                       const lenStr = formatWireTierLength(tier.lengthMm);
                                       return (
                                         <div
                                           key={tier.lengthMm}
-                                          className="flex items-center justify-between gap-1 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2 py-1 text-xs whitespace-nowrap shadow-2xs"
-                                          title={`线长档位 ≤ ${lenStr} (${tier.lengthMm}mm): 含税单价 ¥${Number(tier.taxIncludedPrice).toFixed(2)} / 条`}
+                                          className="flex flex-wrap items-center justify-between gap-1 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2 py-1 text-xs whitespace-nowrap shadow-2xs"
+                                          title={`线长档位 ≤ ${lenStr} (${tier.lengthMm}mm): 含税单价 ¥${formatMaterialPrice(tier.taxIncludedPrice)} / 条`}
                                         >
                                           <span className="font-mono text-xs font-semibold text-emerald-700">
                                             {lenStr}:
                                           </span>
                                           <span className="tabular-nums font-bold text-emerald-800">
-                                            ¥ {Number(tier.taxIncludedPrice).toFixed(2)}
+                                            ¥ {formatMaterialPrice(tier.taxIncludedPrice)}
                                           </span>
+                                    <div className="w-full"><PriceUpdateInfo price={tier} /></div>
                                         </div>
                                       );
                                     })}
@@ -1334,6 +1347,7 @@ export function MaterialLibraryPage({
                                 待定价
                               </span>
                             )}
+                            {editPriceButton(w.resourceItemId || w.id, 'wire')}
                           </td>
                           <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
                             元/条
@@ -1401,52 +1415,45 @@ export function MaterialLibraryPage({
                 </div>
               )}
               <div ref={accTableRef} className="flex-1 min-h-0 overflow-auto">
-                <table className="min-w-[920px] w-full border-collapse text-left text-xs">
+                <table className="min-w-[1150px] w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
                     <tr>
                       <th className="min-w-[180px] px-4 py-3 font-semibold">物料名称与代号</th>
-                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">品类与定价机制</th>
+                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">类型</th>
                       <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">规格与工程特征</th>
                       <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">材质与硬度</th>
-                      <th className="w-[120px] min-w-[110px] px-4 py-3 font-semibold text-right">参考单价</th>
+                      <th className="w-[120px] min-w-[110px] px-4 py-3 font-semibold text-right">含税单价</th>
                       <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
+                      <th className="min-w-[170px] px-4 py-3 font-semibold">更新时间</th>
+                      <th className="min-w-[110px] px-4 py-3 font-semibold">更新人</th>
+                      <th className="min-w-[90px] px-4 py-3 font-semibold">操作</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {paginatedOvermolds.map((m) => {
-                      const price = getOvermoldPrice(m);
+                    {paginatedOvermolds.map(({ candidate, parent }) => {
+                      const price = priceIndex.moldMap.get(materialPriceTierKey(candidate));
+                      const inner = candidate.kind === 'inner-mold';
                       return (
-                        <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={materialPriceTierKey(candidate)} className="hover:bg-slate-50 transition-colors">
                           <td className="px-4 py-3">
-                            <p className="font-semibold text-slate-900">{m.name}</p>
-                            <p className="mt-0.5 font-mono text-[11px] text-blue-600">{m.id}</p>
+                            <p className="font-semibold text-slate-900">{candidate.name}</p>
+                            <p className="mt-0.5 font-mono text-[11px] text-blue-600">{parent.id}</p>
+                            {inner && <p className="mt-1 text-[11px] text-slate-500">所属外模：{parent.name}</p>}
                           </td>
+                          <td className="px-4 py-3 text-slate-600">{inner ? '内模' : '外模'}</td>
+                          <td className="px-4 py-3 text-slate-600">{parent.outerForm === 'bent' ? '90°弯头成型' : '直头成型'}</td>
                           <td className="px-4 py-3 text-slate-600">
-                            <span className="rounded bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
-                              成型外模 (共享价格库)
-                            </span>
+                            <p>{inner ? parent.innerMaterial : parent.outerMaterial}</p>
+                            {!inner && parent.outerHardness && <p className="text-[11px] text-slate-400">硬度：{parent.outerHardness}</p>}
                           </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <p>{m.outerForm === 'bent' ? '90°弯头成型' : '直头成型'}</p>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            {price ? <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-bold text-emerald-700">¥ {formatMaterialPrice(price.taxIncludedPrice)}</span>
+                              : <span className="text-slate-400">待定价</span>}
                           </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <p>{m.outerMaterial || '-'}</p>
-                            {m.outerHardness && (
-                              <p className="text-[11px] text-slate-400">硬度: {m.outerHardness}</p>
-                            )}
-                          </td>
-                          <td className="w-[120px] min-w-[110px] px-4 py-3 text-right">
-                            {price ? (
-                              <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
-                                ¥ {Number(price.taxIncludedPrice).toFixed(2)}
-                              </span>
-                            ) : (
-                              <span className="inline-block px-2 py-1 text-xs text-slate-400">待定价</span>
-                            )}
-                          </td>
-                          <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
-                            {price?.unit ?? '元/个'}
-                          </td>
+                          <td className="px-4 py-3 text-center whitespace-nowrap">元/个</td>
+                          <td className="px-4 py-3 whitespace-nowrap"><PriceUpdateInfo price={price} field="time" /></td>
+                          <td className="px-4 py-3"><PriceUpdateInfo price={price} field="user" /></td>
+                          <td className="px-4 py-3 whitespace-nowrap">{editPriceButton(candidate.resourceId, candidate.kind)}</td>
                         </tr>
                       );
                     })}
@@ -1724,6 +1731,9 @@ export function MaterialLibraryPage({
             </section>
           </div>
         )}
+
+      {priceEditor && canEditPrices && <MaterialPriceEditDialog
+        candidates={priceEditor.candidates} prices={priceEditor.prices} onClose={() => setPriceEditor(null)} />}
 
       <FinishedHarnessMaterialDetailDialog
         isOpen={Boolean(selectedFinishedHarness)}

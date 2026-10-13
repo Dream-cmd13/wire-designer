@@ -5,7 +5,11 @@ import { supabase } from '@/lib/supabaseClient';
 
 export interface MaterialPrice extends Omit<QuoteMaterial, 'quantity'> {
   taxIncludedPrice: string;
+  updatedAt?: string;
+  updatedBy?: string | null;
+  updatedByName?: string | null;
 }
+export interface MaterialPriceEdit extends MaterialPrice { expectedUpdatedAt: string | null }
 export interface PriceBook { importedAt: string; sourceName: string; prices: MaterialPrice[] }
 
 export function validatePrices(value: unknown): MaterialPrice[] {
@@ -31,6 +35,7 @@ export function validatePrices(value: unknown): MaterialPrice[] {
 }
 export interface PriceRepository {
   load(): Promise<PriceBook | null>;
+  saveEdits(prices: MaterialPriceEdit[]): Promise<PriceBook>;
   merge(prices: MaterialPrice[], sourceName: string): Promise<PriceBook>;
 }
 export function createDatabasePriceRepository(client: SupabaseClient | null): PriceRepository {
@@ -50,7 +55,8 @@ export function createDatabasePriceRepository(client: SupabaseClient | null): Pr
       for (const row of data ?? []) {
         prices.push({ kind: row.kind, resourceId: row.resource_id, name: row.name,
           specification: row.specification, lengthMm: Number(row.length_mm), unit: row.unit,
-          taxIncludedPrice: String(row.tax_included_price) });
+          taxIncludedPrice: String(row.tax_included_price), updatedAt: row.updated_at,
+          updatedBy: row.updated_by ?? null, updatedByName: row.updated_by_name ?? null });
         if (row.updated_at > importedAt) { importedAt = row.updated_at; sourceName = row.source_name; }
       }
       if ((data?.length ?? 0) < 500) break;
@@ -60,7 +66,21 @@ export function createDatabasePriceRepository(client: SupabaseClient | null): Pr
     for (let i = 0; i < prices.length; i += 10000) validatePrices(prices.slice(i, i + 10000));
     return { importedAt, sourceName, prices };
   };
-  return { load, async merge(prices, sourceName) {
+  return { load, async saveEdits(prices) {
+    validatePrices(prices);
+    if (prices.some(row => row.expectedUpdatedAt !== null &&
+      (typeof row.expectedUpdatedAt !== 'string' || !row.expectedUpdatedAt))) {
+      throw new UserFacingError('价格版本缺失，请刷新后重试。');
+    }
+    const { error } = await requireClient().rpc('save_material_prices', { price_rows: prices });
+    if (error?.code === 'P0002') throw new UserFacingError('价格已被其他用户修改，请关闭弹窗、刷新价格后重新编辑。');
+    if (error) throw error;
+    let book: PriceBook | null;
+    try { book = await load(); }
+    catch { throw new UserFacingError('价格已保存，但刷新失败，请关闭弹窗并刷新价格，勿重复保存。'); }
+    if (!book) throw new UserFacingError('价格已保存，但未能读取共享价格，请刷新。');
+    return book;
+  }, async merge(prices, sourceName) {
     const incoming = validatePrices(prices);
     if (!sourceName.trim() || sourceName.length > 255) throw new UserFacingError('价格文件名无效');
     const { error } = await requireClient().rpc('import_material_prices', { price_rows: incoming, source_name: sourceName });

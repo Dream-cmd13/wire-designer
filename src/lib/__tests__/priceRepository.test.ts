@@ -7,7 +7,7 @@ const price: MaterialPrice = { kind: 'wire', resourceId: 'wire-id', name: '线�
   lengthMm: 1000, unit: '元/条', taxIncludedPrice: '1.123456' };
 const row = { kind: price.kind, resource_id: price.resourceId, name: price.name,
   specification: price.specification, length_mm: 1000, unit: price.unit,
-  tax_included_price: '1.123456', source_name: 'shared.xlsx', updated_at: '2026-09-10T00:00:00Z' };
+  tax_included_price: '1.123456', source_name: 'shared.xlsx', updated_by: 'engineer-id', updated_by_name: '张工', updated_at: '2026-09-10T00:00:00Z' };
 
 function database(pages: unknown[][] = [[row]], failure: string | null = null) {
   const range = vi.fn();
@@ -24,7 +24,7 @@ describe('shared database prices', () => {
     const db = database([Array.from({ length: 500 }, (_, i) => ({ ...row, length_mm: i + 1 })), [row]]);
     const book = await createDatabasePriceRepository(db.client).load();
     expect(book?.prices).toHaveLength(501);
-    expect(book?.prices[500]).toEqual(price);
+    expect(book?.prices[500]).toEqual({ ...price, updatedAt: row.updated_at, updatedBy: row.updated_by, updatedByName: row.updated_by_name });
     expect(db.range.mock.calls).toEqual([[0, 499], [500, 999]]);
   });
   it('submits the complete batch to the validated RPC once and reloads shared data', async () => {
@@ -50,6 +50,20 @@ describe('shared database prices', () => {
     db.range.mockResolvedValueOnce({ data: null, error: { message: 'offline' } });
     await expect(repo.load()).rejects.toThrow('offline');
     await expect(createDatabasePriceRepository(null).load()).rejects.toThrow('数据库未配置');
+  });
+  it('saves manual edits with their expected timestamps and reloads prices', async () => {
+    const db = database();
+    await createDatabasePriceRepository(db.client).saveEdits([{ ...price, expectedUpdatedAt: row.updated_at }]);
+    expect(db.rpc).toHaveBeenCalledWith('save_material_prices', {
+      price_rows: [{ ...price, expectedUpdatedAt: row.updated_at }],
+    });
+  });
+  it('reports edit conflicts without retrying or overwriting', async () => {
+    const db = database();
+    db.rpc.mockResolvedValueOnce({ error: { code: 'P0002', message: 'Price conflict' } });
+    await expect(createDatabasePriceRepository(db.client).saveEdits([{ ...price, expectedUpdatedAt: null }]))
+      .rejects.toThrow('其他用户');
+    expect(db.range).not.toHaveBeenCalled();
   });
   it('returns null for an empty shared library', async () => {
     expect(await createDatabasePriceRepository(database([[]]).client).load()).toBeNull();

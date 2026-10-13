@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   loadSnapshot: vi.fn(),
   priceLoad: vi.fn(),
   priceMerge: vi.fn(),
+  priceSave: vi.fn(),
   finishedList: vi.fn(),
 }));
 
@@ -13,7 +14,7 @@ vi.mock('@/lib/catalogRepository', () => ({
 }));
 
 vi.mock('@/repositories/priceRepository', () => ({
-  priceRepository: { load: mocks.priceLoad, merge: mocks.priceMerge },
+  priceRepository: { load: mocks.priceLoad, merge: mocks.priceMerge, saveEdits: mocks.priceSave },
 }));
 
 vi.mock('@/repositories/finishedHarnessMaterialRepository', () => ({
@@ -38,6 +39,7 @@ describe('session data reset', () => {
     mocks.loadSnapshot.mockReset();
     mocks.priceLoad.mockReset();
     mocks.priceMerge.mockReset();
+    mocks.priceSave.mockReset();
     mocks.finishedList.mockReset();
     useCatalogStore.getState().reset();
     usePriceStore.getState().reset();
@@ -45,6 +47,31 @@ describe('session data reset', () => {
     useUserStore.setState({ currentUser: { id: 'engineer', name: '工程师', email: 'engineer@test', createdAt: 1, role: 'engineer' } });
   });
 
+  it('does not restore prices when a manual save completes after account reset', async () => {
+    const pending = deferred<unknown>();
+    mocks.priceSave.mockReturnValue(pending.promise);
+    const task = usePriceStore.getState().saveEdits([]);
+    usePriceStore.getState().reset();
+    pending.resolve({ importedAt: '', sourceName: '页面编辑', prices: [] });
+    await expect(task).rejects.toThrow('会话');
+    expect(usePriceStore.getState().book).toBeNull();
+  });
+  it('rejects manual price writes for sales before calling the repository', async () => {
+    useUserStore.setState({ currentUser: { id: 'sales', name: 'sales', email: 's@test', createdAt: 1, role: 'sales' } });
+    await expect(usePriceStore.getState().saveEdits([])).rejects.toThrow('权限');
+    expect(mocks.priceSave).not.toHaveBeenCalled();
+  });
+  it('does not let a stale background read overwrite a manual save', async () => {
+    const pending = deferred<unknown>();
+    usePriceStore.setState({ book: { importedAt: '', sourceName: 'old', prices: [] } });
+    mocks.priceLoad.mockReturnValue(pending.promise);
+    const read = usePriceStore.getState().load({ forceRefresh: true });
+    mocks.priceSave.mockResolvedValue({ importedAt: '', sourceName: 'new', prices: [] });
+    await usePriceStore.getState().saveEdits([]);
+    pending.resolve({ importedAt: '', sourceName: 'old', prices: [] });
+    await read;
+    expect(usePriceStore.getState().book?.sourceName).toBe('new');
+  });
   it('clears catalog, price and finished harness state on reset', () => {
     useCatalogStore.setState({
       snapshot: { connectors: [], wires: [], overmolds: [], loadedAt: Date.now() } as never,

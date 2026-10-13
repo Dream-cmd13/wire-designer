@@ -229,7 +229,7 @@ describe('MaterialLibraryPage', () => {
 
     const html = renderToStaticMarkup(<MaterialLibraryPage initialTab="accessories" />);
     expect(html).toContain('直头外模');
-    expect(html).toContain('成型外模 (共享价格库)');
+    expect(html).toContain('>外模</td>');
     expect(html).not.toContain('波纹套管');
     expect(html).not.toContain('防护辅材 (系统配置标准价)');
     expect(html).not.toContain('¥ 1.80');
@@ -238,6 +238,30 @@ describe('MaterialLibraryPage', () => {
     // 统一分页组件
     expect(html).toContain('显示 1 - 1 条');
     expect(html).toContain('20 条/页');
+  });
+
+  it('renders inner and outer molds as separate rows with separate prices and metadata', () => {
+    const snapshot: CatalogSnapshot = { ...mockSnapshot, overmolds: [{ ...mockSnapshot.overmolds[0], innerMaterial: '低密度透明PE', innerForm: 'straight' }] };
+    setCatalogSnapshot(snapshot);
+    useCatalogStore.setState({ status: 'ready', snapshot });
+    useCatalogStore.getInitialState = () => useCatalogStore.getState();
+    const candidates = getCatalogPriceCandidates(snapshot).filter(r => r.kind.includes('mold'));
+    usePriceStore.setState({ book: { ...mockPriceBook, prices: candidates.map((r, i) => ({ ...r, taxIncludedPrice: i ? '0.25' : '0.30', updatedAt: '2026-10-12T08:00:00Z', updatedByName: i ? '内模工程师' : '外模工程师' })) }, loading: false, error: null });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+    const html = renderToStaticMarkup(<MaterialLibraryPage initialTab="accessories" />);
+    const rows = html.match(/<tr[^>]*>.*?<\/tr>/g) ?? [];
+    const outer = rows.find(r => r.includes('>外模</td>'))!;
+    const inner = rows.find(r => r.includes('>内模</td>'))!;
+    expect(outer).toContain('¥ 0.30');
+    expect(outer).toContain('外模工程师');
+    expect(outer).not.toContain('内模工程师');
+    expect(inner).toContain('¥ 0.25');
+    expect(inner).toContain('低密度透明PE');
+    expect(inner).toContain('所属外模：');
+    expect(inner).not.toContain('硬度：45P');
+    expect(html).toContain('显示 1 - 2 条');
+    expect(html).toContain('>更新时间</th>');
+    expect(html).toContain('>更新人</th>');
   });
 
   it('generates price template rows containing unpriced catalog items for batch pricing', () => {
