@@ -16,16 +16,17 @@ function loadEnvFile(filePath) {
 }
 
 function usage() {
-  console.error('Usage: npm run user:create -- <email> <password> [display name]');
+  console.error('Usage: npm run user:create -- <username-or-email> [display name]');
 }
 
 loadEnvFile(resolve(process.cwd(), '.env'));
 
-const [email, password, displayName] = process.argv.slice(2);
+const [identifier, displayName, ...extra] = process.argv.slice(2);
+const email = identifier?.includes('@') ? identifier.trim() : `${identifier?.trim()}@local.app`;
 const url = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
 const secretKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!email || !password) {
+if (!identifier?.trim() || extra.length) {
   usage();
   process.exit(1);
 }
@@ -43,8 +44,9 @@ const supabase = createClient(url, secretKey, {
 
 const { data, error } = await supabase.auth.admin.createUser({
   email,
-  password,
+  password: '888888',
   email_confirm: true,
+  app_metadata: { must_change_password: true },
   user_metadata: displayName ? { display_name: displayName } : undefined,
 });
 

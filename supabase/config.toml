@@ -1,2 +1,6 @@
 [functions.quote]
 verify_jwt = false
+
+# Validate the bearer token with Auth getUser inside the handler, as for quote.
+[functions.account-password]
+verify_jwt = false

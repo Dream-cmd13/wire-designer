@@ -15,6 +15,7 @@ Deno.serve(async request => {
   });
   const { data: { user }, error } = await client.auth.getUser(token);
   if (error || !user) return respond({ error: '登录已失效' }, 401);
+  if (user.app_metadata.must_change_password === true) return respond({ error: '请先修改初始密码' }, 403);
   try {
     const body = await request.text();
     if (body.length > 200000) return respond({ error: '配置过大' }, 413);

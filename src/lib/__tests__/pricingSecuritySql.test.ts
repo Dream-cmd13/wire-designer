@@ -17,7 +17,7 @@ describe('real PostgreSQL pricing permissions', () => {
   beforeAll(async () => {
     await db.exec(`
       create role anon; create role authenticated; create role service_role bypassrls;
-      create schema auth; create table auth.users(id uuid primary key, email text);
+      create schema auth; create table auth.users(id uuid primary key, email text, raw_app_meta_data jsonb not null default '{}', encrypted_password text);
       create function auth.uid() returns uuid language sql stable as
         $$select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid$$;
       grant usage on schema auth to anon, authenticated, service_role;
@@ -33,6 +33,7 @@ describe('real PostgreSQL pricing permissions', () => {
       '10_schema/07_pricing_permissions', '30_security/01_rls', '30_security/02_pricing_permissions']) {
       await db.exec(readFileSync(`supabase/sql/${file}.sql`, 'utf8').replace('create extension if not exists pgcrypto;', ''));
     }
+    await db.exec(readFileSync('supabase/updates/20261013_password_change_required.sql', 'utf8'));
     await db.exec(`
       insert into public.user_roles values ('${engineer}','engineer'), ('${admin}','admin');
       insert into public.catalog_items(id,kind,code,name,model,spec) values ('${material}','connector','test','M12','M12','{"connectorType":"male","pinCount":4,"pinLabels":["1","2","3","4"],"series":"M12","shielded":true}');
@@ -46,6 +47,25 @@ describe('real PostgreSQL pricing permissions', () => {
     `);
   }, 30000);
   afterAll(async () => { await db.close(); });
+  it('preserves existing data and blocks tables, storage, owner views and admin RPCs until password change', async () => {
+    const migration = readFileSync('supabase/updates/20261013_password_change_required.sql', 'utf8');
+    await db.exec(migration);
+    await db.exec(migration);
+    expect(await scalar('select count(*)::int as count from public.catalog_items')).toEqual({ count: 1 });
+    await db.exec(`update auth.users set raw_app_meta_data = '{"must_change_password":true}' where id = '${admin}'`);
+    await asUser(admin);
+    expect(await scalar('select public.current_app_role() as role')).toEqual({ role: 'password_required' });
+    for (const table of ['catalog_items', 'material_prices', 'finished_harness_materials_visible']) {
+      expect(await scalar(`select count(*)::int as count from public.${table}`)).toEqual({ count: 0 });
+    }
+    expect(await scalar('select count(*)::int as count from storage.objects')).toEqual({ count: 0 });
+    await expect(db.exec('select * from public.list_app_users()')).rejects.toThrow('Forbidden');
+    await expect(db.exec(`select public.assign_user_role('${sales}', 'admin')`)).rejects.toThrow('Forbidden');
+    await db.exec(`reset role; update auth.users set raw_app_meta_data = '{}' where id = '${admin}'`);
+    await asUser(admin);
+    expect(await scalar('select public.current_app_role() as role')).toEqual({ role: 'admin' });
+    expect(await scalar('select count(*)::int as count from public.catalog_items')).toEqual({ count: 1 });
+  });
   it('denies direct sensitive reads and writes to sales while allowing catalog and safe quote', async () => {
     await asUser(sales);
     expect(await scalar('select public.current_app_role() as role')).toEqual({ role: 'sales' });
