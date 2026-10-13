@@ -13,7 +13,7 @@ describe('product image wire matching', () => {
         image: 'fallback-should-not-be-used.png',
         imageVariants: { before: 'before.png', after: 'after.png', pinMap: 'pin-map.png' },
       }],
-      wires: [], overmolds: [{ id: 'mold-1', resourceItemId: 'res-mold-1', name: '直模', outerMaterial: '黑色PVC', outerForm: 'straight', image: 'm.png' }],
+      wires: [], overmolds: [{ id: 'mold-1', resourceItemId: 'res-mold-1', name: '直模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight', image: 'm.png' }],
       ...staticCatalogOptions(), loadedAt: Date.now(),
     });
     const connector = {
@@ -93,7 +93,7 @@ describe('product image wire matching', () => {
         image: 'plain-image.png',
         imageVariants: { before: 'before.png', pinMap: 'pin-map.png' },
       }],
-      wires: [], overmolds: [{ id: 'mold-1', resourceItemId: 'res-mold-1', name: '直模', outerMaterial: '黑色PVC', outerForm: 'straight', image: 'm.png' }],
+      wires: [], overmolds: [{ id: 'mold-1', resourceItemId: 'res-mold-1', name: '直模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight', image: 'm.png' }],
       ...staticCatalogOptions(), loadedAt: Date.now(),
     });
     const connector = {
@@ -212,8 +212,8 @@ describe('product image wire matching', () => {
       }],
       wires: [],
       overmolds: [
-        { id: 'mold-straight', resourceItemId: 'res-mold-straight', name: '直头外模', outerMaterial: '黑色PVC', outerForm: 'straight', image: 'straight.png' },
-        { id: 'mold-bent', resourceItemId: 'res-mold-bent', name: '弯头外模', outerMaterial: '黑色PVC', outerForm: 'bent', image: 'bent.png' },
+        { id: 'mold-straight', resourceItemId: 'res-mold-straight', name: '直头外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight', image: 'straight.png' },
+        { id: 'mold-bent', resourceItemId: 'res-mold-bent', name: '弯头外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'bent', image: 'bent.png' },
       ],
       ...staticCatalogOptions(),
       loadedAt: Date.now(),
@@ -321,7 +321,7 @@ describe('product image wire matching', () => {
       }],
       wires: [],
       overmolds: [
-        { id: 'mold-bent', resourceItemId: 'res-mold-bent', name: '弯头外模', outerMaterial: '黑色PVC', outerForm: 'bent', image: 'bent.png' },
+        { id: 'mold-bent', resourceItemId: 'res-mold-bent', name: '弯头外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'bent', image: 'bent.png' },
       ],
       ...staticCatalogOptions(),
       loadedAt: Date.now(),

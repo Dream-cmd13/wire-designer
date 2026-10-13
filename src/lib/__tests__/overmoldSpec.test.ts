@@ -15,7 +15,7 @@ describe('overmoldSpec pure functions', () => {
     });
 
     it('returns material directly when no hardness is present', () => {
-      expect(formatOvermoldOuterLabel({ outerMaterial: '黑色TPE' })).toBe('黑色TPE');
+      expect(formatOvermoldOuterLabel({ outerMaterial: '黑色PVC' })).toBe('黑色PVC');
     });
 
     it('does not duplicate hardness if already in material name', () => {
@@ -59,14 +59,15 @@ describe('overmoldSpec pure functions', () => {
       expect(formatOvermoldFullSpec(spec)).toBe('黑色PVC 45P · 直头');
     });
 
-    it('formats TPE bent overmold correctly', () => {
+    it('formats PVC bent overmold correctly', () => {
       const spec: OvermoldSpec = {
-        id: 'tpe-bent',
-        name: 'TPE 弯头外模',
-        outerMaterial: '黑色TPE',
+        id: 'pvc-bent',
+        name: 'PVC 弯头外模',
+        outerMaterial: '黑色PVC',
+        outerHardness: '45P',
         outerForm: 'bent',
       };
-      expect(formatOvermoldFullSpec(spec)).toBe('黑色TPE · 弯头');
+      expect(formatOvermoldFullSpec(spec)).toBe('黑色PVC 45P · 弯头');
     });
   });
 
@@ -76,13 +77,15 @@ describe('overmoldSpec pure functions', () => {
       expect(getAvailableInnerMold({
         id: 'o1',
         name: 'test',
-        outerMaterial: '黑色TPE',
+        outerMaterial: '黑色PVC',
+        outerHardness: '45P',
         outerForm: 'straight',
       })).toBeNull();
       expect(getAvailableInnerMold({
         id: 'o1',
         name: 'test',
-        outerMaterial: '黑色TPE',
+        outerMaterial: '黑色PVC',
+        outerHardness: '45P',
         outerForm: 'straight',
         innerMaterial: '低密度透明PE',
         innerForm: 'bent',
@@ -125,7 +128,7 @@ describe('overmoldSpec pure functions', () => {
   });
 
   describe('buildOvermoldBomEntries', () => {
-    it('groups inner molds by material and form across different outer materials', () => {
+    it('groups inner molds by form across different outer molds', () => {
       const overmolds: OvermoldSpec[] = [
         {
           id: 'pvc-straight',
@@ -137,12 +140,13 @@ describe('overmoldSpec pure functions', () => {
           innerForm: 'straight',
         },
         {
-          id: 'tpe-straight',
-          name: 'TPE直头',
-          outerMaterial: '黑色TPE',
-          outerForm: 'straight',
+          id: 'pvc-bent',
+          name: 'PVC弯头',
+          outerMaterial: '黑色PVC',
+          outerHardness: '45P',
+          outerForm: 'bent',
           innerMaterial: '低密度透明PE',
-          innerForm: 'straight',
+          innerForm: 'bent',
         },
       ];
       const entries = buildOvermoldBomEntries([
@@ -152,14 +156,15 @@ describe('overmoldSpec pure functions', () => {
         },
         {
           id: 'model-2', kind: 'outer-box', position: { x: 100, y: 0 }, width: 80, height: 60,
-          overmoldSpecId: 'tpe-straight', includeInnerMold: true,
+          overmoldSpecId: 'pvc-bent', includeInnerMold: true,
         },
       ], overmolds);
 
       expect(entries).toEqual([
         { kind: 'outer', specification: '黑色PVC 45P · 直头', quantity: 1 },
-        { kind: 'outer', specification: '黑色TPE · 直头', quantity: 1 },
-        { kind: 'inner', specification: '低密度透明PE · 直头', quantity: 2 },
+        { kind: 'outer', specification: '黑色PVC 45P · 弯头', quantity: 1 },
+        { kind: 'inner', specification: '低密度透明PE · 直头', quantity: 1 },
+        { kind: 'inner', specification: '低密度透明PE · 弯头', quantity: 1 },
       ]);
     });
   });

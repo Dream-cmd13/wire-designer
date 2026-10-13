@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
-  AlertTriangle,
   Cable,
   Calculator,
   Database,
@@ -31,7 +30,6 @@ import {
   type AutoQuoteEndpointBType,
   type AutoQuoteFormState,
   type AutoQuoteInnerMoldType,
-  type AutoQuoteOuterMoldType,
 } from '@/lib/autoQuote';
 import { ConnectorPickerModal } from '@/components/autoQuote/ConnectorPickerModal';
 import { WirePickerModal } from '@/components/autoQuote/WirePickerModal';
@@ -131,7 +129,7 @@ function AutoQuoteConfigForm({
           {[
             { key: 'connector' as const, label: '连接器', note: '双端连接' },
             { key: 'cut' as const, label: '切断', note: '平齐无加工' },
-            { key: 'strip-tin' as const, label: '剥皮沾锡', note: '尾端沾锡，不成型', badge: false },
+            { key: 'strip-tin' as const, label: '剥皮沾锡', note: '尾端沾锡，不成型' },
           ].map((item) => {
             const active = form.endpointBType === item.key;
             return (
@@ -145,11 +143,6 @@ function AutoQuoteConfigForm({
                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                {item.badge && (
-                  <span className="absolute -top-1.5 -right-1 rounded bg-amber-100 px-1 text-[9px] font-medium text-amber-800">
-                    待支持
-                  </span>
-                )}
                 <span>{item.label}</span>
                 <span className="text-[10px] text-slate-400 font-normal">{item.note}</span>
               </button>
@@ -285,55 +278,29 @@ function AutoQuoteConfigForm({
           </span>
         </div>
 
-        {/* 外模单选 */}
+        {/* 外模规格：材质随规格名称展示 */}
         <div className="space-y-1.5">
-          <span className="text-slate-600 font-medium">外模材质（必选）</span>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { key: 'pvc-45p' as const, label: '黑色 PVC 45P' },
-              { key: 'tpe' as const, label: 'TPE (待支持)' },
-            ].map((item) => {
-              const active = form.outerMoldType === item.key;
-              return (
-                <button
-                  type="button"
-                  key={item.key}
-                  onClick={() => onUpdate('outerMoldType', item.key as AutoQuoteOuterMoldType)}
-                  className={`rounded-lg border p-2 text-center transition cursor-pointer ${
-                    active
-                      ? 'border-blue-600 bg-blue-50/70 text-blue-700 font-semibold'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
+          <div className="space-y-2 rounded-lg bg-slate-50 p-2.5 border border-slate-200">
+            <label className="block">
+              <span className="text-[11px] text-slate-500 font-medium">外模规格（必选）</span>
+              <select
+                value={effectiveForm.outerMoldSpecId}
+                onChange={(e) => onUpdate('outerMoldSpecId', e.target.value)}
+                className="mt-1 w-full rounded border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 outline-none"
+              >
+                <option value="">请选择适用外模型号</option>
+                {supportedOvermolds.map((mold) => (
+                  <option key={mold.id} value={mold.id}>
+                    {mold.name} ({mold.outerForm === 'straight' ? '直头' : '弯头'})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <p className="text-xs text-slate-600">
+              {form.endpointBType === 'connector' ? 'A/B 双端成型（2 个外模）' : 'A 端成型（1 个外模）'}
+            </p>
           </div>
-
-          {form.outerMoldType === 'pvc-45p' && (
-            <div className="mt-2 space-y-2 rounded-lg bg-slate-50 p-2.5 border border-slate-200">
-              <label className="block">
-                <span className="text-[11px] text-slate-500 font-medium">所选外模规格型号</span>
-                <select
-                  value={effectiveForm.outerMoldSpecId}
-                  onChange={(e) => onUpdate('outerMoldSpecId', e.target.value)}
-                  className="mt-1 w-full rounded border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 outline-none"
-                >
-                  <option value="">请选择适用外模型号</option>
-                  {supportedOvermolds.map((mold) => (
-                    <option key={mold.id} value={mold.id}>
-                      {mold.name} ({mold.outerForm === 'straight' ? '直头' : '弯头'})
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <p className="text-xs text-slate-600">
-                {form.endpointBType === 'connector' ? 'A/B 双端成型（2 个外模）' : 'A 端成型（1 个外模）'}
-              </p>
-            </div>
-          )}
         </div>
 
         {/* 内模单选 */}
@@ -449,7 +416,6 @@ export function AutoQuotePage() {
   const quote = useServerQuote(catalogStatus === 'ready' ? built.config : null);
   const status: AutoQuoteEvaluation['status'] = catalogLoading ? 'catalog-loading'
     : catalogStatus === 'error' ? 'error'
-    : built.unsupportedIssues.length ? 'unsupported'
     : !built.config ? 'incomplete'
     : quote.error ? 'error'
     : quote.loading ? 'loading'
@@ -458,7 +424,6 @@ export function AutoQuotePage() {
     ...built, config: built.config ?? undefined,
     status,
     issues: status === 'error' ? [catalogStatus === 'error' ? catalogError || '物料目录加载失败，请重试。' : quote.error!]
-      : status === 'unsupported' ? built.unsupportedIssues
       : status === 'incomplete' ? built.issues
       : quote.result && quote.result.status !== 'ready' ? quote.result.issues : [],
     ...(status === 'ready' && quote.result?.status === 'ready' ? { price: quote.result.price, calculatedAt: quote.result.calculatedAt, settingsVersion: quote.result.settingsVersion, previousUnitPrice: quote.previousUnitPrice } : {}),
@@ -470,7 +435,7 @@ export function AutoQuotePage() {
     'catalog-loading': '正在加载物料目录', loading: '正在核算报价',
     error: catalogStatus === 'error' ? '物料目录加载失败' : '报价失败',
     incomplete: '请完善选配输入', ready: '报价已更新', waiting: '等待报价',
-    manual: '需人工核价', unsupported: '所选工艺暂不支持', blocked: '报价受阻',
+    manual: '需人工核价', blocked: '报价受阻',
   };
 
   const connA = useMemo(
@@ -709,11 +674,6 @@ export function AutoQuotePage() {
                     <>
                       <Info className="h-4 w-4 text-blue-500 shrink-0" />
                       <span>线长超过 5000mm 需转人工核价</span>
-                    </>
-                  ) : evaluation.status === 'unsupported' ? (
-                    <>
-                      <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                      <span>包含待支持工艺选项，暂无正式报价</span>
                     </>
                   ) : evaluation.status === 'blocked' ? (
                     <>

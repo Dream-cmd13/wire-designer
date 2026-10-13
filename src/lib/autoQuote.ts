@@ -5,14 +5,12 @@ import { applyCatalogWireSpec } from './wireCatalog';
 import { getAvailableInnerMold } from './overmoldSpec';
 
 export type AutoQuoteEndpointBType = 'connector' | 'cut' | 'strip-tin';
-export type AutoQuoteOuterMoldType = 'pvc-45p' | 'tpe';
 export type AutoQuoteInnerMoldType = 'none' | 'pe';
 
 export interface AutoQuoteFormState {
   connectorAId: string;
   endpointBType: AutoQuoteEndpointBType;
   connectorBId: string;
-  outerMoldType: AutoQuoteOuterMoldType;
   outerMoldSpecId: string;
   innerMoldType: AutoQuoteInnerMoldType;
   wireResourceId: string;
@@ -21,7 +19,7 @@ export interface AutoQuoteFormState {
 }
 
 export interface AutoQuoteEvaluation {
-  status: 'ready' | 'blocked' | 'manual' | 'unsupported' | 'incomplete' | 'catalog-loading' | 'loading' | 'error' | 'waiting';
+  status: 'ready' | 'blocked' | 'manual' | 'incomplete' | 'catalog-loading' | 'loading' | 'error' | 'waiting';
   issues: string[];
   price?: QuotePrice;
   calculatedAt?: string;
@@ -38,7 +36,6 @@ export const DEFAULT_AUTO_QUOTE_FORM: AutoQuoteFormState = {
   connectorAId: '',
   endpointBType: 'connector',
   connectorBId: '',
-  outerMoldType: 'pvc-45p',
   outerMoldSpecId: '',
   innerMoldType: 'none',
   wireResourceId: '',
@@ -91,21 +88,14 @@ export function buildAutoQuoteConfig(
 ): {
   config: HarnessConfig | null;
   issues: string[];
-  unsupportedIssues: string[];
   connA?: Connector;
   connB?: Connector;
   wire?: CatalogWire;
   overmold?: OvermoldSpec;
 } {
   const issues: string[] = [];
-  const unsupportedIssues: string[] = [];
 
-  // 1. 待支持功能拦截（首版不提供正式报价，避免漏算费用）
-  if (form.outerMoldType === 'tpe') {
-    unsupportedIssues.push('TPE 外模计费待支持，当前仅支持黑色 PVC 45P');
-  }
-
-  // 2. 基础输入校验
+  // 1. 基础输入校验
   if (!Number.isSafeInteger(form.lengthMm) || form.lengthMm <= 0) {
     issues.push('线长必须为正整数毫米');
   }
@@ -113,7 +103,7 @@ export function buildAutoQuoteConfig(
     issues.push('订单数量必须为 1 至 1000000 的整数');
   }
 
-  // 3. 物料解析
+  // 2. 物料解析
   const connA = catalog?.connectors.find((item) => item.id === form.connectorAId);
   if (!form.connectorAId) {
     issues.push('请选择 A 端连接器');
@@ -153,30 +143,23 @@ export function buildAutoQuoteConfig(
   if (connA && wire && !matchesAutoQuoteWire(connA, wire)) {
     issues.push('线材芯数和屏蔽属性必须与 A 端连接器一致');
   }
-  if (form.outerMoldType !== 'pvc-45p' && form.outerMoldType !== 'tpe') {
-    issues.push('外模必选，当前仅支持黑色 PVC 45P');
-  }
 
-  let overmold: OvermoldSpec | undefined;
-  if (form.outerMoldType === 'pvc-45p') {
-    overmold = catalog?.overmolds.find((item) => item.id === form.outerMoldSpecId);
-    if (!form.outerMoldSpecId) {
-      issues.push('请选择黑色 PVC 45P 外模规格');
-    } else if (!overmold) {
-      issues.push('未找到所选外模规格');
-    } else if (!isSupportedOvermold(overmold)) {
-      issues.push('外模须为目录中的黑色 PVC 45P');
-    }
+  const overmold = catalog?.overmolds.find((item) => item.id === form.outerMoldSpecId);
+  if (!form.outerMoldSpecId) {
+    issues.push('请选择黑色 PVC 45P 外模规格');
+  } else if (!overmold) {
+    issues.push('未找到所选外模规格');
+  } else if (!isSupportedOvermold(overmold)) {
+    issues.push('外模须为目录中的黑色 PVC 45P');
   }
   if (form.innerMoldType === 'pe' && (!overmold || !getAvailableInnerMold(overmold))) {
     issues.push('请选择包含低密度透明 PE 内模的外模规格');
   }
 
-  if (issues.length > 0 || unsupportedIssues.length > 0 || !connA || !wire) {
+  if (issues.length > 0 || !connA || !wire) {
     return {
       config: null,
       issues,
-      unsupportedIssues,
       connA,
       connB,
       wire,
@@ -184,7 +167,7 @@ export function buildAutoQuoteConfig(
     };
   }
 
-  // 4. 组装 HarnessConfig
+  // 3. 组装 HarnessConfig
   const processingEnds = form.endpointBType === 'connector' ? 2 : 1;
   const connectors = [
     {
@@ -231,9 +214,7 @@ export function buildAutoQuoteConfig(
     },
   ];
 
-  const moldCount = form.outerMoldType === 'pvc-45p' && overmold
-    ? processingEnds
-    : 0;
+  const moldCount = overmold ? processingEnds : 0;
 
   const models = Array.from({ length: moldCount }, (_, index) => ({
     id: `quote-mold-${index + 1}`,
@@ -279,7 +260,6 @@ export function buildAutoQuoteConfig(
   return {
     config,
     issues: [],
-    unsupportedIssues: [],
     connA,
     connB,
     wire,
@@ -300,10 +280,7 @@ export function buildQuoteSummaryText(
     form.endpointBType === 'connector'
       ? (connB ? `${connB.model || connB.name} (${connB.pinCount}Pin)` : '连接器')
       : (form.endpointBType === 'cut' ? '切断齐头' : '剥皮沾锡');
-  const moldDesc =
-    form.outerMoldType === 'pvc-45p'
-      ? `${overmoldName || '黑色PVC 45P'} (${form.endpointBType === 'connector' ? '两端成型' : '单端成型'})`
-      : 'TPE（待支持）';
+  const moldDesc = `${overmoldName || '黑色PVC 45P'} (${form.endpointBType === 'connector' ? '两端成型' : '单端成型'})`;
 
   return [
     '【线束询价核算结果】',

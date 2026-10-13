@@ -9,16 +9,27 @@ import {
 } from '@/lib/autoQuote';
 import { getQuoteMaterials } from '@/lib/quoteMaterials';
 import type { CatalogSnapshot } from '@/types/catalog';
+import type { OvermoldSpec } from '@/types/harness';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import { calculatePrice } from '../../../server/pricing';
 import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
 // Exercise form construction together with the authoritative server calculator.
 function evaluateAutoQuote(form: AutoQuoteFormState, prices: MaterialPrice[], catalog: CatalogSnapshot) {
   const built = buildAutoQuoteConfig(form, catalog);
-  if (built.unsupportedIssues.length) return { ...built, status: 'unsupported', issues: built.unsupportedIssues, price: undefined };
   if (!built.config) return { ...built, status: 'incomplete', price: undefined };
   const result = calculatePrice(built.config, prices, catalog);
   return result.status === 'ready' ? { ...built, ...result, issues: [] } : { ...built, ...result, price: undefined };
+}
+
+/** 模拟迁移前遗留的 TPE 目录记录；类型已收紧，仅用于负向验证运行时拒绝。 */
+function legacyTpeOvermold(): OvermoldSpec {
+  return {
+    id: 'mold-tpe-legacy',
+    resourceItemId: 'res-mold-tpe-legacy',
+    name: 'M12外模 TPE',
+    outerMaterial: '黑色TPE',
+    outerForm: 'straight',
+  } as unknown as OvermoldSpec;
 }
 
 const mockCatalog: CatalogSnapshot = {
@@ -83,12 +94,14 @@ const mockCatalog: CatalogSnapshot = {
       innerForm: 'straight',
     },
     {
-      id: 'mold-tpe-1',
-      resourceItemId: 'res-mold-tpe',
-      name: 'M12外模 TPE',
-      outerMaterial: '黑色TPE',
+      id: 'mold-pvc-2',
+      resourceItemId: 'res-mold-2',
+      name: 'M12外模 弯头 黑色PVC 45P',
+      outerMaterial: '黑色PVC',
       outerHardness: '45P',
-      outerForm: 'straight',
+      outerForm: 'bent',
+      innerMaterial: '低密度透明PE',
+      innerForm: 'bent',
     },
   ],
   wireColors: [],
@@ -150,9 +163,9 @@ describe('autoQuote', () => {
   it.each(['connector', 'cut', 'strip-tin'] as const)('rejects missing outer molds for %s in form and server', (endpointBType) => {
     const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', endpointBType,
       wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' };
-    const invalid = { ...form, outerMoldType: 'none' } as unknown as AutoQuoteFormState;
+    const invalid = { ...form, outerMoldSpecId: '' };
     expect(buildAutoQuoteConfig(invalid, mockCatalog)).toMatchObject({ config: null,
-      issues: ['外模必选，当前仅支持黑色 PVC 45P'] });
+      issues: ['请选择黑色 PVC 45P 外模规格'] });
     const config = buildAutoQuoteConfig(form, mockCatalog).config!;
     const prices = createPrices(config);
     config.models = [];
@@ -203,9 +216,16 @@ describe('autoQuote', () => {
     expect(isSupportedConnector(mockCatalog.connectors[2])).toBe(false);
   });
 
-  it('identifies black PVC 45P overmold correctly', () => {
+  it('supports black PVC 45P overmolds and rejects legacy TPE records', () => {
     expect(isSupportedOvermold(mockCatalog.overmolds[0])).toBe(true);
-    expect(isSupportedOvermold(mockCatalog.overmolds[1])).toBe(false);
+    expect(isSupportedOvermold(mockCatalog.overmolds[1])).toBe(true);
+    expect(isSupportedOvermold(legacyTpeOvermold())).toBe(false);
+    const result = buildAutoQuoteConfig(
+      { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', endpointBType: 'cut', wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-tpe-legacy' },
+      { ...mockCatalog, overmolds: [...mockCatalog.overmolds, legacyTpeOvermold()] },
+    );
+    expect(result.config).toBeNull();
+    expect(result.issues).toContain('外模须为目录中的黑色 PVC 45P');
   });
 
   it('reports incomplete status when required inputs are missing', () => {
@@ -213,7 +233,6 @@ describe('autoQuote', () => {
       connectorAId: '',
       endpointBType: 'connector',
       connectorBId: '',
-      outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'none',
       wireResourceId: '',
@@ -233,7 +252,6 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'strip-tin',
       connectorBId: '',
-      outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
@@ -252,32 +270,37 @@ describe('autoQuote', () => {
     expect(evaluation.price?.labor.find(row => row.name === '沾锡')).toMatchObject({ points: 5, amount: '0.25' });
   });
 
-  it('keeps TPE unsupported and requires an outer mold for PE inner molds', () => {
-    const formTpe: AutoQuoteFormState = {
+  it('quotes black PVC straight and bent overmolds and rejects legacy TPE selections', () => {
+    const base: AutoQuoteFormState = {
       connectorAId: 'conn-m12',
       endpointBType: 'cut',
       connectorBId: '',
-      outerMoldType: 'tpe',
-      outerMoldSpecId: 'mold-tpe-1',
+      outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
       lengthMm: 1000,
       quantity: 1000,
     };
-    expect(evaluateAutoQuote(formTpe, [], mockCatalog).status).toBe('unsupported');
+    const straight = buildAutoQuoteConfig(base, mockCatalog).config!;
+    expect(evaluateAutoQuote(base, createPrices(straight), mockCatalog).status).toBe('ready');
 
-    const formPe: AutoQuoteFormState = {
-      ...formTpe,
-      outerMoldType: 'pvc-45p',
-      outerMoldSpecId: '',
-      innerMoldType: 'pe',
-    };
+    const bentForm: AutoQuoteFormState = { ...base, outerMoldSpecId: 'mold-pvc-2', innerMoldType: 'pe' };
+    const bent = buildAutoQuoteConfig(bentForm, mockCatalog).config!;
+    expect(bent.models[0]).toMatchObject({ overmoldSpecId: 'mold-pvc-2', includeInnerMold: true });
+    expect(evaluateAutoQuote(bentForm, createPrices(bent), mockCatalog).status).toBe('ready');
+
+    const legacyCatalog = { ...mockCatalog, overmolds: [...mockCatalog.overmolds, legacyTpeOvermold()] };
+    const rejected = buildAutoQuoteConfig({ ...base, outerMoldSpecId: 'mold-tpe-legacy' }, legacyCatalog);
+    expect(rejected.config).toBeNull();
+    expect(rejected.issues).toContain('外模须为目录中的黑色 PVC 45P');
+
+    const formPe: AutoQuoteFormState = { ...base, outerMoldSpecId: '', innerMoldType: 'pe' };
     expect(evaluateAutoQuote(formPe, [], mockCatalog).status).toBe('incomplete');
   });
   it.each(['connector', 'cut', 'strip-tin'] as const)('quotes PE inner molds at 0.30 per molded end for %s', (endpointBType) => {
     const form: AutoQuoteFormState = {
       connectorAId: 'conn-m12', endpointBType, connectorBId: 'conn-m8',
-      outerMoldType: 'pvc-45p', outerMoldSpecId: 'mold-pvc-1',
+      outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'pe', wireResourceId: 'res-wire-1', lengthMm: 1000, quantity: 100,
     };
     const config = buildAutoQuoteConfig(form, mockCatalog).config!;
@@ -296,7 +319,6 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'cut',
       connectorBId: '',
-      outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
@@ -323,7 +345,6 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'connector',
       connectorBId: 'conn-m8',
-      outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
@@ -350,7 +371,6 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'cut',
       connectorBId: '',
-      outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',
@@ -371,7 +391,6 @@ describe('autoQuote', () => {
       connectorAId: 'conn-m12',
       endpointBType: 'cut',
       connectorBId: '',
-      outerMoldType: 'pvc-45p',
       outerMoldSpecId: 'mold-pvc-1',
       innerMoldType: 'none',
       wireResourceId: 'res-wire-1',

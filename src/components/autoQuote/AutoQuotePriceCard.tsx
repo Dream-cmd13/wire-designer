@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertCircle, AlertTriangle, Download, FileSpreadsheet, Info, Loader2 } from 'lucide-react';
+import { AlertCircle, Download, FileSpreadsheet, Info, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { formatQuoteMoney, type QuoteLine } from '@/lib/pricing';
 import { createQuoteWorkbook, formatQuoteTime } from '@/lib/quoteExport';
@@ -96,24 +96,6 @@ export function AutoQuotePriceCard({
 
       {status === 'waiting' && (
         <p role="status" className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">等待报价，请确认已登录且报价权限就绪。</p>
-      )}
-
-      {/* 待支持状态提示 */}
-      {status === 'unsupported' && (
-        <div className="rounded-lg border-l-4 border-amber-500 bg-amber-50 p-4 text-xs text-amber-900 space-y-1.5">
-          <div className="flex items-center gap-2 font-semibold text-amber-800 text-sm">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
-            <span>所选配置包含待支持选项</span>
-          </div>
-          <ul className="list-disc list-inside space-y-0.5 text-amber-800/90 pl-1">
-            {issues.map((issue, idx) => (
-              <li key={idx}>{issue}</li>
-            ))}
-          </ul>
-          <p className="pt-1 text-[11px] text-amber-700">
-            为保证核算严谨，系统已清除历史报价，不生成漏算费用的正式金额。
-          </p>
-        </div>
       )}
 
       {/* 需人工核价状态提示 */}

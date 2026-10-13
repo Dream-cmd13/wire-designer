@@ -18,9 +18,8 @@ interface OvermoldPickerDialogProps {
   currentIncludeInnerMold?: boolean;
 }
 
-type FilterKey = 'outerMaterial' | 'outerForm';
+type FilterKey = 'outerForm';
 
-const FIXED_OUTER_MATERIALS = ['黑色PVC 45P', '黑色TPE'];
 const FIXED_OUTER_FORMS = ['直头', '弯头'];
 
 export function OvermoldPickerDialog({
@@ -36,7 +35,6 @@ export function OvermoldPickerDialog({
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<FilterKey, Set<string>>>({
-    outerMaterial: new Set(),
     outerForm: new Set(),
   });
   const [selectedId, setSelectedId] = useState<string | null>(currentOvermoldId || null);
@@ -77,21 +75,12 @@ export function OvermoldPickerDialog({
   if (search.trim()) {
     const q = search.toLowerCase();
     results = results.filter((o) => {
-      const outerLabel = formatOvermoldOuterLabel(o).toLowerCase();
       const formLabel = formatOvermoldForm(o.outerForm).toLowerCase();
       return (
         o.name.toLowerCase().includes(q) ||
         o.id.toLowerCase().includes(q) ||
-        outerLabel.includes(q) ||
         formLabel.includes(q)
       );
-    });
-  }
-
-  if (filters.outerMaterial.size > 0) {
-    results = results.filter((o) => {
-      const label = formatOvermoldOuterLabel(o);
-      return filters.outerMaterial.has(label);
     });
   }
 
@@ -112,11 +101,11 @@ export function OvermoldPickerDialog({
   };
 
   const clearFilters = () => {
-    setFilters({ outerMaterial: new Set(), outerForm: new Set() });
+    setFilters({ outerForm: new Set() });
     setSearch('');
   };
 
-  const hasActiveFilters = search.trim() !== '' || filters.outerMaterial.size > 0 || filters.outerForm.size > 0;
+  const hasActiveFilters = search.trim() !== '' || filters.outerForm.size > 0;
   const selectedOvermold = results.find((o) => o.id === selectedId);
   const availableInnerMold = getAvailableInnerMold(selectedOvermold);
 
@@ -178,12 +167,6 @@ export function OvermoldPickerDialog({
                 </button>
               )}
             </div>
-            <FilterGroup
-              label="外模材质"
-              options={FIXED_OUTER_MATERIALS}
-              selected={filters.outerMaterial}
-              onToggle={(v) => toggleFilter('outerMaterial', v)}
-            />
             <FilterGroup
               label="外型"
               options={FIXED_OUTER_FORMS}

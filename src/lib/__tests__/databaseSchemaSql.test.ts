@@ -119,9 +119,11 @@ describe('minimal database schema', () => {
   });
 
   it('enforces the final overmold contract and one shared outer image', () => {
-    expect(catalog).toContain("spec->>'outerMaterial' in ('黑色PVC', '黑色TPE')");
+    expect(catalog).toContain("spec->>'outerMaterial' = '黑色PVC'");
+    expect(catalog).not.toContain('黑色TPE');
     expect(catalog).toContain("spec->>'outerForm' in ('straight', 'bent')");
     expect(catalog).toContain("spec->>'outerHardness' = '45P'");
+    expect(catalog).toContain("spec ? 'outerHardness'");
     expect(catalog).toContain("spec->>'innerMaterial' = '低密度透明PE'");
     expect(catalog).toContain("spec->>'innerForm' = spec->>'outerForm'");
     expect(catalog).toContain("not (spec ? 'innerMaterialOptional')");
@@ -131,6 +133,22 @@ describe('minimal database schema', () => {
     expect(seed.split(sharedImagePath)).toHaveLength(3);
     expect(seed).not.toContain('demo-pvc-overmold');
     expect(seed).not.toContain('innerMaterialOptional');
+  });
+
+  it('updates existing databases to the PVC-only overmold constraint with a pre-flight assertion', () => {
+    const update = read('supabase/updates/20261013_overmold_pvc_only.sql');
+    const preflight = update.split('-- 原约束定义（2026-10-13 收紧前）')[0];
+    expect(preflight).toContain("where kind = 'overmold'");
+    expect(preflight).toContain('raise exception');
+    expect(preflight).toContain('drop constraint if exists catalog_items_overmold_spec_check');
+    const newConstraint = preflight.split('add constraint catalog_items_overmold_spec_check check')[1];
+    expect(newConstraint).toContain("spec->>'outerMaterial' = '黑色PVC'");
+    expect(newConstraint).toContain("spec->>'outerHardness' = '45P'");
+    expect(newConstraint).not.toContain('TPE');
+    // 原约束定义必须留在脚本中供必要时恢复
+    expect(update).toContain('原约束定义');
+    expect(update).toContain('pg_get_constraintdef');
+    expect(update).toContain("spec->>'outerMaterial' in ('黑色PVC', '黑色TPE')");
   });
 
   it('enforces valid connector and wire engineering ranges', () => {

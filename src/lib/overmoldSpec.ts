@@ -7,7 +7,7 @@ import type {
 
 /**
  * 格式化外模材质显示标签。
- * 例如：'黑色PVC' + '45P' -> '黑色PVC 45P'；'黑色TPE' -> '黑色TPE'
+ * 例如：'黑色PVC' + '45P' -> '黑色PVC 45P'
  */
 export function formatOvermoldOuterLabel(spec?: { outerMaterial?: string; outerHardness?: string }): string {
   if (!spec || !spec.outerMaterial) return '';

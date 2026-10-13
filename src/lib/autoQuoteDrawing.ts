@@ -23,9 +23,7 @@ export function generateAutoQuoteDrawingSvg(
     ? catalog?.connectors.find((c) => c.id === form.connectorBId)
     : undefined;
   const wire = catalog?.wires.find((w) => w.resourceItemId === form.wireResourceId);
-  const overmold = form.outerMoldType === 'pvc-45p'
-    ? catalog?.overmolds.find((m) => m.id === form.outerMoldSpecId)
-    : undefined;
+  const overmold = catalog?.overmolds.find((m) => m.id === form.outerMoldSpecId);
 
   const title = `${connA?.name ?? 'A端连接器'} - ${
     form.endpointBType === 'connector'
@@ -92,7 +90,7 @@ export function generateAutoQuoteDrawingSvg(
       note: `实际线长 ${form.lengthMm}mm`,
     });
   }
-  if (form.outerMoldType === 'pvc-45p' && overmold) {
+  if (overmold) {
     const moldQty = form.endpointBType === 'connector' ? 2 : 1;
     bomRows.push({
       no: bomRows.length + 1,
@@ -203,7 +201,7 @@ export function generateAutoQuoteDrawingSvg(
   <g transform="translate(${connAX}, ${cy})">
     <!-- 外模成型 (若有) -->
     ${
-      form.outerMoldType === 'pvc-45p' && overmold
+      overmold
         ? `<rect x="35" y="-18" width="55" height="36" rx="3" fill="url(#moldGrad)" stroke="#0f172a" stroke-width="1" />
            <line x1="42" y1="-18" x2="42" y2="18" stroke="#475569" stroke-width="1" />
            <line x1="48" y1="-18" x2="48" y2="18" stroke="#475569" stroke-width="1" />
@@ -235,7 +233,7 @@ export function generateAutoQuoteDrawingSvg(
         ? `
           <!-- B 端外模成型 (若有且配置了2端) -->
           ${
-            form.outerMoldType === 'pvc-45p' && overmold
+            overmold
               ? `<rect x="-90" y="-18" width="55" height="36" rx="3" fill="url(#moldGrad)" stroke="#0f172a" stroke-width="1" />
                  <line x1="-48" y1="-18" x2="-48" y2="18" stroke="#475569" stroke-width="1" />
                  <line x1="-42" y1="-18" x2="-42" y2="18" stroke="#475569" stroke-width="1" />

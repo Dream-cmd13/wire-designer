@@ -265,7 +265,7 @@ export interface ProtectiveSleeve {
 // ============================================================
 
 export type OvermoldForm = 'straight' | 'bent';
-export type OvermoldOuterMaterial = '黑色PVC' | '黑色TPE';
+export type OvermoldOuterMaterial = '黑色PVC';
 export type OvermoldHardness = '45P';
 export type OvermoldInnerMaterial = '低密度透明PE';
 
@@ -275,7 +275,7 @@ export interface OvermoldSpec {
   name: string;
   image?: string;
   outerMaterial: OvermoldOuterMaterial;
-  outerHardness?: OvermoldHardness;
+  outerHardness: OvermoldHardness;
   outerForm: OvermoldForm;
   innerMaterial?: OvermoldInnerMaterial;
   innerForm?: OvermoldForm;

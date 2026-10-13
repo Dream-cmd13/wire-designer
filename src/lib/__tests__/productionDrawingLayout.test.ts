@@ -18,12 +18,13 @@ describe('countProductionBomRows', () => {
         innerForm: 'straight' as const,
       },
       {
-        id: 'tpe-straight',
-        name: 'TPE直头',
-        outerMaterial: '黑色TPE' as const,
-        outerForm: 'straight' as const,
+        id: 'pvc-bent',
+        name: 'PVC弯头',
+        outerMaterial: '黑色PVC' as const,
+        outerHardness: '45P' as const,
+        outerForm: 'bent' as const,
         innerMaterial: '低密度透明PE' as const,
-        innerForm: 'straight' as const,
+        innerForm: 'bent' as const,
       },
     ];
     setCatalogSnapshot({
@@ -42,12 +43,12 @@ describe('countProductionBomRows', () => {
         },
         {
           id: 'model-2', kind: 'outer-box' as const, position: { x: 100, y: 0 }, width: 80, height: 60,
-          overmoldSpecId: 'tpe-straight', includeInnerMold: true,
+          overmoldSpecId: 'pvc-bent', includeInnerMold: true,
         },
       ],
     };
 
-    expect(countProductionBomRows(config, overmolds)).toBe(3);
+    expect(countProductionBomRows(config, overmolds)).toBe(4);
   });
 
   it('calculates bomTop and ensures layout boundaries leave vertical room', () => {

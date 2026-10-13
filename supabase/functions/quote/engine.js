@@ -479,7 +479,7 @@ function parseSpec(kind, value) {
       throw new CatalogItemError("\u76EE\u5F55\u5B57\u6BB5 spec.innerMaterialOptional \u5DF2\u5E9F\u5F03\u3002");
     }
     const outerMaterialText = requiredText(spec.outerMaterial, "spec.outerMaterial");
-    if (outerMaterialText !== "\u9ED1\u8272PVC" && outerMaterialText !== "\u9ED1\u8272TPE") {
+    if (outerMaterialText !== "\u9ED1\u8272PVC") {
       throw new CatalogItemError("\u76EE\u5F55\u5B57\u6BB5 spec.outerMaterial \u65E0\u6548\u3002");
     }
     const outerMaterial = outerMaterialText;
@@ -488,15 +488,10 @@ function parseSpec(kind, value) {
       throw new CatalogItemError("\u76EE\u5F55\u5B57\u6BB5 spec.outerForm \u5FC5\u987B\u4E3A straight \u6216 bent\u3002");
     }
     const outerForm = outerFormText;
-    let outerHardness;
-    if (outerMaterial === "\u9ED1\u8272PVC") {
-      if (requiredText(spec.outerHardness, "spec.outerHardness") !== "45P") {
-        throw new CatalogItemError("\u9ED1\u8272PVC\u5916\u6A21\u7684 spec.outerHardness \u5FC5\u987B\u4E3A 45P\u3002");
-      }
-      outerHardness = "45P";
-    } else if (spec.outerHardness !== void 0) {
-      throw new CatalogItemError("\u9ED1\u8272TPE\u5916\u6A21\u4E0D\u80FD\u5305\u542B spec.outerHardness\u3002");
+    if (requiredText(spec.outerHardness, "spec.outerHardness") !== "45P") {
+      throw new CatalogItemError("\u9ED1\u8272PVC\u5916\u6A21\u7684 spec.outerHardness \u5FC5\u987B\u4E3A 45P\u3002");
     }
+    const outerHardness = "45P";
     const hasInnerMaterial = spec.innerMaterial !== void 0;
     const hasInnerForm = spec.innerForm !== void 0;
     if (hasInnerMaterial !== hasInnerForm) {
@@ -517,7 +512,7 @@ function parseSpec(kind, value) {
     }
     return {
       outerMaterial,
-      ...outerHardness ? { outerHardness } : {},
+      outerHardness,
       outerForm,
       ...innerMaterial && innerForm ? { innerMaterial, innerForm } : {}
     };

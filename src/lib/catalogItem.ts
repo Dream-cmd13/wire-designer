@@ -68,7 +68,7 @@ export interface CatalogItemSpecByKind {
   };
   overmold: {
     outerMaterial: OvermoldOuterMaterial;
-    outerHardness?: OvermoldHardness;
+    outerHardness: OvermoldHardness;
     outerForm: OvermoldForm;
     innerMaterial?: OvermoldInnerMaterial;
     innerForm?: OvermoldForm;
@@ -321,7 +321,7 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
       throw new CatalogItemError('目录字段 spec.innerMaterialOptional 已废弃。');
     }
     const outerMaterialText = requiredText(spec.outerMaterial, 'spec.outerMaterial');
-    if (outerMaterialText !== '黑色PVC' && outerMaterialText !== '黑色TPE') {
+    if (outerMaterialText !== '黑色PVC') {
       throw new CatalogItemError('目录字段 spec.outerMaterial 无效。');
     }
     const outerMaterial = outerMaterialText as OvermoldOuterMaterial;
@@ -332,15 +332,10 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
     }
     const outerForm = outerFormText as OvermoldForm;
 
-    let outerHardness: OvermoldHardness | undefined;
-    if (outerMaterial === '黑色PVC') {
-      if (requiredText(spec.outerHardness, 'spec.outerHardness') !== '45P') {
-        throw new CatalogItemError('黑色PVC外模的 spec.outerHardness 必须为 45P。');
-      }
-      outerHardness = '45P';
-    } else if (spec.outerHardness !== undefined) {
-      throw new CatalogItemError('黑色TPE外模不能包含 spec.outerHardness。');
+    if (requiredText(spec.outerHardness, 'spec.outerHardness') !== '45P') {
+      throw new CatalogItemError('黑色PVC外模的 spec.outerHardness 必须为 45P。');
     }
+    const outerHardness: OvermoldHardness = '45P';
 
     const hasInnerMaterial = spec.innerMaterial !== undefined;
     const hasInnerForm = spec.innerForm !== undefined;
@@ -364,7 +359,7 @@ function parseSpec(kind: CatalogItemKind, value: unknown): CatalogItemSpecByKind
 
     return {
       outerMaterial,
-      ...(outerHardness ? { outerHardness } : {}),
+      outerHardness,
       outerForm,
       ...(innerMaterial && innerForm ? { innerMaterial, innerForm } : {}),
     };

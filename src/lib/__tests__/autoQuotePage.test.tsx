@@ -347,8 +347,8 @@ describe('AutoQuotePage', () => {
     expect(html).toContain('剥皮沾锡');
     expect(html).toContain('线材物料');
     expect(html).toContain('成型模具配置');
-    expect(html).toContain('黑色 PVC 45P');
-    expect(html).toContain('TPE (待支持)');
+    expect(html).toContain('外模规格（必选）');
+    expect(html).not.toContain('TPE');
     expect(html).toContain('无内模');
     expect(html).not.toContain('无外模');
     expect(html).not.toContain('仅A端成型');
@@ -367,7 +367,7 @@ describe('AutoQuotePage', () => {
     expect(html).not.toContain('报价确认结构图');
   });
 
-  it('renders endpoint forms and identifies pending-support tags', () => {
+  it('renders endpoint forms without pending-support tags', () => {
     useCatalogStore.setState({
       snapshot: mockCatalog,
       status: 'ready',
@@ -375,7 +375,8 @@ describe('AutoQuotePage', () => {
     });
 
     const html = renderToStaticMarkup(<AutoQuotePage />);
-    expect(html).toContain('待支持');
+    expect(html).not.toContain('待支持');
+    expect(html).not.toContain('TPE');
   });
 
   it('renders single-column layout with sticky bottom bar for sales user', () => {

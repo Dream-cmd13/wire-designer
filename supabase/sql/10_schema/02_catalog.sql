@@ -19,23 +19,14 @@ create table public.catalog_items (
     (
       (spec ? 'outerMaterial') and
       (jsonb_typeof(spec->'outerMaterial') = 'string') and
-      (spec->>'outerMaterial' in ('黑色PVC', '黑色TPE')) and
+      (spec->>'outerMaterial' = '黑色PVC') and
       (spec ? 'outerForm') and
       (jsonb_typeof(spec->'outerForm') = 'string') and
       (spec->>'outerForm' in ('straight', 'bent')) and
       (not (spec ? 'innerMaterialOptional')) and
-      (
-        (
-          (spec->>'outerMaterial' = '黑色PVC') and
-          (spec ? 'outerHardness') and
-          (jsonb_typeof(spec->'outerHardness') = 'string') and
-          (spec->>'outerHardness' = '45P')
-        ) or
-        (
-          (spec->>'outerMaterial' = '黑色TPE') and
-          (not (spec ? 'outerHardness'))
-        )
-      ) and
+      (spec ? 'outerHardness') and
+      (jsonb_typeof(spec->'outerHardness') = 'string') and
+      (spec->>'outerHardness' = '45P') and
       (
         (
           (not (spec ? 'innerMaterial')) and

@@ -284,5 +284,41 @@ describe('real PostgreSQL pricing permissions', () => {
     expect(latest).toMatchObject({ updated_by: admin, updated_by_name: 'admin', tax_included_price: '11' });
     expect(Date.parse(String(latest.stamp))).toBeGreaterThan(Date.parse(String(first.stamp)));
   });
+  it('tightens the overmold catalog constraint without touching data and aborts on legacy TPE rows', async () => {
+    await db.exec('reset role');
+    const migration = readFileSync('supabase/updates/20261013_overmold_pvc_only.sql', 'utf8');
+    /** 从迁移脚本末尾的备份注释还原原约束，用于模拟收紧前的数据库。 */
+    const legacyConstraint = migration
+      .split('-- 原约束定义（2026-10-13 收紧前）')[1]
+      .split('-- ============================================================================')[0]
+      .split('\n')
+      .filter((line) => line.startsWith('--'))
+      .map((line) => line.slice(2))
+      .join('\n');
+    await db.exec(`
+      insert into public.catalog_items(id,kind,code,name,model,spec) values
+        ('40000000-0000-4000-8000-000000000201','overmold','pvc-45p-straight','黑色PVC 45P直头外模','PVC-45P-STRAIGHT','{"innerForm":"straight","outerForm":"straight","innerMaterial":"低密度透明PE","outerHardness":"45P","outerMaterial":"黑色PVC"}'),
+        ('40000000-0000-4000-8000-000000000202','overmold','pvc-45p-bent','黑色PVC 45P弯头外模','PVC-45P-BENT','{"innerForm":"bent","outerForm":"bent","innerMaterial":"低密度透明PE","outerHardness":"45P","outerMaterial":"黑色PVC"}')`);
+    const before = await db.query('select id, kind, code, spec from public.catalog_items order by code');
+    await db.exec(migration);
+    await db.exec(migration);
+    expect(await db.query('select id, kind, code, spec from public.catalog_items order by code')).toEqual(before);
+    await expect(db.exec(`insert into public.catalog_items(kind,code,name,model,spec)
+      values ('overmold','tpe-straight','TPE直头','TPE','{"outerForm":"straight","outerMaterial":"黑色TPE"}')`)).rejects.toThrow();
+    await expect(db.exec(`insert into public.catalog_items(kind,code,name,model,spec)
+      values ('overmold','pvc-no-hardness','PVC无硬度','PVC','{"outerForm":"straight","outerMaterial":"黑色PVC"}')`)).rejects.toThrow();
+
+    await db.exec('alter table public.catalog_items drop constraint catalog_items_overmold_spec_check');
+    await db.exec(legacyConstraint);
+    await db.exec(`insert into public.catalog_items(kind,code,name,model,spec)
+      values ('overmold','tpe-legacy','TPE遗留外模','TPE','{"outerForm":"straight","outerMaterial":"黑色TPE"}')`);
+    const definition = () => db.query("select pg_get_constraintdef(oid) as definition from pg_constraint where conname = 'catalog_items_overmold_spec_check'");
+    const legacyDefinition = await definition();
+    const legacyRows = await db.query('select id, kind, code, spec from public.catalog_items order by code');
+    await expect(db.exec(migration)).rejects.toThrow('不符合黑色 PVC 45P 目标规则');
+    await db.exec('rollback');
+    expect(await definition()).toEqual(legacyDefinition);
+    expect(await db.query('select id, kind, code, spec from public.catalog_items order by code')).toEqual(legacyRows);
+  }, 30000);
 
 });
