@@ -204,7 +204,7 @@ export function AutoQuotePriceCard({
           </details>
 
           {/* 加工费明细 */}
-          <details className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+          <details open className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
             <summary className="cursor-pointer font-semibold text-slate-800 select-none flex justify-between items-center text-xs">
               <span>加工费工序明细</span>
               <span className="text-blue-600 font-bold tabular-nums">
