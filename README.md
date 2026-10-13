@@ -85,8 +85,12 @@ npm run supabase:bootstrap-storage
 创建测试登录用户：
 
 ```powershell
-npm run user:create -- user@example.com "password" "显示名"
+npm run user:create -- username "显示名"
 ```
+
+新账号初始密码为 `888888`，首次登录必须修改为 8–128 位的新密码才能使用业务功能。也可传入完整邮箱。已有账号密码不变。用户在右上角“账户”中修改密码，管理员在同一弹窗重置其他账号为 `888888`，重置后同样要求改密。
+
+上线前须按 [密码功能部署说明](docs/account-password.md) 执行保留数据的迁移并部署云函数，再发布前端。
 
 ## 功能范围
 

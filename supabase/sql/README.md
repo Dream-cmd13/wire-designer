@@ -1,3 +1,7 @@
+## 账号密码管理（2026-10-13）
+
+现有库及新库在业务表和安全策略就绪后执行 `supabase/updates/20261013_password_change_required.sql`，保留全部已有账号和业务数据。迁移新增强制改密权限检查与密码并发保护触发器；必须配套部署 `account-password`、`quote` 云函数及前端。备份恢复、部署顺序和验收见 [账号密码管理](../../docs/account-password.md)。本次升级不得执行下面的清库重建流程。
+
 ## 价格更新人信息（2026-10-12）
 
 现有库执行 `supabase/updates/20261012_material_price_updater.sql`；新库在价格表、角色权限脚本之后执行 `10_schema/09_material_price_updater.sql`。

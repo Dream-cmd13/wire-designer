@@ -21,8 +21,8 @@
     "supabase:export-cost-seed": "node scripts/import-cost-analyses.mjs --export-sql",
     "supabase:verify-cost-analyses": "node scripts/verify-cost-analyses.mjs",
     "user:create": "node scripts/create-user.mjs",
-    "test": "vitest run --exclude \".worktrees/**\"",
-    "test:watch": "vitest --exclude \".worktrees/**\""
+    "test": "vitest run --exclude \".worktrees/**\" --exclude \".tmp/**\" --exclude \"tmp/**\"",
+    "test:watch": "vitest --exclude \".worktrees/**\" --exclude \".tmp/**\" --exclude \"tmp/**\""
   },
   "dependencies": {
     "@mlightcad/libredwg-web": "^0.7.14",

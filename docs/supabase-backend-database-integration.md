@@ -52,10 +52,12 @@
 创建登录用户使用：
 
 ```powershell
-npm run user:create -- user@example.com "password" "显示名"
+npm run user:create -- username "显示名"
 ```
 
 脚本只调用 Supabase Auth Admin API，不写应用用户表。`SUPABASE_SECRET_KEY` 只能存在于受信任的服务端环境，不得暴露到前端、日志或仓库。
+
+新账号初始密码为 `888888`，首次登录必须改密；管理员重置后也必须改密。部署、迁移和验收见 [密码功能说明](account-password.md)。
 
 ## 验收清单
 
