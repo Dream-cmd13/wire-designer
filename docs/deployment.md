@@ -2,6 +2,30 @@
 
 3D 模型新增静态引擎资源和保留数据的迁移：发布前按 [3D 模型实施与验收记录](model-preview-validation.md) 准备 `20261104_model_preview.sql`、备份与真实云端验收。`npm run build` 自动准备 `dist/model-engine/`，部署时需连同 Worker chunk 一起包含；WASM 返回 `application/wasm`，`.mjs` 返回 JavaScript MIME。不要通过重置数据库安装此功能。
 
+当前生产站点的 Nginx MIME 表缺少 `.mjs` / `.wasm`。已在 `/www/server/panel/vhost/nginx/designer.wltlink.com.conf` 增加以下站点专用配置；迁移站点时需一并安装。修改前备份配置，执行 `nginx -t` 通过后再重载，配置检查失败则恢复备份：
+
+```nginx
+location ^~ /model-engine/ {
+    types {
+        application/javascript mjs js;
+        application/wasm wasm;
+        text/plain md;
+    }
+    try_files $uri =404;
+}
+```
+
+## 三维模型发布记录（2026-11-04）
+
+- 根据本轮明确授权，将提交 `6f9cc0b` 发布到 `https://designer.wltlink.com`；执行 Supabase 项目 `wioaznspvchiogdxvtun` 的 `supabase/updates/20261104_model_preview.sql`。
+- 执行前备份 public/auth/storage 数据库结构与数据、对象清单及 57 个 Storage 实际文件（12,306,233 字节）。备份位于本机受限目录 `.tmp/model-release/2026-11-04T08-03-28-417Z/`，不入 Git。数据库备份已恢复到独立本地 PostgreSQL，并演练迁移两次；统一 UTC 后核对原有 47 张表的行数及内容哈希相同。远程迁移在事务内再次核对后提交，原有桶和对象未变。
+- 模型桶私有、上限 20 MiB，模型表 RLS 及 5 条策略就绪；匿名 REST 读取模型返回 401，文件服务状态 RPC 返回 200。未上传真实模型至 Storage，也未执行真实账号保存/刷新/跨账号端到端验收。
+- `npm run deploy` 的全仓 ESLint、1054 项测试、前端/服务端/云函数类型检查与构建通过。发布包 SHA256 为 `0b35b55710bccdd3d1b0d1888773f4cb81a5a88cff21530c7cbfb6a80b5000c4`；旧站点备份为 `/www/wwwroot/designer.wltlink.com/.deploy-backup-20261104081240521`。
+- Nginx 站点配置备份为 `/www/server/panel/vhost/nginx/designer.wltlink.com.conf.model-engine-before-20261104081518`，配置检查与重载成功。公网首页、模型路由、主脚本、模型页面、Worker、OCCT JS/WASM 和许可证均为 200，已核对内容 SHA256 与发布构建相同，MIME 正确。
+- 线上前端的 6 个浏览器场景已验证通过，Auth/Storage 写入仍使用本地拦截。真实外部 STEP 仅在浏览器内解析：5848 个三角形、1 个网格、近似 AABB `19.60 × 19.60 × 24.00 mm`，本轮约 6.1 秒。双实体 STEP 首轮因默认 5 秒测试等待不足失败，调整临时线上验收等待为 65 秒后单项通过；未修改产品超时或正式测试。20 次替换前后活跃 GPU buffer 同为 4。
+
+回退前端使用上述旧站点备份，并保留模型表、桶及文件；Nginx 配置可用独立备份恢复后检查重载，不通过整库回灌或删除新表回退功能。
+
 ## 日常使用
 
 在 Windows PowerShell 中进入项目目录：

@@ -79,7 +79,7 @@ npx playwright test tests/e2e/model-viewer.spec.ts
 
 ## 部署与远程待执行事项
 
-本次不执行远程 SQL、真实外部上传、Git 提交推送或发布。远程操作须在明确授权后按以下步骤执行：
+初次实施阶段未执行远程操作；后续已按明确授权完成 Git 提交推送、远程 SQL 与前端发布，详见 [三维模型发布记录](deployment.md#三维模型发布记录2026-11-04)。真实外部模型上传及真实账号保存端到端验收仍未执行。远程操作规程如下：
 
 1. 确认目标项目 URL/数据库、授权角色和备份位置，避免误连生产或其他项目。确认现有 `auth.users`、`public.current_app_role()` 和 Storage schema 已安装。
 2. 备份既有数据库（包含业务表、权限、桶与对象清单），例如使用已有受保护环境变量运行 `pg_dump --dbname=$env:MODEL_DATABASE_URL --format=custom --file=model-preview-before.dump`。另备份 Storage 实际文件：数据库备份只包含对象元数据，不包含文件字节。备份不得进 Git；先在隔离环境验证可恢复。
