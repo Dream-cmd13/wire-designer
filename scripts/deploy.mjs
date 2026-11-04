@@ -29,8 +29,9 @@ function npm(...commandArgs) {
 
 try {
   console.log(dryRun ? '本地验证模式：不会连接服务器或上传文件' : `部署目标：${host}:${base}/dist`)
-  run(process.execPath, [join(root, 'node_modules/eslint/bin/eslint.js'), 'src', 'server', 'tests', 'scripts/deploy.mjs', 'vite.config.ts', '--max-warnings=0'])
+  npm('run', 'lint')
   npm('test', '--', '--exclude', '.tmp/**', '--exclude', 'tmp/**')
+  npm('run', 'typecheck')
   npm('run', 'build')
   if (!existsSync(join(root, 'dist/index.html'))) throw new Error('构建产物缺少 index.html')
   const id = new Date().toISOString().replace(/[-:.TZ]/g, '')

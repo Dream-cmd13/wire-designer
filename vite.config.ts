@@ -1,6 +1,17 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+
+// Vitest 读取本文件的 test 段；此处显式声明，避免 vitest/config 与根 Vite 插件类型相互冲突。
+declare module 'vite' {
+  interface UserConfig {
+    test?: {
+      testTimeout?: number
+      hookTimeout?: number
+    }
+  }
+}
 
 /**
  * 运行时的 wasm 由 public/libredwg/ 提供（prebuild 拷贝），应用始终通过
@@ -29,6 +40,11 @@ function dropDuplicateLibredwgWasm(): Plugin {
 // Test-specific config (environment, globals) uses vitest defaults.
 export default defineConfig({
   plugins: [react(), dropDuplicateLibredwgWasm()],
+  // PGlite 隔离数据库用例在并行负载下可能超过 5s 默认超时；统一提高超时而不跳过断言。
+  test: {
+    testTimeout: 30000,
+    hookTimeout: 60000,
+  },
   optimizeDeps: {
     include: [
       '@xyflow/react',

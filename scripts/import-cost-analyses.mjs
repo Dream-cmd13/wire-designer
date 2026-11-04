@@ -4,6 +4,9 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import XLSX from 'xlsx';
 
+// xlsx 0.20.x 的 ESM 构建需要显式注入 fs 才能使用 readFile/writeFile。
+XLSX.set_fs(fs);
+
 const require = createRequire(import.meta.url);
 
 function loadEnv() {

@@ -45,5 +45,8 @@ output/
 outputs/
 wire-harness-designer图片备份/
 supabase/.temp/
+supabase/functions/quote/engine.js
+test-results/
+playwright-report/
 excel/
 catalog-source/
