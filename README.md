@@ -66,15 +66,15 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 - `suppliers`：供应商编号与名称。
 - `finished_harness_materials`、`finished_harness_cost_analyses`：现有成品线束物料、成本分析与定价公式推导明细。
 
-`catalog_items`、`suppliers`、`material_prices`、成品线束与成品图纸均仅登录用户可读，匿名用户对 `catalog_items` 无任何增删改查权限；登录用户只能向 `catalog_items` 新增 `accessory`（制作图公司辅材）；`projects` 和 `drawings` 仅本人可读写。
+`catalog_items`、`suppliers`、`material_prices`、成品线束与成品图纸均仅登录用户可读，匿名用户对 `catalog_items` 无任何增删改查权限；登录用户只能向 `catalog_items` 新增 `accessory`（制作图公司辅材）；`projects` 和 `drawings` 仅本人可读，写入只通过带版本校验的 RPC（`revision` 乐观锁），已删除的文档不会被旧窗口保存复活。
 
 存储使用四个桶：私有 `catalog-assets`（目录图片）、私有 `cost-analysis-sources`（成本分析来源 Excel）、私有 `finished-harness-drawings`（成品方案补充 2D 图纸）、私有 `dwg-drawings`（DWG 查看页内置图纸），均登录后通过签名 URL 查看；另有只读 RPC `get_storage_bootstrap_status` 检查必需桶状态。
 
 业务选项以及图纸模板、常用语、图标随前端代码发布。项目和图纸采用硬删除；重复保存以最后一次成功写入为准。详细字段、权限和验收见 [Supabase 集成说明](docs/supabase-backend-database-integration.md)，成本分析口径见[成品方案成本分析文档](docs/finished-harness-cost-analysis-plan.md)，建库步骤与数据约定见 [SQL 执行说明](supabase/sql/README.md)。
 
-## 初始化 Supabase
+## 初始化与升级 Supabase
 
-测试阶段采用清空重建，不保留升级 SQL。必须确认目标项目和测试数据可删除后，按 [SQL 执行顺序](supabase/sql/README.md) 操作。未经明确授权，不应执行重置脚本。
+现有账号、项目、图纸、价格、成本分析与来源文件全部保留，禁止清库重建。现有库升级按 [SQL 执行说明](supabase/sql/README.md) 逐个执行 `supabase/updates/` 中未安装的迁移；全新环境按同一说明依次执行 schema、storage、security 与 seed，不包含任何 reset 脚本。迁移影响、备份要求、校验与回退边界见 [数据保留升级说明](docs/data-preserving-upgrades.md)。
 
 数据库部署后，可在受信任环境幂等确保私有目录桶存在（完整建库会创建全部四个桶，该命令只创建或修复 `catalog-assets`）：
 

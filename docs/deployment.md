@@ -37,7 +37,7 @@ ssh -i $env:DEPLOY_SSH_KEY -o IdentitiesOnly=yes -p 22 root@8.135.107.54 "echo S
 
 ## 发布流程与保留策略
 
-1. 对 src、server、tests、部署入口及 Vite 配置执行 ESLint（0 告警），执行 npm test（排除临时目录和 worktree），再执行类型检查和生产构建。
+1. 对全仓执行 ESLint（0 告警）；执行 npm test（排除临时目录和 worktree）；执行 `npm run typecheck`（前端 `tsc -b`、服务端 `tsconfig.server.json` 与 Deno 云函数检查；缺少 Deno 工具时预检明确失败并提示安装方式）；最后执行生产构建。预检与本地开发使用同一套命令，避免只通过前端构建而漏掉服务端问题。
 2. 将 dist 内容打包到 `.tmp/deploy/<版本号>/dist.tar.gz` 并计算 SHA256。`deploy:check` 到此结束，不连接服务器。
 3. SSH 检查目标目录后上传压缩包；服务器持有 flock 锁，避免两个发布同时切换文件。
 4. 校验压缩包 SHA256 和路径，拒绝链接及 `.well-known` 内容。复制现有 dist 到临时目录后覆盖新产物，因此原 `.well-known`、其他站点文件及旧哈希静态资源继续保留。
@@ -77,7 +77,11 @@ ssh -i $env:DEPLOY_SSH_KEY -o IdentitiesOnly=yes -p 22 root@8.135.107.54 "echo S
 
 ## Supabase 发布边界
 
-本命令只发布前端，不执行 SQL、数据迁移或 Supabase Edge Function 发布。涉及报价协议或数据结构变化时，先阅读 [SQL 执行说明](../supabase/sql/README.md) 和 [报价业务规则](报价业务规则.md)，安排数据库、报价函数和前端同批发布。发布前备份相关数据并确认恢复方案，不可只更新前端而遗漏配套变更。
+本命令只发布前端，不执行 SQL、数据迁移或 Supabase Edge Function 发布。前端 deploy 成功不代表后端已升级；涉及数据结构、权限或报价协议变化时，必须按 [数据保留升级说明](data-preserving-upgrades.md) 与 [SQL 执行说明](../supabase/sql/README.md) 完成备份、迁移核对与函数部署，再发布前端。
+
+- 项目与图纸版本控制（`supabase/updates/20261014_document_revision.sql`）必须与新前端在同一维护窗口发布；旧页面在权限收紧后会保存失败并保留本地草稿，需提示用户刷新。
+- 部署 `quote` 函数前必须先运行 `npm run quote:build` 生成最新 `engine.js`，再由已授权的部署人员执行 `supabase functions deploy quote`；未变更的函数不无故重发。
+- 成本同步脚本只允许在单独授权下执行，先预览再 `--commit`；禁止把远程迁移或同步动作混入前端部署命令。发布前备份相关数据并确认恢复方案，不可只更新前端而遗漏配套变更。
 
 ## 验证记录
 
