@@ -6,10 +6,11 @@ import { getCameraFit } from '../models/modelView';
 import { ModelViewer } from '@/components/models/ModelViewer';
 import type { ParsedModel } from '../models/modelTypes';
 
-const mocks = vi.hoisted(() => ({ dispose: vi.fn(), controlsDispose: vi.fn(), disconnect: vi.fn(), draw: vi.fn() }));
+const mocks = vi.hoisted(() => ({ dispose: vi.fn(), controlsDispose: vi.fn(), disconnect: vi.fn(), draw: vi.fn(), creationFailures: 0 }));
 vi.mock('three', async (load) => {
   const actual = await load<typeof import('three')>();
   return { ...actual, WebGLRenderer: class {
+    constructor() { if (mocks.creationFailures > 0) { mocks.creationFailures--; throw new Error('WebGL unavailable'); } }
     domElement = document.createElement('canvas');
     setPixelRatio() {} setSize() {} forceContextLoss() {} render() { mocks.draw(); } dispose() { mocks.dispose(); }
   } };
@@ -20,7 +21,7 @@ vi.mock('three/addons/controls/OrbitControls.js', async () => {
 });
 vi.stubGlobal('ResizeObserver', class { observe() {} disconnect = mocks.disconnect; });
 const model: ParsedModel = { meshes: [{ name: 'part', positions: new Float32Array([0,0,0,1,0,0,0,1,0]), indices: new Uint32Array([0,1,2]) }], boundsMm: { min: [0,0,0], max: [1,1,0] }, triangleCount: 1 };
-afterEach(() => { testing.cleanup(); vi.clearAllMocks(); });
+afterEach(() => { testing.cleanup(); vi.clearAllMocks(); mocks.creationFailures = 0; });
 describe('camera fit and canvas ownership', () => {
   it('keeps clipping and aspect finite for tiny, large, flat and zero-size containers', () => {
     for (const size of [1e-8, 1, 1e12]) for (const [width, height] of [[0,0], [1,1000], [1000,1]]) {
@@ -46,6 +47,34 @@ describe('camera fit and canvas ownership', () => {
     testing.fireEvent(document.querySelector('canvas')!, new Event('webglcontextlost', { cancelable: true }));
     expect(testing.screen.getByRole('alert').textContent).toContain('WebGL');
     testing.fireEvent.click(testing.screen.getByRole('button', { name: '重建画布' }));
+    expect(testing.screen.queryByRole('alert')).toBeNull();
+  });
+  it.each([false, true])('clears an obsolete context-loss overlay when replacing a model (empty transition: %s)', (emptyTransition) => {
+    const { rerender } = testing.render(<ModelViewer model={model} />);
+    const oldCanvas = document.querySelector('canvas')!;
+    testing.fireEvent(oldCanvas, new Event('webglcontextlost', { cancelable: true }));
+    expect(testing.screen.getByRole('alert').textContent).toContain('WebGL');
+    if (emptyTransition) rerender(<ModelViewer model={null} />);
+    rerender(<ModelViewer model={{ ...model }} />);
+    expect(document.querySelector('canvas')).not.toBeNull();
+    expect(document.querySelector('canvas')).not.toBe(oldCanvas);
+    expect(testing.screen.queryByRole('alert')).toBeNull();
+  });
+  it('clears an initialization error when a new model creates a healthy canvas', async () => {
+    mocks.creationFailures = 1;
+    const { rerender } = testing.render(<ModelViewer model={model} />);
+    await testing.screen.findByRole('alert');
+    rerender(<ModelViewer model={{ ...model }} />);
+    expect(document.querySelector('canvas')).not.toBeNull();
+    expect(testing.screen.queryByRole('alert')).toBeNull();
+  });
+  it('does not revive an obsolete error when the same model returns after an empty state', () => {
+    const { rerender } = testing.render(<ModelViewer model={model} />);
+    testing.fireEvent(document.querySelector('canvas')!, new Event('webglcontextlost', { cancelable: true }));
+    expect(testing.screen.getByRole('alert')).toBeTruthy();
+    rerender(<ModelViewer model={null} />);
+    rerender(<ModelViewer model={model} />);
+    expect(document.querySelector('canvas')).not.toBeNull();
     expect(testing.screen.queryByRole('alert')).toBeNull();
   });
 });

@@ -1,3 +1,7 @@
+## 三维模型私有保存（2026-11-04）
+
+现有库执行 `supabase/updates/20261104_model_preview.sql`；全新库按下方顺序先创建 `10_schema/10_model_assets.sql`，再执行桶与安全策略脚本。迁移仅新增本功能表、私有桶和权限，不清空既有表或文件。执行前备份数据库及 Storage 实际文件并记录对象清单，执行后核对原数据及对象清单不变。应用回退时保留新增表、桶和文件；详见 [三维模型实施与验收记录](../../docs/model-preview-validation.md)。
+
 ## 外模材质收紧为黑色 PVC 45P（2026-10-13）
 
 数据库不存在 TPE 外模记录，统一收紧为“外模仅支持黑色 PVC 45P”。现有库执行 `supabase/updates/20261013_overmold_pvc_only.sql`；新库直接使用 `10_schema/02_catalog.sql` 中已收紧的约束。
@@ -66,6 +70,7 @@ values ('替换为准确的管理员账号UUID'::uuid, 'admin');
 5. `supabase/updates/20261013_initial_password_accounts.sql`、`20261013_password_change_required.sql`（配套部署 `account-password`、`quote` 函数）
 6. `supabase/updates/20261013_overmold_pvc_only.sql`
 7. `supabase/updates/20261014_document_revision.sql`（配套发布新前端）
+8. `supabase/updates/20261104_model_preview.sql`（三维模型元数据、私有桶及权限）
 
 执行前备份相关表并记录行数/哈希；执行后核对既有数据未变；回退与验证细节见 [数据保留升级说明](../../docs/data-preserving-upgrades.md)。
 
@@ -81,18 +86,19 @@ values ('替换为准确的管理员账号UUID'::uuid, 'admin');
 6. `10_schema/06_finished_harness_cost_analyses.sql`：创建成品线束成本分析与定价公式推导明细表，并扩充成品线束物料主表价格汇总列与唯一约束。
 7. `10_schema/07_pricing_permissions.sql`：角色、定价参数、审计与价格权限函数。
 8. `10_schema/08_material_price_edit.sql`、`10_schema/09_material_price_updater.sql`：价格页面编辑与更新人信息函数。
-9. `20_storage/01_buckets.sql`：确保私有 `catalog-assets`、私有 `cost-analysis-sources`、私有 `finished-harness-drawings` 与私有 `dwg-drawings` 桶存在，并安装只读状态 RPC。
-10. `30_security/01_rls.sql`：安装项目/图纸 owner 策略（项目与图纸只授予 SELECT），以及仅登录可读的目录、供应商与成品图纸读取策略。
-11. `30_security/02_pricing_permissions.sql`：安装价格与角色权限策略（必须晚于旧策略文件）。
-12. `supabase/updates/20261013_password_change_required.sql`、`20261014_document_revision.sql`：与现有库使用同一迁移，保证新库具备强制改密门禁与文档版本控制。
-13. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
-14. `40_seed/02_real_harness_catalog.sql`：写入 12 个真实连接器和 10 个真实线材。
-15. `40_seed/04_material_prices.sql`：写入 24 个目录项的 54 条共享价格档位（依赖第 13、14 步的目录项，可单独重复执行）。
-16. `40_seed/05_finished_harness_materials.sql`：写入外部系统导出的成品线束物料（可单独重复执行）。
-17. `40_seed/06_finished_harness_cost_analyses.sql`：写入 43 个成品方案成本分析、工序工时与定价公式推导基线数据（只新增或更新，可单独重复执行）。
-18. `40_seed/07_finished_harness_drawings.sql`：为原本无图纸的成品方案回填补充 2D 图纸对象路径（仅当 `file_2d` 为空时更新，可单独重复执行）。
+9. `10_schema/10_model_assets.sql`：创建三维模型原文件元数据表与校验触发器，必须先于下方模型权限策略。
+10. `20_storage/01_buckets.sql`：确保私有 `catalog-assets`、私有 `cost-analysis-sources`、私有 `finished-harness-drawings`、私有 `dwg-drawings` 与私有 `model-files` 桶存在，并安装只读状态 RPC；模型桶上限 20 MiB。
+11. `30_security/01_rls.sql`：安装项目/图纸 owner 策略（项目与图纸只授予 SELECT）、仅登录可读的目录/供应商/成品图纸策略，以及三维模型仅工程师或管理员本人可读写的表与文件策略。
+12. `30_security/02_pricing_permissions.sql`：安装价格与角色权限策略（必须晚于旧策略文件）。
+13. `supabase/updates/20261013_password_change_required.sql`、`20261014_document_revision.sql`：与现有库使用同一迁移，保证新库具备强制改密门禁与文档版本控制。
+14. `40_seed/01_catalog_items.sql`：写入统一目录基线数据。
+15. `40_seed/02_real_harness_catalog.sql`：写入 12 个真实连接器和 10 个真实线材。
+16. `40_seed/04_material_prices.sql`：写入 24 个目录项的 54 条共享价格档位（依赖第 14、15 步的目录项，可单独重复执行）。
+17. `40_seed/05_finished_harness_materials.sql`：写入外部系统导出的成品线束物料（可单独重复执行）。
+18. `40_seed/06_finished_harness_cost_analyses.sql`：写入 43 个成品方案成本分析、工序工时与定价公式推导基线数据（只新增或更新，可单独重复执行）。
+19. `40_seed/07_finished_harness_drawings.sql`：为原本无图纸的成品方案回填补充 2D 图纸对象路径（仅当 `file_2d` 为空时更新，可单独重复执行）。
 
-新增成品线束表与成本分析也可以在已有数据库上单独执行第 5、6、16、17、18 步，共享价格种子（第 15 步）同样可单独重复执行，无需执行任何 reset。若后续更新了 `excel/` 目录下的成本分析表格，运行 `npm run supabase:export-cost-seed` 刷新第 17 步种子后重新执行该文件：种子只新增或更新，不删除来源之外的历史记录；如需处理旧料号重命名，必须单独提供有准确旧新映射的迁移，不得以“本次未出现”作为删除授权。刷新前先确认本地 Excel 来源完整并审查种子差异，禁止直接执行到远程库。
+新增成品线束表与成本分析也可以在已有数据库上单独执行第 5、6、17、18、19 步，共享价格种子（第 16 步）同样可单独重复执行，无需执行任何 reset。若后续更新了 `excel/` 目录下的成本分析表格，运行 `npm run supabase:export-cost-seed` 刷新第 18 步种子后重新执行该文件：种子只新增或更新，不删除来源之外的历史记录；如需处理旧料号重命名，必须单独提供有准确旧新映射的迁移，不得以“本次未出现”作为删除授权。刷新前先确认本地 Excel 来源完整并审查种子差异，禁止直接执行到远程库。
 
 来源定位统一使用“内容哈希版本对象路径”（`cost-analyses/<序号>_<名称>_<sha256前12位>.xlsx`），`sync-cost-analyses.mjs` 上传、`import-cost-analyses.mjs` 写入、`upload-cost-analysis-excels.mjs` 上传与 `verify-cost-analyses.mjs` 核对共用同一规则。导入/种子生成默认不访问远程：未确认对象存在时保留既有种子定位；显式传入 `node scripts/import-cost-analyses.mjs --export-sql --verify-storage` 时通过 Storage 只读确认对象存在，已确认的使用版本路径，未确认的继续保留既有定位，都没有则不写地址。数据库写入同样只在对象已确认存在（同步上传成功或验证通过）时更新 `source_excel_path/url`，其余记录保留原引用，避免改回旧路径或引用不存在的对象。生成的种子按来源状态分组：**已验证**的版本路径允许替换既有引用；**未验证**的历史定位只填补空值（`coalesce(现有引用, excluded)`），不会覆盖数据库较新的地址，因此“先同步新路径、再执行离线种子”不会造成来源定位回退。
 

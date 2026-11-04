@@ -51,6 +51,17 @@ PGlite 执行的是实际 PostgreSQL 表约束、触发器与 RLS，不是 SQL �
 
 本机已安装 Docker / Supabase CLI，但 `docker info` 报告 `dockerDesktopLinuxEngine` 管道不存在（daemon 未运行），因此未运行完整本地 Supabase Storage 服务。没有为此启动远程服务或对远程数据执行任何操作。
 
+### 审查后修复（2026-11-04）
+
+初版实现已按授权提交并推送至 `origin/dev`，提交号 `423e68b`。以下修复单独保留在工作区：
+
+- 取得本人云端记录后立即保留 modelId 与保存状态，解析失败/重试不再改写保存身份，防止重复创建记录及上传。
+- WebGL 错误绑定模型与画布代次，模型变化时清除旧错误及其网格引用；覆盖直接切换、空态过渡、初始化失败及同一模型重新显示，保留手动重建入口。
+- 补齐 `supabase/sql/README.md` 的新表、私有桶、现有库迁移和首次安装顺序，核对清单涉及的 21 个 SQL 文件均存在，模型表和桶先于权限脚本。
+- 新增 5 项回归场景，均在修复前观察到预期失败，修复后页面/画布相关 13 项测试通过。修复没有修改数据库脚本或执行远程 SQL、真实外部文件上传、发布。
+
+最终复验：修改代码的 `npx eslint <文件路径> --max-warnings=0` 与 `npx tsc -b` 通过；`npm test` 为 124 个文件 / 1054 项通过；`npm run build` 通过，保留已知的大 chunk 提示。对最终生产构建运行 `npx playwright test tests/e2e/model-viewer.spec.ts`，6 项全部通过，真实 STEP 未跳过：5,848 个三角形 / 1 个网格，网格近似 AABB 为 `19.60 × 19.60 × 24.00 mm`，约 1.48 秒，WASM 为 200 / `application/wasm`。连续替换 20 次后活跃 GPU buffer 仍为 4；本地 HTTP 模拟的上传/数据库确认故障恢复通过，仍不等同于真实 Storage 验收。
+
 建议复现：
 
 ```powershell

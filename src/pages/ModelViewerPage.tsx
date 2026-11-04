@@ -61,7 +61,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
     } catch (cause) { if (!controller.signal.aborted && mounted.current) setListError(errorMessage(cause)); }
     finally { if (!controller.signal.aborted && mounted.current) setListLoading(false); }
   }, [ownerId]);
-  const parse = useCallback(async (source: File, sourceUnit: StlUnit, current: typeof task.current, asset?: ModelAsset) => {
+  const parse = useCallback(async (source: File, sourceUnit: StlUnit, current: typeof task.current) => {
     const active = () => mounted.current && current === task.current && !current.controller.signal.aborted;
     try {
       const kind = validateModelFile(source);
@@ -71,7 +71,6 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
         onPhase: (phase) => { if (active()) setPreview(phase); } });
       if (!active()) return;
       setModel(result); setPreview('ready');
-      if (asset) { saveSession.current = asset; setSave(asset.status === 'ready' ? 'saved' : 'local'); }
     } catch (cause) {
       if (!active() || isAbort(cause)) return;
       setPreview('error'); setError(errorMessage(cause));
@@ -86,12 +85,15 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
       const asset = await modelRepository.get(id, current.controller.signal);
       if (!active()) return;
       if (!asset || asset.owner_id !== ownerId) throw new Error('模型不存在或无访问权限，请从本人列表重新选择。');
+      // Persistence is independent of downloading or parsing the display mesh.
+      saveSession.current = asset;
       if (asset.status === 'uploading') {
-        saveSession.current = asset; setRecovering(asset); setPreview('idle'); setSave('error');
+        setRecovering(asset); setPreview('idle'); setSave('error');
         setError('此模型保存未完成，请点击恢复保存；若原文件尚未上传，将要求重新选择。'); return;
       }
+      setSave('saved');
       const source = await modelRepository.download(asset, current.controller.signal);
-      if (active()) await parse(source, asset.source_unit, current, asset);
+      if (active()) await parse(source, asset.source_unit, current);
     } catch (cause) { if (active() && !isAbort(cause)) { setPreview('error'); setError(errorMessage(cause)); } }
   }, [begin, ownerId, parse]);
 
@@ -170,7 +172,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
             }}><option value="mm">毫米</option><option value="cm">厘米</option><option value="m">米</option><option value="inch">英寸</option></select></label>}
           <span className="ml-auto text-slate-500" role="status">{phases[preview]}</span>
           {loading && <button className="text-blue-600" onClick={cancel}>取消加载</button>}
-          {preview === 'error' && file && <button className="text-blue-600" onClick={() => void parse(file, unit, begin(), saveSession.current ?? undefined)}>重试解析</button>}
+          {preview === 'error' && file && <button className="text-blue-600" onClick={() => void parse(file, unit, begin())}>重试解析</button>}
         </div>
         <ModelViewer model={model} />
         {model && <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">

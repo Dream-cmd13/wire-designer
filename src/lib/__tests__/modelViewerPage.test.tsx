@@ -69,4 +69,19 @@ describe('model page sessions', () => {
     act(() => { window.history.pushState(null, '', '/model-viewer?modelId=00000000-0000-4000-8000-000000000102'); window.dispatchEvent(new PopStateEvent('popstate')); });
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000102', expect.any(AbortSignal)));
   });
+  it('keeps the saved cloud identity when parsing fails and is retried', async () => {
+    window.history.replaceState(null, '', `/model-viewer?modelId=${id}`);
+    mocks.parse.mockRejectedValueOnce(new Error('STEP 引擎暂时不可用'));
+    render(<ModelViewerPage />);
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button', { name: '重试解析' }));
+    await screen.findByText('包围盒尺寸（网格近似）');
+    expect(screen.getByText('已保存', { exact: true })).toBeTruthy();
+    const saveButton = screen.getByRole('button', { name: '保存到云端' });
+    expect(saveButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(saveButton);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
+    expect(window.location.search).toBe(`?modelId=${id}`);
+  });
 });
