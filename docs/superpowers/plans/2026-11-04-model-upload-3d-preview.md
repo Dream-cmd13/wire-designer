@@ -182,10 +182,10 @@ Worker 消息带递增 requestId，分为 phase/result/error。解析器用 Tran
 
 ### 任务 0：核对基线和执行边界
 
-- [ ] 阅读 AGENTS.md，记录已有改动，确认不会重置用户工作区；只检查本功能直接相关文件。
-- [ ] 核对依赖实际版本、Worker 中加载 occt-import-js 的可用入口、WASM 路径及许可证文件要求，采用包发布的构建产物。
-- [ ] 确认 SQL 首次安装顺序、角色函数和 Storage 策略。这里使用 `supabase/updates`，不要凭习惯新建另一个迁移体系。
-- [ ] 对现有基线运行必要检查，区分既有失败与本任务引入的问题，不能宣称存在未验证的基线故障。
+- [x] 阅读 AGENTS.md，记录已有改动，确认不会重置用户工作区；只检查本功能直接相关文件。
+- [x] 核对依赖实际版本、Worker 中加载 occt-import-js 的可用入口、WASM 路径及许可证文件要求，采用包发布的构建产物。
+- [x] 确认 SQL 首次安装顺序、角色函数和 Storage 策略。这里使用 `supabase/updates`，不要凭习惯新建另一个迁移体系。
+- [x] 对现有基线运行必要检查，区分既有失败与本任务引入的问题，不能宣称存在未验证的基线故障。
 
 交付物：范围清晰的修改清单及可复用的现有入口，不执行远程数据库写入。
 
@@ -193,12 +193,12 @@ Worker 消息带递增 requestId，分为 phase/result/error。解析器用 Tran
 
 涉及 `modelTypes.ts`、`modelParser.ts`、`modelParser.worker.ts`、资产准备脚本、package.json/lockfile 和必要类型声明。
 
-- [ ] 编写 `src/lib/__tests__/modelParser.test.ts`：大小/格式预检、单位因子、损坏文件、空结果、非法索引、超三角形数、超时及 AbortSignal 取消；先确认测试在缺实现时失败。
-- [ ] 安装所需依赖并实现统一解析输出。STEP 调用 ReadStepFile；STL 使用 STLLoader，必要时生成索引与法线，保持几何原点关系。
-- [ ] 实现 Worker 协议、取消和超时终止；重新导入可重新创建引擎，不遗留失效 Worker。Worker 失败转为中文业务错误。
-- [ ] 准备静态资产，按 Vite BASE_URL 解析路径，保留现有 predev/prebuild 步骤。开发与生产构建均不能出现 WASM 404 或错 MIME。
-- [ ] 使用用户真实文件在浏览器 Worker 中解析验证，不能只用 mock 宣称 STEP 可用。
-- [ ] 执行 `npm test -- src/lib/__tests__/modelParser.test.ts`，确认通过，并记录真实样本导入耗时和三角形数。
+- [x] 编写 `src/lib/__tests__/modelParser.test.ts`：大小/格式预检、单位因子、损坏文件、空结果、非法索引、超三角形数、超时及 AbortSignal 取消；先确认测试在缺实现时失败。
+- [x] 安装所需依赖并实现统一解析输出。STEP 调用 ReadStepFile；STL 使用 STLLoader，必要时生成索引与法线，保持几何原点关系。
+- [x] 实现 Worker 协议、取消和超时终止；重新导入可重新创建引擎，不遗留失效 Worker。Worker 失败转为中文业务错误。
+- [x] 准备静态资产，按 Vite BASE_URL 解析路径，保留现有 predev/prebuild 步骤。开发与生产构建均不能出现 WASM 404 或错 MIME。
+- [x] 使用用户真实文件在浏览器 Worker 中解析验证，不能只用 mock 宣称 STEP 可用。
+- [x] 执行 `npm test -- src/lib/__tests__/modelParser.test.ts`，确认通过，并记录真实样本导入耗时和三角形数。
 
 真实样本：`D:\xwechat_files\wxid_x48e6n5jrdea22_058f\msg\file\2026-11\male_4.stp`。若缺失，完成可独立工作的部分并准确报告；不从第三方网站下载未知模型替代该验收。
 
@@ -208,12 +208,12 @@ Worker 消息带递增 requestId，分为 phase/result/error。解析器用 Tran
 
 接口：props 接收 `ParsedModel | null`；视角状态和画布资源由组件拥有；父页不直接修改其 DOM 或 renderer。
 
-- [ ] 写视角与适配测试：极小/极大/扁平包围盒、多个 mesh 相对位置、尺寸缩放、窗口零尺寸后恢复。
-- [ ] 建立场景、灯光、灰白材质、Group 与 OrbitControls；实现约定视角和自动适配，合理计算 near/far。
-- [ ] 增加特征边线开关（EdgesGeometry 阈值建议 30°），明确只是网格特征边，不承诺完整 CAD 曲面边界。边线不可把所有三角形边当成默认效果。
-- [ ] 添加 ResizeObserver、WebGL 初始化失败与 contextlost 处理；设备像素比上限建议 2。
-- [ ] 覆盖切换模型与 StrictMode 重挂载清理测试；移除事件、终止动画、dispose controls/material/geometry/renderer、断开 observer。
-- [ ] 用真实模型检查外形、孔洞、平滑度和交互；执行 `npm test -- src/lib/__tests__/modelViewer.test.tsx`。
+- [x] 写视角与适配测试：极小/极大/扁平包围盒、多个 mesh 相对位置、尺寸缩放、窗口零尺寸后恢复。
+- [x] 建立场景、灯光、灰白材质、Group 与 OrbitControls；实现约定视角和自动适配，合理计算 near/far。
+- [x] 增加特征边线开关（EdgesGeometry 阈值建议 30°），明确只是网格特征边，不承诺完整 CAD 曲面边界。边线不可把所有三角形边当成默认效果。
+- [x] 添加 ResizeObserver、WebGL 初始化失败与 contextlost 处理；设备像素比上限建议 2。
+- [x] 覆盖切换模型与 StrictMode 重挂载清理测试；移除事件、终止动画、dispose controls/material/geometry/renderer、断开 observer。
+- [x] 用真实模型检查外形、孔洞、平滑度和交互；执行 `npm test -- src/lib/__tests__/modelViewer.test.tsx`。
 
 交付物：本地文件可交互查看的真实画布，而非截图占位。
 
@@ -221,13 +221,13 @@ Worker 消息带递增 requestId，分为 phase/result/error。解析器用 Tran
 
 涉及 modelRepository、新表、增量迁移、Storage bootstrap 和相关测试。
 
-- [ ] 写 `src/lib/__tests__/modelRepository.test.ts`：正常保存、对象上传失败、finalize 失败、冲突校验、哈希不匹配、恢复保存、签名过期与取消。
-- [ ] 按第 4.3 节实现保存协议和分页读取，避免记录/对象之间的半成功状态被隐藏。
-- [ ] 新增幂等、保留数据的迁移，同步首次安装表、桶与权限 SQL；更新状态 RPC 与启动检查。只处理新功能对象，不改其他业务数据。
-- [ ] 编写本地数据库/RLS 集成验证，覆盖未登录、销售、本人、其他工程师、管理员访问他人模型、伪造 owner/path。mock 与 SQL 文本断言不能替代真实权限测试。
+- [x] 写 `src/lib/__tests__/modelRepository.test.ts`：正常保存、对象上传失败、finalize 失败、冲突校验、哈希不匹配、恢复保存、签名过期与取消。
+- [x] 按第 4.3 节实现保存协议和分页读取，避免记录/对象之间的半成功状态被隐藏。
+- [x] 新增幂等、保留数据的迁移，同步首次安装表、桶与权限 SQL；更新状态 RPC 与启动检查。只处理新功能对象，不改其他业务数据。
+- [x] 编写本地数据库/RLS 集成验证，覆盖未登录、销售、本人、其他工程师、管理员访问他人模型、伪造 owner/path。mock 与 SQL 文本断言不能替代真实权限测试。
 - [ ] 若 PGlite 不能运行 Storage 权限集成，用本地 Supabase 或明确授权的测试环境验证；记录环境限制，不擅自连接生产执行。
-- [ ] 在迁移说明中列出：目标环境确认、既有模型/业务数据备份、对象清单备份、执行前后行数核对、恢复步骤。回退应用功能时保留新表和文件，不 DROP 或清空数据。
-- [ ] 执行 `npm test -- src/lib/__tests__/modelRepository.test.ts` 及实际新增权限测试，保留验证结果。
+- [x] 在迁移说明中列出：目标环境确认、既有模型/业务数据备份、对象清单备份、执行前后行数核对、恢复步骤。回退应用功能时保留新表和文件，不 DROP 或清空数据。
+- [x] 执行 `npm test -- src/lib/__tests__/modelRepository.test.ts` 及实际新增权限测试，保留验证结果。
 
 交付物：代码、迁移和本地验证结果。远程未授权时不执行迁移，明确将“真实云端端到端验证”列为待执行，不将功能称为全部上线完成。
 
@@ -235,24 +235,24 @@ Worker 消息带递增 requestId，分为 phase/result/error。解析器用 Tran
 
 涉及 ModelViewerPage、App、appRoute、AdminShell 和现有相关路由测试。
 
-- [ ] 编写 `src/lib/__tests__/modelViewerPage.test.tsx`：拖入多文件、STL 单位变化、新旧解析乱序、保存失败保留预览、连续保存去重、退出登录清理、modelId 切换。
-- [ ] 实现页面空态、文件选择、单位、阶段提示、画布、保存按钮、本人模型列表和恢复保存入口。
-- [ ] 新增 `/model-viewer`、modelId 参数 helper，并扩展 `buildRoutePath` 和 `shouldKeepRouteAfterLogin`；使用项目现有路由机制，不引入新 router。
-- [ ] App 中 lazy 加载；菜单与直接路由保持相同权限规则，不改变销售角色既有行为。
-- [ ] 云端配置缺失时本地预览可用，云端按钮明确提示无法保存；不偷偷保存为 localStorage 并显示云端成功。
-- [ ] 扩展现有 `appRoute.test.ts`、`requiresAuth.test.ts`、`adminShellAccess.test.tsx`，确认 DWG 和其他路由无回归。
-- [ ] 执行上述针对性测试，确保本任务所有场景通过。
+- [x] 编写 `src/lib/__tests__/modelViewerPage.test.tsx`：拖入多文件、STL 单位变化、新旧解析乱序、保存失败保留预览、连续保存去重、退出登录清理、modelId 切换。
+- [x] 实现页面空态、文件选择、单位、阶段提示、画布、保存按钮、本人模型列表和恢复保存入口。
+- [x] 新增 `/model-viewer`、modelId 参数 helper，并扩展 `buildRoutePath` 和 `shouldKeepRouteAfterLogin`；使用项目现有路由机制，不引入新 router。
+- [x] App 中 lazy 加载；菜单与直接路由保持相同权限规则，不改变销售角色既有行为。
+- [x] 云端配置缺失时本地预览可用，云端按钮明确提示无法保存；不偷偷保存为 localStorage 并显示云端成功。
+- [x] 扩展现有 `appRoute.test.ts`、`requiresAuth.test.ts`、`adminShellAccess.test.tsx`，确认 DWG 和其他路由无回归。
+- [x] 执行上述针对性测试，确保本任务所有场景通过。
 
 ### 任务 5：浏览器端到端验证和交付
 
-- [ ] 新增 `tests/e2e/model-viewer.spec.ts`，沿用现有 Playwright 配置及可用的测试登录方式，不硬编码账号，不使用 CRM 项目专属凭证。
-- [ ] 原始私有 STEP 默认通过 `MODEL_PREVIEW_STEP_PATH` 指定外部 fixture 路径，不自动提交模型文件到仓库。无环境变量时明确报告该验收未执行；不得静默跳过后宣称全通过。
-- [ ] 使用可公开的小型自建 ASCII/binary STL 和必要多实体 STEP 测试样本验证格式分支；真实浏览器必须加载实际解析库与 WebGL，不能全部 mock。
-- [ ] 验证真实 male_4.stp 外形与孔洞正确，网格 AABB 各轴尺寸与 19.60/19.60/24.00 mm 的误差各不超过 0.10 mm；比较前考虑明确的轴方向约定，不通过硬编码样本尺寸过关。
-- [ ] 验证旋转、缩放、平移、四种视角、边线开关、窗口尺寸变化及连续替换 20 次。检查资源数不随替换无限增长，不设无法保证的统一 FPS 承诺。
+- [x] 新增 `tests/e2e/model-viewer.spec.ts`，沿用现有 Playwright 配置及可用的测试登录方式，不硬编码账号，不使用 CRM 项目专属凭证。
+- [x] 原始私有 STEP 默认通过 `MODEL_PREVIEW_STEP_PATH` 指定外部 fixture 路径，不自动提交模型文件到仓库。无环境变量时明确报告该验收未执行；不得静默跳过后宣称全通过。
+- [x] 使用可公开的小型自建 ASCII/binary STL 和必要多实体 STEP 测试样本验证格式分支；真实浏览器必须加载实际解析库与 WebGL，不能全部 mock。
+- [x] 验证真实 male_4.stp 外形与孔洞正确，网格 AABB 各轴尺寸与 19.60/19.60/24.00 mm 的误差各不超过 0.10 mm；比较前考虑明确的轴方向约定，不通过硬编码样本尺寸过关。
+- [x] 验证旋转、缩放、平移、四种视角、边线开关、窗口尺寸变化及连续替换 20 次。检查资源数不随替换无限增长，不设无法保证的统一 FPS 承诺。
 - [ ] 验证“保存→刷新→本人列表→重新打开”与保存恢复；跨账号访问拒绝。只有真实测试环境完成后才勾选该项。
-- [ ] 检查控制台无新增错误、WASM 无 404、页面离开后无遗留动画/事件；开发服务和生产预览都走查。
-- [ ] 运行第 7 节检查并记录命令、结果和未覆盖项。更新部署文档，仅说明新静态资源与保留数据的迁移需求。
+- [x] 检查控制台无新增错误、WASM 无 404、页面离开后无遗留动画/事件；开发服务和生产预览都走查。
+- [x] 运行第 7 节检查并记录命令、结果和未覆盖项。更新部署文档，仅说明新静态资源与保留数据的迁移需求。
 
 ## 7. 必跑检查与验收标准
 
@@ -290,3 +290,8 @@ npx playwright test tests/e2e/model-viewer.spec.ts
 - 已有项目实现参考：`src/pages/DwgViewerPage.tsx`、`src/lib/dwg/dwgLibrary.ts`、`src/repositories/drawingDocumentRepository.ts`。
 
 交付时提供一条中文建议提交消息（以 feat: 开头）及一条英文建议消息；没有用户明确指示则不要实际提交。
+
+
+## 10. 本次实施记录（2026-11-04）
+
+当前工作区已增量实现，本地测试与真实 STEP 浏览器验证见 [实施与验收记录](../../model-preview-validation.md)。未勾选项涉及真实 Storage/远程端到端：本机 Docker daemon 未运行，且没有远程写入/上传授权。本地 HTTP 模拟的刷新恢复及跨身份 SQL/RLS 验证已完成，但不据此勾选真实云端验收。未执行 Git 提交、推送或发布。

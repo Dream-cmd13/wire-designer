@@ -75,3 +75,28 @@ create policy "dwg drawings authenticated read"
     bucket_id = 'dwg-drawings'
   );
 
+
+-- 3D models: owner-only even for admins; no DELETE or object UPDATE permission.
+revoke all on public.model_assets from anon, authenticated;
+grant select, insert on public.model_assets to authenticated;
+grant update(status) on public.model_assets to authenticated;
+grant all on public.model_assets to service_role;
+alter table public.model_assets enable row level security;
+drop policy if exists "model owner read" on public.model_assets;
+create policy "model owner read" on public.model_assets for select to authenticated
+using (owner_id = (select auth.uid()) and public.current_app_role() in ('engineer','admin'));
+drop policy if exists "model owner insert" on public.model_assets;
+create policy "model owner insert" on public.model_assets for insert to authenticated
+with check (owner_id = (select auth.uid()) and public.current_app_role() in ('engineer','admin') and status = 'uploading');
+drop policy if exists "model owner finalize" on public.model_assets;
+create policy "model owner finalize" on public.model_assets for update to authenticated
+using (owner_id = (select auth.uid()) and public.current_app_role() in ('engineer','admin') and status = 'uploading')
+with check (owner_id = (select auth.uid()) and public.current_app_role() in ('engineer','admin') and status = 'ready');
+drop policy if exists "model files owner read" on storage.objects;
+create policy "model files owner read" on storage.objects for select to authenticated
+using (bucket_id = 'model-files' and public.current_app_role() in ('engineer','admin')
+  and exists (select 1 from public.model_assets m where m.owner_id = (select auth.uid()) and m.object_key = storage.objects.name));
+drop policy if exists "model files owner upload" on storage.objects;
+create policy "model files owner upload" on storage.objects for insert to authenticated
+with check (bucket_id = 'model-files' and public.current_app_role() in ('engineer','admin')
+  and exists (select 1 from public.model_assets m where m.owner_id = (select auth.uid()) and m.object_key = storage.objects.name and m.status = 'uploading'));

@@ -39,6 +39,7 @@ function dropDuplicateLibredwgWasm(): Plugin {
 // Vitest 3 reads this file automatically for aliases and plugins.
 // Test-specific config (environment, globals) uses vitest defaults.
 export default defineConfig({
+  worker: { format: 'es' },
   plugins: [react(), dropDuplicateLibredwgWasm()],
   // PGlite 隔离数据库用例在并行负载下可能超过 5s 默认超时；统一提高超时而不跳过断言。
   test: {

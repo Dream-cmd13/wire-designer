@@ -1,5 +1,6 @@
 export const REQUIRED_STORAGE_BUCKETS = Object.freeze([
   Object.freeze({ id: 'catalog-assets', public: false }),
+  Object.freeze({ id: 'model-files', public: false, fileSizeLimit: 20 * 1024 * 1024 }),
 ]);
 
 function errorMessage(error) {
@@ -24,7 +25,7 @@ export async function ensureStorageBuckets(storage, specs = REQUIRED_STORAGE_BUC
     let bucket = await findBucket(storage, spec.id);
 
     if (!bucket) {
-      const { error } = await storage.createBucket(spec.id, { public: spec.public });
+      const { error } = await storage.createBucket(spec.id, { public: spec.public, ...(spec.fileSizeLimit ? { fileSizeLimit: spec.fileSizeLimit } : {}) });
       if (!error) {
         actions.push({ id: spec.id, action: 'created' });
         continue;
@@ -36,14 +37,14 @@ export async function ensureStorageBuckets(storage, specs = REQUIRED_STORAGE_BUC
       }
     }
 
-    if (!bucket.public) {
+    if (!bucket.public && (!spec.fileSizeLimit || bucket.file_size_limit === spec.fileSizeLimit)) {
       actions.push({ id: spec.id, action: 'unchanged' });
       continue;
     }
 
     const { error } = await storage.updateBucket(spec.id, {
       public: spec.public,
-      fileSizeLimit: bucket.file_size_limit ?? null,
+      fileSizeLimit: spec.fileSizeLimit ?? bucket.file_size_limit ?? null,
       allowedMimeTypes: bucket.allowed_mime_types ?? null,
     });
     if (error) {

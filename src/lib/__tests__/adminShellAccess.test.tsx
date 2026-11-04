@@ -31,6 +31,7 @@ describe('AdminShell access menu', () => {
     expect(html).not.toContain('物料库');
     expect(html).not.toContain('自动报价');
     expect(html).toContain('制作图纸');
+    expect(html).toContain('3D 模型');
     expect(html).toContain('首页');
   });
 
@@ -56,7 +57,7 @@ describe('AdminShell access menu', () => {
     for (const role of ['sales', undefined] as const) {
       const html = renderShell({ id: 'sales', name: '业务员', email: 'sales@test', createdAt: 1, role });
       expect(html).toContain('title="自动报价"');
-      for (const title of ['首页','制作图纸','DWG 图纸','物料库']) {
+      for (const title of ['首页','制作图纸','DWG 图纸','3D 模型','物料库']) {
         expect(html).not.toContain(`title="${title}"`);
       }
     }

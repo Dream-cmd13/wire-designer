@@ -5,6 +5,7 @@ export type AppRouteId =
   | 'designer-product-image'
   | 'drawing-workbench'
   | 'dwg-viewer'
+  | 'model-viewer'
   | 'materials';
 
 export interface AppRoute {
@@ -51,6 +52,7 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     title: 'DWG 图纸',
     section: 'drawing',
   },
+  'model-viewer': { id: 'model-viewer', path: '/model-viewer', title: '3D 模型', section: 'drawing' },
   materials: {
     id: 'materials',
     path: '/materials',
@@ -78,6 +80,7 @@ export function shouldKeepRouteAfterLogin(route: AppRoute, projectId: string | n
   return route.id === 'materials'
     || route.id === 'drawing-workbench'
     || route.id === 'dwg-viewer'
+    || route.id === 'model-viewer'
     || route.id === 'auto-quote';
 }
 
@@ -136,10 +139,22 @@ export function buildDwgViewerRoutePath(path: string, file: string | null = null
  * 其余路由只保留 projectId。
  */
 export function buildRoutePath(route: AppRoute, projectId: string | null, search: string): string {
+  if (route.id === 'model-viewer') return buildModelViewerRoutePath(route.path, getModelIdFromSearch(search));
   if (route.id === 'dwg-viewer') {
     return buildDwgViewerRoutePath(route.path, getDwgFileFromSearch(search));
   }
   return buildProjectRoutePath(route.path, projectId);
+}
+
+export function getModelIdFromSearch(search: string): string | null {
+  const id = new URLSearchParams(search).get('modelId')?.trim();
+  return id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
+}
+export function buildModelViewerRoutePath(path: string, modelId: string | null = null): string {
+  const url = toUrl(path);
+  url.search = '';
+  if (modelId) url.searchParams.set('modelId', modelId);
+  return `${url.pathname}${url.search}${url.hash}`;
 }
 
 export function buildProjectRoutePath(path: string, projectId: string | null = null): string {

@@ -1,5 +1,7 @@
 # 宝塔一键部署
 
+3D 模型新增静态引擎资源和保留数据的迁移：发布前按 [3D 模型实施与验收记录](model-preview-validation.md) 准备 `20261104_model_preview.sql`、备份与真实云端验收。`npm run build` 自动准备 `dist/model-engine/`，部署时需连同 Worker chunk 一起包含；WASM 返回 `application/wasm`，`.mjs` 返回 JavaScript MIME。不要通过重置数据库安装此功能。
+
 ## 日常使用
 
 在 Windows PowerShell 中进入项目目录：

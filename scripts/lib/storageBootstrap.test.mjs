@@ -97,7 +97,7 @@ describe('ensureStorageBuckets', () => {
   it('creates every missing bucket as private', async () => {
     const storage = createFakeStorage();
 
-    await expect(ensureStorageBuckets(storage)).resolves.toEqual([
+    await expect(ensureStorageBuckets(storage, [{ id: 'catalog-assets', public: false }])).resolves.toEqual([
       { id: 'catalog-assets', action: 'created' },
     ]);
     expect(storage.snapshot()).toEqual([
@@ -115,7 +115,7 @@ describe('ensureStorageBuckets', () => {
       },
     ]);
 
-    await expect(ensureStorageBuckets(storage)).resolves.toEqual([
+    await expect(ensureStorageBuckets(storage, [{ id: 'catalog-assets', public: false }])).resolves.toEqual([
       { id: 'catalog-assets', action: 'updated' },
     ]);
     expect(storage.snapshot()).toContainEqual(expect.objectContaining({
@@ -131,7 +131,7 @@ describe('ensureStorageBuckets', () => {
       { id: 'catalog-assets', public: false },
     ]);
 
-    await expect(ensureStorageBuckets(storage)).resolves.toEqual([
+    await expect(ensureStorageBuckets(storage, [{ id: 'catalog-assets', public: false }])).resolves.toEqual([
       { id: 'catalog-assets', action: 'unchanged' },
     ]);
   });
@@ -139,7 +139,7 @@ describe('ensureStorageBuckets', () => {
   it('treats a concurrent successful creation as an idempotent result', async () => {
     const storage = createFakeStorage([], { createRaceFor: 'catalog-assets' });
 
-    await expect(ensureStorageBuckets(storage)).resolves.toEqual([
+    await expect(ensureStorageBuckets(storage, [{ id: 'catalog-assets', public: false }])).resolves.toEqual([
       { id: 'catalog-assets', action: 'unchanged' },
     ]);
     expect(storage.snapshot()).toContainEqual(expect.objectContaining({
@@ -151,7 +151,7 @@ describe('ensureStorageBuckets', () => {
   it('fails when bucket state cannot be read', async () => {
     const storage = createFakeStorage([], { listError: 'Storage unavailable' });
 
-    await expect(ensureStorageBuckets(storage)).rejects.toThrow(
+    await expect(ensureStorageBuckets(storage, [{ id: 'catalog-assets', public: false }])).rejects.toThrow(
       'Failed to inspect Storage bucket catalog-assets: Storage unavailable',
     );
   });
@@ -159,7 +159,7 @@ describe('ensureStorageBuckets', () => {
   it('fails when a missing bucket cannot be created', async () => {
     const storage = createFakeStorage([], { createErrorFor: 'catalog-assets' });
 
-    await expect(ensureStorageBuckets(storage)).rejects.toThrow(
+    await expect(ensureStorageBuckets(storage, [{ id: 'catalog-assets', public: false }])).rejects.toThrow(
       'Failed to create Storage bucket catalog-assets: Create denied',
     );
   });
@@ -172,7 +172,7 @@ describe('ensureStorageBuckets', () => {
       { updateErrorFor: 'catalog-assets' },
     );
 
-    await expect(ensureStorageBuckets(storage)).rejects.toThrow(
+    await expect(ensureStorageBuckets(storage, [{ id: 'catalog-assets', public: false }])).rejects.toThrow(
       'Failed to make Storage bucket catalog-assets private: Update denied',
     );
   });
@@ -257,6 +257,7 @@ describe('runStorageBootstrap', () => {
     expect(exitCode).toBe(0);
     expect(output).toEqual([
       'catalog-assets: created',
+      'model-files: created',
       'Storage bootstrap completed.',
     ]);
   });
@@ -279,4 +280,10 @@ describe('runStorageBootstrap', () => {
       'Storage bootstrap failed: Failed to inspect Storage bucket catalog-assets: Storage unavailable',
     ]);
   });
+});
+
+it('bootstraps the model bucket privately with the same 20 MiB limit', async () => {
+ const storage=createFakeStorage();
+ expect(await ensureStorageBuckets(storage)).toEqual([{id:'catalog-assets',action:'created'},{id:'model-files',action:'created'}]);
+ expect(storage.snapshot().find(b=>b.id==='model-files').public).toBe(false);
 });

@@ -49,6 +49,7 @@ const QuoteModal = lazy(() => import('@/components/panels/QuotePanel').then((mod
 const MaterialLibraryPage = lazy(() => import('@/pages/MaterialLibraryPage').then((module) => ({ default: module.MaterialLibraryPage })));
 const DrawingWorkbenchPage = lazy(() => import('@/pages/DrawingWorkbenchPage').then((module) => ({ default: module.DrawingWorkbenchPage })));
 const DwgViewerPage = lazy(() => import('@/pages/DwgViewerPage').then((module) => ({ default: module.DwgViewerPage })));
+const ModelViewerPage = lazy(() => import('@/pages/ModelViewerPage').then((module) => ({ default: module.ModelViewerPage })));
 const AutoQuotePage = lazy(() => import('@/pages/AutoQuotePage').then((module) => ({ default: module.AutoQuotePage })));
 
 function ModuleLoadingState() {
@@ -260,6 +261,8 @@ export default function App() {
   );
 
   const needsStorageBootstrap = Boolean(supabase) && Boolean(currentUserId) && (
+    route.id === 'model-viewer'
+    ||
     route.section === 'designer'
     || route.id === 'materials'
     || route.id === 'drawing-workbench'
@@ -1198,6 +1201,10 @@ export default function App() {
 
     if (route.id === 'dwg-viewer') {
       return <DwgViewerPage />;
+    }
+
+    if (route.id === 'model-viewer') {
+      return <ModelViewerPage key={`${currentUser?.id}:${currentUser?.role}`} />;
     }
 
     if (route.id === 'auto-quote') {

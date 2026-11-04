@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-const REQUIRED_STORAGE_BUCKETS = ['catalog-assets', 'dwg-drawings'] as const;
+const REQUIRED_STORAGE_BUCKETS = ['catalog-assets', 'dwg-drawings', 'model-files'] as const;
 const STORAGE_STATUS_ERROR_MESSAGE =
   '文件服务状态暂时无法确认，请检查网络后重试；如持续出现，请联系管理员。';
 

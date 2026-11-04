@@ -34,6 +34,7 @@ describe('checkStorageBootstrap', () => {
   const readyBuckets = [
     { bucket_id: 'catalog-assets', is_present: true, is_public: false },
     { bucket_id: 'dwg-drawings', is_present: true, is_public: false },
+    { bucket_id: 'model-files', is_present: true, is_public: false },
   ];
 
   it('keeps local mode quiet when Supabase is not configured', async () => {
@@ -48,6 +49,7 @@ describe('checkStorageBootstrap', () => {
     const client = fakeClient([
       { bucket_id: 'catalog-assets', is_present: false, is_public: false },
       { bucket_id: 'dwg-drawings', is_present: true, is_public: true },
+      { bucket_id: 'model-files', is_present: true, is_public: false },
     ]);
 
     await expect(checkStorageBootstrap(client)).resolves.toEqual({
@@ -60,7 +62,7 @@ describe('checkStorageBootstrap', () => {
   it('reports buckets omitted by the RPC as missing', async () => {
     await expect(checkStorageBootstrap(fakeClient([readyBuckets[0]]))).resolves.toEqual({
       status: 'issue',
-      missingBuckets: ['dwg-drawings'],
+      missingBuckets: ['dwg-drawings', 'model-files'],
       publicBuckets: [],
     });
   });

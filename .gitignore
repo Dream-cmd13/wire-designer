@@ -50,3 +50,6 @@ test-results/
 playwright-report/
 excel/
 catalog-source/
+
+# Generated OCCT runtime assets
+public/model-engine/

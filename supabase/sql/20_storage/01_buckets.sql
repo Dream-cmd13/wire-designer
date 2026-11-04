@@ -24,7 +24,7 @@ security definer
 set search_path = ''
 as $$
   with required_buckets(bucket_id) as (
-    values ('catalog-assets'::text), ('dwg-drawings'::text)
+    values ('catalog-assets'::text), ('dwg-drawings'::text), ('model-files'::text)
   )
   select
     required_buckets.bucket_id,
@@ -40,3 +40,8 @@ grant execute on function public.get_storage_bootstrap_status() to anon, authent
 
 -- Catalog image path convention:
 -- catalog/{resource_type}/{catalog_item_id}/{image_role}/{file_name}
+
+-- Browser original model files; never public, limit matches the parser.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('model-files', 'model-files', false, 20971520)
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit;

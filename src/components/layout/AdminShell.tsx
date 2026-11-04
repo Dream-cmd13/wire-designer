@@ -1,6 +1,7 @@
 import { useState, type ComponentType, type ReactNode } from 'react';
 import {
   Cable,
+  Box,
   Calculator,
   ClipboardList,
   Database,
@@ -65,6 +66,7 @@ const sidebarItems: SidebarItem[] = [
     path: appRoutes['dwg-viewer'].path,
     icon: DraftingCompass,
   },
+  { label: '3D 模型', path: appRoutes['model-viewer'].path, icon: Box },
 ];
 
 interface AdminShellProps {
@@ -218,6 +220,8 @@ export function AdminShell({
   const showDesignerActions = (currentUser?.role === 'engineer' || currentUser?.role === 'admin') && route.section === 'designer' && Boolean(currentProjectName);
   const contextLabel = route.id === 'drawing-workbench'
     ? '独立制图 · 新建后导出'
+    : route.id === 'model-viewer'
+      ? 'STEP / STL · 本地预览与私有保存'
     : route.id === 'dwg-viewer'
       ? 'DWG 图纸 · 浏览器内解析与导出'
       : route.section === 'auto-quote'

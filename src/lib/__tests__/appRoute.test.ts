@@ -7,9 +7,19 @@ import {
   getDwgFileFromSearch,
   getProjectIdFromSearch,
   getRouteByPath,
+  getModelIdFromSearch,
+  buildModelViewerRoutePath,
 } from '@/lib/appRoute';
 
 describe('app routes', () => {
+  it('preserves modelId on model route and removes it for local previews', () => {
+    const id = '00000000-0000-4000-8000-000000000101';
+    expect(getRouteByPath('/model-viewer')).toEqual(appRoutes['model-viewer']);
+    expect(getModelIdFromSearch(`?modelId=${id}`)).toBe(id);
+    expect(getModelIdFromSearch('?modelId=bad')).toBeNull();
+    expect(buildRoutePath(appRoutes['model-viewer'], null, `?modelId=${id}&file=old`)).toBe(`/model-viewer?modelId=${id}`);
+    expect(buildModelViewerRoutePath('/model-viewer', null)).toBe('/model-viewer');
+  });
   it('resolves a route when the project id is present in the query string', () => {
     expect(getRouteByPath('/designer/design?projectId=project-1')).toEqual(
       appRoutes['designer-design'],

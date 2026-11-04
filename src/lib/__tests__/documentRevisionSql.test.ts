@@ -60,7 +60,7 @@ describe('document revision SQL and permissions (isolated PGlite)', () => {
       '10_schema/05_finished_harness_materials',
       '10_schema/06_finished_harness_cost_analyses',
       '10_schema/07_pricing_permissions',
-      '30_security/01_rls',
+      '10_schema/10_model_assets', '30_security/01_rls',
     ]) {
       await db.exec(readFileSync(`supabase/sql/${file}.sql`, 'utf8')
         .replace('create extension if not exists pgcrypto;', ''));
