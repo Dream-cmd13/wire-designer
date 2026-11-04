@@ -286,9 +286,9 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   const handleComplete = async () => {
     if (!currentUser) return;
     const config = createConfigFromTemplate(selectedTemplate, projectName, activeConnectorA, activeConnectorB, pinCount);
-    const project = await createProject(currentUser.id, projectName, projectDesc, config);
-    if (!project || useUserStore.getState().currentUser?.id !== project.userId) return;
-    replaceDocument({ ...config, id: project.id, name: project.name }, { markSaved: true });
+    const created = await createProject(currentUser.id, projectName, projectDesc, config);
+    if (!created || useUserStore.getState().currentUser?.id !== created.project.userId) return;
+    replaceDocument({ ...config, id: created.project.id, name: created.project.name }, { markSaved: true });
     onComplete();
   };
 

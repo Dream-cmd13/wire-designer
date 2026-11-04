@@ -4,10 +4,12 @@ import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import type { Project } from '@/types/user';
 
 const mocks = vi.hoisted(() => ({
-  createProject: vi.fn(async () => undefined),
+  createProject: vi.fn(async () => ({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' })),
   listProjects: vi.fn(async () => [] as Project[]),
-  updateProject: vi.fn(async () => undefined),
+  updateProject: vi.fn(async () => ({ revision: 2, updatedAt: '2026-01-01T00:00:00.000Z' })),
   remove: vi.fn(async () => undefined),
+  save: vi.fn(async () => ({ revision: 2, updatedAt: '2026-01-01T00:00:00.000Z' })),
+  load: vi.fn(async () => ({ status: 'missing' })),
 }));
 
 vi.mock('@/repositories/projectRepository', () => ({
@@ -15,10 +17,9 @@ vi.mock('@/repositories/projectRepository', () => ({
     listProjects: mocks.listProjects,
     createProject: mocks.createProject,
     updateProject: mocks.updateProject,
-    load: vi.fn(async () => ({ status: 'missing' })),
-    save: vi.fn(async () => undefined),
+    load: mocks.load,
+    save: mocks.save,
     remove: mocks.remove,
-    emergencySave: vi.fn(),
   },
 }));
 
@@ -73,14 +74,15 @@ describe('project store', () => {
     setCurrentUser('user-1');
     const initial = { ...createFallbackConfig(), id: 'template-id', name: 'Template' };
 
-    const project = await useProjectStore.getState().createProject(
+    const created = await useProjectStore.getState().createProject(
       'user-1',
       'New project',
       'Description',
       initial,
     );
-    expect(project).not.toBeNull();
-    if (!project) throw new Error('Expected a created project');
+    expect(created).not.toBeNull();
+    if (!created) throw new Error('Expected a created project');
+    const { project, version } = created;
 
     expect(mocks.createProject).toHaveBeenCalledWith(
       expect.objectContaining({ id: project.id }),
@@ -88,6 +90,8 @@ describe('project store', () => {
     );
     expect(project).not.toHaveProperty('harnessConfigId');
     expect(project).not.toHaveProperty('status');
+    expect(version.revision).toBe(1);
+    expect(useProjectStore.getState().currentProjectVersion).toEqual(version);
   });
 
   it('creates a project without activating it when requested', async () => {
@@ -111,7 +115,7 @@ describe('project store', () => {
     );
 
     expect(created).not.toBeNull();
-    expect(useProjectStore.getState().projects.map((project) => project.id)).toContain(created!.id);
+    expect(useProjectStore.getState().projects.map((project) => project.id)).toContain(created!.project.id);
     expect(useProjectStore.getState().currentProject?.id).toBe('p-current');
   });
 
@@ -119,7 +123,7 @@ describe('project store', () => {
     setCurrentUser('user-old');
     let resolveCreate: () => void = () => {};
     mocks.createProject.mockReturnValue(new Promise((resolve) => {
-      resolveCreate = () => resolve(undefined);
+      resolveCreate = () => resolve({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' });
     }));
 
     const creation = useProjectStore.getState().createProject(
@@ -253,7 +257,7 @@ describe('project store', () => {
     setCurrentUser('user-a');
     let resolveCreate: () => void = () => {};
     mocks.createProject.mockReturnValue(new Promise((resolve) => {
-      resolveCreate = () => resolve(undefined);
+      resolveCreate = () => resolve({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' });
     }));
 
     const creation = useProjectStore.getState().createProject(
@@ -312,7 +316,7 @@ describe('project store', () => {
   });
 
   it('does not save a config that belongs to another project', async () => {
-    const save = vi.fn(async () => undefined);
+    const save = vi.fn(async () => ({ revision: 2, updatedAt: '2026-01-01T00:00:00.000Z' }));
     const repository = await import('@/repositories/projectRepository');
     vi.spyOn(repository.projectRepository, 'save').mockImplementation(save);
     useProjectStore.getState().setCurrentProject({
@@ -327,6 +331,30 @@ describe('project store', () => {
     await useProjectStore.getState().saveCurrentConfig({ ...createFallbackConfig(), id: 'p1' });
 
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('passes the tracked version to the save RPC and updates the baseline', async () => {
+    const repository = await import('@/repositories/projectRepository');
+    const save = vi.spyOn(repository.projectRepository, 'save')
+      .mockResolvedValue({ revision: 7, updatedAt: '2026-02-02T00:00:00.000Z' });
+    useProjectStore.getState().setCurrentProject({
+      id: 'p1',
+      userId: 'user-1',
+      name: 'P1',
+      description: '',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    useProjectStore.getState().setCurrentProjectVersion({ revision: 6, updatedAt: '2026-01-01T00:00:00.000Z' });
+
+    await useProjectStore.getState().saveCurrentConfig({ ...createFallbackConfig(), id: 'p1' });
+
+    expect(save).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ id: 'p1' }),
+      { revision: 6, updatedAt: '2026-01-01T00:00:00.000Z' },
+    );
+    expect(useProjectStore.getState().currentProjectVersion).toEqual({ revision: 7, updatedAt: '2026-02-02T00:00:00.000Z' });
   });
 
   it('resets projects and status on user reset', () => {

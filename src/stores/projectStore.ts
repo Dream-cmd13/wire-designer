@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getCachedProjects, setCachedProjects } from '@/lib/projectListCache';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import type { DocumentVersion } from '@/types/document';
 import type { Project } from '@/types/user';
 import type { HarnessConfig } from '@/types/harness';
 import {
@@ -21,6 +22,8 @@ export type ProjectsStatus = 'idle' | 'loading' | 'success' | 'error';
 interface ProjectState {
   projects: Project[];
   currentProject: Project | null;
+  /** 当前项目最近一次从云端读取到的版本；null 表示尚未建立云端基线。 */
+  currentProjectVersion: DocumentVersion | null;
   projectsStatus: ProjectsStatus;
   projectsError: string | null;
 
@@ -32,10 +35,11 @@ interface ProjectState {
     description: string,
     initialConfig: HarnessConfig,
     options?: { activate?: boolean }
-  ) => Promise<Project | null>;
+  ) => Promise<{ project: Project; version: DocumentVersion } | null>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   setCurrentProject: (project: Project | null) => void;
+  setCurrentProjectVersion: (version: DocumentVersion | null) => void;
   resetProjects: () => void;
 
   // --- Config management ---
@@ -60,6 +64,7 @@ function isCurrentSession(userId: string, generation: number): boolean {
 export const useProjectStore = create<ProjectState>()((set, get) => ({
   projects: [],
   currentProject: null,
+  currentProjectVersion: null,
   projectsStatus: 'idle',
   projectsError: null,
 
@@ -129,24 +134,36 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       updatedAt: Date.now(),
     };
     const configToSave = { ...initialConfig, id: projectId, name };
-    await projectRepository.createProject(newProject, configToSave);
+    const version = await projectRepository.createProject(newProject, configToSave);
     if (!isCurrentSession(userId, generation)) return null;
     const updatedProjects = [...get().projects.filter((project) => project.userId === userId), newProject];
     setCachedProjects(userId, updatedProjects);
     set((state) => ({
       projects: [...state.projects, newProject],
       currentProject: options?.activate === false ? state.currentProject : newProject,
+      currentProjectVersion: options?.activate === false ? state.currentProjectVersion : version,
     }));
-    return newProject;
+    return { project: newProject, version };
   },
 
   updateProject: async (id, updates) => {
-    await projectRepository.updateProject(id, updates);
     const state = get();
-    const updatedProjects = state.projects.map((project) =>
+    if (Object.keys(updates).length === 0) return;
+    let expected = state.currentProject?.id === id ? state.currentProjectVersion : null;
+    if (!expected) {
+      // 未跟踪版本的项目（如项目列表页）：先读当前版本，更新本身仍是原子版本校验。
+      const loaded = await projectRepository.load(id);
+      if (loaded.status !== 'ok') {
+        throw new Error('项目不存在或无法读取，更新失败。');
+      }
+      expected = loaded.version;
+    }
+    const version = await projectRepository.updateProject(id, updates, expected);
+    const after = get();
+    const updatedProjects = after.projects.map((project) =>
       project.id === id ? { ...project, ...updates, updatedAt: Date.now() } : project
     );
-    const target = state.projects.find((project) => project.id === id);
+    const target = after.projects.find((project) => project.id === id);
     if (target?.userId) {
       setCachedProjects(
         target.userId,
@@ -156,14 +173,18 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     set({
       projects: updatedProjects,
       currentProject:
-        state.currentProject?.id === id
-          ? { ...state.currentProject, ...updates, updatedAt: Date.now() }
-          : state.currentProject,
+        after.currentProject?.id === id
+          ? { ...after.currentProject, ...updates, updatedAt: Date.now() }
+          : after.currentProject,
+      currentProjectVersion: after.currentProject?.id === id ? version : after.currentProjectVersion,
     });
   },
 
   deleteProject: async (id) => {
-    await projectRepository.remove(id);
+    const loaded = await projectRepository.load(id);
+    if (loaded.status !== 'missing') {
+      await projectRepository.remove(id, loaded.version);
+    }
     const state = get();
     const target = state.projects.find((project) => project.id === id);
     const updatedProjects = state.projects.filter((project) => project.id !== id);
@@ -185,17 +206,30 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     set({
       projects: [],
       currentProject: null,
+      currentProjectVersion: null,
       projectsStatus: 'idle',
       projectsError: null,
     });
   },
 
-  setCurrentProject: (project) => set({ currentProject: project }),
+  setCurrentProject: (project) => set((state) => ({
+    currentProject: project,
+    currentProjectVersion: project && state.currentProject?.id === project.id
+      ? state.currentProjectVersion
+      : null,
+  })),
+
+  setCurrentProjectVersion: (currentProjectVersion) => set({ currentProjectVersion }),
 
   saveCurrentConfig: async (config) => {
-    const { currentProject } = get();
+    const { currentProject, currentProjectVersion } = get();
     if (!currentProject || currentProject.id !== config.id) return;
-    await projectRepository.save(currentProject.id, config);
+    const version = await projectRepository.save(currentProject.id, config, currentProjectVersion);
+    if (
+      useProjectStore.getState().currentProject?.id === currentProject.id
+    ) {
+      set({ currentProjectVersion: version });
+    }
   },
 
   loadCurrentConfig: async () => {

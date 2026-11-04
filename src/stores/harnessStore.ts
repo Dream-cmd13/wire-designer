@@ -53,14 +53,26 @@ interface HarnessState {
   saveState: SaveState;
   canvasViewport: { x: number; y: number; zoom: number } | null;
   twoDViewport: { zoom: number; pan: { x: number; y: number } } | null;
+  /** 目录派生刷新的代数；用于区分“用户编辑”和“目录同步”引起的 config 变化。 */
+  catalogSyncCount: number;
+  /** 本地递增修订号：每次用户编辑/文档替换递增，用于草稿排序与保存确认。 */
+  localRevision: number;
   setCanvasViewport: (viewport: { x: number; y: number; zoom: number } | null) => void;
   setTwoDViewport: (viewport: { zoom: number; pan: { x: number; y: number } } | null) => void;
   setConfig: (config: Partial<HarnessConfig>) => void;
   patchDocument: (partial: Partial<HarnessConfig>) => void;
   replaceDocument: (fullConfig: HarnessConfig, options?: ReplaceDocumentOptions) => void;
+  /**
+   * 目录数据（目录快照）变化后按现有对齐逻辑刷新引用与派生的 2D 图片。
+   * 不是用户编辑：保留 selection、canvasViewport、twoDViewport 和 saveState；
+   * 结果与当前文档一致时不写 store，避免制造伪编辑和无意义的 re-render。
+   */
+  refreshCatalogReferences: () => void;
   markSaving: () => void;
   markSaved: () => void;
   markSaveError: (message: string) => void;
+  /** 保存请求返回时发现文档已被新的内容替换：从 saving 回到 dirty，等待下一轮保存。 */
+  markDirty: () => void;
 
   // Connector actions
   addConnector: (connector: ConnectorInstance) => void;
@@ -97,12 +109,14 @@ function dirtyState() {
 }
 
 export const useHarnessStore = create<HarnessState>()(
-    (set) => ({
+    (set, get) => ({
       config: createDefaultConfig(),
       selection: { kind: 'none' },
       saveState: { status: 'saved', savedAt: Date.now() },
       canvasViewport: null,
       twoDViewport: null,
+      catalogSyncCount: 0,
+      localRevision: 0,
       setCanvasViewport: (canvasViewport) => set({ canvasViewport }),
       setTwoDViewport: (twoDViewport) => set({ twoDViewport }),
 
@@ -112,6 +126,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: next,
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -121,6 +136,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: next,
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -132,12 +148,27 @@ export const useHarnessStore = create<HarnessState>()(
           canvasViewport: null,
           twoDViewport: null,
           saveState: options?.markSaved ? { status: 'saved', savedAt: Date.now() } : dirtyState(),
+          localRevision: get().localRevision + 1,
+        });
+      },
+
+      refreshCatalogReferences: () => {
+        const state = get();
+        const aligned = alignHarnessConfig(state.config);
+        const nextConfig: HarnessConfig = { ...aligned, twoDImages: syncTwoDImages(aligned) };
+        if (JSON.stringify(nextConfig) === JSON.stringify(state.config)) return;
+        set({
+          config: nextConfig,
+          catalogSyncCount: state.catalogSyncCount + 1,
         });
       },
 
       markSaving: () => set({ saveState: { status: 'saving' } }),
       markSaved: () => set({ saveState: { status: 'saved', savedAt: Date.now() } }),
       markSaveError: (message) => set({ saveState: { status: 'error', message } }),
+      markDirty: () => set((state) => (
+        state.saveState.status === 'saving' ? { saveState: dirtyState() } : state
+      )),
 
       addConnector: (connector) =>
         set((state) => {
@@ -149,6 +180,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -164,6 +196,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -179,6 +212,7 @@ export const useHarnessStore = create<HarnessState>()(
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             selection: nextSelection,
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -192,6 +226,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -201,6 +236,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -210,6 +246,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -223,6 +260,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: nextConfig,
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -232,6 +270,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: nextConfig,
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -245,6 +284,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: nextConfig,
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -258,6 +298,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -273,6 +314,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -289,6 +331,7 @@ export const useHarnessStore = create<HarnessState>()(
               ? { kind: 'none' }
               : state.selection,
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -301,6 +344,7 @@ export const useHarnessStore = create<HarnessState>()(
           saveState: dirtyState(),
           canvasViewport: null,
           twoDViewport: null,
+          localRevision: 0,
         }),
 
       rotateTwoDImage: (id) =>
@@ -315,6 +359,7 @@ export const useHarnessStore = create<HarnessState>()(
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
+          localRevision: state.localRevision + 1,
         })),
 
       reorderTwoDImages: (fromIndex, toIndex) =>
@@ -325,6 +370,7 @@ export const useHarnessStore = create<HarnessState>()(
           return {
             config: { ...state.config, twoDImages: imgs, updatedAt: Date.now() },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
 
@@ -338,6 +384,7 @@ export const useHarnessStore = create<HarnessState>()(
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
+          localRevision: state.localRevision + 1,
         })),
 
       syncTwoDImagesAuto: () =>
@@ -348,6 +395,7 @@ export const useHarnessStore = create<HarnessState>()(
             updatedAt: Date.now(),
           },
           saveState: dirtyState(),
+          localRevision: state.localRevision + 1,
         })),
 
       updateDrawingFrame: (updates) =>
@@ -364,6 +412,7 @@ export const useHarnessStore = create<HarnessState>()(
               updatedAt: Date.now(),
             },
             saveState: dirtyState(),
+            localRevision: state.localRevision + 1,
           };
         }),
     }),

@@ -164,8 +164,15 @@ function makeProject(id: string): Project {
   };
 }
 
+let loadVersionCounter = 0;
+
 function makeResult(id: string): ProjectLoadResult {
-  return { status: 'ok', config: { ...createFallbackConfig(), id, name: id } };
+  loadVersionCounter += 1;
+  return {
+    status: 'ok',
+    config: { ...createFallbackConfig(), id, name: id },
+    version: { revision: loadVersionCounter, updatedAt: `load-${loadVersionCounter}` },
+  };
 }
 
 function createMockStorage(): Storage {
@@ -283,6 +290,7 @@ describe('project open lifecycle', () => {
     vi.spyOn(projectRepository, 'save').mockImplementation(async (_id, config) => {
       saves.push(config.updatedAt);
       if (saves.length === 1) await gate.promise;
+      return { revision: saves.length, updatedAt: `save-${saves.length}` };
     });
 
     const close = findCloseProjectHandler(App());
@@ -297,8 +305,8 @@ describe('project open lifecycle', () => {
       ownerId: 'user-a',
       kind: 'project',
       documentId: 'p1',
-      revision: latestConfig.updatedAt,
-      baseUpdatedAt: 1,
+      localRevision: useHarnessStore.getState().localRevision,
+      baseServerRevision: null,
       document: latestConfig,
     });
 
@@ -331,6 +339,7 @@ describe('project open lifecycle', () => {
     const gate = deferred<void>();
     const saveSpy = vi.spyOn(projectRepository, 'save').mockImplementation(async () => {
       await gate.promise;
+      return { revision: 1, updatedAt: 'save-1' };
     });
     vi.spyOn(projectRepository, 'load').mockResolvedValue(makeResult('p2'));
 
@@ -363,6 +372,7 @@ describe('project open lifecycle', () => {
     const failureGate = deferred<void>();
     const saveSpy = vi.spyOn(projectRepository, 'save').mockImplementation(async () => {
       if (saveSpy.mock.calls.length === 1) await failureGate.promise;
+      return { revision: saveSpy.mock.calls.length, updatedAt: `save-${saveSpy.mock.calls.length}` };
     });
     vi.spyOn(projectRepository, 'load').mockResolvedValue(makeResult('p2'));
 
@@ -400,6 +410,7 @@ describe('project open lifecycle', () => {
     const failureGate = deferred<void>();
     const saveSpy = vi.spyOn(projectRepository, 'save').mockImplementation(async () => {
       if (saveSpy.mock.calls.length === 1) await failureGate.promise;
+      return { revision: saveSpy.mock.calls.length, updatedAt: `save-${saveSpy.mock.calls.length}` };
     });
     const loadSpy = vi.spyOn(projectRepository, 'load')
       .mockImplementation(async (projectId) => makeResult(projectId));
@@ -442,6 +453,7 @@ describe('project open lifecycle', () => {
     const savedNames: string[] = [];
     vi.spyOn(projectRepository, 'save').mockImplementation(async (_id, config) => {
       savedNames.push(config.name);
+      return { revision: savedNames.length, updatedAt: `save-${savedNames.length}` };
     });
     vi.spyOn(projectRepository, 'load').mockImplementation(async (projectId) => makeResult(projectId));
 
@@ -492,8 +504,8 @@ describe('project open lifecycle', () => {
       ownerId: 'user-a',
       kind: 'project',
       documentId: 'p1',
-      revision: draftConfig.updatedAt,
-      baseUpdatedAt: 1,
+      localRevision: 1,
+      baseServerRevision: null,
       document: draftConfig,
     });
 

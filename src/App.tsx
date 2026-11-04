@@ -18,15 +18,17 @@ import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import {
   canApplyWorkspaceDraft,
   corruptWorkspaceDraftsToJson,
+  currentDraftInstanceId,
   listCorruptWorkspaceDrafts,
-  readWorkspaceDraft,
+  listWorkspaceDrafts,
   removeCorruptWorkspaceDraft,
   removeWorkspaceDraft,
-  removeWorkspaceDraftIfRevisionAtMost,
+  removeWorkspaceDraftForInstance,
   writeWorkspaceDraft,
   type CorruptWorkspaceDraft,
   type WorkspaceDraft,
 } from '@/lib/workspaceDraftCache';
+import { DocumentWriteError } from '@/lib/documentWriteError';
 import { projectRepository } from '@/repositories/projectRepository';
 import { flushDrawingDrafts, resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
@@ -218,6 +220,9 @@ export default function App() {
   const [corruptDrafts, setCorruptDrafts] = useState<CorruptWorkspaceDraft[]>([]);
   const [draftBackupError, setDraftBackupError] = useState<string | null>(null);
   const [switchConfirmOpen, setSwitchConfirmOpen] = useState(false);
+  const [saveConflict, setSaveConflict] = useState<{ projectId: string; kind: 'conflict' | 'missing' } | null>(null);
+  const [conflictReadConfirmOpen, setConflictReadConfirmOpen] = useState(false);
+  const [conflictResolving, setConflictResolving] = useState(false);
   const switchConfirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const restoreFailed = Boolean(projectId && failedProjectId === projectId);
 
@@ -231,13 +236,16 @@ export default function App() {
   const {
     currentProject,
     projects,
+    createProject,
     saveCurrentConfig,
     setCurrentProject,
+    setCurrentProjectVersion,
     updateProject,
     loadProjects,
   } = useProjectStore();
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
-  const configRef = useRef(config);
+  const catalogSnapshot = useCatalogStore((state) => state.snapshot);
+  const refreshCatalogReferences = useHarnessStore((state) => state.refreshCatalogReferences);
   const canUndo = useHistoryStore((state) => state.past.length > 0);
   const canRedo = useHistoryStore((state) => state.future.length > 0);
   const drawingSaveState = useDrawingStore((state) => state.saveState);
@@ -256,10 +264,6 @@ export default function App() {
     || route.id === 'materials'
     || route.id === 'drawing-workbench'
   );
-
-  useEffect(() => {
-    configRef.current = config;
-  }, [config]);
 
   const performStorageBootstrapCheck = useCallback(async () => {
     if (!supabase) {
@@ -315,10 +319,13 @@ export default function App() {
     };
   }, [needsCatalog, refreshCatalogIfStale]);
 
+  // 目录同步只在目录快照变化时刷新引用与派生图片，不依赖 saveState，也不替换整个文档。
+  // 打开/切换文档由 replaceDocument 自行对齐，因此这里不需要响应 config.id 变化。
   useEffect(() => {
-    if (catalogStatus !== 'ready' || !currentProject || configRef.current.id !== currentProject.id) return;
-    replaceDocument(configRef.current, { markSaved: saveState.status === 'saved' });
-  }, [catalogStatus, currentProject, config.id, replaceDocument, saveState.status]);
+    if (catalogStatus !== 'ready' || !catalogSnapshot || !currentProject) return;
+    if (useHarnessStore.getState().config.id !== currentProject.id) return;
+    refreshCatalogReferences();
+  }, [catalogSnapshot, catalogStatus, currentProject, refreshCatalogReferences]);
 
   const applyHistoryDocument = useCallback((nextConfig: typeof config | null) => {
     if (!nextConfig) return;
@@ -346,12 +353,13 @@ export default function App() {
     const harness = useHarnessStore.getState();
     if (!project || !ownerId || harness.saveState.status === 'saved') return;
     if (harness.config.id !== project.id) return;
+    const baseVersion = useProjectStore.getState().currentProjectVersion;
     const result = writeWorkspaceDraft({
       ownerId,
       kind: 'project',
       documentId: project.id,
-      revision: harness.config.updatedAt,
-      baseUpdatedAt: project.updatedAt,
+      localRevision: harness.localRevision,
+      baseServerRevision: baseVersion?.revision ?? null,
       document: harness.config,
     });
     setDraftBackupError(
@@ -363,6 +371,10 @@ export default function App() {
 
   const doSave = useCallback(async (options?: { retry?: boolean }) => {
     if (!currentProject || saveBlocked || !useUserStore.getState().currentUser) {
+      return;
+    }
+    // 版本冲突/云端已删除时暂停自动保存，必须由用户选择恢复方式，不做无条件覆盖。
+    if (saveConflict) {
       return;
     }
 
@@ -396,6 +408,7 @@ export default function App() {
       allowErrorRetry = false;
 
       const latestConfig = useHarnessStore.getState().config;
+      const savedLocalRevision = useHarnessStore.getState().localRevision;
       if (latestConfig.id !== saveProjectId) {
         return;
       }
@@ -404,16 +417,31 @@ export default function App() {
         try {
           await saveCurrentConfig(latestConfig);
           if (!isSaveContextCurrent()) return;
-          if (useHarnessStore.getState().config.updatedAt === latestConfig.updatedAt) {
+          // 只有当前文档仍是发起保存时的那个快照，才能确认本次保存。
+          // 用对象身份而不是 updatedAt 相等判断，避免同毫秒编辑被旧响应误标为已保存。
+          if (useHarnessStore.getState().config === latestConfig) {
             markSaved();
             const ownerId = useUserStore.getState().currentUser?.id;
             if (ownerId) {
-              removeWorkspaceDraftIfRevisionAtMost(ownerId, 'project', saveProjectId, latestConfig.updatedAt);
+              removeWorkspaceDraftForInstance(ownerId, 'project', saveProjectId, currentDraftInstanceId(), savedLocalRevision);
             }
+          } else {
+            useHarnessStore.getState().markDirty();
           }
         } catch (error) {
           if (!isSaveContextCurrent()) return;
           console.error('项目保存失败:', error);
+          const writeError = error instanceof DocumentWriteError
+            ? error
+            : null;
+          if (writeError && (writeError.code === 'conflict' || writeError.code === 'missing')) {
+            setSaveConflict({
+              projectId: saveProjectId,
+              kind: writeError.code === 'missing' ? 'missing' : 'conflict',
+            });
+            markSaveError(writeError.message);
+            return;
+          }
           markSaveError(getUserErrorMessage(error, '保存失败，请重试。'));
         }
       })();
@@ -426,8 +454,9 @@ export default function App() {
           saveInFlightRef.current = null;
         }
       }
+      if (saveConflict) return;
     }
-  }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveCurrentConfig]);
+  }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveConflict, saveCurrentConfig]);
 
   const requestSwitchConfirmation = useCallback((): Promise<boolean> => (
     new Promise<boolean>((resolve) => {
@@ -447,6 +476,111 @@ export default function App() {
     void doSave({ retry: true });
   }, [doSave]);
 
+  const advanceDraftRecovery = useCallback((ownerId: string, projectId: string, handledDraftId: string) => {
+    const remaining = listWorkspaceDrafts(ownerId, 'project', projectId)
+      .filter((candidate) => candidate.draftId !== handledDraftId);
+    setDraftRecovery(remaining.length > 0 ? { ownerId, projectId, draft: remaining[0] } : null);
+  }, []);
+
+  const downloadLocalProjectCopy = useCallback(() => {
+    const localConfig = useHarnessStore.getState().config;
+    downloadTextFile(
+      JSON.stringify({
+        kind: 'wire-harness-project-local-copy',
+        projectId: useProjectStore.getState().currentProject?.id ?? null,
+        savedAt: new Date().toISOString(),
+        config: localConfig,
+      }, null, 2),
+      `${safeFilename(localConfig.name || 'project')}-local-copy.json`,
+    );
+  }, []);
+
+  const resolveConflictReadCloud = useCallback(async () => {
+    const project = useProjectStore.getState().currentProject;
+    const owner = useUserStore.getState().currentUser;
+    if (!project || !owner) return;
+    const session = workspaceSessionRef.current;
+    const localSnapshot = useHarnessStore.getState().config;
+    const localRevision = useHarnessStore.getState().localRevision;
+    const isCurrent = () => {
+      const user = useUserStore.getState().currentUser;
+      return workspaceSessionRef.current === session
+        && user?.id === owner.id
+        && user.role === owner.role
+        && !user.mustChangePassword
+        && useProjectStore.getState().currentProject?.id === project.id
+        && useHarnessStore.getState().config === localSnapshot;
+    };
+    setConflictResolving(true);
+    try {
+      const result = await projectRepository.load(project.id);
+      if (!isCurrent()) return;
+      if (result.status === 'ok') {
+        useProjectStore.getState().setCurrentProjectVersion(result.version);
+        replaceDocument(result.config, { markSaved: true });
+        const ownerId = useUserStore.getState().currentUser?.id ?? null;
+        if (ownerId) {
+          removeWorkspaceDraftForInstance(
+            ownerId,
+            'project',
+            project.id,
+            currentDraftInstanceId(),
+            localRevision,
+          );
+        }
+        setSaveConflict(null);
+        setConflictReadConfirmOpen(false);
+        notify({ tone: 'success', message: '已读取云端版本，本地未保存修改已按你的选择丢弃。' });
+      } else {
+        setConflictReadConfirmOpen(false);
+        notify({
+          tone: 'danger',
+          title: '无法读取云端版本',
+          message: result.status === 'missing'
+            ? '该文档已在云端删除，请下载本地副本或另存为新文档。'
+            : '云端内容结构已损坏，请下载本地副本或另存为新文档。',
+        });
+      }
+    } catch (error) {
+      if (!isCurrent()) return;
+      notify({
+        tone: 'danger',
+        title: '读取云端版本失败',
+        message: getUserErrorMessage(error, '读取云端版本失败，请检查网络后重试。'),
+      });
+    } finally {
+      setConflictResolving(false);
+    }
+  }, [replaceDocument]);
+
+  const resolveConflictSaveAsNew = useCallback(async () => {
+    const project = useProjectStore.getState().currentProject;
+    const owner = useUserStore.getState().currentUser;
+    if (!project || !owner) return;
+    setConflictResolving(true);
+    try {
+      const localConfig = useHarnessStore.getState().config;
+      const newName = `${localConfig.name || project.name}（本地副本）`;
+      const created = await createProject(owner.id, newName, project.description, { ...localConfig, name: newName });
+      if (!created) return;
+      setCurrentProject(created.project);
+      setCurrentProjectVersion(created.version);
+      replaceDocument({ ...localConfig, id: created.project.id, name: newName }, { markSaved: true });
+      setSaveConflict(null);
+      setConflictReadConfirmOpen(false);
+      notify({ tone: 'success', message: `已另存为新项目“${newName}”。` });
+      navigate(appRoutes['designer-design'].path, { projectId: created.project.id });
+    } catch (error) {
+      notify({
+        tone: 'danger',
+        title: '另存失败',
+        message: getUserErrorMessage(error, '另存为新项目失败，请保持页面打开后重试。'),
+      });
+    } finally {
+      setConflictResolving(false);
+    }
+  }, [createProject, navigate, replaceDocument, setCurrentProject, setCurrentProjectVersion]);
+
   const saveBeforeLeavingWorkspace = useCallback(async (): Promise<boolean> => {
     const project = useProjectStore.getState().currentProject;
     if (!project || useHarnessStore.getState().saveState.status === 'saved') return true;
@@ -455,6 +589,14 @@ export default function App() {
         tone: 'danger',
         title: '暂时无法切换项目',
         message: '当前项目未能保存，请先处理保存错误后再切换项目。',
+      });
+      return false;
+    }
+    if (saveConflict) {
+      notify({
+        tone: 'danger',
+        title: '存在保存冲突',
+        message: '当前项目与云端版本冲突，请先选择恢复方式后再切换项目。',
       });
       return false;
     }
@@ -470,7 +612,7 @@ export default function App() {
       dedupeKey: 'project-save-failed',
     });
     return false;
-  }, [doSave, retryProjectSave, saveBlocked, writeProjectDraft]);
+  }, [doSave, retryProjectSave, saveBlocked, saveConflict, writeProjectDraft]);
 
   const prepareForUserSwitch = useCallback(async () => {
     const hasUnsavedProject = Boolean(currentProject && saveState.status !== 'saved');
@@ -482,6 +624,14 @@ export default function App() {
         tone: 'danger',
         title: '暂时无法切换账号',
         message: '当前项目未能保存，请先处理保存错误后再切换账号。',
+      });
+      return false;
+    }
+    if (hasUnsavedProject && saveConflict) {
+      notify({
+        tone: 'danger',
+        title: '存在保存冲突',
+        message: '当前项目与云端版本冲突，请先选择恢复方式后再切换账号。',
       });
       return false;
     }
@@ -521,7 +671,7 @@ export default function App() {
       }
     }
     return true;
-  }, [currentProject, doSave, drawingSaveState, requestSwitchConfirmation, retryProjectSave, saveActiveDrawing, saveBlocked, saveState.status]);
+  }, [currentProject, doSave, drawingSaveState, requestSwitchConfirmation, retryProjectSave, saveActiveDrawing, saveBlocked, saveConflict, saveState.status]);
 
   const resetWorkspaceForUser = useCallback((destinationPath = appRoutes.home.path) => {
     if (saveTimerRef.current) {
@@ -541,6 +691,9 @@ export default function App() {
     setDraftRecovery(null);
     setCorruptDrafts([]);
     setDraftBackupError(null);
+    setSaveConflict(null);
+    setConflictReadConfirmOpen(false);
+    setConflictResolving(false);
     useProjectStore.getState().resetProjects();
     resetDrawingStore();
     useCatalogStore.getState().reset();
@@ -605,7 +758,7 @@ export default function App() {
   }, [authReady, currentUserId, loadProjects, restricted]);
 
   useEffect(() => {
-    if (saveState.status !== 'dirty' || !currentProject || saveBlocked) {
+    if (saveState.status !== 'dirty' || !currentProject || saveBlocked || saveConflict) {
       return;
     }
 
@@ -620,7 +773,7 @@ export default function App() {
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [config, currentProject, doSave, saveBlocked, saveState.status]);
+  }, [config, currentProject, doSave, saveBlocked, saveConflict, saveState.status]);
 
   useEffect(() => {
     if (!currentProject || saveBlocked || saveState.status === 'saved') {
@@ -651,6 +804,11 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = useHarnessStore.subscribe((state, previousState) => {
       if (!previousState || state.config === previousState.config) {
+        return;
+      }
+
+      // 目录派生刷新不是用户编辑，不进入撤销/重做历史。
+      if (state.catalogSyncCount !== previousState.catalogSyncCount) {
         return;
       }
 
@@ -695,16 +853,7 @@ export default function App() {
         event.preventDefault();
         event.returnValue = '';
       }
-
-      if (!currentProject || saveBlocked) {
-        return;
-      }
-
-      try {
-        projectRepository.emergencySave(currentProject.id, useHarnessStore.getState().config);
-      } catch {
-        // best effort flush only
-      }
+      // 直接表写已被版本校验 RPC 取代：退出时只保留本地草稿，不再做无版本兜底写入。
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -763,6 +912,8 @@ export default function App() {
     setDraftRecovery(null);
     setCorruptDrafts([]);
     setDraftBackupError(null);
+    setSaveConflict(null);
+    setConflictReadConfirmOpen(false);
     setCurrentProject(project);
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
@@ -776,19 +927,17 @@ export default function App() {
       if (!isRequestCurrent()) return;
 
       if (result.status === 'ok') {
+        setCurrentProjectVersion(result.version);
         replaceDocument(result.config, { markSaved: true });
         if (result.config.name !== project.name) {
           await updateProject(project.id, { name: result.config.name });
           if (!isRequestCurrent()) return;
         }
-        const draft = readWorkspaceDraft(requestUserId, 'project', project.id);
-        if (draft) {
-          const draftConfig = draft.document as HarnessConfig;
-          if (draftConfig.updatedAt === result.config.updatedAt) {
-            removeWorkspaceDraft(requestUserId, 'project', project.id);
-          } else {
-            setDraftRecovery({ ownerId: requestUserId, projectId: project.id, draft });
-          }
+        const drafts = listWorkspaceDrafts(requestUserId, 'project', project.id);
+        if (drafts.length > 0) {
+          // 每个候选都携带云端基线与唯一 draftId，由用户逐份决定恢复或丢弃；
+          // 不自动丢弃，避免误删其他窗口尚未确认的草稿。
+          setDraftRecovery({ ownerId: requestUserId, projectId: project.id, draft: drafts[0] });
         }
         setCorruptDrafts(
           listCorruptWorkspaceDrafts(requestUserId, 'project')
@@ -798,6 +947,7 @@ export default function App() {
         setRecoveryRaw(null);
         setSaveBlocked(false);
       } else {
+        setCurrentProjectVersion(null);
         replaceDocument(createDefaultConfig(), { markSaved: true });
         if (result.status === 'invalid') {
           setLoadError(
@@ -815,6 +965,7 @@ export default function App() {
       console.error('项目打开失败:', error);
       setFailedProjectId(project.id);
       setCurrentProject(null);
+      setCurrentProjectVersion(null);
       replaceDocument(createDefaultConfig(), { markSaved: true });
       setLoadError(getUserErrorMessage(error, '项目加载失败，请重试。'));
       setRecoveryRaw(null);
@@ -831,7 +982,7 @@ export default function App() {
 
     if (!isRequestCurrent()) return;
     navigate(destinationPath, { projectId: project.id });
-  }, [navigate, replaceDocument, saveBeforeLeavingWorkspace, setCurrentProject, updateProject]);
+  }, [navigate, replaceDocument, saveBeforeLeavingWorkspace, setCurrentProject, setCurrentProjectVersion, updateProject]);
 
   useEffect(() => {
     if (!projectId || route.section !== 'designer' || !authReady || !currentUserId) {
@@ -1127,16 +1278,16 @@ export default function App() {
         <ActionToast
           role="alertdialog"
           title="发现本地草稿"
-          message="本地保存了未同步到云端的项目修改。恢复本地草稿会使用本地版本，使用云端版本会丢弃本地草稿。"
+          message="本地保存了未同步到云端的项目修改。恢复本地草稿会使用本地版本；使用云端版本只会丢弃这一份草稿，其他窗口的草稿仍会保留。"
           secondaryAction={{
             label: '使用云端版本',
             onClick: () => {
               const ownerId = useUserStore.getState().currentUser?.id ?? null;
               const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
               if (canApplyWorkspaceDraft(draftRecovery.draft, { ownerId, documentId: currentProjectId })) {
-                removeWorkspaceDraft(draftRecovery.ownerId, 'project', draftRecovery.projectId);
+                removeWorkspaceDraft(draftRecovery.ownerId, 'project', draftRecovery.projectId, draftRecovery.draft.draftId);
               }
-              setDraftRecovery(null);
+              advanceDraftRecovery(draftRecovery.ownerId, draftRecovery.projectId, draftRecovery.draft.draftId);
             },
           }}
           primaryAction={{
@@ -1148,11 +1299,75 @@ export default function App() {
                 setDraftRecovery(null);
                 return;
               }
-              replaceDocument(draftRecovery.draft.document as HarnessConfig, { markSaved: false });
-              setDraftRecovery(null);
+              const draft = draftRecovery.draft;
+              replaceDocument(draft.document as HarnessConfig, { markSaved: false });
+              const currentVersion = useProjectStore.getState().currentProjectVersion;
+              if (draft.baseServerRevision === null) {
+                // 旧格式草稿没有可确认的云端基线：不能套用云端最新版本，
+                // 否则会用最新 revision 提交旧内容。直接进入人工冲突处理。
+                useProjectStore.getState().setCurrentProjectVersion(null);
+                setSaveConflict({ projectId: draftRecovery.projectId, kind: 'conflict' });
+                useHarnessStore.getState().markSaveError('恢复的草稿缺少云端基线，请选择“读取云端版本”或“另存为新文档”。');
+                setDraftRecovery(null);
+                return;
+              }
+              // 恢复草稿的原始基线：云端若已前进，后续保存会被数据库原子拒绝并进入冲突处理；
+              // 云端仍在同一版本时保存才会被接受。
+              useProjectStore.getState().setCurrentProjectVersion({
+                revision: draft.baseServerRevision,
+                updatedAt: currentVersion?.updatedAt ?? '',
+              });
+              removeWorkspaceDraft(draftRecovery.ownerId, 'project', draftRecovery.projectId, draft.draftId);
+              advanceDraftRecovery(draftRecovery.ownerId, draftRecovery.projectId, draft.draftId);
             },
           }}
           onClose={() => setDraftRecovery(null)}
+        />
+      )}
+
+      {saveConflict && currentProject && saveConflict.projectId === currentProject.id && (
+        <ActionToast
+          role="alertdialog"
+          tone="danger"
+          title={saveConflict.kind === 'conflict' ? '保存冲突' : '云端文档已删除'}
+          message={saveConflict.kind === 'conflict'
+            ? '云端已有其他窗口/设备保存的更新版本，自动保存已暂停，本地修改仍保留。请选择处理方式；不会自动覆盖云端。'
+            : '该文档已在云端被删除，保存不会复活旧记录，本地修改仍保留。请下载本地副本或另存为新文档。'}
+          tertiaryAction={{
+            label: '另存为新文档',
+            disabled: conflictResolving,
+            onClick: () => void resolveConflictSaveAsNew(),
+          }}
+          secondaryAction={{
+            label: '读取云端版本',
+            disabled: conflictResolving,
+            onClick: () => setConflictReadConfirmOpen(true),
+          }}
+          primaryAction={{
+            label: '下载本地副本',
+            onClick: downloadLocalProjectCopy,
+          }}
+          onClose={() => undefined}
+        />
+      )}
+
+      {conflictReadConfirmOpen && currentProject && (
+        <ActionToast
+          role="alertdialog"
+          tone="danger"
+          title="读取云端版本会替换本地内容"
+          message="读取云端最新版本后，本地未保存的项目修改会被替换且无法撤销。确定继续吗？"
+          secondaryAction={{
+            label: '取消',
+            onClick: () => setConflictReadConfirmOpen(false),
+          }}
+          primaryAction={{
+            label: conflictResolving ? '读取中...' : '确定读取云端',
+            destructive: true,
+            disabled: conflictResolving,
+            onClick: () => void resolveConflictReadCloud(),
+          }}
+          onClose={() => setConflictReadConfirmOpen(false)}
         />
       )}
 

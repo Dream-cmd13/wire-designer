@@ -135,7 +135,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
           ...result.config,
           name: newName,
           updatedAt: getTimestamp(),
-        });
+        }, result.version);
       }
 
       setEditingId(null);
@@ -188,7 +188,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
 
   const handleImport = async (preview: DesignFilePreview) => {
     if (!currentUser) throw new Error('请先登录');
-    const project = await createProject(
+    const created = await createProject(
       currentUser.id,
       preview.name,
       preview.description,
@@ -199,7 +199,8 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
       },
       { activate: false },
     );
-    if (!project || useUserStore.getState().currentUser?.id !== project.userId) return;
+    if (!created || useUserStore.getState().currentUser?.id !== created.project.userId) return;
+    const project = created.project;
     notify({
       tone: 'success',
       message: `已从设计文件创建项目“${project.name}”，可在项目列表中打开。`,

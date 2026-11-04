@@ -5,7 +5,8 @@ grant all on all sequences in schema public to service_role;
 grant all on all functions in schema public to service_role;
 
 revoke all on public.projects, public.drawings, public.catalog_items from anon, authenticated;
-grant select, insert, update, delete on public.projects, public.drawings to authenticated;
+-- 项目/图纸写入只允许通过带版本校验的 RPC（见 supabase/updates/20261014_document_revision.sql）
+grant select on public.projects, public.drawings to authenticated;
 grant select on public.catalog_items to authenticated;
 grant insert on public.catalog_items to authenticated;
 

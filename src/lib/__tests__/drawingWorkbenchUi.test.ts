@@ -38,9 +38,12 @@ describe('drawing workbench UI contract', () => {
     expect(pageSource).toContain('if (refreshDecisionOpen) return;');
   });
 
-  it('discards every drawing draft at once so stale drafts cannot prompt on every entry', () => {
-    expect(pageSource).toContain("listWorkspaceDrafts(ownerId, 'drawing').forEach");
-    expect(pageSource).toContain('使用云端版本会丢弃全部本地图纸草稿');
+  it('discards drawing drafts one by one so other windows drafts are never cleared', () => {
+    // 行为层的多窗口草稿隔离由 workspaceDraftCache / drawingStoreAutosave 测试覆盖；
+    // 这里确认工作台按 draftId 逐份丢弃，而不是清空该账号的全部草稿。
+    expect(pageSource).toContain("removeWorkspaceDraft(ownerId, 'drawing', draftRecovery.documentId, draftRecovery.draftId)");
+    expect(pageSource).toContain('其他窗口的草稿仍会保留');
+    expect(pageSource).not.toContain("listWorkspaceDrafts(ownerId, 'drawing').forEach((draft) => {");
   });
 
   it('exposes the required editing commands and shortcuts', () => {

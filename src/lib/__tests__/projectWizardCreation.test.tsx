@@ -58,8 +58,8 @@ describe('project wizard creation', () => {
 
   it.each(['user-new', null])('does not replace the workspace after switching to %s', async (nextUser) => {
     let resolveCreate!: () => void;
-    vi.spyOn(projectRepository, 'createProject').mockImplementation(() => new Promise<void>((resolve) => {
-      resolveCreate = resolve;
+    vi.spyOn(projectRepository, 'createProject').mockImplementation(() => new Promise((resolve) => {
+      resolveCreate = () => resolve({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' });
     }));
     const replaceDocument = vi.spyOn(useHarnessStore.getState(), 'replaceDocument');
     const onComplete = vi.fn();
@@ -79,7 +79,7 @@ describe('project wizard creation', () => {
   });
 
   it('opens the created document and completes while the account is unchanged', async () => {
-    vi.spyOn(projectRepository, 'createProject').mockResolvedValue(undefined);
+    vi.spyOn(projectRepository, 'createProject').mockResolvedValue({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' });
     const replaceDocument = vi.spyOn(useHarnessStore.getState(), 'replaceDocument').mockImplementation(() => {});
     const onComplete = vi.fn();
     const tree = ProjectWizard({ onComplete, onCancel: vi.fn() });

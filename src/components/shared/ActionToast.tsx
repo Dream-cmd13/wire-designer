@@ -17,6 +17,8 @@ interface ActionToastProps {
   role?: 'status' | 'alertdialog';
   primaryAction?: ToastAction;
   secondaryAction?: ToastAction;
+  /** 第三个操作（例如冲突恢复里的“另存为新文档”）。 */
+  tertiaryAction?: ToastAction;
   onClose: () => void;
   position?: 'top' | 'center';
   backdrop?: boolean;
@@ -78,6 +80,7 @@ export function ActionToast({
   role = 'status',
   primaryAction,
   secondaryAction,
+  tertiaryAction,
   onClose,
   position = 'center',
   backdrop,
@@ -99,8 +102,9 @@ export function ActionToast({
         {title ? <div className="mb-0.5 text-sm font-bold text-slate-900">{title}</div> : null}
         <div className="text-xs font-medium text-slate-550 leading-relaxed">{message}</div>
       </div>
-      {(secondaryAction || primaryAction) && (
+      {(secondaryAction || primaryAction || tertiaryAction) && (
         <div className="flex shrink-0 items-center gap-1.5">
+          {tertiaryAction ? <ToastButton action={tertiaryAction} /> : null}
           {secondaryAction ? <ToastButton action={secondaryAction} /> : null}
           {primaryAction ? <ToastButton action={primaryAction} emphasis="primary" /> : null}
         </div>

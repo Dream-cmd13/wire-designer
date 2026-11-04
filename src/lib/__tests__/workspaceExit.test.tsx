@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { readWorkspaceDraft, removeWorkspaceDraft } from '@/lib/workspaceDraftCache';
-import { projectRepository } from '@/repositories/projectRepository';
 import type { Project } from '@/types/user';
 
 const reactState = vi.hoisted(() => ({
@@ -227,7 +226,6 @@ describe('workspace exit protection', () => {
       { ...createFallbackConfig(), id: 'p1', name: 'p1' },
       { markSaved: false },
     );
-    const emergencySave = vi.spyOn(projectRepository, 'emergencySave').mockImplementation(() => {});
     const handler = renderAppAndCaptureBeforeUnload();
     signIn('user-a');
 
@@ -239,8 +237,8 @@ describe('workspace exit protection', () => {
     const draft = readWorkspaceDraft('user-a', 'project', 'p1');
     expect(draft).not.toBeNull();
     expect((draft?.document as { id: string }).id).toBe('p1');
-    expect(emergencySave).toHaveBeenCalledTimes(1);
-    removeWorkspaceDraft('user-a', 'project', 'p1');
+    // 不再有无版本的直写兜底：退出时只保留本地草稿。
+    removeWorkspaceDraft('user-a', 'project', 'p1', draft?.draftId);
   });
 
   it('blocks unload while a drawing is unsaved even without an active project', () => {

@@ -31,8 +31,7 @@ import {
   type CorruptWorkspaceDraft,
   type WorkspaceDraft,
 } from '@/lib/workspaceDraftCache';
-import { hasPendingDrawingChanges, hydrateDrawingStore, restoreDrawingDraft, useDrawingStore } from '@/stores/drawingStore';
-import { notify } from '@/stores/noticeStore';
+import { hydrateDrawingStore, restoreDrawingDraft, useDrawingStore } from '@/stores/drawingStore';import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
 
@@ -96,12 +95,15 @@ export function DrawingWorkbenchPage() {
   const documents = useDrawingStore((state) => state.documents);
   const activeDocumentId = useDrawingStore((state) => state.activeDocumentId);
   const saveState = useDrawingStore((state) => state.saveState);
+  const saveConflict = useDrawingStore((state) => state.saveConflict);
   const draftError = useDrawingStore((state) => state.draftError);
   const hydrationError = useDrawingStore((state) => state.hydrationError);
   const replaceWithNewDocument = useDrawingStore((state) => state.replaceWithNewDocument);
   const updateDocument = useDrawingStore((state) => state.updateDocument);
   const updateObject = useDrawingStore((state) => state.updateObject);
   const saveActiveDocument = useDrawingStore((state) => state.saveActiveDocument);
+  const resolveConflictReadCloud = useDrawingStore((state) => state.resolveConflictReadCloud);
+  const saveAsNewDocument = useDrawingStore((state) => state.saveAsNewDocument);
   const drawing = activeDocumentId ? documents[activeDocumentId] : undefined;
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
   const [toolMode, setToolMode] = useState<DrawingToolMode>('select');
@@ -129,6 +131,8 @@ export function DrawingWorkbenchPage() {
   const [draftRecoveryCount, setDraftRecoveryCount] = useState(0);
   const [corruptDrafts, setCorruptDrafts] = useState<CorruptWorkspaceDraft[]>([]);
   const [entryReady, setEntryReady] = useState(false);
+  const [conflictReadConfirmOpen, setConflictReadConfirmOpen] = useState(false);
+  const [conflictResolving, setConflictResolving] = useState(false);
   const entryHandledRef = useRef(false);
   const wheelGestureRef = useRef<WheelGestureState | null>(null);
   const primaryId = selectedObjectIds.at(-1) ?? null;
@@ -189,22 +193,11 @@ export function DrawingWorkbenchPage() {
       }
 
       if (drawingOwnerId) {
-        const currentDocuments = useDrawingStore.getState().documents;
-        const drafts = listWorkspaceDrafts(drawingOwnerId, 'drawing');
-        const candidates = drafts.filter((draft) => {
-          const current = currentDocuments[draft.documentId];
-          if (!current) return true;
-          if (JSON.stringify(current) === JSON.stringify(draft.document)) {
-            if (!hasPendingDrawingChanges(draft.documentId)) {
-              removeWorkspaceDraft(drawingOwnerId, 'drawing', draft.documentId);
-            }
-            return false;
-          }
-          return true;
-        });
+        // 不自动清理任何候选：每个窗口的草稿只属于自己的实例，
+        // 是否恢复由用户逐份决定（保存成功只清理当前实例已确认的草稿）。
+        const candidates = listWorkspaceDrafts(drawingOwnerId, 'drawing');
         if (candidates.length > 0) {
-          const newest = [...candidates].sort((left, right) => right.savedAt - left.savedAt)[0];
-          setDraftRecovery(newest);
+          setDraftRecovery(candidates[0]);
           setDraftRecoveryCount(candidates.length);
         }
         setCorruptDrafts(listCorruptWorkspaceDrafts(drawingOwnerId, 'drawing'));
@@ -347,21 +340,74 @@ export function DrawingWorkbenchPage() {
       setDraftRecovery(null);
       return;
     }
-    restoreDrawingDraft(draftRecovery.document as DrawingDocument, draftRecovery.revision);
-    setDraftRecovery(null);
-    setDraftRecoveryCount(0);
+    restoreDrawingDraft(
+      draftRecovery.document as DrawingDocument,
+      draftRecovery.localRevision,
+      draftRecovery.baseServerRevision,
+    );
+    removeWorkspaceDraft(ownerId, 'drawing', draftRecovery.documentId, draftRecovery.draftId);
+    showNextDraftCandidate(ownerId, draftRecovery.draftId);
   };
   const discardDraft = () => {
     if (!draftRecovery) return;
     const ownerId = useUserStore.getState().currentUser?.id ?? null;
     if (ownerId && ownerId === draftRecovery.ownerId) {
-      // 一次清空该账号的全部图纸草稿，避免每次进入工作台都弹出下一份历史草稿。
-      listWorkspaceDrafts(ownerId, 'drawing').forEach((draft) => {
-        removeWorkspaceDraft(ownerId, 'drawing', draft.documentId);
-      });
+      // 只丢弃当前这份草稿；其他窗口/设备的草稿必须由用户逐份决定。
+      removeWorkspaceDraft(ownerId, 'drawing', draftRecovery.documentId, draftRecovery.draftId);
+      showNextDraftCandidate(ownerId, draftRecovery.draftId);
+      return;
     }
     setDraftRecovery(null);
     setDraftRecoveryCount(0);
+  };
+  const showNextDraftCandidate = (ownerId: string, handledDraftId: string) => {
+    const remaining = listWorkspaceDrafts(ownerId, 'drawing').filter((draft) => draft.draftId !== handledDraftId);
+    setDraftRecovery(remaining.length > 0 ? remaining[0] : null);
+    setDraftRecoveryCount(remaining.length);
+  };
+  const downloadLocalDrawingCopy = () => {
+    if (!drawing) return;
+    downloadTextFile(
+      JSON.stringify({
+        kind: 'wire-harness-drawing-local-copy',
+        savedAt: new Date().toISOString(),
+        document: drawing,
+      }, null, 2),
+      `${drawing.name || 'drawing'}-local-copy.json`,
+    );
+  };
+  const confirmReadCloud = async () => {
+    if (!saveConflict || !drawing) return;
+    setConflictResolving(true);
+    const result = await resolveConflictReadCloud(saveConflict.documentId);
+    setConflictResolving(false);
+    setConflictReadConfirmOpen(false);
+    if (result === 'replaced') {
+      resetTransientState();
+      notify({ tone: 'success', message: '已读取云端版本，本地未保存修改已按你的选择丢弃。' });
+      return;
+    }
+    notify({
+      tone: 'danger',
+      title: result === 'missing' ? '云端图纸已删除' : '读取云端版本失败',
+      message: result === 'missing'
+        ? '该图纸已在云端删除，请下载本地副本或另存为新图纸。'
+        : '读取云端版本失败，请检查网络后重试，或先下载本地副本。',
+    });
+  };
+  const confirmSaveAsNew = async () => {
+    if (!saveConflict) return;
+    setConflictResolving(true);
+    try {
+      const copy = await saveAsNewDocument(saveConflict.documentId);
+      if (!copy) return;
+      resetTransientState();
+      notify({ tone: 'success', message: `已另存为新图纸“${copy.name}”。` });
+    } catch (error) {
+      notify({ tone: 'danger', title: '另存失败', message: getUserErrorMessage(error, '云端保存未完成，本地副本仍保留，请重试保存。') });
+    } finally {
+      setConflictResolving(false);
+    }
   };
   const requireSelection = (action: () => void) => {
     if (!selected.length) { setSelectionWarning(true); return; }
@@ -554,10 +600,38 @@ export function DrawingWorkbenchPage() {
     {draftRecovery && <ActionToast
       role="alertdialog"
       title="发现本地图纸草稿"
-      message={`本地保存了未同步到云端的图纸修改（共 ${Math.max(draftRecoveryCount, 1)} 份）。恢复本地草稿会使用本地版本；使用云端版本会丢弃全部本地图纸草稿。`}
+      message={`本地保存了未同步到云端的图纸修改（共 ${Math.max(draftRecoveryCount, 1)} 份）。恢复本地草稿会使用本地版本；使用云端版本只会丢弃这一份草稿，其他窗口的草稿仍会保留。`}
       secondaryAction={{ label: '使用云端版本', onClick: discardDraft }}
       primaryAction={{ label: '恢复本地草稿', onClick: restoreDraft }}
       onClose={() => { setDraftRecovery(null); setDraftRecoveryCount(0); }}
+    />}
+    {saveConflict && drawing && saveConflict.documentId === drawing.id && <ActionToast
+      role="alertdialog"
+      tone="danger"
+      title={saveConflict.kind === 'missing' ? '云端图纸已删除' : saveConflict.kind === 'unconfirmed' ? '草稿缺少云端基线' : '图纸保存冲突'}
+      message={saveConflict.kind === 'missing'
+        ? '该图纸已在云端删除，自动保存已暂停；保存不会复活旧记录，本地修改仍保留。请下载本地副本或另存为新图纸。'
+        : saveConflict.kind === 'unconfirmed'
+          ? '无法确认该草稿对应的云端版本，自动保存已暂停，本地修改仍保留。请下载本地副本、读取云端版本，或另存为新图纸（另存会生成新的图纸 ID）。'
+          : '云端已有其他窗口/设备保存的更新版本，自动保存已暂停，本地修改仍保留。请选择处理方式；不会自动覆盖云端。'}
+      tertiaryAction={{ label: '另存为新图纸', disabled: conflictResolving, onClick: confirmSaveAsNew }}
+      secondaryAction={{ label: '读取云端版本', disabled: conflictResolving, onClick: () => setConflictReadConfirmOpen(true) }}
+      primaryAction={{ label: '下载本地副本', onClick: downloadLocalDrawingCopy }}
+      onClose={() => undefined}
+    />}
+    {conflictReadConfirmOpen && drawing && <ActionToast
+      role="alertdialog"
+      tone="danger"
+      title="读取云端版本会替换本地内容"
+      message="读取云端最新版本后，本地未保存的图纸修改会被替换且无法撤销。确定继续吗？"
+      secondaryAction={{ label: '取消', onClick: () => setConflictReadConfirmOpen(false) }}
+      primaryAction={{
+        label: conflictResolving ? '读取中...' : '确定读取云端',
+        destructive: true,
+        disabled: conflictResolving,
+        onClick: () => void confirmReadCloud(),
+      }}
+      onClose={() => setConflictReadConfirmOpen(false)}
     />}
     {corruptDrafts.length > 0 && !draftRecovery && <ActionToast
       role="alertdialog"

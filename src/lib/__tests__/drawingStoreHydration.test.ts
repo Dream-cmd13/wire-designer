@@ -2,12 +2,17 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { hydrateDrawingStore, resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { drawingDocumentRepository } from '@/repositories/drawingDocumentRepository';
 import { createBlankDrawingDocument } from '@/lib/drawingDocument';
+import type { DocumentVersion } from '@/types/document';
 import type { DrawingDocument } from '@/types/drawing';
+
+function entry(document: DrawingDocument, revision = 1): { document: DrawingDocument; version: DocumentVersion } {
+  return { document, version: { revision, updatedAt: '2026-01-01T00:00:00.000Z' } };
+}
 
 describe('drawing store hydration', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved' });
+    useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved', saveConflict: null });
   });
 
   it('clears stale in-memory documents for anonymous sessions', async () => {
@@ -46,7 +51,7 @@ describe('drawing store hydration', () => {
   it('clears the load error after a successful retry', async () => {
     const list = vi.spyOn(drawingDocumentRepository, 'list')
       .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValue([createBlankDrawingDocument('恢复后的图纸')]);
+      .mockResolvedValue([entry(createBlankDrawingDocument('恢复后的图纸'))]);
 
     await expect(hydrateDrawingStore('user-a')).resolves.toBe('failed');
     expect(useDrawingStore.getState().hydrationError).not.toBeNull();
@@ -59,14 +64,14 @@ describe('drawing store hydration', () => {
   });
 
   it('discards hydration results that arrive after the store was reset for another account', async () => {
-    let resolveList: (value: DrawingDocument[]) => void = () => {};
+    let resolveList: (value: ReturnType<typeof entry>[]) => void = () => {};
     vi.spyOn(drawingDocumentRepository, 'list').mockReturnValue(new Promise((resolve) => {
       resolveList = resolve;
     }));
 
     const hydration = hydrateDrawingStore('user-old');
     resetDrawingStore();
-    resolveList([createBlankDrawingDocument('旧账号图纸')]);
+    resolveList([entry(createBlankDrawingDocument('旧账号图纸'))]);
     await hydration;
 
     expect(useDrawingStore.getState()).toMatchObject({
@@ -79,16 +84,16 @@ describe('drawing store hydration', () => {
   it('keeps the newest hydration when two accounts hydrate out of order', async () => {
     const documentA = createBlankDrawingDocument('账号 A 图纸');
     const documentB = createBlankDrawingDocument('账号 B 图纸');
-    const pending: Array<(value: DrawingDocument[]) => void> = [];
+    const pending: Array<(value: ReturnType<typeof entry>[]) => void> = [];
     vi.spyOn(drawingDocumentRepository, 'list').mockImplementation(() => new Promise((resolve) => {
       pending.push(resolve);
     }));
 
     const hydrationA = hydrateDrawingStore('user-a');
     const hydrationB = hydrateDrawingStore('user-b');
-    pending[1]([documentB]);
+    pending[1]([entry(documentB)]);
     await hydrationB;
-    pending[0]([documentA]);
+    pending[0]([entry(documentA)]);
     await hydrationA;
 
     const state = useDrawingStore.getState();
