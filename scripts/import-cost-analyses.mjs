@@ -1,13 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
-import { createRequire } from 'node:module';
 import XLSX from 'xlsx';
+import pg from 'pg';
+import { createClient } from '@supabase/supabase-js';
 
 // xlsx 0.20.x 的 ESM 构建需要显式注入 fs 才能使用 readFile/writeFile。
 XLSX.set_fs(fs);
-
-const require = createRequire(import.meta.url);
+import {
+  COST_ANALYSIS_BUCKET,
+  applyCostAnalysisBatch,
+  buildPgSslConfig,
+  buildSyncManifest,
+  buildVersionedStoragePath,
+  collectSourceFiles,
+  dedupeAnalysesByPlatformNo,
+  resolveProjectRef,
+  resolveSeedSourceRefs,
+  validateCostAnalysisBatch,
+  verifySourceFilesUnchanged,
+} from './lib/costAnalysisSync.mjs';
 
 function loadEnv() {
   const envPath = path.resolve('.env');
@@ -159,7 +170,9 @@ export function resolvePriceDerivation(formula, baseValue, targetValue, defaultL
 
 export function parseCostWorkbook(filePath, options = {}) {
   const fileName = path.basename(filePath);
-  const wb = XLSX.readFile(filePath, { cellFormula: true, cellNF: true });
+  const wb = options.buffer
+    ? XLSX.read(options.buffer, { type: 'buffer', cellFormula: true, cellNF: true })
+    : XLSX.readFile(filePath, { cellFormula: true, cellNF: true });
   const results = [];
   const warn = (sheetName, message) => {
     options.onWarning?.(`${fileName} [${sheetName}]: ${message}`);
@@ -248,7 +261,7 @@ export function parseCostWorkbook(filePath, options = {}) {
     }
 
     // 格式化清理 platformNo
-    platformNo = platformNo.replace(/\s+/g, '').replace(/[\/\\:*?"<>|]/g, '-');
+    platformNo = platformNo.replace(/\s+/g, '').replace(/[/\\:*?"<>|]/g, '-');
 
     // 2. 截取 BOM 明细
     let bomStartRow = -1;
@@ -753,24 +766,11 @@ export function parseCostWorkbook(filePath, options = {}) {
     if ((platformCounts.get(item.platformNo) ?? 0) > 1 && !sheetKey.startsWith('WL-')) {
       item.platformNo = `${item.platformNo}-${sheetKey}`
         .replace(/\s+/g, '')
-        .replace(/[\/\\:*?"<>|]/g, '-');
+        .replace(/[/\\:*?"<>|]/g, '-');
     }
   }
 
   return results;
-}
-
-export function toSafeStorageKey(fileName, index) {
-  const hash = crypto.createHash('md5').update(fileName).digest('hex').slice(0, 8);
-  const cleanBase = fileName
-    .replace(/\.xlsx$/i, '')
-    .replace(/[^\w-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 30);
-  const paddedIdx = String(index + 1).padStart(2, '0');
-  const safeName = cleanBase ? `${paddedIdx}_${cleanBase}_${hash}.xlsx` : `${paddedIdx}_${hash}.xlsx`;
-  return `cost-analyses/${safeName}`;
 }
 
 function sqlEscape(val) {
@@ -789,172 +789,195 @@ function sqlJson(obj) {
   return `'${JSON.stringify(obj).replace(/'/g, "''")}'::jsonb`;
 }
 
-// 清理当前 Excel 解析结果之外的旧命名残留：先删成本分析，再删已无分析引用的自动建档物料。
-// 保证种子/同步脚本可单独重复执行，直接替换旧命名结果而无需清库；CRM 来源物料（source_material_id 非空）不受影响。
-export function buildStaleCleanupStatements(platformNos) {
-  const lines = [];
-  lines.push('delete from public.finished_harness_cost_analyses');
-  lines.push('where platform_no not in (');
-  for (let i = 0; i < platformNos.length; i += 5) {
-    const chunk = platformNos.slice(i, i + 5).map((no) => sqlEscape(no)).join(', ');
-    lines.push(`  ${chunk}${i + 5 < platformNos.length ? ',' : ''}`);
-  }
-  lines.push(');');
-  lines.push('');
-  lines.push('delete from public.finished_harness_materials as m');
-  lines.push('where m.source_material_id is null');
-  lines.push('  and not exists (');
-  lines.push('    select 1 from public.finished_harness_cost_analyses as c');
-  lines.push('    where c.harness_material_id = m.id');
-  lines.push('  );');
-  return lines;
-}
-
-// 无来源图纸的物料仅在被成本分析引用时保留，否则隐藏；需在成本分析写入完成后执行。
-export const NO_DRAWING_MATERIAL_CLEANUP_SQL = [
-  'delete from public.finished_harness_materials as m',
-  'where m.file_2d is null',
-  '  and not exists (',
-  '    select 1 from public.finished_harness_cost_analyses as c',
-  '    where c.harness_material_id = m.id',
-  '  );',
-].join('\n');
-
+// 种子/同步一律只新增或更新，不删除任何未出现在本次解析结果中的成本分析或成品物料。
+// 来源定位（source_excel_path/url）只使用已确认存在的对象地址或既有定位，
+// 由调用方通过 resolveSeedSourceRefs 解析后传入。
+// 冲突更新规则按来源状态分组：
+// - verified=true（本次已确认存在的版本对象）：允许用版本路径替换既有引用；
+// - 未验证（沿用既有定位或没有定位）：只填补空值，绝不覆盖数据库较新的非空引用。
 export function generateSeedSql(allAnalyses, fileUrlMap = new Map()) {
+  const isVerified = (item) => fileUrlMap.get(item.sourceExcelFile)?.verified === true;
+  const verifiedAnalyses = allAnalyses.filter(isVerified);
+  const fillAnalyses = allAnalyses.filter((item) => !isVerified(item));
+  const sourceUrlOf = (item) => fileUrlMap.get(item.sourceExcelFile)?.publicUrl || null;
+  const sourcePathOf = (item) => fileUrlMap.get(item.sourceExcelFile)?.storagePath || null;
+
   const lines = [];
   lines.push('-- ==============================================================================');
   lines.push('-- 06_finished_harness_cost_analyses.sql');
   lines.push('-- 成品线束方案成本分析、定价公式推导明细与价格汇总基线数据');
   lines.push(`-- 自动生成自 excel/ 目录下 20 个 Excel 文件，共 ${allAnalyses.length} 个成品方案`);
+  lines.push('-- 只新增或更新，不删除任何既有记录。');
+  lines.push('-- 来源定位：已验证的版本对象允许替换引用；未验证的历史引用只填补空值，不覆盖较新地址。');
   lines.push('-- ==============================================================================\n');
   lines.push('begin;\n');
 
-  lines.push('-- 0. 清理历史命名与过期文件残留：直接替换旧命名结果，保证本种子可单独重复执行');
-  lines.push(...buildStaleCleanupStatements(allAnalyses.map((item) => item.platformNo)));
-  lines.push('');
+  const pushMaterialStatement = (analyses, sourceUrlExpression, label) => {
+    if (analyses.length === 0) return;
+    lines.push(`-- ${label}`);
+    lines.push('-- 注意：不写入 son_price_low（CRM 平台最低售价，有值即保留、缺失保持 null）；');
+    lines.push('-- 也不写入 son_unit（外部导入字段，缺失保持 null），成本分析/Excel 推导结果一律禁止回填这些列。');
+    lines.push('insert into public.finished_harness_materials (');
+    lines.push('  platform_no,');
+    lines.push('  son_name,');
+    lines.push('  total_cost,');
+    lines.push('  sales_price,');
+    lines.push('  sample_price,');
+    lines.push('  quote_price,');
+    lines.push('  has_cost_analysis,');
+    lines.push('  source_excel_url');
+    lines.push(')');
+    lines.push('values');
+    analyses.forEach((item, index) => {
+      const isLast = index === analyses.length - 1;
+      lines.push(`  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName)}, ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceUrlOf(item))})${isLast ? '' : ','}`);
+    });
+    lines.push('on conflict (platform_no) do update set');
+    lines.push('  son_name = case when finished_harness_materials.source_material_id is null then excluded.son_name else finished_harness_materials.son_name end,');
+    lines.push('  total_cost = excluded.total_cost,');
+    lines.push('  sales_price = excluded.sales_price,');
+    lines.push('  sample_price = excluded.sample_price,');
+    lines.push('  quote_price = excluded.quote_price,');
+    lines.push('  has_cost_analysis = true,');
+    lines.push(`  source_excel_url = ${sourceUrlExpression},`);
+    lines.push('  updated_at = now();\n');
+  };
 
-  lines.push('-- 1. 扩充/建档成品线束主表核心价格指标');
-  lines.push('-- 注意：不写入 son_price_low（CRM 平台最低售价，有值即保留、缺失保持 null）；');
-  lines.push('-- 也不写入 son_unit（外部导入字段，缺失保持 null），成本分析/Excel 推导结果一律禁止回填这些列。');
-  lines.push('insert into public.finished_harness_materials (');
-  lines.push('  platform_no,');
-  lines.push('  son_name,');
-  lines.push('  total_cost,');
-  lines.push('  sales_price,');
-  lines.push('  sample_price,');
-  lines.push('  quote_price,');
-  lines.push('  has_cost_analysis,');
-  lines.push('  source_excel_url');
-  lines.push(')');
-  lines.push('values');
+  const pushCostStatement = (analyses, pathExpression, urlExpression, label) => {
+    if (analyses.length === 0) return;
+    lines.push(`-- ${label}`);
+    lines.push('insert into public.finished_harness_cost_analyses (');
+    lines.push('  harness_material_id,');
+    lines.push('  platform_no,');
+    lines.push('  source_excel_file,');
+    lines.push('  source_sheet_name,');
+    lines.push('  source_excel_path,');
+    lines.push('  source_excel_url,');
+    lines.push('  customer_name,');
+    lines.push('  customer_part_no,');
+    lines.push('  material_cost,');
+    lines.push('  material_loss,');
+    lines.push('  labor_cost,');
+    lines.push('  labor_loss,');
+    lines.push('  total_cost,');
+    lines.push('  tax_cost,');
+    lines.push('  sales_price,');
+    lines.push('  sample_price,');
+    lines.push('  quote_price,');
+    lines.push('  formula_config,');
+    lines.push('  calculation_steps,');
+    lines.push('  bom_items,');
+    lines.push('  labor_items');
+    lines.push(')');
+    lines.push('values');
+    analyses.forEach((item, index) => {
+      const row = [
+        `(select id from public.finished_harness_materials where platform_no = ${sqlEscape(item.platformNo)} limit 1)`,
+        sqlEscape(item.platformNo),
+        sqlEscape(item.sourceExcelFile),
+        sqlEscape(item.sourceSheetName),
+        sqlEscape(sourcePathOf(item)),
+        sqlEscape(sourceUrlOf(item)),
+        sqlEscape(item.customerName || null),
+        sqlEscape(item.customerPartNo || null),
+        sqlNum(item.materialCost),
+        sqlNum(item.materialLoss),
+        sqlNum(item.laborCost),
+        sqlNum(item.laborLoss),
+        sqlNum(item.totalCost),
+        sqlNum(item.taxCost),
+        sqlNum(item.salesPrice),
+        sqlNum(item.samplePrice),
+        sqlNum(item.quotePrice),
+        sqlJson(item.formulaConfig),
+        sqlJson(item.calculationSteps),
+        sqlJson(item.bomItems),
+        sqlJson(item.laborItems),
+      ];
+      lines.push(`  (${row.join(', ')})${index === analyses.length - 1 ? '' : ','}`);
+    });
+    lines.push('on conflict (platform_no) do update set');
+    lines.push('  harness_material_id = excluded.harness_material_id,');
+    lines.push('  source_excel_file = excluded.source_excel_file,');
+    lines.push('  source_sheet_name = excluded.source_sheet_name,');
+    lines.push(`  source_excel_path = ${pathExpression},`);
+    lines.push(`  source_excel_url = ${urlExpression},`);
+    lines.push('  customer_name = excluded.customer_name,');
+    lines.push('  customer_part_no = excluded.customer_part_no,');
+    lines.push('  material_cost = excluded.material_cost,');
+    lines.push('  material_loss = excluded.material_loss,');
+    lines.push('  labor_cost = excluded.labor_cost,');
+    lines.push('  labor_loss = excluded.labor_loss,');
+    lines.push('  total_cost = excluded.total_cost,');
+    lines.push('  tax_cost = excluded.tax_cost,');
+    lines.push('  sales_price = excluded.sales_price,');
+    lines.push('  sample_price = excluded.sample_price,');
+    lines.push('  quote_price = excluded.quote_price,');
+    lines.push('  formula_config = excluded.formula_config,');
+    lines.push('  calculation_steps = excluded.calculation_steps,');
+    lines.push('  bom_items = excluded.bom_items,');
+    lines.push('  labor_items = excluded.labor_items,');
+    lines.push('  updated_at = now();\n');
+  };
 
-  const matValues = allAnalyses.map((item, idx) => {
-    const urlInfo = fileUrlMap.get(item.sourceExcelFile);
-    const sourceExcelUrl = urlInfo?.publicUrl || null;
-    const isLast = idx === allAnalyses.length - 1;
-    return `  (${sqlEscape(item.platformNo)}, ${sqlEscape(item.productName)}, ${sqlNum(item.totalCost)}, ${sqlNum(item.salesPrice)}, ${sqlNum(item.samplePrice)}, ${sqlNum(item.quotePrice)}, true, ${sqlEscape(sourceExcelUrl)})${isLast ? '' : ','}`;
-  });
-  lines.push(matValues.join('\n'));
-
-  lines.push('on conflict (platform_no) do update set');
-  lines.push('  son_name = case when finished_harness_materials.source_material_id is null then excluded.son_name else finished_harness_materials.son_name end,');
-  lines.push('  total_cost = excluded.total_cost,');
-  lines.push('  sales_price = excluded.sales_price,');
-  lines.push('  sample_price = excluded.sample_price,');
-  lines.push('  quote_price = excluded.quote_price,');
-  lines.push('  has_cost_analysis = true,');
-  lines.push('  source_excel_url = coalesce(excluded.source_excel_url, finished_harness_materials.source_excel_url),');
-  lines.push('  updated_at = now();\n');
-
-  lines.push('-- 2. 写入/更新成本分析与价格推导明细表');
-  lines.push('insert into public.finished_harness_cost_analyses (');
-  lines.push('  harness_material_id,');
-  lines.push('  platform_no,');
-  lines.push('  source_excel_file,');
-  lines.push('  source_sheet_name,');
-  lines.push('  source_excel_path,');
-  lines.push('  source_excel_url,');
-  lines.push('  customer_name,');
-  lines.push('  customer_part_no,');
-  lines.push('  material_cost,');
-  lines.push('  material_loss,');
-  lines.push('  labor_cost,');
-  lines.push('  labor_loss,');
-  lines.push('  total_cost,');
-  lines.push('  tax_cost,');
-  lines.push('  sales_price,');
-  lines.push('  sample_price,');
-  lines.push('  quote_price,');
-  lines.push('  formula_config,');
-  lines.push('  calculation_steps,');
-  lines.push('  bom_items,');
-  lines.push('  labor_items');
-  lines.push(')');
-  lines.push('values');
-
-  const costValues = allAnalyses.map((item, idx) => {
-    const urlInfo = fileUrlMap.get(item.sourceExcelFile);
-    const sourceExcelUrl = urlInfo?.publicUrl || null;
-    const sourceExcelPath = urlInfo?.storagePath || null;
-    const isLast = idx === allAnalyses.length - 1;
-
-    const row = [
-      `(select id from public.finished_harness_materials where platform_no = ${sqlEscape(item.platformNo)} limit 1)`,
-      sqlEscape(item.platformNo),
-      sqlEscape(item.sourceExcelFile),
-      sqlEscape(item.sourceSheetName),
-      sqlEscape(sourceExcelPath),
-      sqlEscape(sourceExcelUrl),
-      sqlEscape(item.customerName || null),
-      sqlEscape(item.customerPartNo || null),
-      sqlNum(item.materialCost),
-      sqlNum(item.materialLoss),
-      sqlNum(item.laborCost),
-      sqlNum(item.laborLoss),
-      sqlNum(item.totalCost),
-      sqlNum(item.taxCost),
-      sqlNum(item.salesPrice),
-      sqlNum(item.samplePrice),
-      sqlNum(item.quotePrice),
-      sqlJson(item.formulaConfig),
-      sqlJson(item.calculationSteps),
-      sqlJson(item.bomItems),
-      sqlJson(item.laborItems),
-    ];
-
-    return `  (${row.join(', ')})${isLast ? '' : ','}`;
-  });
-  lines.push(costValues.join('\n'));
-
-  lines.push('on conflict (platform_no) do update set');
-  lines.push('  harness_material_id = excluded.harness_material_id,');
-  lines.push('  source_excel_file = excluded.source_excel_file,');
-  lines.push('  source_sheet_name = excluded.source_sheet_name,');
-  lines.push('  source_excel_path = coalesce(excluded.source_excel_path, finished_harness_cost_analyses.source_excel_path),');
-  lines.push('  source_excel_url = coalesce(excluded.source_excel_url, finished_harness_cost_analyses.source_excel_url),');
-  lines.push('  customer_name = excluded.customer_name,');
-  lines.push('  customer_part_no = excluded.customer_part_no,');
-  lines.push('  material_cost = excluded.material_cost,');
-  lines.push('  material_loss = excluded.material_loss,');
-  lines.push('  labor_cost = excluded.labor_cost,');
-  lines.push('  labor_loss = excluded.labor_loss,');
-  lines.push('  total_cost = excluded.total_cost,');
-  lines.push('  tax_cost = excluded.tax_cost,');
-  lines.push('  sales_price = excluded.sales_price,');
-  lines.push('  sample_price = excluded.sample_price,');
-  lines.push('  quote_price = excluded.quote_price,');
-  lines.push('  formula_config = excluded.formula_config,');
-  lines.push('  calculation_steps = excluded.calculation_steps,');
-  lines.push('  bom_items = excluded.bom_items,');
-  lines.push('  labor_items = excluded.labor_items,');
-  lines.push('  updated_at = now();\n');
-
-  lines.push('-- 3. 隐藏无来源图纸且未被成本分析引用的物料，保持成品库只展示有图纸或已核算成本的物料');
-  lines.push(...NO_DRAWING_MATERIAL_CLEANUP_SQL.split('\n'));
-  lines.push('');
+  pushMaterialStatement(
+    verifiedAnalyses,
+    'excluded.source_excel_url',
+    '1a. 扩充/建档成品线束主表核心价格指标（已验证来源：允许替换来源定位）',
+  );
+  pushMaterialStatement(
+    fillAnalyses,
+    'coalesce(finished_harness_materials.source_excel_url, excluded.source_excel_url)',
+    '1b. 扩充/建档成品线束主表核心价格指标（未验证来源：只填补空值，不覆盖较新地址）',
+  );
+  pushCostStatement(
+    verifiedAnalyses,
+    'excluded.source_excel_path',
+    'excluded.source_excel_url',
+    '2a. 写入/更新成本分析与价格推导明细表（已验证来源：允许替换来源定位）',
+  );
+  pushCostStatement(
+    fillAnalyses,
+    'coalesce(finished_harness_cost_analyses.source_excel_path, excluded.source_excel_path)',
+    'coalesce(finished_harness_cost_analyses.source_excel_url, excluded.source_excel_url)',
+    '2b. 写入/更新成本分析与价格推导明细表（未验证来源：只填补空值，不覆盖较新地址）',
+  );
 
   lines.push('commit;\n');
   return lines.join('\n');
+}
+
+/**
+ * 通过 Storage 只读确认来源对象是否存在（与 sync-cost-analyses.mjs 使用同一内容哈希路径规则）。
+ * 仅在显式传入 --verify-storage 时执行，避免本地导出意外触发远程请求。
+ */
+async function verifyStoredSourceFiles(sourceFiles, env) {
+  const verified = new Set();
+  const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
+  const key = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    console.warn('[Storage] 缺少 Supabase 凭据，无法确认来源对象；将保留既有来源定位，不构造新地址。');
+    return verified;
+  }
+  const supabase = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+  for (let index = 0; index < sourceFiles.length; index += 1) {
+    const { fileName, sha256 } = sourceFiles[index];
+    const storagePath = buildVersionedStoragePath(fileName, index, sha256);
+    const objectName = storagePath.split('/').pop();
+    try {
+      const { data, error } = await supabase.storage
+        .from(COST_ANALYSIS_BUCKET)
+        .list('cost-analyses', { search: objectName, limit: 100 });
+      if (!error && data?.some((entry) => entry.name === objectName)) {
+        verified.add(fileName);
+        continue;
+      }
+    } catch {
+      // 网络失败按未确认处理。
+    }
+    console.warn(`[Storage] 未确认来源对象存在: ${storagePath}`);
+  }
+  return verified;
 }
 
 // 如果作为主脚本运行
@@ -962,10 +985,11 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
   async function run() {
     const excelDir = path.resolve('excel');
     const files = listExcelWorkbooks(excelDir);
+    const sourceFiles = collectSourceFiles(files);
     console.log(`发现 ${files.length} 个 Excel 文件，开始解析...`);
 
-    const allAnalyses = [];
-    const platformNoSet = new Set();
+    const rawAnalyses = [];
+    const parseFailures = [];
     const parseWarnings = [];
 
     for (const { fileName, filePath } of files) {
@@ -973,46 +997,42 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
         const analyses = parseCostWorkbook(filePath, {
           onWarning: (message) => parseWarnings.push(message),
         });
-        for (const a of analyses) {
-          if (!platformNoSet.has(a.platformNo)) {
-            platformNoSet.add(a.platformNo);
-            allAnalyses.push(a);
-          } else {
-            // 同料号多 sheet，附加上 sheet 区分
-            const altNo = `${a.platformNo}-${a.sourceSheetName.replace(/\s+/g, '')}`;
-            if (!platformNoSet.has(altNo)) {
-              a.platformNo = altNo;
-              platformNoSet.add(altNo);
-              allAnalyses.push(a);
-            }
-          }
-        }
+        rawAnalyses.push(...analyses);
       } catch (err) {
+        parseFailures.push(`${fileName}: ${err.message}`);
         console.error(`解析文件 ${fileName} 失败:`, err.message);
       }
     }
 
+    const allAnalyses = dedupeAnalysesByPlatformNo(rawAnalyses);
+    validateCostAnalysisBatch(allAnalyses, sourceFiles, parseFailures, parseWarnings);
+
     console.log(`解析完成！成功抽取 ${allAnalyses.length} 个成品方案。`);
-    if (parseWarnings.length > 0) {
-      console.warn(`解析告警 ${parseWarnings.length} 条：`);
-      parseWarnings.forEach((message) => console.warn(`  - ${message}`));
+    const manifest = buildSyncManifest({ sourceFiles, analyses: allAnalyses });
+    console.log(`[来源清单] ${manifest.sourceFiles.length} 个文件，计划新增/更新 ${manifest.analysisCount} 个方案：`);
+    for (const file of manifest.sourceFiles) {
+      console.log(`  - ${file.fileName} (${file.bytes} B, sha256:${file.sha256.slice(0, 16)}…)`);
     }
 
-    // 映射云端 Storage 路径
-    const fileUrlMap = new Map();
+    // 统一来源路径规则：与 sync-cost-analyses.mjs 相同的内容哈希版本路径。
+    // 该脚本只写数据库（对象上传由 sync-cost-analyses.mjs 负责），因此：
+    // 已确认存在的对象使用版本路径；未确认时保留既有种子定位；都没有则省略地址。
     const env = loadEnv();
     const baseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || 'https://wioaznspvchiogdxvtun.supabase.co';
-    for (let i = 0; i < files.length; i++) {
-      const { fileName } = files[i];
-      const storagePath = toSafeStorageKey(fileName, i);
-      const publicUrl = `${baseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`;
-      fileUrlMap.set(fileName, { storagePath, publicUrl });
+    const targetSqlPath = path.resolve('supabase/sql/40_seed/06_finished_harness_cost_analyses.sql');
+    const previousSeedSql = fs.existsSync(targetSqlPath) ? fs.readFileSync(targetSqlPath, 'utf8') : null;
+    const verifyStorage = process.argv.includes('--verify-storage');
+    if (!verifyStorage) {
+      console.warn('[Storage] 未传入 --verify-storage：来源对象存在性未确认，将保留既有来源定位或省略，不构造新地址。');
     }
+    const verifiedFiles = verifyStorage ? await verifyStoredSourceFiles(sourceFiles, env) : new Set();
+    const { map: seedUrlMap, stats: refStats } = resolveSeedSourceRefs(sourceFiles, baseUrl, verifiedFiles, previousSeedSql);
+    const writeUrlMap = new Map([...seedUrlMap].filter(([, entry]) => entry.verified === true));
+    console.log(`[Storage] 已确认 ${refStats.verified} 个来源对象；沿用既有定位 ${refStats.retained} 个；无法定位 ${refStats.missing} 个。`);
 
     // 检查是否带 --export-sql 执行 SQL 文件生成
     if (process.argv.includes('--export-sql')) {
-      const targetSqlPath = path.resolve('supabase/sql/40_seed/06_finished_harness_cost_analyses.sql');
-      const sqlContent = generateSeedSql(allAnalyses, fileUrlMap);
+      const sqlContent = generateSeedSql(allAnalyses, seedUrlMap);
       fs.writeFileSync(targetSqlPath, sqlContent, 'utf8');
       const stats = fs.statSync(targetSqlPath);
       console.log(`[SQL 导出成功] 文件: ${targetSqlPath}`);
@@ -1035,126 +1055,31 @@ if (process.argv[1] && process.argv[1].endsWith('import-cost-analyses.mjs')) {
 
     // 检查是否带 --commit 执行入库
     if (process.argv.includes('--commit')) {
-      const env = loadEnv();
-      const pg = require(path.resolve('.tmp/db-runtime/node_modules/pg'));
+      if (!env.SUPABASE_DB_HOST || !env.SUPABASE_DB_USER || !env.SUPABASE_DB_PASSWORD) {
+        throw new Error('缺少 SUPABASE_DB_HOST / SUPABASE_DB_USER / SUPABASE_DB_PASSWORD，禁止写入');
+      }
+      console.log(`目标 Supabase 项目: ${resolveProjectRef(baseUrl)}`);
+      verifySourceFilesUnchanged(sourceFiles);
       const client = new pg.Client({
         host: env.SUPABASE_DB_HOST,
         port: Number(env.SUPABASE_DB_PORT || 6543),
         user: env.SUPABASE_DB_USER,
         password: env.SUPABASE_DB_PASSWORD,
         database: env.SUPABASE_DB_NAME,
-        ssl: { rejectUnauthorized: false },
+        ssl: buildPgSslConfig(env),
         connectionTimeoutMillis: 15000,
       });
 
-      console.log('正在连接数据库执行批量写入...');
-      await client.connect();
-
-      // 直接替换旧命名结果：清理当前解析结果之外的历史成本分析与自动建档物料
-      await client.query(
-        buildStaleCleanupStatements(allAnalyses.map((item) => item.platformNo)).join('\n')
-      );
-
-      let createdCount = 0;
-      let updatedCount = 0;
-
-      for (const item of allAnalyses) {
-        // 1. 查找或创建 finished_harness_materials
-        const existRes = await client.query(
-          'select id from public.finished_harness_materials where platform_no = $1',
-          [item.platformNo]
-        );
-
-        let harnessMaterialId = null;
-        if (existRes.rows.length > 0) {
-          harnessMaterialId = existRes.rows[0].id;
-          // 更新主表价格；自动建档物料（source_material_id 为空）无来源名称时同步置空，CRM 来源物料名称永不覆盖
-          await client.query(
-            `update public.finished_harness_materials 
-             set total_cost = $1, sales_price = $2, sample_price = $3, quote_price = $4, has_cost_analysis = true,
-                 son_name = case when source_material_id is null then $5 else son_name end, updated_at = now()
-             where id = $6`,
-            [item.totalCost, item.salesPrice, item.samplePrice, item.quotePrice, item.productName || null, harnessMaterialId]
-          );
-          updatedCount++;
-        } else {
-          // 自动建档新成品物料（成本分析建档物料 source_material_id 为空）
-          // 不写入 son_price_low（CRM 平台最低售价）与 son_unit（外部导入单位），缺失即保持 null
-          const insertRes = await client.query(
-            `insert into public.finished_harness_materials 
-             (source_material_id, platform_no, son_name, total_cost, sales_price, sample_price, quote_price, has_cost_analysis)
-             values ($1, $2, $3, $4, $5, $6, $7, true)
-             returning id`,
-            [
-              null,
-              item.platformNo,
-              item.productName || null,
-              item.totalCost,
-              item.salesPrice,
-              item.samplePrice,
-              item.quotePrice,
-            ]
-          );
-          harnessMaterialId = insertRes.rows[0].id;
-          createdCount++;
-        }
-
-        // 2. Upsert 写入 finished_harness_cost_analyses
-        await client.query(
-          `insert into public.finished_harness_cost_analyses
-           (harness_material_id, platform_no, source_excel_file, source_sheet_name, customer_name, customer_part_no,
-            material_cost, material_loss, labor_cost, labor_loss, total_cost, tax_cost, sales_price, sample_price, quote_price,
-            formula_config, calculation_steps, bom_items, labor_items, updated_at)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, now())
-           on conflict (platform_no) do update set
-            harness_material_id = excluded.harness_material_id,
-            source_excel_file = excluded.source_excel_file,
-            source_sheet_name = excluded.source_sheet_name,
-            customer_name = excluded.customer_name,
-            customer_part_no = excluded.customer_part_no,
-            material_cost = excluded.material_cost,
-            material_loss = excluded.material_loss,
-            labor_cost = excluded.labor_cost,
-            labor_loss = excluded.labor_loss,
-            total_cost = excluded.total_cost,
-            tax_cost = excluded.tax_cost,
-            sales_price = excluded.sales_price,
-            sample_price = excluded.sample_price,
-            quote_price = excluded.quote_price,
-            formula_config = excluded.formula_config,
-            calculation_steps = excluded.calculation_steps,
-            bom_items = excluded.bom_items,
-            labor_items = excluded.labor_items,
-            updated_at = now()`,
-          [
-            harnessMaterialId,
-            item.platformNo,
-            item.sourceExcelFile,
-            item.sourceSheetName,
-            item.customerName || null,
-            item.customerPartNo || null,
-            item.materialCost,
-            item.materialLoss,
-            item.laborCost,
-            item.laborLoss,
-            item.totalCost,
-            item.taxCost,
-            item.salesPrice,
-            item.samplePrice,
-            item.quotePrice,
-            JSON.stringify(item.formulaConfig),
-            JSON.stringify(item.calculationSteps),
-            JSON.stringify(item.bomItems),
-            JSON.stringify(item.laborItems),
-          ]
-        );
+      console.log('正在连接数据库执行单事务批量写入（只新增或更新）...');
+      try {
+        await client.connect();
+        const result = await applyCostAnalysisBatch(client, allAnalyses, writeUrlMap);
+        console.log(`入库成功！更新已有成品: ${result.updatedCount} 个，自动建档新成品: ${result.createdCount} 个。`);
+        console.log('未出现在本次解析结果中的既有成本分析/成品物料保持原样；事务提交后不再做任何清理。');
+        console.log(`来源定位：仅写入已确认存在的对象（${writeUrlMap.size} 个）；其余记录保留原引用。`);
+      } finally {
+        await client.end().catch(() => {});
       }
-
-      // 成本分析写入完成后再隐藏无图纸且未被引用的物料
-      await client.query(NO_DRAWING_MATERIAL_CLEANUP_SQL);
-
-      console.log(`入库成功！关联更新已有成品: ${updatedCount} 个，自动建档新成品: ${createdCount} 个。`);
-      await client.end();
     } else {
       console.log('当前为预览模式，若需真正写入数据库请运行: node scripts/import-cost-analyses.mjs --commit');
     }

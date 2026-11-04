@@ -60,14 +60,14 @@ describe('finished harness material SQL', () => {
     expect(guards).toBe(updates);
   });
 
-  it('provides an idempotent seed for cost analyses and price rollups', () => {
+  it('provides a data-preserving seed for cost analyses and price rollups', () => {
     const costSeed = readFileSync('supabase/sql/40_seed/06_finished_harness_cost_analyses.sql', 'utf8');
     expect(costSeed).toContain('insert into public.finished_harness_materials');
     expect(costSeed).toContain('insert into public.finished_harness_cost_analyses');
     expect(costSeed).toContain('on conflict (platform_no) do update');
     expect(costSeed).toContain('WL-B21-577');
     expect(costSeed).toContain('WL-B21-534');
-    expect(costSeed).toContain('where m.file_2d is null');
+    expect(costSeed).not.toMatch(/delete\s+from\s+public\.finished_harness_(materials|cost_analyses)/i);
   });
 });
 

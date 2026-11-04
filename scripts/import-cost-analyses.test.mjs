@@ -1,15 +1,16 @@
-import { existsSync, readFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import XLSX from 'xlsx';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   generateSeedSql,
   listExcelWorkbooks,
   parseCostWorkbook,
   resolvePriceDerivation,
-  toSafeStorageKey,
 } from './import-cost-analyses.mjs';
+import { buildVersionedStoragePath, evaluateSourceRefState, resolveSeedSourceRefs, sha256File } from './lib/costAnalysisSync.mjs';
 
 describe('Excel source precision', () => {
   it('keeps raw numbers and individual cell formats throughout the parsed analysis', () => {
@@ -253,6 +254,12 @@ describe('generated cost analysis seed', () => {
     () => {
       const excelDir = 'excel';
       const files = listExcelWorkbooks(excelDir);
+      const sourceFiles = files.map(({ fileName, filePath }) => ({
+        fileName,
+        filePath,
+        bytes: Buffer.byteLength(readFileSync(filePath)),
+        sha256: sha256File(filePath),
+      }));
       const seen = new Set();
       const allAnalyses = [];
       for (const { filePath } of files) {
@@ -272,24 +279,61 @@ describe('generated cost analysis seed', () => {
       }
 
       const baseUrl = resolveSeedBaseUrl();
-      const fileUrlMap = new Map();
-      for (let i = 0; i < files.length; i += 1) {
-        const storagePath = toSafeStorageKey(files[i].fileName, i);
-        fileUrlMap.set(files[i].fileName, {
-          storagePath,
-          publicUrl: `${baseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`,
-        });
-      }
-
-      const expected = generateSeedSql(allAnalyses, fileUrlMap);
       const committed = readFileSync(
         'supabase/sql/40_seed/06_finished_harness_cost_analyses.sql',
         'utf8',
       ).replace(/\r\n/g, '\n');
+      // 与脚本一致：本次未做存储存在性确认时保留既有种子里的来源定位。
+      const { map: fileUrlMap } = resolveSeedSourceRefs(sourceFiles, baseUrl, new Set(), committed);
 
+      const expected = generateSeedSql(allAnalyses, fileUrlMap);
       expect(committed).toBe(expected);
     },
   );
+
+  it('uses the same content-hash storage path rule as the sync pipeline', () => {
+    const fileName = '成本分析-WL-B21-777.xlsx';
+    const contentHash = 'a'.repeat(64);
+    const path = buildVersionedStoragePath(fileName, 0, contentHash);
+    expect(path).toContain(contentHash.slice(0, 12));
+    expect(path.startsWith('cost-analyses/01_')).toBe(true);
+
+    const sourceFiles = [{ fileName, filePath: 'x', bytes: 1, sha256: contentHash }];
+    const { map, stats } = resolveSeedSourceRefs(sourceFiles, 'https://example.test', new Set([fileName]), '');
+    expect(stats).toEqual({ verified: 1, retained: 0, missing: 0 });
+    expect(map.get(fileName)).toMatchObject({
+      storagePath: path,
+      publicUrl: `https://example.test/storage/v1/object/public/cost-analysis-sources/${path}`,
+      verified: true,
+    });
+  });
+
+  it('retains previous source references when the new object is not verified', () => {
+    const sourceFiles = [{ fileName: 'source.xlsx', filePath: 'x', bytes: 1, sha256: 'b'.repeat(64) }];
+    const previousSeedSql = [
+      "  (select id from public.finished_harness_materials where platform_no = 'P1' limit 1), 'P1', 'source.xlsx', 'S1', 'cost-analyses/old-name.xlsx', 'https://old.test/cost-analyses/old-name.xlsx', null, null,",
+    ].join('\n');
+
+    const unverified = resolveSeedSourceRefs(sourceFiles, 'https://example.test', new Set(), previousSeedSql);
+    expect(unverified.stats).toEqual({ verified: 0, retained: 1, missing: 0 });
+    expect(unverified.map.get('source.xlsx')).toMatchObject({
+      storagePath: 'cost-analyses/old-name.xlsx',
+      publicUrl: 'https://old.test/cost-analyses/old-name.xlsx',
+      verified: false,
+      retained: true,
+    });
+
+    const noPrevious = resolveSeedSourceRefs(sourceFiles, 'https://example.test', new Set(), '');
+    expect(noPrevious.stats).toEqual({ verified: 0, retained: 0, missing: 1 });
+    expect(noPrevious.map.has('source.xlsx')).toBe(false);
+    const seedSql = generateSeedSql([{
+      platformNo: 'P1', productName: null, sourceExcelFile: 'source.xlsx', sourceSheetName: 'S1',
+      customerName: null, customerPartNo: null, materialCost: 1, materialLoss: 0, laborCost: 2, laborLoss: 0,
+      totalCost: 3, taxCost: null, salesPrice: 4, samplePrice: null, quotePrice: 4,
+      formulaConfig: {}, calculationSteps: [], bomItems: [], laborItems: [],
+    }], noPrevious.map);
+    expect(seedSql).toContain("'source.xlsx', 'S1', null, null, null, null, 1,");
+  });
 });
 
 describe('parser warnings', () => {
@@ -307,4 +351,231 @@ describe('parser warnings', () => {
       expect(warnings).toEqual([]);
     },
   );
+});
+
+const SEED_SCHEMA_SQL = `
+  create table public.finished_harness_materials (
+    id uuid primary key default gen_random_uuid(),
+    source_material_id bigint,
+    platform_no text not null unique,
+    son_name text,
+    total_cost numeric,
+    sales_price numeric,
+    sample_price numeric,
+    quote_price numeric,
+    has_cost_analysis boolean not null default false,
+    source_excel_url text,
+    updated_at timestamptz not null default now()
+  );
+  create table public.finished_harness_cost_analyses (
+    id uuid primary key default gen_random_uuid(),
+    harness_material_id uuid references public.finished_harness_materials(id) on delete cascade,
+    platform_no text not null unique,
+    source_excel_file text not null,
+    source_sheet_name text not null,
+    source_excel_path text,
+    source_excel_url text,
+    customer_name text,
+    customer_part_no text,
+    material_cost numeric,
+    material_loss numeric,
+    labor_cost numeric,
+    labor_loss numeric,
+    total_cost numeric,
+    tax_cost numeric,
+    sales_price numeric,
+    sample_price numeric,
+    quote_price numeric,
+    formula_config jsonb not null default '{}'::jsonb,
+    calculation_steps jsonb not null default '[]'::jsonb,
+    bom_items jsonb not null default '[]'::jsonb,
+    labor_items jsonb not null default '[]'::jsonb,
+    updated_at timestamptz not null default now()
+  );
+`;
+
+function seedAnalysis(platformNo, sourceExcelFile = 'source.xlsx') {
+  return {
+    platformNo,
+    productName: '名称',
+    sourceExcelFile,
+    sourceSheetName: 'S1',
+    customerName: null,
+    customerPartNo: null,
+    materialCost: 1,
+    materialLoss: 0,
+    laborCost: 2,
+    laborLoss: 0,
+    totalCost: 3,
+    taxCost: null,
+    salesPrice: 4,
+    samplePrice: null,
+    quotePrice: 4,
+    formulaConfig: {},
+    calculationSteps: [],
+    bomItems: [],
+    laborItems: [],
+  };
+}
+
+describe('offline seed source references (isolated PGlite)', () => {
+  let db;
+
+  afterEach(async () => {
+    await db?.close();
+  });
+
+  it('never overwrites newer references with retained legacy paths and replaces only when verified', async () => {
+    db = new PGlite();
+    await db.exec(SEED_SCHEMA_SQL);
+
+    const analyses = [seedAnalysis('P1')];
+    const retainedMap = new Map([['source.xlsx', {
+      storagePath: 'cost-analyses/old-name.xlsx',
+      publicUrl: 'https://old.test/old-name.xlsx',
+      verified: false,
+      retained: true,
+    }]]);
+    const verifiedMap = new Map([['source.xlsx', {
+      storagePath: 'cost-analyses/01_newhash.xlsx',
+      publicUrl: 'https://new.test/01_newhash.xlsx',
+      verified: true,
+    }]]);
+    const offlineSeed = generateSeedSql(analyses, retainedMap);
+    const verifiedSeed = generateSeedSql(analyses, verifiedMap);
+
+    // 场景 A：数据库已有同步写入的较新地址；离线种子（仅历史定位）不得改回旧地址
+    await db.exec(`
+      insert into public.finished_harness_materials (platform_no, son_name, total_cost, source_excel_url)
+        values ('P1', '新版', 1, 'https://new.test/01_newhash.xlsx');
+      insert into public.finished_harness_cost_analyses
+        (platform_no, source_excel_file, source_sheet_name, total_cost, source_excel_path, source_excel_url)
+        values ('P1', 'source.xlsx', 'S1', 1, 'cost-analyses/01_newhash.xlsx', 'https://new.test/01_newhash.xlsx');
+    `);
+    await db.exec(offlineSeed);
+    let costRow = (await db.query(
+      'select source_excel_path, source_excel_url from public.finished_harness_cost_analyses where platform_no = $1',
+      ['P1'],
+    )).rows[0];
+    let matRow = (await db.query(
+      'select source_excel_url from public.finished_harness_materials where platform_no = $1',
+      ['P1'],
+    )).rows[0];
+    expect(costRow).toEqual({
+      source_excel_path: 'cost-analyses/01_newhash.xlsx',
+      source_excel_url: 'https://new.test/01_newhash.xlsx',
+    });
+    expect(matRow.source_excel_url).toBe('https://new.test/01_newhash.xlsx');
+
+    // 场景 B：已验证来源允许替换旧引用
+    await db.exec(`
+      update public.finished_harness_cost_analyses
+        set source_excel_path = 'cost-analyses/legacy.xlsx', source_excel_url = 'https://old.test/legacy.xlsx'
+        where platform_no = 'P1';
+      update public.finished_harness_materials set source_excel_url = 'https://old.test/legacy.xlsx' where platform_no = 'P1';
+    `);
+    await db.exec(verifiedSeed);
+    costRow = (await db.query(
+      'select source_excel_path, source_excel_url from public.finished_harness_cost_analyses where platform_no = $1',
+      ['P1'],
+    )).rows[0];
+    matRow = (await db.query(
+      'select source_excel_url from public.finished_harness_materials where platform_no = $1',
+      ['P1'],
+    )).rows[0];
+    expect(costRow).toEqual({
+      source_excel_path: 'cost-analyses/01_newhash.xlsx',
+      source_excel_url: 'https://new.test/01_newhash.xlsx',
+    });
+    expect(matRow.source_excel_url).toBe('https://new.test/01_newhash.xlsx');
+
+    // 场景 C：新库空值由离线种子填补（历史定位只填补空值）
+    await db.exec('delete from public.finished_harness_cost_analyses; delete from public.finished_harness_materials;');
+    await db.exec(offlineSeed);
+    costRow = (await db.query(
+      'select source_excel_path, source_excel_url from public.finished_harness_cost_analyses where platform_no = $1',
+      ['P1'],
+    )).rows[0];
+    matRow = (await db.query(
+      'select source_excel_url from public.finished_harness_materials where platform_no = $1',
+      ['P1'],
+    )).rows[0];
+    expect(costRow).toEqual({
+      source_excel_path: 'cost-analyses/old-name.xlsx',
+      source_excel_url: 'https://old.test/old-name.xlsx',
+    });
+    expect(matRow.source_excel_url).toBe('https://old.test/old-name.xlsx');
+  });
+
+  it('keeps a sync-written version path when the offline seed is re-run afterwards', async () => {
+    db = new PGlite();
+    await db.exec(SEED_SCHEMA_SQL);
+
+    const analyses = [seedAnalysis('P1')];
+    const retainedMap = new Map([['source.xlsx', {
+      storagePath: 'cost-analyses/00_legacy.xlsx',
+      publicUrl: 'https://old.test/00_legacy.xlsx',
+      verified: false,
+      retained: true,
+    }]]);
+    const offlineSeed = generateSeedSql(analyses, retainedMap);
+
+    // 先执行离线种子（模拟历史数据），再模拟同步写入版本路径，最后再次执行旧离线种子
+    await db.exec(offlineSeed);
+    await db.exec(`
+      update public.finished_harness_cost_analyses
+        set source_excel_path = 'cost-analyses/01_syncedhash.xlsx', source_excel_url = 'https://new.test/01_syncedhash.xlsx'
+        where platform_no = 'P1';
+    `);
+    await db.exec(offlineSeed);
+
+    const costRow = (await db.query(
+      'select source_excel_path, source_excel_url from public.finished_harness_cost_analyses where platform_no = $1',
+      ['P1'],
+    )).rows[0];
+    expect(costRow).toEqual({
+      source_excel_path: 'cost-analyses/01_syncedhash.xlsx',
+      source_excel_url: 'https://new.test/01_syncedhash.xlsx',
+    });
+  });
+});
+
+describe('source reference state evaluation', () => {
+  const candidate = { path: 'cost-analyses/01_new.xlsx', url: 'https://new.test/01_new.xlsx' };
+  const retained = { storagePath: 'cost-analyses/00_old.xlsx', publicUrl: 'https://old.test/00_old.xlsx' };
+
+  it('accepts a verified match and flags a missing object behind a version path', () => {
+    expect(evaluateSourceRefState({
+      dbPath: candidate.path, dbUrl: candidate.url,
+      candidatePath: candidate.path, candidateUrl: candidate.url,
+      retained, candidateExists: true,
+    }).state).toBe('verified');
+    expect(evaluateSourceRefState({
+      dbPath: candidate.path, dbUrl: candidate.url,
+      candidatePath: candidate.path, candidateUrl: candidate.url,
+      retained, candidateExists: false,
+    }).state).toBe('problem');
+  });
+
+  it('accepts a retained legacy reference only while the new object is unconfirmed', () => {
+    expect(evaluateSourceRefState({
+      dbPath: retained.storagePath, dbUrl: retained.publicUrl,
+      candidatePath: candidate.path, candidateUrl: candidate.url,
+      retained, candidateExists: false,
+    }).state).toBe('retained');
+    // 新对象已存在却仍引用旧定位 = 路径回退，必须报问题
+    expect(evaluateSourceRefState({
+      dbPath: retained.storagePath, dbUrl: retained.publicUrl,
+      candidatePath: candidate.path, candidateUrl: candidate.url,
+      retained, candidateExists: true,
+    }).state).toBe('problem');
+  });
+
+  it('flags unknown references', () => {
+    expect(evaluateSourceRefState({
+      dbPath: 'cost-analyses/unknown.xlsx', dbUrl: 'https://x.test/unknown.xlsx',
+      candidatePath: candidate.path, candidateUrl: candidate.url,
+      retained, candidateExists: undefined,
+    }).state).toBe('problem');
+  });
 });

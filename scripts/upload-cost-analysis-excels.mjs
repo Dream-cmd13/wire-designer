@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { createClient } from '@supabase/supabase-js';
 import { listExcelWorkbooks } from './import-cost-analyses.mjs';
+import { buildVersionedStoragePath, uploadVersionedSource } from './lib/costAnalysisSync.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -30,21 +31,10 @@ function loadEnv() {
 
 const BUCKET_NAME = 'cost-analysis-sources';
 
-// 将带有中文、空格、加号的文件名转为干净的 Storage Key
-function toSafeStorageKey(fileName, index) {
-  // 生成文件名 hash，确保唯一且稳定
-  const hash = crypto.createHash('md5').update(fileName).digest('hex').slice(0, 8);
-  // 提取纯英文字符作为可读标签
-  const cleanBase = fileName
-    .replace(/\.xlsx$/i, '')
-    .replace(/[^\w-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 30);
-  
-  const paddedIdx = String(index + 1).padStart(2, '0');
-  const safeName = cleanBase ? `${paddedIdx}_${cleanBase}_${hash}.xlsx` : `${paddedIdx}_${hash}.xlsx`;
-  return `cost-analyses/${safeName}`;
+// 将带有中文、空格、加号的文件名转为干净的 Storage Key（与同步/导入统一：内容哈希版本路径）
+function toSafeStorageKey(fileBuffer, fileName, index) {
+  const contentHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  return buildVersionedStoragePath(fileName, index, contentHash);
 }
 
 async function main() {
@@ -121,21 +111,12 @@ async function main() {
   for (let i = 0; i < files.length; i++) {
     const { fileName, filePath: localFilePath } = files[i];
     const fileBuffer = fs.readFileSync(localFilePath);
-    const storagePath = toSafeStorageKey(fileName, i);
+    const storagePath = toSafeStorageKey(fileBuffer, fileName, i);
 
     console.log(`-> [${i + 1}/${files.length}] 上传: ${fileName}`);
     console.log(`   Storage Key: ${storagePath} (${(fileBuffer.length / 1024).toFixed(1)} KB)`);
 
-    const { error: uploadErr } = await supabase.storage
-      .from(BUCKET_NAME)
-      .upload(storagePath, fileBuffer, {
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        upsert: true,
-      });
-
-    if (uploadErr) {
-      throw new Error(`上传文件 ${fileName} 失败: ${uploadErr.message}`);
-    }
+    await uploadVersionedSource(supabase.storage.from(BUCKET_NAME), storagePath, fileBuffer);
 
     const { data: urlData } = supabase.storage
       .from(BUCKET_NAME)

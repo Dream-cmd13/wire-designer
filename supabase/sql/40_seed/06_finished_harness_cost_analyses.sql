@@ -2,32 +2,13 @@
 -- 06_finished_harness_cost_analyses.sql
 -- 成品线束方案成本分析、定价公式推导明细与价格汇总基线数据
 -- 自动生成自 excel/ 目录下 20 个 Excel 文件，共 43 个成品方案
+-- 只新增或更新，不删除任何既有记录。
+-- 来源定位：已验证的版本对象允许替换引用；未验证的历史引用只填补空值，不覆盖较新地址。
 -- ==============================================================================
 
 begin;
 
--- 0. 清理历史命名与过期文件残留：直接替换旧命名结果，保证本种子可单独重复执行
-delete from public.finished_harness_cost_analyses
-where platform_no not in (
-  'WL-B21-577', 'WL-B21-578', 'WL-B21-534', 'WL-B21-592', 'WL-B21-593',
-  'WL-B21-593-2000', 'WL-B21-449', 'WL-B21-450', 'WL-B21-445', 'WL-B21-446',
-  'WL-B21-447', 'WL-B03-V16', 'WL-B21-126', 'WL-B21-437', 'WL-B21-438',
-  'WL-B21-442', 'WL-B21-467', 'WL-B21-468', 'WL-B21-471', 'WL-B21-499',
-  'WL-B21-500', 'WL-B21-499-A', 'WL-B21-500-A', 'WL-B21-597', 'WL-B21-598',
-  'WL-B21-453', 'WL-B21-454', 'WL-B21-455', 'WL-B21-456', 'WL-B21-415',
-  'WL-B21-414-2000', 'WL-B21-414-15000', 'WL-B21-416-2000', 'WL-B21-414-A-2000', 'WL-B21-390-1000',
-  'WL-B21-391', 'WL-B21-392-12000', 'WL-B21-392-15000', 'WL-B21-393-10000', 'WL-B21-393-15000',
-  'WL-B21-408', 'WL-B21-409', 'WL-B21-464'
-);
-
-delete from public.finished_harness_materials as m
-where m.source_material_id is null
-  and not exists (
-    select 1 from public.finished_harness_cost_analyses as c
-    where c.harness_material_id = m.id
-  );
-
--- 1. 扩充/建档成品线束主表核心价格指标
+-- 1b. 扩充/建档成品线束主表核心价格指标（未验证来源：只填补空值，不覆盖较新地址）
 -- 注意：不写入 son_price_low（CRM 平台最低售价，有值即保留、缺失保持 null）；
 -- 也不写入 son_unit（外部导入字段，缺失保持 null），成本分析/Excel 推导结果一律禁止回填这些列。
 insert into public.finished_harness_materials (
@@ -91,10 +72,10 @@ on conflict (platform_no) do update set
   sample_price = excluded.sample_price,
   quote_price = excluded.quote_price,
   has_cost_analysis = true,
-  source_excel_url = coalesce(excluded.source_excel_url, finished_harness_materials.source_excel_url),
+  source_excel_url = coalesce(finished_harness_materials.source_excel_url, excluded.source_excel_url),
   updated_at = now();
 
--- 2. 写入/更新成本分析与价格推导明细表
+-- 2b. 写入/更新成本分析与价格推导明细表（未验证来源：只填补空值，不覆盖较新地址）
 insert into public.finished_harness_cost_analyses (
   harness_material_id,
   platform_no,
@@ -166,8 +147,8 @@ on conflict (platform_no) do update set
   harness_material_id = excluded.harness_material_id,
   source_excel_file = excluded.source_excel_file,
   source_sheet_name = excluded.source_sheet_name,
-  source_excel_path = coalesce(excluded.source_excel_path, finished_harness_cost_analyses.source_excel_path),
-  source_excel_url = coalesce(excluded.source_excel_url, finished_harness_cost_analyses.source_excel_url),
+  source_excel_path = coalesce(finished_harness_cost_analyses.source_excel_path, excluded.source_excel_path),
+  source_excel_url = coalesce(finished_harness_cost_analyses.source_excel_url, excluded.source_excel_url),
   customer_name = excluded.customer_name,
   customer_part_no = excluded.customer_part_no,
   material_cost = excluded.material_cost,
@@ -184,13 +165,5 @@ on conflict (platform_no) do update set
   bom_items = excluded.bom_items,
   labor_items = excluded.labor_items,
   updated_at = now();
-
--- 3. 隐藏无来源图纸且未被成本分析引用的物料，保持成品库只展示有图纸或已核算成本的物料
-delete from public.finished_harness_materials as m
-where m.file_2d is null
-  and not exists (
-    select 1 from public.finished_harness_cost_analyses as c
-    where c.harness_material_id = m.id
-  );
 
 commit;

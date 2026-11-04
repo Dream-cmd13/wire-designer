@@ -1,10 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import XLSX from 'xlsx';
-import { parseCostWorkbook, toSafeStorageKey, listExcelWorkbooks } from './import-cost-analyses.mjs';
-
-const require = createRequire(import.meta.url);
+import pg from 'pg';
+import { createClient } from '@supabase/supabase-js';
+import { parseCostWorkbook, listExcelWorkbooks } from './import-cost-analyses.mjs';
+import {
+  COST_ANALYSIS_BUCKET,
+  buildPgSslConfig,
+  buildVersionedStoragePath,
+  evaluateSourceRefState,
+  parsePreviousSeedSourceRefs,
+  sha256File,
+} from './lib/costAnalysisSync.mjs';
 
 function loadEnv() {
   const envPath = path.resolve('.env');
@@ -106,7 +113,6 @@ const COST_FIELDS = [
   'labor_loss', 'total_cost', 'tax_cost', 'sales_price', 'sample_price', 'quote_price',
   'formula_config', 'calculation_steps', 'bom_items', 'labor_items',
 ];
-const JSON_FIELDS = new Set(['formula_config', 'calculation_steps', 'bom_items', 'labor_items']);
 const NUM_FIELDS = new Set(['material_cost', 'material_loss', 'labor_cost', 'labor_loss', 'total_cost', 'tax_cost', 'sales_price', 'sample_price', 'quote_price']);
 
 function parseSeedCostAnalyses(sql) {
@@ -169,8 +175,8 @@ async function main() {
 
   const urlMap = new Map();
   for (let i = 0; i < files.length; i++) {
-    const { fileName } = files[i];
-    const storagePath = toSafeStorageKey(fileName, i);
+    const { fileName, filePath } = files[i];
+    const storagePath = buildVersionedStoragePath(fileName, i, sha256File(filePath));
     urlMap.set(fileName, {
       storagePath,
       publicUrl: `${supabaseUrl}/storage/v1/object/public/cost-analysis-sources/${storagePath}`,
@@ -180,6 +186,37 @@ async function main() {
   const seedPath = path.resolve('supabase/sql/40_seed/06_finished_harness_cost_analyses.sql');
   const seedSql = fs.existsSync(seedPath) ? fs.readFileSync(seedPath, 'utf8') : '';
   const seedMap = parseSeedCostAnalyses(seedSql);
+  // 既有种子中未随同步更新的定位（保留值）；与统一版本路径二选一即为一致。
+  const retainedRefs = parsePreviousSeedSourceRefs(seedSql);
+
+  // Storage 只读存在性确认：有凭据时做完整核验，无凭据时只能给出未验证提示。
+  const storageKey = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+  let checkStorageObject = null;
+  if (storageKey) {
+    const storageClient = createClient(supabaseUrl, storageKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    checkStorageObject = async (storagePath) => {
+      const objectName = storagePath.split('/').pop();
+      const { data, error } = await storageClient.storage
+        .from(COST_ANALYSIS_BUCKET)
+        .list('cost-analyses', { search: objectName, limit: 100 });
+      if (error) throw new Error(`存储存在性检查失败: ${error.message}`);
+      return Boolean(data?.some((entry) => entry.name === objectName));
+    };
+  } else {
+    notes.push('[Storage] 缺少服务端密钥，跳过来源对象存在性确认；仅能判定“未验证的历史引用”');
+  }
+  const candidateExistsCache = new Map();
+  const candidateExistsFor = async (fileName) => {
+    if (!checkStorageObject) return undefined;
+    if (candidateExistsCache.has(fileName)) return candidateExistsCache.get(fileName);
+    const urlInfo = urlMap.get(fileName);
+    const exists = urlInfo ? await checkStorageObject(urlInfo.storagePath) : false;
+    candidateExistsCache.set(fileName, exists);
+    return exists;
+  };
+
   for (const [platformNo, item] of byPlatform) {
     const seedRec = seedMap.get(platformNo);
     if (!seedRec) {
@@ -187,23 +224,30 @@ async function main() {
       continue;
     }
     const urlInfo = urlMap.get(item.sourceExcelFile);
-    if ((seedRec.source_excel_path || null) !== (urlInfo?.storagePath || null)) {
-      addProblem('Seed', `${platformNo} source_excel_path 与当前 storage key 不一致`);
+    const retained = retainedRefs.get(item.sourceExcelFile) ?? null;
+    const candidateExists = await candidateExistsFor(item.sourceExcelFile);
+    const verdict = evaluateSourceRefState({
+      dbPath: seedRec.source_excel_path,
+      dbUrl: seedRec.source_excel_url,
+      candidatePath: urlInfo?.storagePath,
+      candidateUrl: urlInfo?.publicUrl,
+      retained,
+      candidateExists,
+    });
+    if (verdict.state === 'problem') {
+      addProblem('Seed', `${platformNo} ${verdict.message}`);
+    } else if (verdict.state === 'retained') {
+      notes.push(`[Seed] ${platformNo} 保留未验证的历史来源定位（新对象尚未确认，属预期）`);
     }
   }
 
-  const pgPath = path.resolve('.tmp/db-runtime/node_modules/pg');
-  if (!fs.existsSync(pgPath)) {
-    throw new Error(`缺少数据库驱动：${pgPath}（请先准备 .tmp/db-runtime 运行时依赖）`);
-  }
-  const pg = require(pgPath);
   const client = new pg.Client({
     host: env.SUPABASE_DB_HOST,
     port: Number(env.SUPABASE_DB_PORT || 6543),
     user: env.SUPABASE_DB_USER,
     password: env.SUPABASE_DB_PASSWORD,
     database: env.SUPABASE_DB_NAME,
-    ssl: { rejectUnauthorized: false },
+    ssl: buildPgSslConfig(env),
     connectionTimeoutMillis: 20000,
   });
   await client.connect();
@@ -237,6 +281,7 @@ async function main() {
     if (!db) continue;
 
     const urlInfo = urlMap.get(item.sourceExcelFile);
+    const retained = retainedRefs.get(item.sourceExcelFile) ?? null;
     const expected = {
       source_excel_file: item.sourceExcelFile,
       source_sheet_name: item.sourceSheetName,
@@ -256,6 +301,27 @@ async function main() {
     };
     for (const [field, expectedValue] of Object.entries(expected)) {
       stats.fields++;
+      if (field === 'source_excel_path' || field === 'source_excel_url') {
+        // 只判定一次（两个字段成对进入，先遇到 path）。
+        if (field === 'source_excel_url') continue;
+        const candidatePath = urlInfo?.storagePath ?? null;
+        const candidateUrl = urlInfo?.publicUrl ?? null;
+        const candidateExists = await candidateExistsFor(item.sourceExcelFile);
+        const verdict = evaluateSourceRefState({
+          dbPath: db.source_excel_path,
+          dbUrl: db.source_excel_url,
+          candidatePath,
+          candidateUrl,
+          retained,
+          candidateExists,
+        });
+        if (verdict.state === 'problem') {
+          addProblem('来源', `${platformNo}: ${verdict.message}`);
+        } else if (verdict.state === 'retained') {
+          notes.push(`[来源] ${platformNo} 数据库保留未验证的历史来源定位（对象尚未确认存在）`);
+        }
+        continue;
+      }
       if (NUM_FIELDS.has(field)) {
         if (!close(expectedValue, db[field], 1e-12)) {
           addProblem('字段', `${platformNo} ${field}: 解析=${expectedValue} 数据库=${db[field]}`);
