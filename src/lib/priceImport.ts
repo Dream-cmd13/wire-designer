@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import Decimal from 'decimal.js';
 import { formatMaterialSpecification, materialPriceKey, type QuoteMaterial } from './quoteMaterials';
 import { UserFacingError } from './userErrorMessage';
+import { assertZipWithinBudget } from './zipBudget';
 import { validatePrices, type MaterialPrice } from '@/repositories/priceRepository';
 
 const HEADERS = ['物料类型', '物料名称', '规格', '单位', '含税单价'];
@@ -40,7 +41,13 @@ function splitWireLength(specification: string, rowNumber: number) {
 
 export function parsePriceWorkbook(data: ArrayBuffer, candidates: QuoteMaterial[]): MaterialPrice[] {
   if (data.byteLength > 5 * 1024 * 1024) throw new UserFacingError('价格文件不能超过 5 MB');
-  const book = XLSX.read(data, { type: 'array', cellFormula: true });
+  assertZipWithinBudget(data);
+  let book: XLSX.WorkBook;
+  try {
+    book = XLSX.read(data, { type: 'array', cellFormula: true });
+  } catch {
+    throw new UserFacingError('价格文件无法解析，文件可能已损坏。');
+  }
   const sheet = book.Sheets['材料价格'];
   if (!sheet) throw new UserFacingError('缺少“材料价格”工作表，请使用简化价格模板；成本分析表仅用于报价导出');
   const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');

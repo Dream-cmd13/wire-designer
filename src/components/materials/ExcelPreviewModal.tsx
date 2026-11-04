@@ -13,9 +13,53 @@ import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabaseClient';
 import { extractSheetImages, type SheetEmbeddedImage } from '@/lib/excelEmbeddedImages';
 import { getUserErrorMessage, UserFacingError } from '@/lib/userErrorMessage';
+import { assertZipWithinBudget } from '@/lib/zipBudget';
+import type { ExcelPreviewWorkerResponse } from '@/workers/excelPreview.worker';
 import { notify } from '@/stores/noticeStore';
 
 const BUCKET_NAME = 'cost-analysis-sources';
+// 与 cost-analysis-sources 桶的 fileSizeLimit 保持一致
+const MAX_PREVIEW_FILE_BYTES = 52428800;
+const PARSE_TIMEOUT_MS = 30000;
+
+interface WorkbookParseHandle {
+  promise: Promise<XLSX.WorkBook>;
+  cancel: () => void;
+}
+
+// 大文件解析在 Worker 中进行；超时或组件卸载立即终止，不阻塞主线程。
+function startWorkbookParse(buffer: ArrayBuffer): WorkbookParseHandle {
+  const worker = new Worker(
+    new URL('../../workers/excelPreview.worker.ts', import.meta.url),
+    { type: 'module' },
+  );
+  let settled = false;
+  const finish = (): boolean => {
+    if (settled) return false;
+    settled = true;
+    worker.terminate();
+    return true;
+  };
+  const promise = new Promise<XLSX.WorkBook>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      if (!finish()) return;
+      reject(new UserFacingError('成本分析表解析超时，文件可能过于复杂，请直接下载原文件。'));
+    }, PARSE_TIMEOUT_MS);
+    worker.onmessage = (event: MessageEvent<ExcelPreviewWorkerResponse>) => {
+      if (!finish()) return;
+      window.clearTimeout(timer);
+      if (event.data.ok) resolve(event.data.workbook);
+      else reject(new Error(event.data.error || '解析失败'));
+    };
+    worker.onerror = (event) => {
+      if (!finish()) return;
+      window.clearTimeout(timer);
+      reject(new Error(event.message || '解析失败'));
+    };
+    worker.postMessage({ buffer });
+  });
+  return { promise, cancel: finish };
+}
 
 function resolveCostAnalysisStoragePath(filePathOrUrl: string): string {
   if (!filePathOrUrl) return '';
@@ -127,13 +171,21 @@ export function ExcelPreviewModal({
 
     const downloadPath = currentTargetKey;
     let isCancelled = false;
+    let parseHandle: WorkbookParseHandle | null = null;
 
     fetchProtectedExcelBlob(downloadPath)
       .then(async (blob) => {
         if (isCancelled) return;
+        if (blob.size > MAX_PREVIEW_FILE_BYTES) {
+          throw new UserFacingError('成本分析表超过 50 MB，无法在线预览，请直接下载原文件。');
+        }
         const buffer = await blob.arrayBuffer();
+        if (isCancelled) return;
         try {
-          const wb = XLSX.read(buffer, { type: 'array', cellFormula: true, cellStyles: true, bookFiles: true });
+          assertZipWithinBudget(buffer);
+          parseHandle = startWorkbookParse(buffer);
+          const wb = await parseHandle.promise;
+          if (isCancelled) return;
           setLoadedState({
             targetKey: downloadPath,
             workbook: wb,
@@ -147,7 +199,9 @@ export function ExcelPreviewModal({
             setActiveSheet(wb.SheetNames[0]);
           }
         } catch (parseErr) {
+          if (isCancelled) return;
           console.error('解析 Excel 内容失败:', parseErr);
+          if (parseErr instanceof UserFacingError) throw parseErr;
           throw new UserFacingError('成本分析表内容无法解析，文件可能已损坏。');
         }
       })
@@ -163,6 +217,7 @@ export function ExcelPreviewModal({
 
     return () => {
       isCancelled = true;
+      parseHandle?.cancel();
     };
   }, [isOpen, currentTargetKey, initialSheetName]);
 
