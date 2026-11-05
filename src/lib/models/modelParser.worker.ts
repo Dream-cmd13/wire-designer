@@ -1,18 +1,20 @@
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-import { normalizeMeshes, STEP_OPTIONS, STL_UNIT_SCALE, type ParsedMesh, type ParseReply, type ParseRequest } from './modelTypes';
+import { attachSurfaceEdges, type SurfaceFace } from './modelEdges';
+import { normalizeMeshes, STEP_OPTIONS, STL_UNIT_SCALE, type ModelQuality, type ParsedMesh, type ParseReply, type ParseRequest } from './modelTypes';
 
 interface OcctResult {
   success: boolean;
-  meshes: { name: string; attributes: { position: { array: number[] }; normal?: { array: number[] } }; index: { array: number[] } }[];
+  meshes: { name: string; attributes: { position: { array: number[] }; normal?: { array: number[] } }; index: { array: number[] }; brep_faces?: SurfaceFace[] }[];
 }
-interface OcctEngine { ReadStepFile(bytes: Uint8Array, options: typeof STEP_OPTIONS): OcctResult }
+interface OcctEngine { ReadStepFile(bytes: Uint8Array, options: typeof STEP_OPTIONS[ModelQuality]): OcctResult }
 type OcctFactory = (options: { locateFile: (file: string) => string }) => Promise<OcctEngine>;
 
 self.onmessage = async ({ data }: MessageEvent<ParseRequest>) => {
-  const { requestId, buffer, format, stlUnit, assetBase } = data;
+  const { requestId, buffer, format, stlUnit, quality, assetBase } = data;
   const reply = (message: ParseReply) => self.postMessage(message);
   try {
     let meshes: ParsedMesh[];
+    let faces: (SurfaceFace[] | undefined)[] = [];
     if (format === 'step') {
       reply({ requestId, type: 'phase', phase: 'engine' });
       // Same-origin ESM wrapper of the package's published glue; no runtime CDN.
@@ -20,8 +22,9 @@ self.onmessage = async ({ data }: MessageEvent<ParseRequest>) => {
       const { default: factory } = await import(/* @vite-ignore */ engineUrl) as { default: OcctFactory };
       const engine = await factory({ locateFile: (file) => `${assetBase}${file}` });
       reply({ requestId, type: 'phase', phase: 'parsing' });
-      const result = engine.ReadStepFile(new Uint8Array(buffer), STEP_OPTIONS);
+      const result = engine.ReadStepFile(new Uint8Array(buffer), STEP_OPTIONS[quality]);
       if (!result.success) throw new Error('STEP 解析失败，请检查文件是否损坏或未包含可显示实体。');
+      faces = result.meshes.map((mesh) => mesh.brep_faces);
       // OCCT already applies assembly placements to exported meshes; use all of them.
       meshes = result.meshes.map((mesh) => {
         if (!mesh.index.array.every((value) => Number.isInteger(value) && value >= 0)) throw new Error('模型索引无效。');
@@ -37,10 +40,12 @@ self.onmessage = async ({ data }: MessageEvent<ParseRequest>) => {
       geometry.dispose();
     }
     const model = normalizeMeshes(meshes, format === 'stl' ? STL_UNIT_SCALE[stlUnit] : 1);
+    if (format === 'step') attachSurfaceEdges(model, faces);
     const transfers: Transferable[] = [];
     for (const mesh of model.meshes) {
       transfers.push(mesh.positions.buffer as ArrayBuffer, mesh.indices.buffer as ArrayBuffer);
       if (mesh.normals) transfers.push(mesh.normals.buffer as ArrayBuffer);
+      if (mesh.surfaceEdges) transfers.push(mesh.surfaceEdges.buffer as ArrayBuffer);
     }
     self.postMessage({ requestId, type: 'result', model } satisfies ParseReply, { transfer: transfers });
   } catch (error) {

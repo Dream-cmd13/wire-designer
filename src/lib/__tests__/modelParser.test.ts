@@ -37,22 +37,32 @@ describe('worker lifecycle', () => {
     return instance;
   }
   const blob = () => new Blob(['broken STEP']);
+  it.each(['standard', 'fine'] as const)('sends explicit %s quality and ignores unrelated request results', async (quality) => {
+    const w = worker(); const controller = new AbortController();
+    const task = parseModel(blob(), { format: 'step', stlUnit: 'mm', quality, signal: controller.signal });
+    await vi.waitFor(() => expect(w.postMessage).toHaveBeenCalled());
+    const request = w.postMessage.mock.calls[0][0];
+    expect(request.quality).toBe(quality);
+    w.onmessage?.({ data: { requestId: request.requestId + 1, type: 'result', model: {} } });
+    expect(w.terminate).not.toHaveBeenCalled();
+    controller.abort(); await expect(task).rejects.toMatchObject({ name: 'AbortError' });
+  });
   it('terminates on cancellation and ignores late replies', async () => {
     const w = worker(); const controller = new AbortController();
-    const task = parseModel(blob(), { format: 'step', stlUnit: 'mm', signal: controller.signal });
+    const task = parseModel(blob(), { format: 'step', stlUnit: 'mm', quality: 'standard', signal: controller.signal });
     controller.abort();
     await expect(task).rejects.toMatchObject({ name: 'AbortError' });
     expect(w.terminate).toHaveBeenCalledOnce();
   });
   it('terminates on timeout', async () => {
     vi.useFakeTimers(); const w = worker();
-    const task = parseModel(blob(), { format: 'step', stlUnit: 'mm', signal: new AbortController().signal });
+    const task = parseModel(blob(), { format: 'step', stlUnit: 'mm', quality: 'standard', signal: new AbortController().signal });
     const assertion = expect(task).rejects.toThrow('超时');
     await vi.advanceTimersByTimeAsync(MODEL_LIMITS.timeoutMs);
     await assertion; expect(w.terminate).toHaveBeenCalledOnce();
   });
   it('reports damaged files and engine errors as actionable errors', async () => {
-    const w = worker(); const task = parseModel(blob(), { format: 'step', stlUnit: 'mm', signal: new AbortController().signal });
+    const w = worker(); const task = parseModel(blob(), { format: 'step', stlUnit: 'mm', quality: 'standard', signal: new AbortController().signal });
     await vi.waitFor(() => expect(w.postMessage).toHaveBeenCalled());
     const request = w.postMessage.mock.calls[0][0];
     w.onmessage?.({ data: { requestId: request.requestId, type: 'error', message: '模型解析失败，请检查文件是否损坏' } });

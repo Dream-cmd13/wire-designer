@@ -1,14 +1,14 @@
 import type { ParsedModel } from './modelTypes';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { PerspectiveCamera, Vector3 } from 'three';
+import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
+import { MOUSE, type PerspectiveCamera } from 'three';
 
-/** OrbitControls caches the camera up axis at construction time. */
-export function createModelOrbitControls(camera: PerspectiveCamera, canvas: HTMLCanvasElement, up: Vector3, previous?: OrbitControls) {
-  previous?.dispose();
-  camera.up.copy(up);
-  const controls = new OrbitControls(camera, canvas);
-  controls.enableDamping = false;
-  controls.screenSpacePanning = true;
+/** Free rotation includes roll; the viewer owns camera presets and instance disposal. */
+export function createModelTrackballControls(camera: PerspectiveCamera, canvas: HTMLCanvasElement): TrackballControls {
+  const controls = new TrackballControls(camera, canvas);
+  controls.staticMoving = true;
+  controls.noRotate = false; controls.noPan = false; controls.noZoom = false;
+  controls.mouseButtons = { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN };
+  controls.keys = ['', '', ''];
   return controls;
 }
 

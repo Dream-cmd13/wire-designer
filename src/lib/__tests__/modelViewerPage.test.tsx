@@ -9,7 +9,7 @@ vi.mock('@/lib/models/modelParser', () => ({ parseModel: mocks.parse, validateMo
   if (!/\.(step|stp|stl)$/i.test(f.name)) throw new Error('请选择 STEP / STP / STL'); return /\.stl$/i.test(f.name) ? 'stl' : 'step';
 } }));
 vi.mock('@/repositories/modelRepository', () => ({ modelRepository: { configured: true, save: mocks.save, list: mocks.list, get: mocks.get, download: mocks.download }, createModelSaveSession: mocks.create }));
-vi.mock('@/components/models/ModelViewer', () => ({ ModelViewer: ({ model }: { model: unknown }) => <div data-testid="mesh">{model ? 'mesh ready' : 'no mesh'}</div> }));
+vi.mock('@/components/models/ModelViewer', () => ({ ModelViewer: ({ model, status }: { model: unknown; status: import('react').ReactNode }) => <><div data-testid="mesh">{model ? 'mesh ready' : 'no mesh'}</div>{status}</> }));
 const model = { boundsMm: { min: [0,0,0], max: [1,2,3] }, triangleCount: 12, meshes: [] };
 const id = '00000000-0000-4000-8000-000000000101';
 const record = { id, owner_id: 'u1', original_name: 'a.stp', source_unit: 'mm', format: 'step', status: 'ready' };
@@ -22,6 +22,70 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 describe('model page sessions', () => {
+  it('disables recovery while a file is loading and allows recovery after parsing finishes', async () => {
+    mocks.list.mockResolvedValue([{ ...record, status: 'uploading' }]);
+    let resolveParse: (value: typeof model) => void = () => {};
+    mocks.parse.mockImplementationOnce(() => new Promise((resolve) => { resolveParse = resolve; }));
+    render(<ModelViewerPage />); const recovery = await screen.findByRole('button', { name: '恢复保存' });
+    pick();
+    expect(recovery.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(recovery); expect(mocks.save).not.toHaveBeenCalled();
+    await act(async () => resolveParse(model));
+    expect(recovery.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(recovery); await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
+  });
+  it('changes saved STEP quality without changing cloud identity or starting any persistence', async () => {
+    window.history.replaceState(null, '', `/model-viewer?modelId=${id}`);
+    render(<ModelViewerPage />); await screen.findByText('包围盒尺寸（网格近似）');
+    fireEvent.change(screen.getByLabelText('显示质量'), { target: { value: 'fine' } });
+    await waitFor(() => expect(mocks.parse).toHaveBeenLastCalledWith(expect.any(File), expect.objectContaining({ quality: 'fine' })));
+    await screen.findByText('精细已生效');
+    expect(window.location.search).toBe(`?modelId=${id}`);
+    expect(screen.getByText('已保存', { exact: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '保存到云端' }).hasAttribute('disabled')).toBe(true);
+    expect(mocks.create).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+  });
+  it.each(['取消', '失败', '超预算'])('keeps the mesh and applied quality after quality task %s', async (outcome) => {
+    render(<ModelViewerPage />); pick(); await screen.findByText('包围盒尺寸（网格近似）');
+    let resolve: (value: typeof model) => void = () => {}; let reject: (error: Error) => void = () => {};
+    mocks.parse.mockImplementationOnce(() => new Promise((a,b) => { resolve = a; reject = b; }));
+    fireEvent.change(screen.getByLabelText('显示质量'), { target: { value: 'fine' } });
+    expect(screen.getByTestId('mesh').textContent).toBe('mesh ready');
+    expect(screen.getByRole('button', { name: '保存到云端' }).hasAttribute('disabled')).toBe(true);
+    if (outcome === '取消') {
+      fireEvent.click(screen.getByRole('button', { name: '取消质量生成' }));
+      await act(async () => resolve({ ...model, triangleCount: 999 }));
+    } else await act(async () => reject(new Error(outcome === '超预算' ? '三角形上限' : 'Worker 失败')));
+    expect((screen.getByLabelText('显示质量') as HTMLSelectElement).value).toBe('standard');
+    expect(screen.getByTestId('mesh').textContent).toBe('mesh ready');
+    expect(screen.queryByText(/999 个三角形/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '保存到云端' }));
+    await screen.findByText('已保存', { exact: true });
+    expect(mocks.create).toHaveBeenCalledOnce(); expect(mocks.save).toHaveBeenCalledOnce();
+  });
+  it('isolates rapid quality switches, a new file and logout from late results', async () => {
+    render(<ModelViewerPage />); pick(); await screen.findByText('包围盒尺寸（网格近似）');
+    let resolveOld: (value: typeof model) => void = () => {};
+    mocks.parse.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    fireEvent.change(screen.getByLabelText('显示质量'), { target: { value: 'fine' } });
+    const signal = mocks.parse.mock.calls.at(-1)![1].signal;
+    fireEvent.change(screen.getByLabelText('显示质量'), { target: { value: 'standard' } });
+    expect(signal.aborted).toBe(true);
+    pick('new.stp'); await screen.findByText('包围盒尺寸（网格近似）');
+    await act(async () => resolveOld({ ...model, triangleCount: 999 }));
+    expect(screen.queryByText(/999 个三角形/)).toBeNull();
+    mocks.parse.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    fireEvent.change(screen.getByLabelText('显示质量'), { target: { value: 'fine' } });
+    act(() => useUserStore.setState({ currentUser: null }));
+    await act(async () => resolveOld(model)); expect(screen.queryByTestId('mesh')).toBeNull();
+  });
+  it('folds the cloud list without parsing or saving and hides quality selection for STL', async () => {
+    render(<ModelViewerPage />); pick('part.stl'); await screen.findByText('包围盒尺寸（网格近似）');
+    fireEvent.click(screen.getByRole('button', { name: '收起云端模型' }));
+    expect(screen.queryByLabelText('显示质量')).toBeNull();
+    expect(mocks.parse).toHaveBeenCalledOnce(); expect(mocks.save).not.toHaveBeenCalled();
+    expect(screen.getByTestId('mesh').textContent).toBe('mesh ready');
+  });
   it('rejects multiple files and never auto uploads', async () => {
     render(<ModelViewerPage />);
     fireEvent.drop(screen.getByTestId('model-drop-zone'), { dataTransfer: { files: [new File(['a'],'a.stp'), new File(['b'],'b.stp')] } });

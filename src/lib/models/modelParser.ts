@@ -1,4 +1,4 @@
-import { MODEL_LIMITS, type ModelFormat, type ParsedModel, type ParsePhase, type ParseReply, type StlUnit } from './modelTypes';
+import { MODEL_LIMITS, type ModelFormat, type ModelQuality, type ParsedModel, type ParsePhase, type ParseReply, type StlUnit } from './modelTypes';
 
 export function validateModelFile(file: { name: string; size: number }): ModelFormat {
   const extension = file.name.split('.').pop()?.toLowerCase();
@@ -10,7 +10,7 @@ export function validateModelFile(file: { name: string; size: number }): ModelFo
 
 let nextRequest = 0;
 export function parseModel(file: Blob, options: {
-  format: ModelFormat; stlUnit: StlUnit; signal: AbortSignal; onPhase?: (phase: ParsePhase) => void;
+  format: ModelFormat; stlUnit: StlUnit; quality: ModelQuality; signal: AbortSignal; onPhase?: (phase: ParsePhase) => void;
 }): Promise<ParsedModel> {
   return new Promise((resolve, reject) => {
     if (options.signal.aborted) { reject(new DOMException('已取消', 'AbortError')); return; }
@@ -40,7 +40,7 @@ export function parseModel(file: Blob, options: {
     file.arrayBuffer().then((buffer) => {
       if (settled) return;
       const assetBase = new URL(`${import.meta.env.BASE_URL}model-engine/`, globalThis.location?.href ?? 'http://localhost/').href;
-      worker.postMessage({ requestId, buffer, format: options.format, stlUnit: options.stlUnit, assetBase }, [buffer]);
+      worker.postMessage({ requestId, buffer, format: options.format, stlUnit: options.stlUnit, quality: options.quality, assetBase }, [buffer]);
     }).catch(() => finish(new Error('读取文件失败，请重新选择文件。')));
   });
 }
