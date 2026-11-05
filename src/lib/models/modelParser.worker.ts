@@ -1,5 +1,6 @@
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { attachSurfaceEdges, type SurfaceFace } from './modelEdges';
+import { normalizeFaceRanges } from './modelFaces';
 import { normalizeMeshes, STEP_OPTIONS, STL_UNIT_SCALE, type ModelQuality, type ParsedMesh, type ParseReply, type ParseRequest } from './modelTypes';
 
 interface OcctResult {
@@ -28,7 +29,7 @@ self.onmessage = async ({ data }: MessageEvent<ParseRequest>) => {
       // OCCT already applies assembly placements to exported meshes; use all of them.
       meshes = result.meshes.map((mesh) => {
         if (!mesh.index.array.every((value) => Number.isInteger(value) && value >= 0)) throw new Error('模型索引无效。');
-        return { name: mesh.name, positions: new Float32Array(mesh.attributes.position.array), normals: mesh.attributes.normal ? new Float32Array(mesh.attributes.normal.array) : undefined, indices: new Uint32Array(mesh.index.array) };
+        return { name: mesh.name, positions: new Float32Array(mesh.attributes.position.array), normals: mesh.attributes.normal ? new Float32Array(mesh.attributes.normal.array) : undefined, indices: new Uint32Array(mesh.index.array), faceRanges: normalizeFaceRanges(mesh.brep_faces, mesh.index.array.length / 3) };
       });
     } else {
       reply({ requestId, type: 'phase', phase: 'parsing' });

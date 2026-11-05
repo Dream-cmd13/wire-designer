@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as THREE from 'three';
-import { createModelTrackballControls, getCameraFit } from '@/lib/models/modelView';
-import type { ModelViewPreset, ParsedModel } from '@/lib/models/modelTypes';
+import { createModelTrackballControls, getCameraFit, syncModelControlsViewport } from '@/lib/models/modelView';
+import type { ModelSelection, ModelViewPreset, ParsedModel } from '@/lib/models/modelTypes';
+import { createModelSelectionLayer, resolveModelSelection } from '@/lib/models/modelSelection';
 
 const views: Record<ModelViewPreset, { label: string; direction: [number, number, number]; up: [number, number, number] }> = {
   iso: { label: '等轴测', direction: [1,-1,1], up: [0,0,1] },
@@ -16,6 +17,7 @@ interface ViewerApi {
   fit: () => void;
   replace: (model: ParsedModel, key: string | null) => void;
   display: (edges: EdgeMode, background: Background) => void;
+  clearSelection: () => void;
 }
 
 export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | null; modelKey: string | null; status?: ReactNode }) {
@@ -31,6 +33,9 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ model: ParsedModel; generation: number; message: string } | null>(null);
   const [generation, setGeneration] = useState(0);
+  const [picked, setPicked] = useState<{model: ParsedModel; key: string | null; generation: number; selection: ModelSelection} | null>(null);
+  const selection = picked?.model === model && picked?.key === modelKey && picked?.generation === generation ? picked.selection : null;
+  if (picked && (picked.model !== model || picked.key !== modelKey || picked.generation !== generation)) setPicked(null);
   const failureMessage = failure?.model === model && failure?.generation === generation ? failure.message : null;
   if (failure && failure.model !== model) { setFailure(null); setGeneration(generation + 1); }
   const hasModel = Boolean(model);
@@ -80,12 +85,20 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
     const activePointers = new Set<number>();
     let edgeMode: EdgeMode = 'feature';
     const renderScene = () => renderer.render(scene, camera);
+    let solids: THREE.Mesh[] = [];
+    let selectionLayer: ReturnType<typeof createModelSelectionLayer> | undefined;
+    const raycaster = new THREE.Raycaster();
+    let clickCandidate: {id: number; x: number; y: number; dragged: boolean} | null = null;
+    const clearSelection = () => {
+      selectionLayer?.clear(); setPicked(null); renderScene();
+    };
     const rotation = camera.quaternion.clone();
     const onChange = () => {
       if (!programmatic && !freeView && 1 - Math.abs(rotation.dot(camera.quaternion)) > 1e-10) { freeView = true; setView('free'); }
       rotation.copy(camera.quaternion); renderScene();
     };
     const rebuildControls = () => {
+      clickCandidate = null;
       const target = controls.target.clone(); const quaternion = camera.quaternion.clone();
       const { minDistance, maxDistance } = controls;
       const pointers = [...activePointers]; activePointers.clear();
@@ -126,13 +139,17 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
       const width = container.clientWidth; const height = container.clientHeight;
       if (!width || !height) return;
       renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix();
-      controls.handleResize();
+      syncModelControlsViewport(controls);
       if (!fitted) fit(pendingPreset ?? 'iso');
       renderScene();
     };
     const api: ViewerApi = {
-      view: (preset) => { fit(preset); setView(preset); }, fit: () => fit(), display,
+      view: (preset) => { fit(preset); setView(preset); }, fit: () => fit(), display, clearSelection,
       replace: (next, key) => {
+        clickCandidate = null;
+        // A new parse invalidates both CAD ids and any unconsumed input against old geometry.
+        if (activePointers.size) rebuildControls();
+        selectionLayer?.clear(); solids = [];
         geometries.forEach((geometry) => geometry.dispose()); geometries = []; featureLines = []; surfaceLines = [];
         scene.remove(group); group.clear(); group = new THREE.Group(); scene.add(group);
         for (const mesh of next.meshes) {
@@ -140,7 +157,7 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
           geometry.setAttribute('position', new THREE.BufferAttribute(mesh.positions, 3));
           geometry.setIndex(new THREE.BufferAttribute(mesh.indices, 1));
           if (mesh.normals) geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3)); else geometry.computeVertexNormals();
-          group.add(new THREE.Mesh(geometry, material));
+          const solid = new THREE.Mesh(geometry, material); solids.push(solid); group.add(solid);
           const featureGeometry = new THREE.EdgesGeometry(geometry, 30); geometries.push(featureGeometry);
           const feature = new THREE.LineSegments(featureGeometry, edgeMaterial); featureLines.push(feature); group.add(feature);
           if (mesh.surfaceEdges?.length) {
@@ -151,6 +168,7 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
         }
         group.position.fromArray(next.boundsMm.min.map((value, i) => -(value + next.boundsMm.max[i]) / 2) as [number,number,number]);
         current = next;
+        selectionLayer = createModelSelectionLayer(next.meshes,solids,group);
         if (key !== currentKey) { fitted = false; pendingPreset = 'iso'; currentKey = key; fit('iso'); queueMicrotask(() => { if (controlsApi.current === api) setView('iso'); }); }
         featureLines.forEach((line) => { line.visible = edgeMode === 'feature'; });
         surfaceLines.forEach((line) => { line.visible = edgeMode === 'surface'; });
@@ -170,14 +188,41 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
     };
     animationFrame = requestAnimationFrame(animate);
     const pointerStart = (event: PointerEvent) => {
-      controls.handleResize();
+      syncModelControlsViewport(controls);
       if (!controls.screen.width || !controls.screen.height) { event.stopImmediatePropagation(); return; }
+      const single = activePointers.size === 0;
       activePointers.add(event.pointerId);
+      clickCandidate = single && event.pointerType === 'mouse' && event.isPrimary && event.button === 0
+        ? {id:event.pointerId,x:event.clientX,y:event.clientY,dragged:false} : null;
     };
-    const pointerEnd = (event: PointerEvent) => { activePointers.delete(event.pointerId); };
-    const cancelGesture = () => { if (activePointers.size) rebuildControls(); };
+    const pointerMove = (event: PointerEvent) => {
+      if (clickCandidate?.id === event.pointerId && Math.hypot(event.clientX-clickCandidate.x,event.clientY-clickCandidate.y) > 4) clickCandidate.dragged = true;
+    };
+    const pointerEnd = (event: PointerEvent) => {
+      pointerMove(event);
+      const candidate = clickCandidate; clickCandidate = null;
+      activePointers.delete(event.pointerId);
+      if (!candidate || candidate.id !== event.pointerId || candidate.dragged || event.button !== 0 || !current) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0 || event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) return;
+      // Capture-phase pointerup runs before Trackball removes its pointer. Apply the final move now.
+      controls.update(); camera.updateMatrixWorld(true); group.updateWorldMatrix(true,true);
+      raycaster.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,1-(event.clientY-rect.top)/rect.height*2),camera);
+      const hit = raycaster.intersectObjects(solids,false).find(({point}) => {
+        // Perspective clipping is camera-space depth, not distance along an off-axis ray.
+        const depth = -point.clone().applyMatrix4(camera.matrixWorldInverse).z;
+        return depth >= camera.near && depth <= camera.far;
+      });
+      const next = hit?.faceIndex != null ? resolveModelSelection(current.meshes,solids.indexOf(hit.object as THREE.Mesh),hit.faceIndex) : null;
+      selectionLayer?.select(next);
+      setPicked({model:current,key:currentKey ?? null,generation,selection:next}); renderScene();
+    };
+    const cancelClick = () => { clickCandidate = null; };
+    const cancelGesture = () => { cancelClick(); if (activePointers.size) rebuildControls(); };
     renderer.domElement.addEventListener('pointerdown', pointerStart, true);
+    document.addEventListener('pointermove', pointerMove, true);
     document.addEventListener('pointerup', pointerEnd, true);
+    renderer.domElement.addEventListener('wheel', cancelClick, true);
     renderer.domElement.addEventListener('pointercancel', cancelGesture, true);
     renderer.domElement.addEventListener('lostpointercapture', cancelGesture);
     window.addEventListener('blur', cancelGesture);
@@ -188,13 +233,16 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
       if (controlsApi.current === api) controlsApi.current = null;
       alive = false; cancelAnimationFrame(animationFrame);
       renderer.domElement.removeEventListener('pointerdown', pointerStart, true);
+      document.removeEventListener('pointermove', pointerMove, true);
       document.removeEventListener('pointerup', pointerEnd, true);
+      renderer.domElement.removeEventListener('wheel', cancelClick, true);
       renderer.domElement.removeEventListener('pointercancel', cancelGesture, true);
       renderer.domElement.removeEventListener('lostpointercapture', cancelGesture);
       window.removeEventListener('blur', cancelGesture);
       document.removeEventListener('fullscreenchange', cancelGesture);
       observer.disconnect(); controls.removeEventListener('change', onChange); controls.dispose();
       renderer.domElement.removeEventListener('webglcontextlost', lost);
+      selectionLayer?.clear();
       geometries.forEach((geometry) => geometry.dispose()); material.dispose(); edgeMaterial.dispose();
       group.clear(); scene.clear(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     };
@@ -222,7 +270,9 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
       </select></label>
       <label>背景 <select aria-label="背景" className="rounded border p-1" value={background} onChange={(event) => setBackground(event.target.value as Background)}><option value="light">浅色</option><option value="dark">深色</option></select></label>
       <button className={button} onClick={() => void toggleFullscreen()}>{fullscreen ? '退出全屏' : '全屏查看'}</button>
-      <span className="ml-auto text-slate-500">{view === 'free' ? '自由视角 · ' : ''}左键拖动旋转 · 右键拖动平移 · 滚轮缩放</span>
+      <button className={button} disabled={!selection} onClick={() => controlsApi.current?.clearSelection()}>清除选择</button>
+      <span data-testid="model-selection" aria-live="polite">{selection?.kind === 'face' ? `曲面 ${selection.faceId+1}` : selection?.kind === 'mesh' ? `网格：${model?.meshes[selection.meshIndex].name || '未命名'}` : ''}</span>
+      <span className="ml-auto basis-full text-right text-slate-500"><span className="inline-block w-16">{view === 'free' ? '自由视角 · ' : ''}</span>点击选择曲面 · 左键拖动旋转 · 右键拖动平移 · 滚轮缩放</span>
     </div>
     {(status || fullscreenError) && <div className="flex flex-wrap gap-3 bg-white px-3 py-2 text-xs" role="status">{status}{fullscreenError}</div>}
     <div className="relative min-h-64 flex-1">

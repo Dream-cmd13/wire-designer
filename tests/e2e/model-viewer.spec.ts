@@ -79,12 +79,25 @@ async function trackViewerResources(page: Page) {
     const raf = window.requestAnimationFrame.bind(window); const cancelRaf = window.cancelAnimationFrame.bind(window);
     window.requestAnimationFrame = (callback) => { const id = raf((time) => { pendingFrames.delete(id); callback(time); }); pendingFrames.add(id); return id; };
     window.cancelAnimationFrame = (id) => { pendingFrames.delete(id); cancelRaf(id); };
-    const stats = { created: 0, deleted: 0, workersCreated: 0, get live() { return liveBuffers.size; }, get workers() { return activeWorkers.size; }, get raf() { return pendingFrames.size; } };
+    const stats = { created: 0, deleted: 0, workersCreated: 0, drawCalls:0, triangles:0, parse:[] as {triangles:number; faces:number; meshes:number}[], get live() { return liveBuffers.size; }, get workers() { return activeWorkers.size; }, get raf() { return pendingFrames.size; } };
     Reflect.set(window, '__modelResources', stats);
+    let pickStarted = 0;
+    const pickDurations: number[] = []; Reflect.set(window,'__modelPickDurations',pickDurations);
+    document.addEventListener('pointerup',() => {pickStarted=performance.now();},true);
+    document.addEventListener('pointerup',() => {pickDurations.push(performance.now()-pickStarted);});
     Reflect.set(window, '__modelMatrices', {});
     const NativeWorker = window.Worker;
     window.Worker = class extends NativeWorker {
-      constructor(url: string | URL, options?: WorkerOptions) { super(url, options); activeWorkers.add(this); stats.workersCreated++; }
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options); activeWorkers.add(this); stats.workersCreated++;
+        this.addEventListener('message',({data}) => {
+          if (data.type === 'result') {
+            Reflect.set(window,'__modelParsedModel',data.model);
+            stats.parse.push({triangles:data.model.triangleCount,meshes:data.model.meshes.length,
+              faces:data.model.meshes.reduce((count: number,mesh: {faceRanges?:unknown[]}) => count+(mesh.faceRanges?.length ?? 0),0)});
+          }
+        });
+      }
       terminate() { activeWorkers.delete(this); super.terminate(); }
     };
     for (const constructor of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
@@ -92,6 +105,18 @@ async function trackViewerResources(page: Page) {
       const prototype = constructor.prototype; const names = new Map<WebGLUniformLocation, string>();
       const create = prototype.createBuffer; const remove = prototype.deleteBuffer;
       const location = prototype.getUniformLocation; const matrix = prototype.uniformMatrix4fv;
+      const clear = prototype.clear; const drawElements = prototype.drawElements; const drawArrays = prototype.drawArrays;
+      Object.defineProperty(prototype,'clear',{value:function(this:WebGLRenderingContext,mask:number) {
+        stats.drawCalls = 0; stats.triangles = 0; return clear.call(this,mask);
+      }});
+      Object.defineProperty(prototype,'drawElements',{value:function(this:WebGLRenderingContext,mode:number,count:number,type:number,offset:number) {
+        stats.drawCalls++; if(mode===this.TRIANGLES) stats.triangles += count/3;
+        return drawElements.call(this,mode,count,type,offset);
+      }});
+      Object.defineProperty(prototype,'drawArrays',{value:function(this:WebGLRenderingContext,mode:number,first:number,count:number) {
+        stats.drawCalls++; if(mode===this.TRIANGLES) stats.triangles += count/3;
+        return drawArrays.call(this,mode,first,count);
+      }});
       Object.defineProperty(prototype, 'createBuffer', { value: function(this: WebGLRenderingContext) {
         const buffer = create.call(this); if (buffer) { liveBuffers.add(buffer); stats.created++; } return buffer;
       } });
@@ -134,6 +159,211 @@ async function dragCanvas(page: Page, dx: number, dy: number, button: 'left' | '
   for (let i=1;i<=10;i++) { await page.mouse.move(x+dx*i/10,y+dy*i/10); await settleViewer(page); }
   await page.mouse.up({ button }); await settleViewer(page);
 }
+
+async function yellowPixels(page: Page) {
+  const screenshot = await page.locator('[aria-label="三维模型画布"] canvas').screenshot();
+  return page.evaluate(async (base64) => {
+    const image = new Image(); image.src = `data:image/png;base64,${base64}`; await image.decode();
+    const canvas = document.createElement('canvas'); canvas.width=image.width; canvas.height=image.height;
+    const context = canvas.getContext('2d')!; context.drawImage(image,0,0);
+    const data = context.getImageData(0,0,canvas.width,canvas.height).data; let yellow=0;
+    for(let i=0;i<data.length;i+=4) if(data[i]>data[i+2]+35 && data[i+1]>data[i+2]+25 && data[i]>=data[i+1]) yellow++;
+    return yellow;
+  },screenshot.toString('base64'));
+}
+
+test('calibrated 100px rotation is stable across sidebar and fullscreen',async ({page},testInfo) => {
+  await trackViewerResources(page); await localLogin(page); await uploadLocal(page,'calibration.stl',asciiStl());
+  const measurements = [];
+  for(const layout of ['sidebar','collapsed','fullscreen']) {
+    if(layout==='collapsed') await page.getByRole('button',{name:'收起云端模型',exact:true}).click();
+    if(layout==='fullscreen') await page.getByRole('button',{name:'全屏查看',exact:true}).click();
+    await settleViewer(page);
+    for(const [dx,dy] of [[100,0],[0,100]]) {
+      await page.getByRole('button',{name:'前视',exact:true}).click(); await settleViewer(page);
+      const rect = (await page.locator('[aria-label="三维模型画布"] canvas').boundingBox())!;
+      const before = await cameraMatrix(page); await dragCanvas(page,dx,dy);
+      const actual = directionChange(before,await cameraMatrix(page))*180/Math.PI;
+      const expected = 360*100/Math.min(rect.width,rect.height);
+      expect(await page.locator('[aria-label="三维模型画布"] canvas').boundingBox()).toEqual(rect);
+      expect(Math.abs(actual-expected)).toBeLessThan(1);
+      measurements.push({layout,width:rect.width,height:rect.height,dx,dy,actual,expected});
+    }
+  }
+  await testInfo.attach('calibrated-angles',{body:JSON.stringify(measurements,null,2),contentType:'application/json'});
+  console.log(JSON.stringify({calibratedAngles:measurements}));
+});
+
+test('real CAD face picking, visible yellow fill, occlusion, gestures and bounded resources',async ({page},testInfo) => {
+  test.setTimeout(120_000);
+  await trackViewerResources(page); await localLogin(page); await uploadLocal(page,'face-fixture.step',roundedCylinderStep());
+  await page.getByRole('button',{name:'前视',exact:true}).click(); await settleViewer(page);
+  const canvas = page.locator('[aria-label="三维模型画布"] canvas'); const rect = (await canvas.boundingBox())!;
+  const center = {x:rect.x+rect.width/2,y:rect.y+rect.height/2};
+  const initial = await page.evaluate(() => ({...Reflect.get(window,'__modelResources')}));
+  expect(initial.parse.at(-1)).toMatchObject({meshes:1,faces:4});
+  expect(await yellowPixels(page)).toBe(0);
+  await page.mouse.click(center.x,center.y); await settleViewer(page);
+  const selected = await page.getByTestId('model-selection').innerText(); expect(selected).toMatch(/^曲面 /);
+  const yellow = await yellowPixels(page); expect(yellow).toBeGreaterThan(1000);
+  const selectedResources = await page.evaluate(() => ({...Reflect.get(window,'__modelResources')}));
+  expect(selectedResources.drawCalls-initial.drawCalls).toBeLessThanOrEqual(2);
+  expect(selectedResources.triangles).toBeGreaterThan(initial.triangles);
+  // The same curved face contains many triangles: a different point keeps the same layer.
+  await page.mouse.click(center.x+20,center.y+20); await settleViewer(page);
+  expect(await page.getByTestId('model-selection').innerText()).toBe(selected);
+  expect(await yellowPixels(page)).toBe(yellow);
+  expect(await page.evaluate(() => Reflect.get(window,'__modelResources').created)).toBe(selectedResources.created);
+  await page.screenshot({path:testInfo.outputPath('cad-side-selected.png')});
+  await page.mouse.move(center.x,center.y); await page.mouse.down(); await page.mouse.move(center.x+2,center.y); await page.mouse.up();
+  expect(await page.getByTestId('model-selection').innerText()).toBe(selected);
+  await page.mouse.down(); await page.mouse.move(center.x+50,center.y); await page.mouse.move(center.x,center.y); await page.mouse.up();
+  expect(await page.getByTestId('model-selection').innerText()).toBe(selected);
+  await dragCanvas(page,10,5,'right'); expect(await page.getByTestId('model-selection').innerText()).toBe(selected);
+  await page.getByRole('button',{name:'顶视',exact:true}).click(); await settleViewer(page);
+  // Selected cylinder side is hidden by the top, so yellow must not shine through it.
+  expect(await yellowPixels(page)).toBeLessThan(yellow*0.1);
+  await page.mouse.click(center.x,center.y); const topSelection = await page.getByTestId('model-selection').innerText();
+  expect(topSelection).toMatch(/^曲面 /); expect(topSelection).not.toBe(selected);
+  await page.screenshot({path:testInfo.outputPath('cad-top-selected.png')});
+  await page.mouse.click(rect.x+5,rect.y+5); await expect(page.getByTestId('model-selection')).toHaveText('');
+  await page.getByRole('button',{name:'前视',exact:true}).click();
+  await page.mouse.click(center.x,center.y); await settleViewer(page);
+  const baseline = await page.evaluate(() => ({...Reflect.get(window,'__modelResources')}));
+  const live = [];
+  for(let i=0;i<50;i++) {
+    await page.getByRole('button',{name:'清除选择',exact:true}).click(); await page.mouse.click(center.x,center.y);
+    await settleViewer(page); live.push(await page.evaluate(() => Reflect.get(window,'__modelResources').live));
+  }
+  expect(Math.max(...live)).toBeLessThanOrEqual(baseline.live);
+  await page.getByLabel('显示质量').selectOption('fine'); await expect(page.getByText('精细已生效',{exact:true})).toBeVisible();
+  await expect(page.getByTestId('model-selection')).toHaveText('');
+  await page.mouse.click(center.x,center.y); await expect(page.getByTestId('model-selection')).toHaveText(/^曲面 /);
+  await uploadLocal(page,'fallback.stl',asciiStl()); await expect(page.getByTestId('model-selection')).toHaveText('');
+  await page.getByRole('button',{name:'前视',exact:true}).click();
+  await page.mouse.click(center.x,center.y); await expect(page.getByTestId('model-selection')).toHaveText('网格：STL');
+  const stats = await page.evaluate(() => ({...Reflect.get(window,'__modelResources')}));
+  console.log(JSON.stringify({selectionResourceBaseline:baseline,selectionResourceLive50:live,after:stats}));
+  await page.getByRole('button',{name:'首页',exact:true}).click();
+  expect(await page.evaluate(() => ({live:Reflect.get(window,'__modelResources').live,raf:Reflect.get(window,'__modelResources').raf,workers:Reflect.get(window,'__modelResources').workers}))).toEqual({live:0,raf:0,workers:0});
+});
+
+async function dragPerformance(page: Page) {
+  const rect = (await page.locator('[aria-label="三维模型画布"] canvas').boundingBox())!;
+  const x=rect.x+rect.width/2, y=rect.y+rect.height/2;
+  await page.mouse.move(x,y); await page.mouse.down();
+  await page.evaluate(() => {
+    Reflect.set(window,'__modelFrameSample',new Promise<number[]>((resolve) => {
+      const frames:number[]=[]; let previous=performance.now(); const start=previous;
+      const sample=(time:number) => {
+        frames.push(time-previous); previous=time;
+        if(time-start<5000) requestAnimationFrame(sample); else resolve(frames.slice(1));
+      };
+      requestAnimationFrame(sample);
+    }));
+  });
+  const start=Date.now(); let step=0;
+  while(Date.now()-start<5000) {
+    await page.mouse.move(x+80*Math.sin(step/12),y+60*Math.sin(step/19)); step++;
+    await settleViewer(page);
+  }
+  await page.mouse.up(); await settleViewer(page);
+  return page.evaluate(async () => {
+    const frames:number[]=await Reflect.get(window,'__modelFrameSample'); frames.sort((a,b)=>a-b);
+    const {drawCalls,triangles,created,live,workersCreated}=Reflect.get(window,'__modelResources');
+    return {p50:frames[Math.floor(frames.length*0.5)],p95:frames[Math.floor(frames.length*0.95)],longFrames:frames.filter((value)=>value>50).length,
+      frameCount:frames.length,drawCalls,triangles,created,live,workersCreated};
+  });
+}
+
+async function profileRaycast(page: Page, ndc: [number,number]) {
+  // Test-only replay of the real Worker geometry and current WebGL camera matrices.
+  // Serve the pinned library to the browser without adding a production profiling API.
+  await page.route('**/__model-test/three.core.js',route=>route.fulfill({contentType:'text/javascript',path:join(process.cwd(),'node_modules/three/build/three.core.js')}));
+  return page.evaluate(async (ndc) => {
+    const moduleUrl='/__model-test/three.core.js'; const THREE=await import(moduleUrl) as typeof import('three');
+    const parsed=Reflect.get(window,'__modelParsedModel') as import('../../src/lib/models/modelTypes').ParsedModel;
+    const matrices=Reflect.get(window,'__modelMatrices'); const camera=new THREE.PerspectiveCamera();
+    camera.projectionMatrix.fromArray(matrices.projectionMatrix); camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+    camera.matrixWorld.fromArray(matrices.modelViewMatrix).invert();
+    const material=new THREE.MeshBasicMaterial({side:THREE.DoubleSide});
+    const solids=parsed.meshes.map((mesh)=>{
+      const geometry=new THREE.BufferGeometry(); geometry.setAttribute('position',new THREE.BufferAttribute(mesh.positions,3));
+      geometry.setIndex(new THREE.BufferAttribute(mesh.indices,1)); return new THREE.Mesh(geometry,material);
+    });
+    const ray=new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(...ndc),camera);
+    for(let i=0;i<10;i++) ray.intersectObjects(solids,false);
+    const samples=[]; let hits=0;
+    for(let i=0;i<30;i++) {const start=performance.now(); hits=ray.intersectObjects(solids,false).length; samples.push(performance.now()-start);}
+    solids.forEach((solid)=>solid.geometry.dispose()); material.dispose(); samples.sort((a,b)=>a-b);
+    return {p50:samples[15],p95:samples[28],hits,samples:30};
+  },ndc);
+}
+
+test('private male_5 picking and three 5-second performance runs per quality and highlight state',async ({page},testInfo) => {
+  test.skip(!stepPath || !existsSync(stepPath),'未提供外部 STEP，性能和私有孔洞样件未验证');
+  test.setTimeout(300_000);
+  await trackViewerResources(page); await localLogin(page);
+  await page.getByLabel('选择模型文件').setInputFiles(stepPath!);
+  await expect(page.getByTestId('model-bounds')).toBeVisible({timeout:65000});
+  const canvas=page.locator('[aria-label="三维模型画布"] canvas');
+  const environment=await canvas.evaluate((element) => {
+    const gl=(element as HTMLCanvasElement).getContext('webgl2')!; const debug=gl.getExtension('WEBGL_debug_renderer_info');
+    const rect=element.getBoundingClientRect();
+    return {width:rect.width,height:rect.height,dpr:devicePixelRatio,renderer:debug?gl.getParameter(debug.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER),userAgent:navigator.userAgent};
+  });
+  const records=[];
+  for(const quality of ['standard','fine']) {
+    await page.getByLabel('显示质量').selectOption(quality);
+    await expect(page.getByText(quality==='fine'?'精细已生效':'标准已生效',{exact:true})).toBeVisible();
+    await expect(page.getByTestId('model-selection')).toHaveText('');
+    const qualityRecords=[];
+    for(const highlighted of [false,true]) {
+      await page.getByRole('button',{name:'前视',exact:true}).click();
+      const rect=(await canvas.boundingBox())!;
+      let pickMs: number | null = null;
+      let raycast: Awaited<ReturnType<typeof profileRaycast>> | null = null;
+      let pickedNdc: [number,number] = [0,0];
+      if(highlighted) {
+        // Sample only inside the fixed front-view model footprint; holes may be blank.
+        for(const [fx,fy] of [[0,0],[-0.08,0],[0.08,0],[0,-0.1],[0,0.1]]) {
+          await page.mouse.click(rect.x+rect.width/2+rect.height*fx,rect.y+rect.height/2+rect.height*fy);
+          if(await page.getByTestId('model-selection').innerText()) {pickedNdc=[2*rect.height*fx/rect.width,-2*fy]; break;}
+        }
+        await expect(page.getByTestId('model-selection')).toHaveText(/^曲面 /);
+        pickMs=await page.evaluate(()=>Reflect.get(window,'__modelPickDurations').at(-1));
+        expect(await yellowPixels(page)).toBeGreaterThan(20);
+        await page.screenshot({path:testInfo.outputPath(`male-5-${quality}-selected.png`)});
+        raycast=await profileRaycast(page,pickedNdc); expect(raycast.hits).toBeGreaterThan(0);
+      }
+      // Warm up the shaders and pointer path before measuring.
+      await dragCanvas(page,40,30); await page.getByRole('button',{name:'前视',exact:true}).click();
+      const before=await page.evaluate(()=>({...Reflect.get(window,'__modelResources')}));
+      const samples=[];
+      for(let i=0;i<3;i++) {
+        await page.getByRole('button',{name:'前视',exact:true}).click();
+        samples.push(await dragPerformance(page));
+      }
+      for(const sample of samples) {
+        expect(sample.workersCreated).toBe(before.workersCreated); expect(sample.created).toBe(before.created);
+        expect(sample.drawCalls-before.drawCalls).toBeLessThanOrEqual(2);
+      }
+      qualityRecords.push({highlighted,parse:before.parse.at(-1),samples,pointerupMs:pickMs,isolatedRaycastMs:raycast});
+      if(highlighted) {
+        await page.getByRole('button',{name:'等轴测',exact:true}).click();
+        await page.screenshot({path:testInfo.outputPath(`male-5-${quality}-selected-iso-holes.png`)});
+      }
+    }
+    const plain=qualityRecords[0].samples.map((sample)=>sample.p95).sort((a,b)=>a-b)[1];
+    const selected=qualityRecords[1].samples.map((sample)=>sample.p95).sort((a,b)=>a-b)[1];
+    expect(selected/plain).toBeLessThanOrEqual(1.2);
+    records.push({quality,highlightP95Ratio:selected/plain,runs:qualityRecords});
+    await page.getByRole('button',{name:'清除选择',exact:true}).click();
+  }
+  const report={sample:basename(stepPath!),environment,browser:page.context().browser()?.version(),records};
+  console.log(JSON.stringify({pickingPerformance:report}));
+  await testInfo.attach('picking-performance',{body:JSON.stringify(report,null,2),contentType:'application/json'});
+});
 
 test('free rotation remains effective after crossing poles', async ({ page }, testInfo) => {
   test.setTimeout(120_000);

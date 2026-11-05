@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { PerspectiveCamera } from 'three';
-import { createModelTrackballControls } from '@/lib/models/modelView';
+import { createModelTrackballControls, syncModelControlsViewport } from '@/lib/models/modelView';
 
 const disposals: (() => void)[] = [];
 afterEach(() => disposals.splice(0).forEach((dispose) => dispose()));
-function setup() {
+function setup(width = 800, height = 600) {
   const camera = new PerspectiveCamera(45, 4/3, 0.01, 10000);
   camera.up.set(0,0,1); camera.position.set(100,-100,100);
   const canvas = document.createElement('canvas'); document.body.appendChild(canvas);
-  Object.defineProperties(canvas, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
-  canvas.getBoundingClientRect = () => ({ x:0,y:0,left:0,top:0,width:800,height:600,right:800,bottom:600,toJSON:()=>({}) });
+  Object.defineProperties(canvas, { clientWidth: { value: width }, clientHeight: { value: height } });
+  canvas.getBoundingClientRect = () => ({ x:0,y:0,left:0,top:0,width,height,right:width,bottom:height,toJSON:()=>({}) });
   canvas.setPointerCapture = () => {}; canvas.releasePointerCapture = () => {};
   const controls = createModelTrackballControls(camera, canvas);
   camera.lookAt(controls.target); controls.update();
@@ -22,13 +22,48 @@ function setup() {
     (type === 'pointerdown' ? canvas : document).dispatchEvent(event); controls.update();
   };
   const drag = (dx: number, dy: number, button = 0, sample?: () => void) => {
-    emit('pointerdown',400,300,button);
-    for(let i=1;i<=10;i++) { emit('pointermove',400+dx*i/10,300+dy*i/10,button); sample?.(); }
-    emit('pointerup',400+dx,300+dy,button);
+    emit('pointerdown',width/2,height/2,button);
+    for(let i=1;i<=10;i++) { emit('pointermove',width/2+dx*i/10,height/2+dy*i/10,button); sample?.(); }
+    emit('pointerup',width/2+dx,height/2+dy,button);
   };
   return { camera,canvas,controls,direction,drag };
 }
 describe('real free-rotation pointer controls', () => {
+  it('uses CSS dimensions at DPR 1/2 and survives zero viewport sizes without changing pose', () => {
+    const { camera,canvas,controls,drag } = setup();
+    const initial = camera.quaternion.clone();
+    for (const dpr of [1,2]) {
+      Object.defineProperty(window,'devicePixelRatio',{configurable:true,value:dpr});
+      camera.position.set(0,-100,0); camera.up.set(0,0,1); camera.lookAt(controls.target); controls.update();
+      const before = camera.quaternion.clone(); syncModelControlsViewport(controls); drag(100,0);
+      expect(before.angleTo(camera.quaternion)*180/Math.PI).toBeCloseTo(60,4);
+    }
+    const pose = camera.quaternion.clone(); const speed = controls.rotateSpeed;
+    const rect = canvas.getBoundingClientRect;
+    canvas.getBoundingClientRect = () => ({...rect(),width:0,height:0});
+    syncModelControlsViewport(controls);
+    expect(controls.rotateSpeed).toBe(speed); expect(camera.quaternion.equals(pose)).toBe(true);
+    canvas.getBoundingClientRect = rect; syncModelControlsViewport(controls);
+    expect(controls.screen.width).toBe(800); expect(initial.equals(pose)).toBe(false);
+  });
+  it.each([[800,600,60],[1330,706,50.9915],[1760,706,50.9915],[600,800,60]])('calibrates 100 CSS px at %i x %i to %f degrees in both axes', (width,height,degrees) => {
+    for (const [dx,dy] of [[100,0],[0,100]]) {
+      const { camera, controls, drag } = setup(width,height);
+      camera.position.set(0,-100,0); camera.up.set(0,0,1); camera.lookAt(controls.target); controls.update();
+      const before = camera.quaternion.clone(); drag(dx,dy);
+      expect(Math.abs(before.angleTo(camera.quaternion)*180/Math.PI-degrees)).toBeLessThan(1);
+    }
+  });
+  it('turns a quarter short-side drag by 90 degrees and accumulates 360 degrees over one short side', () => {
+    const {camera,controls,drag}=setup(1330,706); camera.position.set(0,-100,0); camera.lookAt(controls.target); controls.update();
+    let previous=camera.quaternion.clone(); let total=0;
+    for(let i=0;i<4;i++) {
+      const before=total;
+      drag(706/4,0,0,()=>{const next=camera.quaternion.clone(); total+=previous.angleTo(next)*180/Math.PI; previous=next;});
+      expect(total-before).toBeCloseTo(90,4);
+    }
+    expect(total).toBeCloseTo(360,4);
+  });
   it('keeps horizontal motion effective after the exact 120px vertical pole sequence', () => {
     const { direction, drag } = setup(); drag(0,120); const before = direction(); drag(120,0);
     expect(before.angleTo(direction())).toBeGreaterThan(0.01);

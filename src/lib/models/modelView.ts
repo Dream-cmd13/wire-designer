@@ -2,6 +2,15 @@ import type { ParsedModel } from './modelTypes';
 import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
 import { MOUSE, type PerspectiveCamera } from 'three';
 
+/** CSS pixels keep rotation independent of canvas aspect ratio and DPR. */
+export function syncModelControlsViewport(controls: TrackballControls): void {
+  controls.handleResize();
+  const { width, height } = controls.screen;
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    controls.rotateSpeed = Math.PI * width / Math.min(width, height);
+  }
+}
+
 /** Free rotation includes roll; the viewer owns camera presets and instance disposal. */
 export function createModelTrackballControls(camera: PerspectiveCamera, canvas: HTMLCanvasElement): TrackballControls {
   const controls = new TrackballControls(camera, canvas);
@@ -9,6 +18,7 @@ export function createModelTrackballControls(camera: PerspectiveCamera, canvas: 
   controls.noRotate = false; controls.noPan = false; controls.noZoom = false;
   controls.mouseButtons = { LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.DOLLY, RIGHT: MOUSE.PAN };
   controls.keys = ['', '', ''];
+  syncModelControlsViewport(controls);
   return controls;
 }
 
