@@ -69,4 +69,30 @@ describe('STL export creases', () => {
     expect(extract([first, fold, [2,0,0, 0,0,0, 0,-2,0]])).toHaveLength(0);
     expect(extract([first, fold], 0)).toHaveLength(0);
   });
+
+  it('keeps a 90-degree fold when only one face subdivides an oblique shared edge', () => {
+    const triangles = [
+      [0,0,0, 4,4,0, 0,4,0],
+      [0,0,0, 2,2,0, 4,4,3],
+      [4,4,3, 4,4,0, 2,2,0],
+    ];
+    expect(Array.from(extract(triangles))).toEqual([0,0,0, 2,2,0, 2,2,0, 4,4,0]);
+  });
+
+  it('matches both pieces when the intermediate STL vertex is rounded to float32', () => {
+    const a = [0,0,0], b = [10,3,0], mid = [0.7,0.21,0], c = [10,3,3];
+    const triangles = [[...a, ...b, 0,3,0], [...a, ...mid, ...c], [...b, ...mid, ...c]];
+    expect(extract(triangles)).toEqual(new Float32Array([...a, ...mid, ...mid, ...b]));
+  });
+
+  it('retains a narrow wedge even when either incident triangle is reversed', () => {
+    const a = [0,0,0], b = [2,0,0], c = [0,2,0], d = [0,2,0.1];
+    for (const left of [[...a, ...b, ...c], [...b, ...a, ...c]]) {
+      for (const right of [[...a, ...b, ...d], [...b, ...a, ...d]]) {
+        const edge = Array.from(extract([left, right]));
+        expect([edge.slice(0, 3), edge.slice(3)].sort((p, q) => p[0] - q[0])).toEqual([a, b]);
+      }
+    }
+    expect(extract([first, [...b, ...a, ...c]])).toHaveLength(0);
+  });
 });

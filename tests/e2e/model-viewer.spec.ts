@@ -563,12 +563,14 @@ async function inspectDownloadedThreeView(page: Page, path: string) {
     const front = bounds(1240, 80, 1100, 665);
     const top = bounds(1240, 850, 1100, 665);
     const interiorY = Math.round(right.cy - right.height * 0.4);
-    const interiorHeight = Math.round(right.height * 0.8);
-    const boss = bounds(Math.ceil(right.cx), interiorY, Math.ceil(right.width * 0.45), interiorHeight, 120);
-    const hiddenBoss = bounds(Math.ceil(right.cx - right.width * 0.45), interiorY, Math.floor(right.width * 0.45), interiorHeight, 120);
+    const interiorHeight = Math.max(1, Math.round(right.height * 0.8));
+    const boss = bounds(Math.ceil(right.cx), interiorY, Math.max(1, Math.ceil(right.width * 0.45)), interiorHeight, 120);
+    const hiddenBoss = bounds(Math.ceil(right.cx - right.width * 0.45), interiorY, Math.max(1, Math.floor(right.width * 0.45)), interiorHeight, 120);
     const labels = [bounds(500, 748, 210, 54), bounds(1690, 748, 220, 54), bounds(1690, 1516, 220, 54), bounds(100, 985, 1000, 455)];
-    const topInterior = bounds(Math.round(top.cx - top.width/4), Math.round(top.cy - top.height/4), Math.round(top.width/2), Math.round(top.height/2), 120);
-    return { right, front, top, boss, hiddenBoss, labels, topInterior };
+    const topInterior = bounds(Math.round(top.cx - top.width/4), Math.round(top.cy - top.height/4), Math.max(1, Math.round(top.width/2)), Math.max(1, Math.round(top.height/2)), 120);
+    const topGap = bounds(Math.round(front.cx - front.width/8) - 2, Math.round(top.cy) - 2, 5, 5);
+    const rightGap = bounds(Math.round(right.cx) - 2, Math.round(front.cy + front.height/8) - 2, 5, 5);
+    return { right, front, top, boss, hiddenBoss, labels, topInterior, topGap, rightGap };
   }, png);
 }
 
@@ -627,6 +629,31 @@ test('downloads proportional first-angle PDF from local STL with a non-mirrored 
   expect(vertical.right.width / vertical.right.height).toBeCloseTo(0.5, 1);
   expect(Math.abs(vertical.front.width - vertical.top.width)).toBeLessThanOrEqual(2);
   expect(Math.abs(vertical.front.height - vertical.right.height)).toBeLessThanOrEqual(2);
+});
+
+test('downloads both edge-on projections of disjoint flat STL plates without filling their gaps', async ({ page }, testInfo) => {
+  const plates = [[0,0,10,5], [20,10,40,20]].flatMap(([x0,y0,x1,y1]) => {
+    const a = `${x0} ${y0} 0`, b = `${x1} ${y0} 0`, c = `${x1} ${y1} 0`, d = `${x0} ${y1} 0`;
+    return [[a,b,c], [a,c,d]].map((triangle) => `facet normal 0 0 1\nouter loop\n${triangle.map(vertex => `vertex ${vertex}`).join('\n')}\nendloop\nendfacet`);
+  });
+  await localLogin(page);
+  await uploadLocal(page, 'plates.stl', Buffer.from(`solid plates\n${plates.join('\n')}\nendsolid plates`));
+  await page.getByRole('button', { name: '导出三视图 PDF' }).click();
+  const dialog = page.getByRole('dialog', { name: '确认三视图前视面' });
+  await dialog.getByLabel('前视方向').selectOption('+Z');
+  const pending = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: '下载 PDF' }).click();
+  const path = testInfo.outputPath('plate-plus-z.pdf');
+  await (await pending).saveAs(path);
+  const { front, top, right, topGap, rightGap } = await inspectDownloadedThreeView(page, path);
+  expect(front.count).toBeGreaterThan(1000);
+  expect(top.count).toBeGreaterThan(200);
+  expect(right.count).toBeGreaterThan(200);
+  expect(Math.abs(front.width - top.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(front.height - right.height)).toBeLessThanOrEqual(2);
+  expect(top.height).toBeLessThanOrEqual(2);
+  expect(right.width).toBeLessThanOrEqual(2);
+  expect(topGap.count + rightGap.count).toBe(0);
 });
 
 test('downloads an already opened private STEP without model requests or changing the viewer', async ({ page }, testInfo) => {

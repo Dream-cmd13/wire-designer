@@ -59,6 +59,40 @@ export function getModelThreeViewFilename(sourceName: string) {
   return `${safeFilename(base || '模型')}_三视图.pdf`;
 }
 
+function drawEdgeOnProjection(context: CanvasRenderingContext2D, model: ParsedModel, center: Vec3, view: Projection, rect: Rect, scale: number) {
+  const { x, y, width, height } = rect;
+  const horizontal = view.sizeMm[0] >= view.sizeMm[1];
+  const length = horizontal ? width : height;
+  const along = horizontal ? view.horizontal : view.up;
+  const axis = along.findIndex(value => value !== 0);
+  const signedScale = scale * along[axis] * (horizontal ? 1 : -1);
+  const coverage = new Int32Array(length + 1);
+  const pixel = (positions: Float32Array, index: number) => (positions[index * 3 + axis] - center[axis]) * signedScale + length / 2;
+  // A subpixel-wide orthographic image is the union of projected triangle intervals.
+  // Keep gaps along its long axis; a bounding-box line would invent material there.
+  for (const { positions, indices } of model.meshes) {
+    for (let i = 0; i < indices.length; i += 3) {
+      const a = pixel(positions, indices[i]), b = pixel(positions, indices[i+1]), c = pixel(positions, indices[i+2]);
+      const start = Math.max(0, Math.round(Math.min(a, b, c)));
+      const end = Math.min(length, Math.max(start + 1, Math.round(Math.max(a, b, c))));
+      if (start < end) { coverage[start]++; coverage[end]--; }
+    }
+  }
+  context.fillStyle = '#fff';
+  context.fillRect(x, y, width, height);
+  context.fillStyle = '#39434c';
+  let active = 0, start = 0;
+  for (let i = 0; i <= length; i++) {
+    const next = active + coverage[i];
+    if (!active && next) start = i;
+    if (active && !next) {
+      if (horizontal) context.fillRect(x + start, y + Math.floor(height / 2), i - start, 1);
+      else context.fillRect(x + Math.floor(width / 2), y + start, 1, i - start);
+    }
+    active = next;
+  }
+}
+
 function createProjectionRenderer(model: ParsedModel, center: Vec3, radius: number) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   const scene = new THREE.Scene();
@@ -95,6 +129,10 @@ function createProjectionRenderer(model: ParsedModel, center: Vec3, radius: numb
       dispose,
       isContextLost: () => renderer.getContext().isContextLost(),
       renderTo(context: CanvasRenderingContext2D, view: Projection, rect: Rect, scale: number) {
+        if (Math.min(...view.sizeMm) * scale < 1) {
+          drawEdgeOnProjection(context, model, center, view, rect, scale);
+          return;
+        }
         const { x, y, width, height } = rect;
         const halfWidth = width / (2 * scale), halfHeight = height / (2 * scale);
         camera.left = -halfWidth; camera.right = halfWidth; camera.top = halfHeight; camera.bottom = -halfHeight;
@@ -191,12 +229,13 @@ async function buildModelThreeViewPdf(source: ReturnType<typeof createProjection
   const context = canvasContext(canvas);
   context.fillStyle = '#fff';
   context.fillRect(0, 0, canvas.width, canvas.height);
-  for (const view of Object.values(views)) {
+  for (const key of Object.keys(viewNames) as (keyof typeof viewNames)[]) {
     await yieldToUi();
     signal.throwIfAborted();
+    const view = views[key];
     source.renderTo(context, view, view.rect, pixelsPerMm);
+    if (!hasModelPixels(context, view.rect)) throw new Error(`未能绘制模型${viewNames[key]}图，请重试。`);
   }
-  if (!hasModelPixels(context, views.front.rect)) throw new Error('未能绘制模型前视图，请重试。');
   addLabels(context, sourceName, front);
   const jpeg = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => blob?.type === 'image/jpeg' ? resolve(blob) : reject(new Error('三视图图像编码失败，请重试。')), 'image/jpeg', 0.96);
