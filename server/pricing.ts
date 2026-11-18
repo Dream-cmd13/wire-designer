@@ -6,6 +6,7 @@ import { getQuoteMaterials, materialPriceTierKey } from '@/lib/quoteMaterials';
 import { getAvailableInnerMold } from '@/lib/overmoldSpec';
 import { FINISHING_LABOR_NAMES, FINISHING_LENGTHS_MM } from '@/lib/finishingLaborRates';
 import { validatePricingSettings } from '@/lib/pricingSettingsImport';
+import { getQuoteProcessing, isQuotePointCount } from '@/lib/quoteProcessing';
 
 import type { PricingSettings } from '@/types/pricingSettings';
 export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
@@ -47,6 +48,12 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   if (!config.connectors.length || config.connectors.length > 2) issues.push('第一版仅支持单头或双头连接器');
   if (config.connectors.some(({ connector: c }) => !/\bM(?:8|12)(?!\d)/i.test(c.series || c.name))) issues.push('自动报价仅支持 M8、M12 连接器');
   const settings = config.quotation;
+  const processing = getQuoteProcessing(config);
+  if (settings?.crimpingPoints !== undefined && !isQuotePointCount(settings.crimpingPoints)) issues.push('压端子次数必须为 0 至 1000 的整数');
+  for (const [field, label] of [['weldingPoints', '焊接点数'], ['strippingPoints', '芯线剥皮点数']] as const) {
+    if (settings?.[field] !== undefined && !isQuotePointCount(settings[field])) issues.push(`${label}必须为 0 至 1000 的整数`);
+    if (processing.requiresActualCounts && settings?.[field] === undefined) issues.push(`混合规格请填写实际${label}`);
+  }
   const endpointBType = settings?.endpointBType ?? (config.connectors.length === 2 ? 'connector' : 'cut');
   const tinningEnds = endpointBType === 'strip-tin' ? 1 : 0;
   if (!['connector', 'cut', 'strip-tin'].includes(endpointBType)
@@ -88,9 +95,9 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   const shield = wire.spec.kind === 'jacketed' && wire.spec.shielded;
   const molding = config.models.length + innerMoldCount;
   const laborInput: [string, number][] = [
-    ['裁线', Math.ceil(wire.spec.lengthMm / 500)], ['去皮', cores * ends],
+    ['裁线', Math.ceil(wire.spec.lengthMm / 500)], ['去皮', settings!.strippingPoints ?? processing.strippingPoints],
     ['去外皮', ends], ['处理编织', shield ? ends : 0],
-    ['热缩编织', shield ? ends : 0], ['焊接', (cores + (shield ? 1 : 0)) * weldingEnds],
+    ['热缩编织', shield ? ends : 0], ['焊接', settings!.weldingPoints ?? processing.weldingPoints],
     ['成型', molding],
     ['沾锡', (cores + (shield ? 1 : 0)) * tinningEnds],
   ];

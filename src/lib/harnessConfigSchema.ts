@@ -19,6 +19,7 @@ import type {
   TemperatureRangeC,
 } from '@/types/harness';
 import { DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
+import { isQuotePointCount } from '@/lib/quoteProcessing';
 
 export type HarnessConfigParseResult =
   | { success: true; data: HarnessConfig }
@@ -729,6 +730,9 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
     || ![1, 2].includes(input.quotation.processingEnds as number)
     || (input.quotation.endpointBType !== undefined
       && !['connector', 'cut', 'strip-tin'].includes(input.quotation.endpointBType as string))
+    || (input.quotation.weldingPoints !== undefined && !isQuotePointCount(input.quotation.weldingPoints))
+    || (input.quotation.strippingPoints !== undefined && !isQuotePointCount(input.quotation.strippingPoints))
+    || (input.quotation.crimpingPoints !== undefined && !isQuotePointCount(input.quotation.crimpingPoints))
     || !Number.isInteger(input.quotation.srPoints)
     || (input.quotation.srPoints as number) < 0
     || (input.quotation.srPoints as number) > (input.quotation.processingEnds as number))) {

@@ -33,6 +33,7 @@ import {
 import { ConnectorPickerModal } from '@/components/autoQuote/ConnectorPickerModal';
 import { WirePickerModal } from '@/components/autoQuote/WirePickerModal';
 import { AutoQuotePriceCard } from '@/components/autoQuote/AutoQuotePriceCard';
+import { QuoteProcessingFields } from '@/components/autoQuote/QuoteProcessingFields';
 import type { CatalogWire } from '@/types/catalog';
 import type { Connector, OvermoldSpec } from '@/types/harness';
 
@@ -150,9 +151,7 @@ function AutoQuoteConfigForm({
         </div>
 
         <p className="text-[11px] text-slate-500">
-          {connA && typeof connA.shielded === 'boolean'
-            ? `已按 A 端锁定：${connA.pinCount}芯 · ${connA.shielded ? '屏蔽' : '非屏蔽'}；B 端连接器和线材仅显示匹配项`
-            : '请先选择 A 端连接器并补全目录中的屏蔽属性'}
+          连接器针数、线材芯数及屏蔽属性可独立选择，请按实际物料配置。
         </p>
         {/* 当 B 端为连接器时显示连接器选择 */}
         {form.endpointBType === 'connector' && (
@@ -224,7 +223,7 @@ function AutoQuoteConfigForm({
         </div>
 
         {connA && selection.wires.length === 0 && (
-          <p className="text-amber-700">没有与 A 端芯数及屏蔽属性一致的线材，请更换 A 端或补充物料目录</p>
+          <p className="text-amber-700">暂无可用护套线，请补充物料目录</p>
         )}
         {selectedWire ? (
           <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 p-2.5">
@@ -458,6 +457,11 @@ export function AutoQuotePage() {
   const handleUpdate = <K extends keyof AutoQuoteFormState>(field: K, value: AutoQuoteFormState[K]) => {
     setExportError(null);
     const nextForm = { ...effectiveForm, [field]: value };
+    if (['connectorAId', 'connectorBId', 'wireResourceId', 'endpointBType'].includes(field)) {
+      nextForm.weldingPoints = undefined;
+      nextForm.strippingPoints = undefined;
+      nextForm.crimpingPoints = undefined;
+    }
     setForm(deriveAutoQuoteSelection(nextForm, catalog).form);
   };
 
@@ -529,6 +533,7 @@ export function AutoQuotePage() {
                 onEndpointBChange={handleEndpointBChange}
                 onOpenPicker={setPickerModal}
               />
+              <QuoteProcessingFields config={built.config} onChange={counts => setForm({ ...effectiveForm, ...counts })} />
             </div>
           </div>
 
@@ -588,6 +593,7 @@ export function AutoQuotePage() {
                     onEndpointBChange={handleEndpointBChange}
                     onOpenPicker={setPickerModal}
                   />
+                  <QuoteProcessingFields config={built.config} onChange={counts => setForm({ ...effectiveForm, ...counts })} />
                 </div>
               </div>
 

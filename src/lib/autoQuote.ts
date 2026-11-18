@@ -16,6 +16,9 @@ export interface AutoQuoteFormState {
   wireResourceId: string;
   lengthMm: number;
   quantity: number;
+  weldingPoints?: number;
+  strippingPoints?: number;
+  crimpingPoints?: number;
 }
 
 export interface AutoQuoteEvaluation {
@@ -51,24 +54,12 @@ export function isSupportedOvermold(spec: OvermoldSpec): boolean {
   return spec.outerMaterial === '黑色PVC' && spec.outerHardness === '45P';
 }
 
-export function matchesAutoQuoteConnector(reference: Connector | undefined, candidate: Connector): boolean {
-  return Boolean(reference && Number.isInteger(reference.pinCount) && reference.pinCount > 0
-    && typeof reference.shielded === 'boolean'
-    && candidate.pinCount === reference.pinCount && candidate.shielded === reference.shielded);
-}
-
-export function matchesAutoQuoteWire(reference: Connector | undefined, wire: CatalogWire): boolean {
-  return Boolean(reference && Number.isInteger(reference.pinCount) && reference.pinCount > 0
-    && typeof reference.shielded === 'boolean' && wire.spec.kind === 'jacketed'
-    && wire.spec.coreCount === reference.pinCount && wire.spec.shielded === reference.shielded);
-}
-
-/** A 端决定候选范围；保留匹配项，否则选取首个匹配项，没有候选时留空。 */
+/** 各物料独立选择；切换 A 端时保留仍在目录中的 B 端和线材。 */
 export function deriveAutoQuoteSelection(form: AutoQuoteFormState, catalog: CatalogSnapshot | null) {
   const connA = catalog?.connectors.find((item) => item.id === form.connectorAId)
     ?? (!form.connectorAId ? catalog?.connectors.find(isSupportedConnector) : undefined);
-  const connectorsB = catalog?.connectors.filter((item) => isSupportedConnector(item) && matchesAutoQuoteConnector(connA, item)) ?? [];
-  const wires = catalog?.wires.filter((item) => matchesAutoQuoteWire(connA, item)) ?? [];
+  const connectorsB = connA ? catalog?.connectors.filter(isSupportedConnector) ?? [] : [];
+  const wires = connA ? catalog?.wires.filter((item) => item.spec.kind === 'jacketed') ?? [] : [];
   return {
     connectorsB,
     wires,
@@ -129,6 +120,8 @@ export function buildAutoQuoteConfig(
     } else if (!isSupportedConnector(connB)) {
       issues.push('B 端连接器须为 M8 或 M12 系列');
     }
+    if (connB && typeof connB.shielded !== 'boolean') issues.push('请在物料目录补全 B 端连接器的屏蔽属性');
+    if (connB && (!Number.isInteger(connB.pinCount) || connB.pinCount <= 0)) issues.push('B 端连接器针数必须为正整数');
   }
 
   const wire = catalog?.wires.find((item) => item.resourceItemId === form.wireResourceId);
@@ -137,12 +130,7 @@ export function buildAutoQuoteConfig(
   } else if (!wire) {
     issues.push('未找到所选线材物料');
   }
-  if (connA && connB && !matchesAutoQuoteConnector(connA, connB)) {
-    issues.push('B 端连接器芯数和屏蔽属性必须与 A 端一致');
-  }
-  if (connA && wire && !matchesAutoQuoteWire(connA, wire)) {
-    issues.push('线材芯数和屏蔽属性必须与 A 端连接器一致');
-  }
+  if (wire && wire.spec.kind !== 'jacketed') issues.push('自动报价仅支持护套线');
 
   const overmold = catalog?.overmolds.find((item) => item.id === form.outerMoldSpecId);
   if (!form.outerMoldSpecId) {
@@ -254,6 +242,9 @@ export function buildAutoQuoteConfig(
       processingEnds,
       srPoints: 0,
       endpointBType: form.endpointBType,
+      ...(form.weldingPoints === undefined ? {} : { weldingPoints: form.weldingPoints }),
+      ...(form.strippingPoints === undefined ? {} : { strippingPoints: form.strippingPoints }),
+      ...(form.crimpingPoints === undefined ? {} : { crimpingPoints: form.crimpingPoints }),
     },
   };
 

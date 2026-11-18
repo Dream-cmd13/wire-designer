@@ -45,6 +45,8 @@ export function createDefaultConfig(currentUser?: { name?: string } | null): Har
 
 interface ReplaceDocumentOptions {
   markSaved?: boolean;
+  /** Canvas commands replace the full document but still invalidate actual counts. */
+  userEdit?: boolean;
 }
 
 interface HarnessState {
@@ -108,6 +110,32 @@ function dirtyState() {
   return { status: 'dirty' } as const;
 }
 
+// Part and wiring changes require new actual totals; layout/length edits do not.
+function processingInputs(config: HarnessConfig) {
+  return JSON.stringify({
+    connectors: config.connectors.map(({ id, connector, jumpers }) => ({
+      id, resourceItemId: connector.resourceItemId, pinCount: connector.pinCount, shielded: connector.shielded,
+      jumpers: jumpers.map(({ side, pins }) => ({ side, pins })),
+    })),
+    materials: config.materials.map(({ id, resourceItemId, spec, circuits }) => ({
+      id, resourceItemId, kind: spec.kind,
+      coreCount: spec.kind === 'jacketed' ? spec.coreCount : 1,
+      shielded: spec.kind === 'jacketed' && spec.shielded,
+      endTreatment: spec.endTreatment,
+      circuits: circuits.filter(circuit => circuit.start || circuit.end).map(({ coreIndex, start, end }) => ({ coreIndex, start, end })),
+    })),
+    endpointBType: config.quotation?.endpointBType,
+  });
+}
+
+function alignEditedConfig(previous: HarnessConfig, config: HarnessConfig, selection?: Selection) {
+  const next = alignHarnessConfig(config, selection);
+  if (!next.quotation || processingInputs(previous) === processingInputs(next)) return next;
+  return { ...next, quotation: {
+    ...next.quotation, weldingPoints: undefined, strippingPoints: undefined, crimpingPoints: undefined,
+  } };
+}
+
 export const useHarnessStore = create<HarnessState>()(
     (set, get) => ({
       config: createDefaultConfig(),
@@ -122,7 +150,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       setConfig: (updates) =>
         set((state) => {
-          const next = alignHarnessConfig({ ...state.config, ...updates, updatedAt: Date.now() }, state.selection);
+          const next = alignEditedConfig(state.config, { ...state.config, ...updates, updatedAt: Date.now() }, state.selection);
           return {
             config: next,
             saveState: dirtyState(),
@@ -132,7 +160,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       patchDocument: (partial) =>
         set((state) => {
-          const next = alignHarnessConfig({ ...state.config, ...partial, updatedAt: Date.now() }, state.selection);
+          const next = alignEditedConfig(state.config, { ...state.config, ...partial, updatedAt: Date.now() }, state.selection);
           return {
             config: next,
             saveState: dirtyState(),
@@ -141,7 +169,9 @@ export const useHarnessStore = create<HarnessState>()(
         }),
 
       replaceDocument: (fullConfig, options) => {
-        const aligned = alignHarnessConfig(fullConfig);
+        const aligned = options?.userEdit
+          ? alignEditedConfig(get().config, fullConfig)
+          : alignHarnessConfig(fullConfig);
         set({
           config: { ...aligned, twoDImages: syncTwoDImages(aligned) },
           selection: { kind: 'none' },
@@ -172,7 +202,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       addConnector: (connector) =>
         set((state) => {
-          const nextConfig = alignHarnessConfig({
+          const nextConfig = alignEditedConfig(state.config, {
             ...state.config,
             connectors: [...state.config.connectors, connector],
             updatedAt: Date.now(),
@@ -186,7 +216,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       updateConnector: (id, updates) =>
         set((state) => {
-          const nextConfig = alignHarnessConfig({
+          const nextConfig = alignEditedConfig(state.config, {
             ...state.config,
             connectors: state.config.connectors.map((c) =>
               c.id === id ? { ...c, ...updates } : c,
@@ -207,7 +237,7 @@ export const useHarnessStore = create<HarnessState>()(
               ? ({ kind: 'none' } as const)
               : state.selection;
 
-          const nextConfig = alignHarnessConfig(removeConnectorCommand(state.config, id), state.selection);
+          const nextConfig = alignEditedConfig(state.config, removeConnectorCommand(state.config, id), state.selection);
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             selection: nextSelection,
@@ -218,7 +248,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       addMaterial: (material) =>
         set((state) => {
-          const nextConfig = alignHarnessConfig({
+          const nextConfig = alignEditedConfig(state.config, {
             ...state.config,
             materials: [...state.config.materials, material],
             updatedAt: Date.now(),
@@ -232,7 +262,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       updateMaterial: (id, updates) =>
         set((state) => {
-          const nextConfig = alignHarnessConfig(updateMaterialCommand(state.config, id, updates), state.selection);
+          const nextConfig = alignEditedConfig(state.config, updateMaterialCommand(state.config, id, updates), state.selection);
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),
@@ -242,7 +272,7 @@ export const useHarnessStore = create<HarnessState>()(
 
       removeMaterial: (id) =>
         set((state) => {
-          const nextConfig = alignHarnessConfig(removeMaterialCommand(state.config, id), state.selection);
+          const nextConfig = alignEditedConfig(state.config, removeMaterialCommand(state.config, id), state.selection);
           return {
             config: { ...nextConfig, twoDImages: syncTwoDImages(nextConfig) },
             saveState: dirtyState(),

@@ -16,7 +16,7 @@ const catalog = { overmolds: [{ id: 'mold', name: '外模', outerMaterial: '黑�
 function fixture() {
   const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 2, srPoints: 2 },
     connectors: ['a', 'b'].map((id) => ({ id, label: id, position: { x: 0, y: 0 }, jumpers: [], connector: {
-      id: 'connector', name: 'M12连接器', series: 'M12', pinCount: 4, type: 'male', pinLabels: ['1', '2', '3', '4'],
+      id: 'connector', name: 'M12连接器', series: 'M12', pinCount: 4, shielded: true, type: 'male', pinLabels: ['1', '2', '3', '4'],
     } })),
     materials: [{ id: 'wire', resourceItemId: 'wire-resource', name: '线材', position: { x: 0, y: 0 }, width: 200, circuits: [],
       spec: { kind: 'jacketed', awg: 24, coreCount: 4, shielded: true, jacketMaterial: 'PVC', jacketColor: 'black', odMm: 5,
@@ -44,6 +44,7 @@ describe('M8/M12 quotation', () => {
     const spec = config.materials[0].spec;
     if (spec.kind !== 'jacketed') throw new Error('Expected jacketed cable');
     spec.shielded = shielded;
+    config.connectors[0].connector.shielded = shielded;
     const p = ready(config);
     const amount = (name: string) => p.labor.find(row => row.name === name)?.amount;
     expect(amount('去皮')).toBe('0.4');
@@ -152,6 +153,7 @@ describe('M8/M12 quotation', () => {
     const { config } = fixture(); config.connectors.pop(); config.models.pop(); config.quotation = { processingEnds: 1, srPoints: 0 };
     const spec = config.materials[0].spec;
     if (spec.kind === 'jacketed') { spec.shielded = false; spec.coreCount = 5; }
+    config.connectors[0].connector = { ...config.connectors[0].connector, pinCount: 5, shielded: false };
     expect(ready(config).labor.map((line) => line.points)).toEqual([2, 5, 1, 0, 0, 5, 2, 0, 1, 1, 1]);
   });
   it('requires manual pricing beyond 5m even when prices are missing', () => {

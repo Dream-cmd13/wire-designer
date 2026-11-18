@@ -4,6 +4,7 @@ import { useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useServerQuote } from '@/lib/useServerQuote';
 import { AutoQuotePriceCard } from '@/components/autoQuote/AutoQuotePriceCard';
+import { QuoteProcessingFields } from '@/components/autoQuote/QuoteProcessingFields';
 import type { AutoQuoteEvaluation } from '@/lib/autoQuote';
 
 export function QuoteContent() {
@@ -25,6 +26,9 @@ export function QuoteContent() {
     </label>
     <p className="text-sm">连接器加工端数：{ends ?? '请配置单头或双头连接器'}</p>
     <p className="text-xs text-slate-500">成型按外模、内模分别计费，SR 不计费。</p>
+    <QuoteProcessingFields config={effectiveConfig} onChange={counts => {
+      if (effectiveConfig.quotation) setConfig({ quotation: { ...effectiveConfig.quotation, ...counts } });
+    }} />
     <AutoQuotePriceCard evaluation={evaluation} catalog={catalog} loading={quote.loading} onRetry={quote.retry} />
   </div>;
 }

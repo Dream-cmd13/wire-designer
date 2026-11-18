@@ -166,7 +166,7 @@ function WireMaterialNodeImpl({ data, selected }: WireMaterialNodeProps) {
     patch: Partial<Pick<MaterialCircuit, 'color' | 'signalName'>>,
   ) => {
     const state = useHarnessStore.getState();
-    state.replaceDocument(updateMaterialCircuit(state.config, materialId, circuitId, patch));
+    state.replaceDocument(updateMaterialCircuit(state.config, materialId, circuitId, patch), { userEdit: true });
   };
 
   const materialColumnWidth = estimateColumnWidth(
@@ -432,7 +432,7 @@ function PinInput({
     if (trimmed === '') {
       if (pin !== undefined) {
         const state = useHarnessStore.getState();
-        state.replaceDocument(detachMaterialEndpoint(state.config, materialId, circuitId, endpoint));
+        state.replaceDocument(detachMaterialEndpoint(state.config, materialId, circuitId, endpoint), { userEdit: true });
       }
       setError(null);
       return;
@@ -495,7 +495,7 @@ function PinInput({
       return;
     }
 
-    state.replaceDocument(next);
+    state.replaceDocument(next, { userEdit: true });
     setError(null);
   };
 

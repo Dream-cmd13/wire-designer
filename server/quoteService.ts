@@ -25,39 +25,45 @@ export function catalogFromRows(rows: unknown[]): CatalogSnapshot {
   };
 }
 
+class QuoteConfigurationError extends Error {}
+
 // Only identity, quantity, length and processing choices come from the caller.
 export function canonicalizeQuote(config: HarnessConfig, catalog: CatalogSnapshot): HarnessConfig {
   if (!config || !Array.isArray(config.connectors) || !Array.isArray(config.materials)
     || !Array.isArray(config.models) || config.connectors.length > 2 || config.materials.length !== 1
     || config.models.length > 2 || config.protectiveSleeves?.length) {
-    throw new Error('配置超出自动报价支持范围');
+    throw new QuoteConfigurationError('配置超出自动报价支持范围');
   }
   const connectors = config.connectors.map(instance => {
     const connector = catalog.connectors.find(c => c.resourceItemId === instance.connector?.resourceItemId);
-    if (!connector) throw new Error('连接器不在物料目录中');
+    if (!connector) throw new QuoteConfigurationError('连接器不在物料目录中');
+    if (typeof connector.shielded !== 'boolean') throw new QuoteConfigurationError('请在物料目录补全连接器的屏蔽属性');
     return { ...instance, connector };
   });
   const materials = config.materials.map(material => {
     const wire = catalog.wires.find(w => w.resourceItemId === material.resourceItemId);
-    if (!wire || !material.spec) throw new Error('线材不在物料目录中');
+    if (!wire || !material.spec) throw new QuoteConfigurationError('线材不在物料目录中');
     return { ...material, name: wire.name, spec: applyCatalogWireSpec(material.spec, wire.spec) };
   });
   const wireSpec = materials[0].spec;
-  if (wireSpec.kind !== 'jacketed' || connectors.some(({ connector }) =>
-    connector.pinCount !== wireSpec.coreCount || typeof connector.shielded !== 'boolean'
-    || connector.shielded !== wireSpec.shielded)) {
-    throw new Error('连接器和线材的芯数、屏蔽属性必须一致');
-  }
+  if (wireSpec.kind !== 'jacketed') throw new QuoteConfigurationError('自动报价仅支持护套线');
   for (const model of config.models) {
-    if (model.kind !== 'outer-box' || (model.includeInnerMold !== undefined && typeof model.includeInnerMold !== 'boolean')) throw new Error('不支持此成型配置');
-    if (!catalog.overmolds.some(m => m.id === model.overmoldSpecId)) throw new Error('外模不在物料目录中');
+    if (model.kind !== 'outer-box' || (model.includeInnerMold !== undefined && typeof model.includeInnerMold !== 'boolean')) throw new QuoteConfigurationError('不支持此成型配置');
+    if (!catalog.overmolds.some(m => m.id === model.overmoldSpecId)) throw new QuoteConfigurationError('外模不在物料目录中');
   }
   return { ...config, connectors, materials };
 }
 
 export function quoteForRole(config: HarnessConfig, catalog: CatalogSnapshot, prices: MaterialPrice[], settings: PricingSettings, role: unknown) {
   if (role !== 'sales' && !canViewPricing(role)) throw new Error('报价权限未就绪');
-  const result = calculatePrice(canonicalizeQuote(config, catalog), prices, catalog, settings);
+  let canonical: HarnessConfig;
+  try {
+    canonical = canonicalizeQuote(config, catalog);
+  } catch (error) {
+    if (error instanceof QuoteConfigurationError) return { status: 'blocked' as const, issues: [error.message] };
+    throw error;
+  }
+  const result = calculatePrice(canonical, prices, catalog, settings);
   if (result.status !== 'ready') return canViewPricing(role) ? result : {
     status: result.status, issues: [result.status === 'manual' ? '需工程师人工核价' : '当前配置无法报价，请检查信息或联系工程师'],
   };

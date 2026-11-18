@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { getQuoteMaterials } from '@/lib/quoteMaterials';
-import { quoteForRole } from '../../../server/quoteService';
+import { canonicalizeQuote, quoteForRole } from '../../../server/quoteService';
 import { DEFAULT_PRICING_SETTINGS } from '../../../server/pricing';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { HarnessConfig } from '@/types/harness';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
+import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
 import * as XLSX from 'xlsx';
 
 function fixture() {
@@ -121,12 +122,112 @@ describe('server quote boundary', () => {
     }
     expect(quoteForRole(forged, catalog, prices, DEFAULT_PRICING_SETTINGS, 'sales')).toMatchObject({ price: 'price' in initial ? initial.price : {} });
     forged.materials[0].resourceItemId = 'unknown';
-    expect(() => quoteForRole(forged, catalog, prices, DEFAULT_PRICING_SETTINGS, 'sales')).toThrow('目录');
+    expect(quoteForRole(forged, catalog, prices, DEFAULT_PRICING_SETTINGS, 'sales')).toEqual({
+      status: 'blocked', issues: ['线材不在物料目录中'],
+    });
   });
-  it('rejects mismatched connector and wire cores even in direct API requests', () => {
+  it.each([4, 6])('preserves a %s-core shielded cable with mixed 4/5-pin unshielded connectors', (coreCount) => {
+    const { catalog, config } = fixture();
+    catalog.connectors[0].shielded = false;
+    const second = { ...catalog.connectors[0], id: 'c2', resourceItemId: 'c2-id', pinCount: 5 };
+    catalog.connectors.push(second);
+    catalog.wires[0].spec.coreCount = coreCount;
+    config.connectors.push({ ...config.connectors[0], id: 'b', connector: second });
+    const before = structuredClone(config);
+    const canonical = canonicalizeQuote(config, catalog);
+    expect(canonical.connectors.map(({ connector }) => [connector.pinCount, connector.shielded])).toEqual([[4, false], [5, false]]);
+    expect(canonical.materials[0].spec).toMatchObject({ coreCount, shielded: true });
+    expect(config).toEqual(before);
+  });
+
+  it('returns missing molds as configuration issues for mixed connector specifications', () => {
     const { catalog, config, prices } = fixture();
-    catalog.connectors[0].pinCount = 3;
-    expect(() => quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'sales')).toThrow('芯数');
+    catalog.connectors[0].pinCount = 5;
+    config.models = [];
+    expect(quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer')).toMatchObject({
+      status: 'blocked', issues: expect.arrayContaining(['每个加工端必须有一个外模，外模个数须与加工端数一致']),
+    });
+  });
+
+  it('returns unsupported configurations as issues instead of throwing an API error', () => {
+    const { catalog, config, prices } = fixture();
+    config.materials = [];
+    expect(quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer')).toEqual({
+      status: 'blocked', issues: ['配置超出自动报价支持范围'],
+    });
+  });
+
+  it('still requires the selected connector shielding specification', () => {
+    const { catalog, config, prices } = fixture();
+    const incompleteCatalog = { ...catalog, connectors: [{ ...catalog.connectors[0], shielded: undefined }] };
+    expect(quoteForRole(config, incompleteCatalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer')).toEqual({
+      status: 'blocked', issues: ['请在物料目录补全连接器的屏蔽属性'],
+    });
+  });
+
+  it('requires actual processing counts for mixed specifications before quoting', () => {
+    const { catalog, config, prices } = fixture();
+    catalog.connectors[0].pinCount = 5;
+    expect(quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer')).toMatchObject({
+      status: 'blocked', issues: expect.arrayContaining(['混合规格请填写实际焊接点数', '混合规格请填写实际芯线剥皮点数']),
+    });
+  });
+
+  it('quotes a six-core cable with a five-pin head using actual processing counts and original materials', () => {
+    const { catalog, config } = fixture();
+    catalog.connectors[0].pinCount = 5;
+    catalog.connectors[0].shielded = false;
+    catalog.wires[0].spec.coreCount = 6;
+    const before = structuredClone(config);
+    const requested = { ...config, quotation: { ...config.quotation!, weldingPoints: 5, strippingPoints: 5 } };
+    const canonical = canonicalizeQuote(requested, catalog);
+    const prices = getQuoteMaterials(canonical, catalog).map(row => ({ ...row, taxIncludedPrice: '2' }));
+    const result = quoteForRole(requested, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer');
+    expect(result.status).toBe('ready');
+    if (!('price' in result)) throw new Error('Expected ready quote');
+    expect(result.price.breakdown?.labor.find(row => row.name === '焊接')).toMatchObject({ points: 5, amount: '1' });
+    expect(result.price.breakdown?.labor.find(row => row.name === '去皮')).toMatchObject({ points: 5, amount: '0.25' });
+    expect(result.price.breakdown?.materials.map(row => row.kind)).toEqual(['connector', 'wire', 'outer-mold']);
+    expect(config).toEqual(before);
+  });
+
+  it.each([-1, 0.5, 1001, NaN])('blocks invalid actual processing counts: %s', (points) => {
+    const { catalog, config, prices } = fixture();
+    const requested = { ...config, quotation: { ...config.quotation!, weldingPoints: points, strippingPoints: points } };
+    expect(quoteForRole(requested, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer').status).toBe('blocked');
+    expect(parseHarnessConfig(requested).success).toBe(false);
+  });
+
+  it.each([0, 12, 1000])('uses actual counts independently of nominal core and pin totals: %s', points => {
+    const { catalog, config, prices } = fixture();
+    const requested = { ...config, quotation: { ...config.quotation!, weldingPoints: points, strippingPoints: points } };
+    const result = quoteForRole(requested, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer');
+    expect(result.status).toBe('ready');
+    if (!('price' in result)) throw new Error('Expected ready quote');
+    expect(result.price.breakdown?.labor.find(row => row.name === '焊接')).toMatchObject({ points });
+    expect(result.price.breakdown?.labor.find(row => row.name === '去皮')).toMatchObject({ points });
+    expect(parseHarnessConfig(requested).success).toBe(true);
+  });
+
+  it('counts a branched core as two welds and keeps one crimp separate from welding', () => {
+    const { catalog, config, prices } = fixture();
+    const requested = { ...config, quotation: { ...config.quotation!, weldingPoints: 2, strippingPoints: 1, crimpingPoints: 1 } };
+    const saved = parseHarnessConfig(JSON.parse(JSON.stringify(requested)));
+    expect(saved.success).toBe(true);
+    if (!saved.success) throw new Error('Invalid test configuration');
+    expect(saved.data.quotation).toMatchObject({ weldingPoints: 2, strippingPoints: 1, crimpingPoints: 1 });
+    const result = quoteForRole(saved.data, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer');
+    expect(result.status).toBe('ready');
+    if (!('price' in result)) throw new Error('Expected ready quote');
+    expect(result.price.breakdown?.labor.find(row => row.name === '焊接')).toMatchObject({ points: 2, amount: '0.4' });
+    expect(result.price.breakdown?.labor.find(row => row.name === '压端子')).toBeUndefined();
+  });
+
+  it.each([-1, 0.5, 1001, NaN])('rejects invalid crimp counts: %s', (crimpingPoints) => {
+    const { catalog, config, prices } = fixture();
+    const requested = { ...config, quotation: { ...config.quotation!, crimpingPoints } };
+    expect(quoteForRole(requested, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer').status).toBe('blocked');
+    expect(parseHarnessConfig(requested).success).toBe(false);
   });
   it('public Excel omits internal information even when an internal result was supplied', () => {
     const { catalog, config, prices } = fixture();

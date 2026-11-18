@@ -371,7 +371,16 @@ export interface HarnessConfig {
   models: CanvasModel[];
   quantity: number;
   leadTime: 'rush' | 'standard' | 'economy';
-  quotation?: { processingEnds: 1 | 2; srPoints: number; endpointBType?: 'connector' | 'cut' | 'strip-tin' };
+  quotation?: {
+    processingEnds: 1 | 2;
+    srPoints: number;
+    endpointBType?: 'connector' | 'cut' | 'strip-tin';
+    /** Actual totals for the whole harness; welding includes shield joints. */
+    weldingPoints?: number;
+    strippingPoints?: number;
+    /** Recorded separately; crimp labor is currently excluded from pricing. */
+    crimpingPoints?: number;
+  };
   twoDImages?: TwoDImage[];
   drawingFrame?: ProductionDrawingFrame;
 }

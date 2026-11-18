@@ -788,7 +788,7 @@ function HarnessCanvasInner() {
       message: `删除线材“${material.name}”上的这条接线？`,
       undoMessage: `已删除线材“${material.name}”上的接线`,
       action: (state) => {
-        state.replaceDocument(removeMaterialCircuit(state.config, materialId, circuitId));
+        state.replaceDocument(removeMaterialCircuit(state.config, materialId, circuitId), { userEdit: true });
       },
     });
   }, [config.materials, requestDeleteConfirmation]);
@@ -953,7 +953,7 @@ function HarnessCanvasInner() {
         connectorSide: side,
         pin,
       });
-      state.replaceDocument(nextConfig);
+      state.replaceDocument(nextConfig, { userEdit: true });
       setCanvasSelection(materialId);
     } catch {
       // Side conflict or pin out of range — ignore.
@@ -1002,7 +1002,7 @@ function HarnessCanvasInner() {
     const state = useHarnessStore.getState();
     try {
       const nextConfig = addConnectorJumper(state.config, connectorId, side, pin1, pin2);
-      state.replaceDocument(nextConfig);
+      state.replaceDocument(nextConfig, { userEdit: true });
     } catch {
       // Invalid jumper — ignore.
     }
@@ -1110,7 +1110,7 @@ function HarnessCanvasInner() {
       });
 
       if (nextConfig !== state.config) {
-        state.replaceDocument(nextConfig);
+        state.replaceDocument(nextConfig, { userEdit: true });
       }
       return;
     }
@@ -1144,7 +1144,7 @@ function HarnessCanvasInner() {
       undoMessage: `已断开线材“${material.name}”的连接`,
       action: (store) => {
         const nextConfig = detachMaterialEndpoint(store.config, material.id, circuitId, side);
-        store.replaceDocument(nextConfig);
+        store.replaceDocument(nextConfig, { userEdit: true });
       },
       afterDelete: () => {
         setCanvasSelection(null);
@@ -1164,7 +1164,7 @@ function HarnessCanvasInner() {
       undoMessage: `已删除连接器“${connector.label}”上的短接`,
       action: (store) => {
         const nextConfig = removeConnectorJumper(store.config, connector.id, jumperId);
-        store.replaceDocument(nextConfig);
+        store.replaceDocument(nextConfig, { userEdit: true });
       },
       afterDelete: () => {
         setCanvasSelection(null);
@@ -1216,7 +1216,7 @@ function HarnessCanvasInner() {
             pin: nearest.resolved.pin,
           });
           if (nextConfig !== currentConfig) {
-            useHarnessStore.getState().replaceDocument(nextConfig);
+            useHarnessStore.getState().replaceDocument(nextConfig, { userEdit: true });
             attachedAny = true;
           }
         } catch {
@@ -1369,7 +1369,7 @@ function HarnessCanvasInner() {
             y: initialPosition.y + deltaY,
           });
         }
-        state.replaceDocument(applyNodePositionsToConfig(state.config, finalPositions));
+        state.replaceDocument(applyNodePositionsToConfig(state.config, finalPositions), { userEdit: true });
         if (node.type === 'connector') {
           setCanvasSelection(null);
           setSelection({ kind: 'connector', id: node.id });
@@ -1773,7 +1773,7 @@ function HarnessCanvasInner() {
             currentConnectorId={instance.connector.id}
             onSelect={(pickedConnector) => {
               const result = changeConnectorPart(config, changingPartConnectorId, pickedConnector);
-              useHarnessStore.getState().replaceDocument(result.config);
+              useHarnessStore.getState().replaceDocument(result.config, { userEdit: true });
               setChangingPartConnectorId(null);
             }}
           />
@@ -1789,7 +1789,7 @@ function HarnessCanvasInner() {
               position: connectorDialog.position,
               connector,
             });
-            state.replaceDocument(nextConfig);
+            state.replaceDocument(nextConfig, { userEdit: true });
             const added = nextConfig.connectors[nextConfig.connectors.length - 1];
             if (added) {
               setSelection({ kind: 'connector', id: added.id });

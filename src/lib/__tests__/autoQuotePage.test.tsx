@@ -309,9 +309,11 @@ describe('AutoQuotePage', () => {
     }
   });
 
-  it('defaults to matching connectors and cable instead of the second incompatible connector', () => {
+  it('explains that connector and cable specifications can be selected independently', () => {
     const html = renderToStaticMarkup(<AutoQuotePage />);
-    expect(html).toContain('已按 A 端锁定：4芯 · 屏蔽');
+    expect(html).toContain('连接器针数、线材芯数及屏蔽属性可独立选择');
+    expect(html).toContain('实际焊接点数');
+    expect(html).toContain('芯线剥皮点数');
     expect(html).not.toContain('M8-3P-母头');
     expect(html).toContain('UL2464 24AWG 4芯黑色护套线');
   });
@@ -319,7 +321,7 @@ describe('AutoQuotePage', () => {
   it('shows an empty cable selection when no cable matches A', () => {
     useCatalogStore.setState({ snapshot: { ...mockCatalog, wires: [] } });
     const html = renderToStaticMarkup(<AutoQuotePage />);
-    expect(html).toContain('没有与 A 端芯数及屏蔽属性一致的线材');
+    expect(html).toContain('暂无可用护套线，请补充物料目录');
     expect(html).toContain('请选择线材物料');
   });
 

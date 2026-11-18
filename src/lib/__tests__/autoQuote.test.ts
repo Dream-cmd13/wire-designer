@@ -121,7 +121,25 @@ function createPrices(config: NonNullable<ReturnType<typeof buildAutoQuoteConfig
 }
 
 describe('autoQuote', () => {
-  it.each([true, false])('filters B and cable choices by A and preserves valid selections (shielded=%s)', (shielded) => {
+  it('keeps independently entered operation counts through form, JSON and pricing', () => {
+    const form: AutoQuoteFormState = {
+      ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8',
+      wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1',
+      weldingPoints: 2, strippingPoints: 1, crimpingPoints: 1,
+    };
+    const config = buildAutoQuoteConfig(form, mockCatalog).config!;
+    const saved = parseHarnessConfig(JSON.parse(JSON.stringify(config)));
+    expect(saved.success).toBe(true);
+    if (!saved.success) throw new Error('Expected valid saved config');
+    expect(saved.data.quotation).toMatchObject({ weldingPoints: 2, strippingPoints: 1, crimpingPoints: 1 });
+    const result = calculatePrice(saved.data, createPrices(saved.data), mockCatalog);
+    expect(result.status).toBe('ready');
+    if (result.status !== 'ready') throw new Error('Expected ready quote');
+    expect(result.price.labor.find(row => row.name === '焊接')).toMatchObject({ points: 2, amount: '0.4' });
+    expect(result.price.labor.some(row => row.name === '压端子')).toBe(false);
+  });
+
+  it.each([true, false])('offers mixed specifications and preserves selections when A changes (shielded=%s)', (shielded) => {
     const wire = mockCatalog.wires[0];
     if (wire.spec.kind !== 'jacketed') throw new Error('Expected jacketed fixture');
     const catalog: CatalogSnapshot = {
@@ -140,12 +158,12 @@ describe('autoQuote', () => {
     };
     const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', wireResourceId: 'res-wire-1' };
     const selected = deriveAutoQuoteSelection(form, catalog);
-    expect(selected.connectorsB.map((item) => item.id)).toEqual(['conn-m12', 'conn-m8']);
-    expect(selected.wires.map((item) => item.resourceItemId)).toEqual(['res-wire-1']);
+    expect(selected.connectorsB.map((item) => item.id)).toEqual(['conn-m12', 'conn-m8', 'wrong-pins', 'wrong-shield']);
+    expect(selected.wires.map((item) => item.resourceItemId)).toEqual(['res-wire-1', 'wrong-pins', 'wrong-shield']);
     expect(selected.form).toMatchObject({ connectorBId: 'conn-m8', wireResourceId: 'res-wire-1' });
 
     const changed = deriveAutoQuoteSelection({ ...selected.form, connectorAId: 'wrong-shield' }, catalog);
-    expect(changed.form).toMatchObject({ connectorBId: 'wrong-shield', wireResourceId: 'wrong-shield' });
+    expect(changed.form).toMatchObject({ connectorBId: 'conn-m8', wireResourceId: 'res-wire-1' });
   });
 
   it('leaves unavailable candidates empty instead of retaining mismatched selections', () => {
@@ -153,7 +171,7 @@ describe('autoQuote', () => {
     const noWires = deriveAutoQuoteSelection(form, { ...mockCatalog, wires: [] });
     expect(noWires.form.wireResourceId).toBe('');
     expect(evaluateAutoQuote(noWires.form, [], mockCatalog).status).toBe('incomplete');
-    const unknown = deriveAutoQuoteSelection(form, { ...mockCatalog, connectors: mockCatalog.connectors.map((item) => ({ ...item, shielded: undefined })) });
+    const unknown = deriveAutoQuoteSelection(form, { ...mockCatalog, connectors: [] });
     expect(unknown.connectorsB).toEqual([]);
     expect(unknown.wires).toEqual([]);
     expect(unknown.form).toMatchObject({ connectorBId: '', wireResourceId: '' });
@@ -187,23 +205,22 @@ describe('autoQuote', () => {
   it.each([
     { pinCount: 3, shielded: true },
     { pinCount: 4, shielded: false },
-    { pinCount: 4, shielded: undefined },
-  ])('rejects incompatible B connectors: %j', (spec) => {
+  ])('accepts independently selected B connector specifications: %j', (spec) => {
     const catalog = { ...mockCatalog, connectors: [mockCatalog.connectors[0], { ...mockCatalog.connectors[1], ...spec }] };
     const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' }, catalog);
-    expect(result.config).toBeNull();
-    expect(result.issues.length).toBeGreaterThan(0);
+    expect(result.config?.connectors[1].connector).toMatchObject(spec);
+    expect(result.issues).toEqual([]);
   });
 
   it.each([
-    { coreCount: 3, shielded: true },
+    { coreCount: 6, shielded: true },
     { coreCount: 4, shielded: false },
-  ])('rejects incompatible cable specifications: %j', (spec) => {
+  ])('accepts independently selected cable specifications: %j', (spec) => {
     const wire = mockCatalog.wires[0];
     if (wire.spec.kind !== 'jacketed') throw new Error('Expected jacketed fixture');
     const catalog = { ...mockCatalog, wires: [{ ...wire, spec: { ...wire.spec, ...spec } }] };
     const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' }, catalog);
-    expect(result.config).toBeNull();
+    expect(result.config?.materials[0].spec).toMatchObject(spec);
   });
 
   it('requires a catalog specification when PVC molding is selected', () => {
