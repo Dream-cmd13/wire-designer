@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Box, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
@@ -15,6 +15,7 @@ const WASM_BASE = `${import.meta.env.BASE_URL}libredwg`;
 const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
 const BACKGROUNDS = { light: '#ffffff', dark: '#111827' } as const;
+const DwgHarnessPreviewDialog = lazy(() => import('@/components/dwg/DwgHarnessPreviewDialog').then(({ DwgHarnessPreviewDialog }) => ({ default: DwgHarnessPreviewDialog })));
 
 let canvasTextMeasurer: TextMeasure | null = null;
 
@@ -108,6 +109,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'png' | null>(null);
+  const [harnessPreviewOpen, setHarnessPreviewOpen] = useState(false);
   const [cloudId, setCloudId] = useState('');
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('local');
@@ -190,6 +192,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     setLocalFile(null);
     setSaveStatus('local');
     setActionError(null);
+    setHarnessPreviewOpen(false);
     autoFitRef.current = true;
     drawingRef.current = null;
     viewRef.current = null;
@@ -468,6 +471,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
 
   // 快捷键：+/- 缩放，0/F 适应窗口
   useEffect(() => {
+    if (harnessPreviewOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
@@ -485,7 +489,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [zoomBy, fitManually]);
+  }, [zoomBy, fitManually, harnessPreviewOpen]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 && event.button !== 1) return;
@@ -694,6 +698,11 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             导出 PDF
           </button>
+          <button type="button" className={toolbarButtonClass} disabled={!isReady || harnessPreviewOpen}
+            onClick={() => setHarnessPreviewOpen(true)} title="从 M12 单段线缆图纸生成 3D 示意">
+            <Box className="h-3.5 w-3.5" />
+            生成 3D 示意
+          </button>
         </div>
       </div>
 
@@ -826,6 +835,12 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           </div>
         )}
       </div>
+
+      {harnessPreviewOpen && state.drawing && (
+        <Suspense fallback={<span role="status" className="text-sm text-slate-600">正在加载 3D 预览…</span>}>
+          <DwgHarnessPreviewDialog drawing={state.drawing} fileName={state.fileName} onClose={() => setHarnessPreviewOpen(false)} />
+        </Suspense>
+      )}
 
       <input
         ref={fileInputRef}

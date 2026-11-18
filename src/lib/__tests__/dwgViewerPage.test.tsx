@@ -2,12 +2,16 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DwgViewerPage } from '@/pages/DwgViewerPage';
+import type { ParsedModel } from '@/lib/models/modelTypes';
 import { useNoticeStore } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 
 const mocks = vi.hoisted(() => ({ parse: vi.fn(), list: vi.fn(), save: vi.fn(), download: vi.fn(), session: vi.fn() }));
 vi.mock('@/lib/dwg/parseDwg', () => ({ parseDwg: mocks.parse }));
 vi.mock('@/lib/dwg/renderDwg', () => ({ renderDwgToCanvas: vi.fn(), DEFAULT_FONT_FAMILY: 'sans-serif' }));
+vi.mock('@/components/models/ModelViewer', () => ({ ModelViewer: ({ model }: { model: ParsedModel }) => (
+  <div aria-label="三维模型画布">{model.boundsMm.max[0]} mm</div>
+) }));
 vi.mock('@/repositories/dwgRepository', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/repositories/dwgRepository')>(),
   dwgRepository: { configured: true, list: mocks.list, save: mocks.save, download: mocks.download },
@@ -16,7 +20,13 @@ vi.mock('@/repositories/dwgRepository', async (importOriginal) => ({
 
 const owner = { id: 'owner', role: 'engineer' as const, name: 'test', email: 'test@example.com', createdAt: 1 };
 const record = { id: 'drawing', original_name: 'cloud.dwg', owner_id: owner.id, status: 'ready' };
-const drawing = { bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 }, hiddenLayers: [], layers: [], stats: { rendered: 1, text: 0, skipped: {} } };
+const drawing = { bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 }, hiddenLayers: [], layers: [], entities: [], stats: { rendered: 1, text: 0, skipped: {} } };
+
+// jsdom provides the element but not native modal behavior.
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: { configurable: true, value(this: HTMLDialogElement) { this.setAttribute('open', ''); } },
+  close: { configurable: true, value(this: HTMLDialogElement) { this.removeAttribute('open'); } },
+});
 
 function sample(name: string, read = async () => new ArrayBuffer(10)) {
   return Object.assign(new File(['AC1032 DWG'], name), { arrayBuffer: read });
@@ -45,6 +55,50 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
 afterEach(() => { cleanup(); useNoticeStore.getState().clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetAllMocks(); window.history.replaceState(null, '', '/'); });
+
+describe('DWG 3D preview', () => {
+  it('generates only after confirming private cloud drawing dimensions and never saves the model', async () => {
+    const cloud = { ...record, original_name: 'M12A04-07-093-1-10-500.dwg' };
+    mocks.list.mockResolvedValue([cloud]);
+    mocks.download.mockResolvedValue(sample(cloud.original_name));
+    mocks.parse.mockResolvedValueOnce({ ...drawing, entities: [{ kind: 'text', isDimension: true, lines: ['*500±10'] }] });
+    render(<DwgViewerPage />);
+    await screen.findByRole('option', { name: cloud.original_name });
+    fireEvent.change(screen.getByRole('combobox', { name: '云端图纸' }), { target: { value: cloud.id } });
+    await screen.findByText('已保存');
+    fireEvent.click(screen.getByRole('button', { name: '生成 3D 示意' }));
+    await screen.findByRole('dialog');
+    expect((screen.getByLabelText('标称总长 (mm)') as HTMLInputElement).value).toBe('500');
+    expect((screen.getByLabelText('线缆外径 (mm)') as HTMLInputElement).value).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
+    expect(screen.queryByLabelText('三维模型画布')).toBeNull();
+    fireEvent.change(screen.getByLabelText('线缆外径 (mm)'), { target: { value: '4.5' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
+    expect((await screen.findByLabelText('三维模型画布')).textContent).toBe('500 mm');
+    fireEvent.click(screen.getByRole('button', { name: '修改参数' }));
+    expect((screen.getByLabelText('线缆外径 (mm)') as HTMLInputElement).value).toBe('4.5');
+    fireEvent.click(screen.getByRole('button', { name: '关闭 3D 示意' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocks.download).toHaveBeenCalledOnce();
+    expect(mocks.save).not.toHaveBeenCalled();
+
+    pick(sample('M12A04-08-085-1-10-500.dwg'));
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: '生成 3D 示意' }));
+    expect((await screen.findByLabelText('线缆外径 (mm)') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('连接器占位') as HTMLSelectElement).value).toBe('female');
+    expect(screen.queryByLabelText('三维模型画布')).toBeNull();
+  });
+
+  it('does not offer generation for a drawing without a single supported M12 part number', async () => {
+    render(<DwgViewerPage />);
+    pick(sample('other.dwg'));
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: '生成 3D 示意' }));
+    expect(await screen.findByText('未识别到唯一的 M12 料号，无法生成 3D 示意。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认并生成' })).toBeNull();
+  });
+});
 
 describe('DWG import and save', () => {
   it('uses the same validation for picker and canvas and does not auto-upload', async () => {

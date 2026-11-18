@@ -38,6 +38,7 @@ export type DwgTextBaseline = 'top' | 'middle' | 'bottom';
 export interface DwgTextPrimitive {
   kind: 'text';
   lines: string[];
+  isDimension?: boolean;
   position: DwgPoint;
   height: number;
   rotation: number;

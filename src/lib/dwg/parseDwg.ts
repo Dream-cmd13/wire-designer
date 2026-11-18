@@ -582,7 +582,9 @@ function expandDimensionBlock(entity: DwgEntity, context: ConvertContext, transf
 
   const result: DwgGeometry[] = [];
   for (const child of block.entities) {
-    result.push(...convertEntity(child, childContext));
+    for (const geometry of convertEntity(child, childContext)) {
+      result.push(geometry.kind === 'text' ? { ...geometry, isDimension: true } : geometry);
+    }
   }
   return result;
 }
