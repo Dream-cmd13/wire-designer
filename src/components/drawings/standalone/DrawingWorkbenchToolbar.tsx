@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown, ArrowUp, ArrowUpFromLine, Eraser, FileText, Layers2, LockKeyhole,
-  Menu, MousePointer2, PenLine, Pencil, Redo2, Save, Shapes, SquareDashed, Trash2, Undo2, Wand2,
+  Download, FileUp, Menu, MousePointer2, PenLine, Pencil, Redo2, Save, Shapes, SquareDashed, Trash2, Undo2, Wand2,
 } from 'lucide-react';
 import type { DrawingSaveState } from '@/stores/drawingStore';
 import type { DrawingToolMode } from '@/types/drawing';
@@ -34,6 +34,8 @@ interface Props {
   onAddDimension: () => void;
   onAddTable: () => void;
   onSave: () => void;
+  onExportLocal: () => void;
+  onImportLocal: () => void;
   onPdf: () => void;
   exporting?: boolean;
 }
@@ -43,10 +45,10 @@ function Button({ title, active, disabled, iconOnly, onClick, children }: { titl
 }
 
 const SAVE_STATE_LABELS: Record<DrawingSaveState, string> = {
-  saved: '已保存',
-  dirty: '未保存',
-  saving: '保存中',
-  error: '保存失败',
+  saved: '已保存到本地',
+  dirty: '本地未保存',
+  saving: '本地保存中',
+  error: '本地保存失败',
 };
 
 const SAVE_STATE_CLASSES: Record<DrawingSaveState, string> = {
@@ -115,9 +117,11 @@ export function DrawingWorkbenchToolbar(props: Props) {
     <Button title="长度标注" iconOnly onClick={() => run(props.onAddDimension)}><span className="text-xs leading-none">↔</span></Button>
     <Button title="表格" iconOnly onClick={() => run(props.onAddTable)}><span className="text-xs leading-none">▦</span></Button>
     <span className="ml-auto"/>
-    <span role="status" aria-live="polite" className={`shrink-0 px-1 text-xs font-medium ${SAVE_STATE_CLASSES[props.saveState]}`}>{SAVE_STATE_LABELS[props.saveState]}</span>
+    <span role="status" aria-live="polite" title="仅保存在当前浏览器，不同步云端；可下载图纸副本备份或转移。" className={`shrink-0 px-1 text-xs font-medium ${SAVE_STATE_CLASSES[props.saveState]}`}>{SAVE_STATE_LABELS[props.saveState]}</span>
     {props.saveState === 'error' && <Button title="重试保存" onClick={() => run(props.onSave)}>重试</Button>}
     <Button title={props.saveState === 'error' ? '重试保存' : '保存'} iconOnly onClick={() => run(props.onSave)}><Save className="h-4 w-4"/></Button>
+    <Button title="下载图纸副本" iconOnly onClick={() => run(props.onExportLocal)}><Download className="h-4 w-4"/></Button>
+    <Button title="导入图纸副本" iconOnly onClick={() => run(props.onImportLocal)}><FileUp className="h-4 w-4"/></Button>
     <Button title={props.exporting ? '正在导出 PDF' : '导出 PDF'} iconOnly disabled={props.exporting} onClick={() => run(props.onPdf)}><FileText className="h-4 w-4"/></Button>
   </div>;
 }

@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 describe('drawing workbench runtime entry', () => {
   beforeEach(() => vi.resetModules());
 
-  it('confirms a restored drawing only on the first entry in this runtime', async () => {
+  it('resumes a restored drawing immediately on every entry', async () => {
     const session = await import('@/lib/drawingWorkbenchSession');
-    expect(session.enterDrawingWorkbench(true)).toBe('confirm');
+    expect(session.enterDrawingWorkbench(true)).toBe('resume');
     expect(session.enterDrawingWorkbench(true)).toBe('resume');
   });
 

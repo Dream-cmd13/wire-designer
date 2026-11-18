@@ -19,31 +19,23 @@ describe('drawing workbench UI contract', () => {
     expect(shellSource).toContain('独立制图 · 新建后导出');
   });
 
-  it('waits for drawing hydration and offers refresh resume or replacement', () => {
-    expect(drawingStoreSource).toContain('drawingDocumentRepository');
-    expect(drawingStoreSource).not.toContain('localStorage');
+  it('hydrates local drawings without automatic discard or cloud recovery prompts', () => {
+    expect(drawingStoreSource).not.toContain('drawingDocumentRepository');
+    expect(drawingStoreSource).toContain('writeWorkspaceDraft');
     expect(pageSource).toContain('hydrateDrawingStore');
-    expect(pageSource).not.toContain('useDrawingStore.persist.onFinishHydration');
     expect(pageSource).toContain('hydrationError');
-    expect(pageSource).toContain('图纸列表加载失败');
     expect(pageSource).toContain('重新加载');
-    expect(pageSource).toContain('enterDrawingWorkbench');
-    expect(pageSource).toContain('replaceWithNewDocument');
-    expect(pageSource).toContain('是否丢弃当前制作的图纸？');
-    expect(pageSource).toContain('继续制作');
-    expect(pageSource).toContain('丢弃并新建');
+    expect(pageSource).not.toContain('丢弃并新建');
+    expect(pageSource).not.toContain('草稿缺少云端基线');
+    expect(pageSource).not.toContain('读取云端版本');
   });
 
-  it('blocks global drawing shortcuts while the refresh decision is open', () => {
-    expect(pageSource).toContain('if (refreshDecisionOpen) return;');
-  });
-
-  it('discards drawing drafts one by one so other windows drafts are never cleared', () => {
-    // 行为层的多窗口草稿隔离由 workspaceDraftCache / drawingStoreAutosave 测试覆盖；
-    // 这里确认工作台按 draftId 逐份丢弃，而不是清空该账号的全部草稿。
-    expect(pageSource).toContain("removeWorkspaceDraft(ownerId, 'drawing', draftRecovery.documentId, draftRecovery.draftId)");
-    expect(pageSource).toContain('其他窗口的草稿仍会保留');
-    expect(pageSource).not.toContain("listWorkspaceDrafts(ownerId, 'drawing').forEach((draft) => {");
+  it('exposes local persistence and portable drawing copies', () => {
+    expect(toolbarSource).toContain('已保存到本地');
+    expect(toolbarSource).toContain('下载图纸副本');
+    expect(toolbarSource).toContain('导入图纸副本');
+    expect(pageSource).toContain('downloadLocalDrawingCopy');
+    expect(pageSource).toContain('importLocalDrawingCopy');
   });
 
   it('exposes the required editing commands and shortcuts', () => {
