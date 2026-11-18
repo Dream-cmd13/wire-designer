@@ -94,9 +94,13 @@ export function offsetBossStl() {
   const faces: Point[][] = [];
   const corners: Point[] = [[2,0,0],[38,0,0],[38,20,0],[2,20,0],[2,0,10],[38,0,10],[38,20,10],[2,20,10]];
   const quad = (a: Point, b: Point, c: Point, d: Point) => faces.push([a,b,c], [a,c,d]);
-  for (const [a,b,c,d] of [[0,3,2,1],[4,5,6,7],[0,1,5,4],[3,7,6,2],[0,4,7,3],[1,2,6,5]]) {
+  for (const [a,b,c,d] of [[0,3,2,1],[0,1,5,4],[3,7,6,2],[0,4,7,3],[1,2,6,5]]) {
     quad(corners[a], corners[b], corners[c], corners[d]);
   }
+  // Top plane: the two halves meet at a T-junction, with one reversed triangle.
+  const left: Point = [2,10,10], right: Point = [38,10,10], mid: Point = [20,10,10];
+  quad(corners[4], corners[5], right, left);
+  faces.push([left, mid, corners[7]], [mid, corners[6], corners[7]], [right, mid, corners[6]]);
   const boss = (start: number, end: number, y: number, radius: number) => {
     const ring = (x: number, i: number): Point => {
       const angle = (i % 64) * Math.PI / 32;

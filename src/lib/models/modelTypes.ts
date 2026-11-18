@@ -11,7 +11,7 @@ export const STEP_OPTIONS = {
 } as const;
 export interface ModelFaceRange { faceId: number; firstTriangle: number; lastTriangle: number }
 export type ModelSelection = { kind: 'face'; meshIndex: number; faceId: number } | { kind: 'mesh'; meshIndex: number } | null;
-export interface ParsedMesh { name: string; positions: Float32Array; normals?: Float32Array; indices: Uint32Array; surfaceEdges?: Float32Array; faceRanges?: ModelFaceRange[] }
+export interface ParsedMesh { name: string; positions: Float32Array; normals?: Float32Array; indices: Uint32Array; surfaceEdges?: Float32Array; faceRanges?: ModelFaceRange[]; stlCreaseEdges?: Float32Array }
 export interface ParsedModel { meshes: ParsedMesh[]; boundsMm: { min: Vec3; max: Vec3 }; triangleCount: number; surfaceEdgeWarning?: string }
 export type ParsePhase = 'reading' | 'engine' | 'parsing';
 export interface ParseRequest { requestId: number; buffer: ArrayBuffer; format: ModelFormat; stlUnit: StlUnit; quality: ModelQuality; assetBase: string }

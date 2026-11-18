@@ -1,5 +1,5 @@
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-import { attachSurfaceEdges, type SurfaceFace } from './modelEdges';
+import { attachSurfaceEdges, extractStlCreaseEdges, type SurfaceFace } from './modelEdges';
 import { normalizeFaceRanges } from './modelFaces';
 import { normalizeMeshes, STEP_OPTIONS, STL_UNIT_SCALE, type ModelQuality, type ParsedMesh, type ParseReply, type ParseRequest } from './modelTypes';
 
@@ -42,11 +42,13 @@ self.onmessage = async ({ data }: MessageEvent<ParseRequest>) => {
     }
     const model = normalizeMeshes(meshes, format === 'stl' ? STL_UNIT_SCALE[stlUnit] : 1);
     if (format === 'step') attachSurfaceEdges(model, faces);
+    else model.meshes[0].stlCreaseEdges = extractStlCreaseEdges(model.meshes[0]);
     const transfers: Transferable[] = [];
     for (const mesh of model.meshes) {
       transfers.push(mesh.positions.buffer as ArrayBuffer, mesh.indices.buffer as ArrayBuffer);
       if (mesh.normals) transfers.push(mesh.normals.buffer as ArrayBuffer);
       if (mesh.surfaceEdges) transfers.push(mesh.surfaceEdges.buffer as ArrayBuffer);
+      if (mesh.stlCreaseEdges) transfers.push(mesh.stlCreaseEdges.buffer as ArrayBuffer);
     }
     self.postMessage({ requestId, type: 'result', model } satisfies ParseReply, { transfer: transfers });
   } catch (error) {

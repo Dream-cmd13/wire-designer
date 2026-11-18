@@ -84,13 +84,16 @@ function createProjectionRenderer(model: ParsedModel, center: Vec3, radius: numb
       if (mesh.normals) geometry.setAttribute('normal', new THREE.BufferAttribute(mesh.normals, 3));
       else geometry.computeVertexNormals();
       scene.add(new THREE.Mesh(geometry, material));
-      const edges = mesh.surfaceEdges?.length ? new THREE.BufferGeometry() : new THREE.EdgesGeometry(geometry, 30);
+      const preparedEdges = mesh.stlCreaseEdges ?? mesh.surfaceEdges;
+      if (preparedEdges?.length === 0) continue;
+      const edges = preparedEdges ? new THREE.BufferGeometry() : new THREE.EdgesGeometry(geometry, 30);
       geometries.push(edges);
-      if (mesh.surfaceEdges?.length) edges.setAttribute('position', centered(mesh.surfaceEdges));
+      if (preparedEdges) edges.setAttribute('position', centered(preparedEdges));
       scene.add(new THREE.LineSegments(edges, lineMaterial));
     }
     return {
       dispose,
+      isContextLost: () => renderer.getContext().isContextLost(),
       renderTo(context: CanvasRenderingContext2D, view: Projection, rect: Rect, scale: number) {
         const { x, y, width, height } = rect;
         const halfWidth = width / (2 * scale), halfHeight = height / (2 * scale);
@@ -120,17 +123,29 @@ function canvasContext(canvas: HTMLCanvasElement) {
   return context;
 }
 
-export function createModelFrontPreview(model: ParsedModel, canvas: HTMLCanvasElement) {
+function hasModelPixels(context: CanvasRenderingContext2D, { x, y, width, height }: Rect) {
+  const { data } = context.getImageData(x, y, width, height);
+  for (let i = 0; i < data.length; i += 4) if (data[i+3] && data[i] < 245) return true;
+  return false;
+}
+
+export function createModelThreeViewRenderer(model: ParsedModel) {
   const { center, radius } = getModelThreeViewLayout(model.boundsMm, DEFAULT_MODEL_FRONT);
-  const { width, height } = canvas;
-  const context = canvasContext(canvas);
   const source = createProjectionRenderer(model, center, radius);
   return {
     dispose: source.dispose,
-    draw(front: ModelFrontDirection) {
+    isContextLost: source.isContextLost,
+    draw(canvas: HTMLCanvasElement, front: ModelFrontDirection) {
+      const { width, height } = canvas;
+      const context = canvasContext(canvas);
       const { views } = getModelThreeViewLayout(model.boundsMm, front);
       const [w, h] = views.front.sizeMm;
-      source.renderTo(context, views.front, { x: 0, y: 0, width, height }, fit(w, h, width - 40, height - 32));
+      const rect = { x: 0, y: 0, width, height };
+      source.renderTo(context, views.front, rect, fit(w, h, width - 40, height - 32));
+      if (!hasModelPixels(context, rect)) throw new Error('当前前视方向未绘制出模型。');
+    },
+    buildPdf(sourceName: string, front: ModelFrontDirection, signal: AbortSignal) {
+      return buildModelThreeViewPdf(source, model, sourceName, front, signal);
     },
   };
 }
@@ -168,28 +183,20 @@ function addLabels(context: CanvasRenderingContext2D, sourceName: string, front:
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-export async function buildModelThreeViewPdf(model: ParsedModel, sourceName: string, front: ModelFrontDirection, signal: AbortSignal): Promise<Blob> {
-  await yieldToUi();
+async function buildModelThreeViewPdf(source: ReturnType<typeof createProjectionRenderer>, model: ParsedModel, sourceName: string, front: ModelFrontDirection, signal: AbortSignal): Promise<Blob> {
   signal.throwIfAborted();
-  const { center, radius, views, pixelsPerMm } = getModelThreeViewLayout(model.boundsMm, front);
+  const { views, pixelsPerMm } = getModelThreeViewLayout(model.boundsMm, front);
   const canvas = document.createElement('canvas');
   canvas.width = pdfRaster.width; canvas.height = pdfRaster.height;
   const context = canvasContext(canvas);
   context.fillStyle = '#fff';
   context.fillRect(0, 0, canvas.width, canvas.height);
-  const source = createProjectionRenderer(model, center, radius);
-  let drewModel = false;
-  try {
-    for (const view of Object.values(views)) {
-      await yieldToUi();
-      signal.throwIfAborted();
-      const { x, y, width, height } = view.rect;
-      source.renderTo(context, view, view.rect, pixelsPerMm);
-      // A planar mesh can be edge-on in one view, but an entirely blank sheet is a failure.
-      drewModel ||= context.getImageData(x, y, width, height).data.some((value, i) => i % 4 !== 3 && value < 245);
-    }
-  } finally { source.dispose(); }
-  if (!drewModel) throw new Error('未能绘制模型，请重试三视图导出。');
+  for (const view of Object.values(views)) {
+    await yieldToUi();
+    signal.throwIfAborted();
+    source.renderTo(context, view, view.rect, pixelsPerMm);
+  }
+  if (!hasModelPixels(context, views.front.rect)) throw new Error('未能绘制模型前视图，请重试。');
   addLabels(context, sourceName, front);
   const jpeg = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => blob?.type === 'image/jpeg' ? resolve(blob) : reject(new Error('三视图图像编码失败，请重试。')), 'image/jpeg', 0.96);

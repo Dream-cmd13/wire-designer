@@ -4,10 +4,10 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { ModelViewerPage } from '@/pages/ModelViewerPage';
 import { useUserStore } from '@/stores/userStore';
 
-const mocks = vi.hoisted(() => ({ parse: vi.fn(), save: vi.fn(), list: vi.fn(), get: vi.fn(), download: vi.fn(), create: vi.fn(), pdf: vi.fn(), preview: vi.fn(), downloadBlob: vi.fn() }));
+const mocks = vi.hoisted(() => ({ parse: vi.fn(), save: vi.fn(), list: vi.fn(), get: vi.fn(), download: vi.fn(), create: vi.fn(), pdf: vi.fn(), preview: vi.fn(), draw: vi.fn(), downloadBlob: vi.fn() }));
 vi.mock('@/lib/models/modelThreeViewExport', async (actual) => ({
   ...await actual<typeof import('@/lib/models/modelThreeViewExport')>(),
-  buildModelThreeViewPdf: mocks.pdf, createModelFrontPreview: mocks.preview,
+  createModelThreeViewRenderer: mocks.preview,
 }));
 vi.mock('@/lib/drawingExport', () => ({ downloadBlob: mocks.downloadBlob }));
 vi.mock('@/lib/models/modelParser', () => ({ parseModel: mocks.parse, validateModelFile: (f: File) => {
@@ -29,15 +29,35 @@ beforeEach(() => {
   useUserStore.setState({ currentUser: { id: 'u1', name: 'test', email: 'test@test', createdAt: 1, role: 'engineer' } });
   mocks.parse.mockResolvedValue(model); mocks.list.mockResolvedValue([]); mocks.get.mockResolvedValue(record);
   mocks.download.mockResolvedValue(new File(['bytes'], 'a.stp')); mocks.create.mockResolvedValue({ ...record, status: 'uploading' }); mocks.save.mockResolvedValue(record);
-  mocks.preview.mockReturnValue({ draw: vi.fn(), dispose: vi.fn() });
+  mocks.preview.mockReturnValue({ draw: mocks.draw, dispose: vi.fn(), buildPdf: mocks.pdf, isContextLost: () => false });
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 function exportButton() { return screen.getByRole('button', { name: '导出三视图 PDF' }); }
 function confirmExport() { return screen.getByRole('button', { name: '下载 PDF' }); }
+async function readyConfirm() {
+  const button = confirmExport();
+  await waitFor(() => expect(button.hasAttribute('disabled')).toBe(false));
+  return button;
+}
 const pdf = new Blob(['test'], { type: 'application/pdf' });
 
 describe('model PDF export', () => {
+  it('blocks download until the selected front has drawn successfully, and can retry a failed preview', async () => {
+    mocks.draw.mockImplementationOnce(() => { throw new Error('WebGL unavailable'); });
+    render(<ModelViewerPage />); pick(); await screen.findByText('预览就绪');
+    fireEvent.click(exportButton());
+    expect(confirmExport().hasAttribute('disabled')).toBe(true);
+    await screen.findByText('前视预览未能绘制');
+    fireEvent.click(confirmExport());
+    expect(mocks.pdf).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '重试前视预览' }));
+    await readyConfirm();
+    fireEvent.change(screen.getByLabelText('前视方向'), { target: { value: '+Z' } });
+    expect(confirmExport().hasAttribute('disabled')).toBe(true);
+    await readyConfirm();
+    expect(mocks.draw).toHaveBeenLastCalledWith(expect.any(HTMLCanvasElement), '+Z');
+  });
   it('requires a ready preview and does not offer export during a quality change', async () => {
     render(<ModelViewerPage />);
     expect(exportButton().hasAttribute('disabled')).toBe(true);
@@ -58,9 +78,10 @@ describe('model PDF export', () => {
     fireEvent.click(exportButton());
     expect((screen.getByLabelText('前视方向') as HTMLSelectElement).value).toBe('-Y');
     fireEvent.change(screen.getByLabelText('前视方向'), { target: { value: '+Z' } });
-    const button = confirmExport();
+    const button = await readyConfirm();
     fireEvent.click(button); fireEvent.click(button);
-    expect(mocks.pdf).toHaveBeenCalledExactlyOnceWith(model, 'part.stl', '+Z', expect.any(AbortSignal));
+    expect(mocks.pdf).toHaveBeenCalledExactlyOnceWith('part.stl', '+Z', expect.any(AbortSignal));
+    expect(mocks.preview).toHaveBeenCalledExactlyOnceWith(model);
     await act(async () => finish(pdf));
     expect(mocks.downloadBlob).toHaveBeenCalledExactlyOnceWith(pdf, 'part_三视图.pdf');
     expect(mocks.parse).toHaveBeenCalledOnce();
@@ -71,8 +92,8 @@ describe('model PDF export', () => {
     let finish!: (blob: Blob) => void;
     mocks.pdf.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     render(<ModelViewerPage />); pick(); await screen.findByText('预览就绪');
-    fireEvent.click(exportButton()); fireEvent.click(confirmExport());
-    const signal = mocks.pdf.mock.calls[0][3] as AbortSignal;
+    fireEvent.click(exportButton()); fireEvent.click(await readyConfirm());
+    const signal = mocks.pdf.mock.calls[0][2] as AbortSignal;
     if (reason === '取消') fireEvent.click(screen.getByRole('button', { name: '取消' }));
     if (reason === '换模型') pick('next.stl');
     if (reason === '退出') act(() => useUserStore.setState({ currentUser: null }));
@@ -87,11 +108,12 @@ describe('model PDF export', () => {
     render(<ModelViewerPage />); pick(); await screen.findByText('预览就绪');
     fireEvent.click(exportButton()); fireEvent.click(screen.getByRole('button', { name: '取消' }));
     expect(mocks.pdf).not.toHaveBeenCalled();
-    fireEvent.click(exportButton()); fireEvent.click(confirmExport());
+    fireEvent.click(exportButton()); fireEvent.click(await readyConfirm());
     await screen.findByText(/编码失败/);
     expect(mocks.downloadBlob).not.toHaveBeenCalled();
     fireEvent.click(confirmExport());
     await waitFor(() => expect(mocks.downloadBlob).toHaveBeenCalledOnce());
+    expect(mocks.preview).toHaveBeenCalledTimes(1);
   });
 });
 

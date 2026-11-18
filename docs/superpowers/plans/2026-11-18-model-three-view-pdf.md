@@ -56,3 +56,5 @@
 | 边界与回归 | 长薄模型、多网格、无曲面边界可出图；尚无有效模型或正在切换质量不可导出。双击仅下载一次，换模型/退出无迟到下载，失败后能重试。导出前后交互视角、背景和选区不变。 |
 
 **实施后的门禁（PowerShell，项目根目录）：** 对本次全部新增、修改的代码文件执行 `npx eslint --max-warnings=0` 并列出实际文件路径；执行 `npx tsc -b`、`npm test`、`npm run build`，再运行 `npx playwright test tests/e2e/model-viewer.spec.ts`。浏览器测试前确认没有复用旧的 preview 服务。报告实际结果，区分合成样件、模拟云端和真实云端；没有真实账号或样件授权则明确标为未验证，不写生产数据。按 `AGENTS.md` 仅提交本任务通过验证的修改，不推送、不部署。
+
+三视图浏览器用例要求 Poppler 的 `pdfinfo` 和 `pdftoppm` 在 `PATH` 中。测试会渲染实际下载的 PDF 整页，并把页面 PNG 留在 Playwright 测试产物中；Poppler 不属于应用运行时依赖。

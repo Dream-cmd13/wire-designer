@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
@@ -526,24 +527,30 @@ test('self-authored multiple STEP solids keep relative positions', async ({ page
 });
 
 async function inspectDownloadedThreeView(page: Page, path: string) {
-  const file = readFileSync(path);
-  const text = file.toString('latin1');
-  expect(text).toContain('/MediaBox [0 0 842 595]');
-  expect(text).toContain('/Count 1');
-  expect(text).toContain('802 0 0 535 20 30 cm');
-  const image = /\/Subtype \/Image \/Width 2406 \/Height 1605 [^\n]*\/Filter \/DCTDecode \/Length (\d+) >>\nstream\n/.exec(text);
-  expect(image).not.toBeNull();
-  const start = image!.index + image![0].length;
-  const jpeg = file.subarray(start, start + Number(image![1])).toString('base64');
-  // Decode the PDF's actual raster and measure its pixels in the browser.
+  const poppler = (command: 'pdfinfo' | 'pdftoppm', args: string[]) => {
+    try { return execFileSync(command, args, { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' }, timeout: 15_000 }); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`Install Poppler and add ${command} to PATH for PDF export tests.`, { cause: error });
+      throw error;
+    }
+  };
+  const info = poppler('pdfinfo', [path]);
+  expect(info).toMatch(/^Pages:\s+1\s*$/m);
+  expect(info).toMatch(/^Page size:\s+842 x 595 pts \(A4\)\s*$/m);
+  const rasterPath = path.replace(/\.pdf$/i, '-page');
+  poppler('pdftoppm', ['-f', '1', '-l', '1', '-r', '216', '-singlefile', '-png', path, rasterPath]);
+  const png = readFileSync(`${rasterPath}.png`).toString('base64');
+  // Inspect the rendered page (including its PDF transforms and margins), not the embedded JPEG.
   return page.evaluate(async (base64) => {
-    const image = new Image(); image.src = `data:image/jpeg;base64,${base64}`;
+    const image = new Image(); image.src = `data:image/png;base64,${base64}`;
     await image.decode();
+    if (image.width !== 2526 || image.height !== 1785) throw new Error('Unexpected A4 page raster size');
     const canvas = document.createElement('canvas');
     canvas.width = image.width; canvas.height = image.height;
     const ctx = canvas.getContext('2d')!; ctx.drawImage(image, 0, 0);
+    // At 216 dpi the expected 20 pt left and 30 pt top margins are 60 and 90 px.
     const bounds = (x: number, y: number, w: number, h: number, cutoff = 220) => {
-      const { data } = ctx.getImageData(x, y, w, h);
+      const { data } = ctx.getImageData(x + 60, y + 90, w, h);
       let left = w, top = h, right = -1, bottom = -1, count = 0;
       for (let row = 0; row < h; row++) for (let col = 0; col < w; col++) {
         if (data[4 * (row * w + col)] >= cutoff) continue;
@@ -560,13 +567,20 @@ async function inspectDownloadedThreeView(page: Page, path: string) {
     const boss = bounds(Math.ceil(right.cx), interiorY, Math.ceil(right.width * 0.45), interiorHeight, 120);
     const hiddenBoss = bounds(Math.ceil(right.cx - right.width * 0.45), interiorY, Math.floor(right.width * 0.45), interiorHeight, 120);
     const labels = [bounds(500, 748, 210, 54), bounds(1690, 748, 220, 54), bounds(1690, 1516, 220, 54), bounds(100, 985, 1000, 455)];
-    return { right, front, top, boss, hiddenBoss, labels };
-  }, jpeg);
+    const topInterior = bounds(Math.round(top.cx - top.width/4), Math.round(top.cy - top.height/4), Math.round(top.width/2), Math.round(top.height/2), 120);
+    return { right, front, top, boss, hiddenBoss, labels, topInterior };
+  }, png);
 }
 
 test('downloads proportional first-angle PDF from local STL with a non-mirrored round boss', async ({ page }, testInfo) => {
+  await trackViewerResources(page);
   await localLogin(page);
-  await uploadLocal(page, '偏置圆凸台.stl', offsetBossStl());
+  await page.getByTestId('model-drop-zone').evaluate((element, bytes) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([new Uint8Array(bytes)], '偏置圆凸台.stl'));
+    element.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  }, Array.from(offsetBossStl()));
+  await expect(page.getByTestId('model-bounds')).toBeVisible();
   await page.getByLabel('STL 用户指定单位').selectOption('cm');
   await expect(page.getByTestId('model-bounds')).toHaveText('40.00 × 20.00 × 10.00 mm');
   await expect(page.getByText('仅本地预览', { exact: true })).toBeVisible();
@@ -579,6 +593,7 @@ test('downloads proportional first-angle PDF from local STL with a non-mirrored 
     await expect(preview).toBeVisible();
     expect(await preview.evaluate((element) => (element as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, 512, 288).data.some((v, i) => i % 4 !== 3 && v < 220))).toBe(true);
     await dialog.screenshot({ path: testInfo.outputPath(`${filename}-dialog.png`) });
+    const buffers = await page.evaluate(() => Reflect.get(window, '__modelResources').created);
     const pending = page.waitForEvent('download');
     await dialog.getByRole('button', { name: '下载 PDF' }).click();
     const result = await pending;
@@ -586,9 +601,11 @@ test('downloads proportional first-angle PDF from local STL with a non-mirrored 
     const path = testInfo.outputPath(`${filename}.pdf`);
     await result.saveAs(path);
     await expect(dialog).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, '__modelResources').created)).toBe(buffers);
     return inspectDownloadedThreeView(page, path);
   };
-  const { front, top, right, boss, hiddenBoss, labels } = await download('stl-default');
+  const { front, top, right, boss, hiddenBoss, labels, topInterior } = await download('stl-default');
+  expect(topInterior.count).toBe(0);
   expect(Math.abs(front.width - top.width)).toBeLessThanOrEqual(2);
   expect(Math.abs(front.height - right.height)).toBeLessThanOrEqual(2);
   expect(Math.abs(front.cx - top.cx)).toBeLessThanOrEqual(2);

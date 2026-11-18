@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractSurfaceEdges, attachSurfaceEdges } from '../models/modelEdges';
+import { extractSurfaceEdges, attachSurfaceEdges, extractStlCreaseEdges } from '../models/modelEdges';
 import { normalizeMeshes, type ParsedMesh } from '../models/modelTypes';
 
 const square = (): ParsedMesh => ({ name: 'square', positions: new Float32Array([0,0,0, 1,0,0, 1,1,0, 0,1,0]), indices: new Uint32Array([0,1,2, 0,2,3]) });
@@ -49,5 +49,24 @@ describe('mesh-derived surface boundaries', () => {
       const model = normalizeMeshes([{ ...square(), surfaceEdges: new Float32Array(array) }]);
       expect(model.meshes[0].surfaceEdges).toBeUndefined(); expect(model.surfaceEdgeWarning).toBeTruthy();
     }
+  });
+});
+describe('STL export creases', () => {
+  const extract = (triangles: number[][], budget?: number) => {
+    const positions = new Float32Array(triangles.flat());
+    return extractStlCreaseEdges({ positions, indices: Uint32Array.from({ length: positions.length / 3 }, (_, i) => i) }, budget);
+  };
+  const first = [0,0,0, 2,0,0, 0,2,0];
+
+  it('does not mark a coplanar T-junction or a reversed coplanar face', () => {
+    expect(extract([first, [0,0,0, 0,-2,0, 1,0,0], [1,0,0, 2,0,0, 0,-2,0]])).toHaveLength(0);
+    expect(extract([first, [0,0,0, 2,0,0, 0,-2,0]])).toHaveLength(0);
+  });
+
+  it('keeps only confirmed geometric folds and rejects ambiguous or over-budget lines', () => {
+    const fold = [0,0,0, 2,0,0, 0,0,2];
+    expect(Array.from(extract([first, fold]))).toEqual([0,0,0, 2,0,0]);
+    expect(extract([first, fold, [2,0,0, 0,0,0, 0,-2,0]])).toHaveLength(0);
+    expect(extract([first, fold], 0)).toHaveLength(0);
   });
 });

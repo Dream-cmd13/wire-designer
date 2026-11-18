@@ -2,6 +2,56 @@ import { MODEL_LIMITS, type ParsedMesh, type ParsedModel } from './modelTypes';
 
 export interface SurfaceFace { first: number; last: number; color?: unknown }
 
+/** Worker-only; return confirmed folds, not unmatched tessellation edges. */
+export function extractStlCreaseEdges({ positions, indices }: Pick<ParsedMesh, 'positions' | 'indices'>, budget: number = MODEL_LIMITS.maxSurfaceSegments) {
+  const count = positions.length / 3;
+  const representatives = new Map<string, number>();
+  const vertex = new Uint32Array(count);
+  for (let i = 0; i < count; i++) {
+    const key = `${positions[i*3]},${positions[i*3+1]},${positions[i*3+2]}`;
+    const first = representatives.get(key);
+    if (first === undefined) representatives.set(key, i);
+    vertex[i] = first ?? i;
+  }
+  const normals = new Float32Array(indices.length);
+  const firstFace = new Map<number, number>();
+  const creases = new Set<number>();
+  const threshold = Math.cos(Math.PI / 6);
+  for (let i = 0; i < indices.length; i += 3) {
+    const a = indices[i]*3, b = indices[i+1]*3, c = indices[i+2]*3;
+    const ux = positions[b] - positions[a], uy = positions[b+1] - positions[a+1], uz = positions[b+2] - positions[a+2];
+    const vx = positions[c] - positions[a], vy = positions[c+1] - positions[a+1], vz = positions[c+2] - positions[a+2];
+    const x = uy*vz - uz*vy, y = uz*vx - ux*vz, z = ux*vy - uy*vx;
+    const length = Math.hypot(x, y, z);
+    if (!length) continue;
+    normals[i] = x/length; normals[i+1] = y/length; normals[i+2] = z/length;
+    for (let j = 0; j < 3; j++) {
+      const from = vertex[indices[i+j]], to = vertex[indices[i+(j+1)%3]];
+      const key = Math.min(from, to)*count + Math.max(from, to);
+      const neighbour = firstFace.get(key);
+      if (neighbour === undefined) firstFace.set(key, i);
+      else if (neighbour === -1) creases.delete(key); // More than two faces: ambiguous.
+      else {
+        firstFace.set(key, -1);
+        // Ignore winding; coplanar facets can be reversed in STL.
+        const dot = normals[i]*normals[neighbour] + normals[i+1]*normals[neighbour+1] + normals[i+2]*normals[neighbour+2];
+        if (Math.abs(dot) <= threshold) creases.add(key);
+      }
+    }
+  }
+  // The shaded solid still provides its silhouette if feature data exceeds the budget.
+  if (creases.size > budget) return new Float32Array();
+  const edges = new Float32Array(creases.size * 6);
+  let offset = 0;
+  for (const edge of creases) {
+    const a = Math.floor(edge/count)*3, b = (edge%count)*3;
+    edges.set(positions.subarray(a, a+3), offset);
+    edges.set(positions.subarray(b, b+3), offset+3);
+    offset += 6;
+  }
+  return edges;
+}
+
 /** Mesh-derived display lines, not exact CAD topology. last is inclusive in OCCT 0.0.23. */
 export function extractSurfaceEdges(mesh: Pick<ParsedMesh, 'positions' | 'indices'>, faces: readonly SurfaceFace[], budget: number = MODEL_LIMITS.maxSurfaceSegments): Float32Array {
   const { positions, indices } = mesh;
