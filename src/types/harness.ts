@@ -375,7 +375,9 @@ export interface HarnessConfig {
     processingEnds: 1 | 2;
     srPoints: number;
     endpointBType?: 'connector' | 'cut' | 'strip-tin';
-    /** Actual totals for the whole harness; welding includes shield joints. */
+    /** Canvas quotes use connections by default; the standalone picker estimates from specifications. */
+    processingBasis?: 'connections' | 'specification';
+    /** Optional overrides for specification estimates; canvas counts are always derived. */
     weldingPoints?: number;
     strippingPoints?: number;
     /** Recorded separately; crimp labor is currently excluded from pricing. */

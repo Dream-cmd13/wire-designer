@@ -208,7 +208,7 @@ function AutoQuoteConfigForm({
         {form.endpointBType === 'strip-tin' && (
           <div className="rounded-lg bg-slate-50 p-2.5 text-[11px] text-slate-500 flex items-center gap-2 border border-slate-200/60">
             <Info className="h-4 w-4 text-slate-400 shrink-0" />
-            <span>A 端焊接成型，B 端剥皮沾锡；屏蔽线两端均计处理编织和热缩编织费用。</span>
+            <span>A 端接连接器，B 端剥皮沾锡；成型仅按已选模具计费，屏蔽线两端均计处理编织和热缩编织费用。</span>
           </div>
         )}
       </div>
@@ -281,13 +281,13 @@ function AutoQuoteConfigForm({
         <div className="space-y-1.5">
           <div className="space-y-2 rounded-lg bg-slate-50 p-2.5 border border-slate-200">
             <label className="block">
-              <span className="text-[11px] text-slate-500 font-medium">外模规格（必选）</span>
+              <span className="text-[11px] text-slate-500 font-medium">外模规格（可选）</span>
               <select
                 value={effectiveForm.outerMoldSpecId}
                 onChange={(e) => onUpdate('outerMoldSpecId', e.target.value)}
                 className="mt-1 w-full rounded border border-slate-300 bg-white p-1.5 text-xs focus:border-blue-500 outline-none"
               >
-                <option value="">请选择适用外模型号</option>
+                <option value="">无外模</option>
                 {supportedOvermolds.map((mold) => (
                   <option key={mold.id} value={mold.id}>
                     {mold.name} ({mold.outerForm === 'straight' ? '直头' : '弯头'})
@@ -297,14 +297,14 @@ function AutoQuoteConfigForm({
             </label>
 
             <p className="text-xs text-slate-600">
-              {form.endpointBType === 'connector' ? 'A/B 双端成型（2 个外模）' : 'A 端成型（1 个外模）'}
+              {!effectiveForm.outerMoldSpecId ? '未配置外模，不计模具材料费和成型费' : form.endpointBType === 'connector' ? 'A/B 双端成型（2 个外模）' : 'A 端成型（1 个外模）'}
             </p>
           </div>
         </div>
 
         {/* 内模单选 */}
         <div className="space-y-1.5">
-          <p className="text-xs text-slate-500">外模必选：单头 1 个、双头 2 个；内模可选，双头启用时两端都有。</p>
+          <p className="text-xs text-slate-500">外模和附属内模均可不选；选择外模时按连接器端数配置。</p>
           <span className="text-slate-600 font-medium">内模材质（可选）</span>
           <div className="grid grid-cols-2 gap-2">
             {[
@@ -317,6 +317,7 @@ function AutoQuoteConfigForm({
                   type="button"
                   key={item.key}
                   onClick={() => onUpdate('innerMoldType', item.key as AutoQuoteInnerMoldType)}
+                  disabled={item.key === 'pe' && !effectiveForm.outerMoldSpecId}
                   className={`rounded-lg border p-2 text-center transition cursor-pointer ${
                     active
                       ? 'border-blue-600 bg-blue-50/70 text-blue-700 font-semibold'
@@ -457,6 +458,7 @@ export function AutoQuotePage() {
   const handleUpdate = <K extends keyof AutoQuoteFormState>(field: K, value: AutoQuoteFormState[K]) => {
     setExportError(null);
     const nextForm = { ...effectiveForm, [field]: value };
+    if (field === 'outerMoldSpecId' && !value) nextForm.innerMoldType = 'none';
     if (['connectorAId', 'connectorBId', 'wireResourceId', 'endpointBType'].includes(field)) {
       nextForm.weldingPoints = undefined;
       nextForm.strippingPoints = undefined;

@@ -14,7 +14,7 @@ function fixture() {
   const wire = { id: 'w', resourceItemId: 'w-id', name: 'wire', spec: { kind: 'jacketed' as const, awg: 24, coreCount: 4, shielded: true, jacketMaterial: 'PVC' as const, jacketColor: 'black' as const, coreColors: ['红色','黑色','绿色','白色'] as const, outerDiameterMm: 5 } };
   const catalog = { connectors: [connector], wires: [{ ...wire, spec: { ...wire.spec, coreColors: [...wire.spec.coreColors] } }], overmolds: [{ id: 'mold', resourceItemId: 'mold-id', name: '外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight' }], loadedAt: 0,
     wireColors: [], leadTimeOptions: [], protectionOptions: [], pricingRules: [], quantityDiscountRules: [] } satisfies CatalogSnapshot;
-  const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 1, srPoints: 0 },
+  const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 1, srPoints: 0, processingBasis: 'specification' },
     models: [{ id: 'm', kind: 'outer-box', overmoldSpecId: 'mold', includeInnerMold: false, position: { x: 0, y: 0 }, width: 30, height: 30 }],
     connectors: [{ id: 'a', connector, label: 'A', position: { x: 0, y: 0 }, jumpers: [] }],
     materials: [{ id: 'w', resourceItemId: 'w-id', name: 'wire', position: { x: 0, y: 0 }, width: 100, circuits: [], spec: {
@@ -140,13 +140,12 @@ describe('server quote boundary', () => {
     expect(config).toEqual(before);
   });
 
-  it('returns missing molds as configuration issues for mixed connector specifications', () => {
-    const { catalog, config, prices } = fixture();
+  it('quotes mixed connector specifications without requiring molds', () => {
+    const { catalog, config } = fixture();
     catalog.connectors[0].pinCount = 5;
     config.models = [];
-    expect(quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer')).toMatchObject({
-      status: 'blocked', issues: expect.arrayContaining(['每个加工端必须有一个外模，外模个数须与加工端数一致']),
-    });
+    const prices = getQuoteMaterials(config, catalog).map(row => ({ ...row, taxIncludedPrice: '2' }));
+    expect(quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer').status).toBe('ready');
   });
 
   it('returns unsupported configurations as issues instead of throwing an API error', () => {
@@ -165,12 +164,13 @@ describe('server quote boundary', () => {
     });
   });
 
-  it('requires actual processing counts for mixed specifications before quoting', () => {
-    const { catalog, config, prices } = fixture();
+  it('estimates mixed specifications without requiring manually entered counts in specification mode', () => {
+    const { catalog, config } = fixture();
     catalog.connectors[0].pinCount = 5;
-    expect(quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer')).toMatchObject({
-      status: 'blocked', issues: expect.arrayContaining(['混合规格请填写实际焊接点数', '混合规格请填写实际芯线剥皮点数']),
-    });
+    const prices = getQuoteMaterials(config, catalog).map(row => ({ ...row, taxIncludedPrice: '2' }));
+    const result = quoteForRole(config, catalog, prices, DEFAULT_PRICING_SETTINGS, 'engineer');
+    expect(result.status).toBe('ready');
+    if ('price' in result) expect(result.price.breakdown?.labor.find(row => row.name === '焊接')?.points).toBe(5);
   });
 
   it('quotes a six-core cable with a five-pin head using actual processing counts and original materials', () => {

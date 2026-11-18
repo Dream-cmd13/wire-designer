@@ -14,7 +14,7 @@ import type { CatalogSnapshot } from '@/types/catalog';
 
 const catalog = { overmolds: [{ id: 'mold', name: '外模', outerMaterial: '黑色PVC', outerHardness: '45P', outerForm: 'straight', innerMaterial: '低密度透明PE', innerForm: 'straight' }] } as CatalogSnapshot;
 function fixture() {
-  const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 2, srPoints: 2 },
+  const config: HarnessConfig = { ...createFallbackConfig(), quantity: 100, quotation: { processingEnds: 2, srPoints: 2, processingBasis: 'specification' },
     connectors: ['a', 'b'].map((id) => ({ id, label: id, position: { x: 0, y: 0 }, jumpers: [], connector: {
       id: 'connector', name: 'M12连接器', series: 'M12', pinCount: 4, shielded: true, type: 'male', pinLabels: ['1', '2', '3', '4'],
     } })),
@@ -40,7 +40,7 @@ describe('M8/M12 quotation', () => {
   it.each([false, true])('charges a tinned B end separately from molded A (shielded=%s)', (shielded) => {
     const { config } = fixture();
     config.connectors.pop(); config.models.pop();
-    config.quotation = { processingEnds: 1, srPoints: 1, endpointBType: 'strip-tin' };
+    config.quotation = { processingEnds: 1, srPoints: 1, endpointBType: 'strip-tin', processingBasis: 'specification' };
     const spec = config.materials[0].spec;
     if (spec.kind !== 'jacketed') throw new Error('Expected jacketed cable');
     spec.shielded = shielded;
@@ -67,7 +67,7 @@ describe('M8/M12 quotation', () => {
     const { config } = fixture();
     config.connectors.pop(); config.models.pop();
     config.models[0].includeInnerMold = includeInnerMold;
-    config.quotation = { processingEnds: 1, srPoints: 1, endpointBType: 'strip-tin' };
+    config.quotation = { processingEnds: 1, srPoints: 1, endpointBType: 'strip-tin', processingBasis: 'specification' };
     const prices = pricesFor(config).map(row => ['inner-mold', 'outer-mold'].includes(row.kind)
       ? { ...row, taxIncludedPrice: '0.30' } : row);
     const p = ready(config, prices);
@@ -129,12 +129,12 @@ describe('M8/M12 quotation', () => {
     expect(p.materials.find((row) => row.kind === 'outer-mold')?.amount).toBe('2');
     expect(p.labor.find((row) => row.name === '成型')?.points).toBe(2 + count);
   });
-  it('blocks a single inner mold on a double-ended harness', () => {
+  it('charges a single inner mold on a double-ended harness', () => {
     const { config, prices } = fixture();
     config.models[1].includeInnerMold = false;
-    expect(calculatePrice(config, prices, catalog)).toEqual({
-      status: 'blocked', issues: ['双端内模必须两端都有或两端都没有'],
-    });
+    const price = ready(config, prices);
+    expect(price.materials.find(row => row.kind === 'inner-mold')?.points).toBe(1);
+    expect(price.labor.find(row => row.name === '成型')?.points).toBe(3);
   });
   it('uses the database inner mold price and blocks missing prices instead of defaulting to 0.30', () => {
     const { config, prices } = fixture();
@@ -150,7 +150,7 @@ describe('M8/M12 quotation', () => {
     expect(p.materialSubtotal).toBe('10.6');
   });
   it('charges all nominal cores on a single nonshielded end', () => {
-    const { config } = fixture(); config.connectors.pop(); config.models.pop(); config.quotation = { processingEnds: 1, srPoints: 0 };
+    const { config } = fixture(); config.connectors.pop(); config.models.pop(); config.quotation = { processingEnds: 1, srPoints: 0, processingBasis: 'specification' };
     const spec = config.materials[0].spec;
     if (spec.kind === 'jacketed') { spec.shielded = false; spec.coreCount = 5; }
     config.connectors[0].connector = { ...config.connectors[0].connector, pinCount: 5, shielded: false };

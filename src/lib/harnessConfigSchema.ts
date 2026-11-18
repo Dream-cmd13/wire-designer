@@ -730,6 +730,8 @@ export function parseHarnessConfig(input: unknown): HarnessConfigParseResult {
     || ![1, 2].includes(input.quotation.processingEnds as number)
     || (input.quotation.endpointBType !== undefined
       && !['connector', 'cut', 'strip-tin'].includes(input.quotation.endpointBType as string))
+    || (input.quotation.processingBasis !== undefined
+      && !['connections', 'specification'].includes(input.quotation.processingBasis as string))
     || (input.quotation.weldingPoints !== undefined && !isQuotePointCount(input.quotation.weldingPoints))
     || (input.quotation.strippingPoints !== undefined && !isQuotePointCount(input.quotation.strippingPoints))
     || (input.quotation.crimpingPoints !== undefined && !isQuotePointCount(input.quotation.crimpingPoints))

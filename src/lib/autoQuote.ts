@@ -68,7 +68,7 @@ export function deriveAutoQuoteSelection(form: AutoQuoteFormState, catalog: Cata
       connectorAId: connA?.id ?? '',
       connectorBId: (connectorsB.find((item) => item.id === form.connectorBId) ?? connectorsB[0])?.id ?? '',
       wireResourceId: (wires.find((item) => item.resourceItemId === form.wireResourceId) ?? wires[0])?.resourceItemId ?? '',
-      outerMoldSpecId: form.outerMoldSpecId || catalog?.overmolds.find(isSupportedOvermold)?.id || '',
+      outerMoldSpecId: form.outerMoldSpecId,
     },
   };
 }
@@ -133,11 +133,9 @@ export function buildAutoQuoteConfig(
   if (wire && wire.spec.kind !== 'jacketed') issues.push('自动报价仅支持护套线');
 
   const overmold = catalog?.overmolds.find((item) => item.id === form.outerMoldSpecId);
-  if (!form.outerMoldSpecId) {
-    issues.push('请选择黑色 PVC 45P 外模规格');
-  } else if (!overmold) {
+  if (form.outerMoldSpecId && !overmold) {
     issues.push('未找到所选外模规格');
-  } else if (!isSupportedOvermold(overmold)) {
+  } else if (overmold && !isSupportedOvermold(overmold)) {
     issues.push('外模须为目录中的黑色 PVC 45P');
   }
   if (form.innerMoldType === 'pe' && (!overmold || !getAvailableInnerMold(overmold))) {
@@ -242,6 +240,7 @@ export function buildAutoQuoteConfig(
       processingEnds,
       srPoints: 0,
       endpointBType: form.endpointBType,
+      processingBasis: 'specification',
       ...(form.weldingPoints === undefined ? {} : { weldingPoints: form.weldingPoints }),
       ...(form.strippingPoints === undefined ? {} : { strippingPoints: form.strippingPoints }),
       ...(form.crimpingPoints === undefined ? {} : { crimpingPoints: form.crimpingPoints }),
@@ -271,7 +270,9 @@ export function buildQuoteSummaryText(
     form.endpointBType === 'connector'
       ? (connB ? `${connB.model || connB.name} (${connB.pinCount}Pin)` : '连接器')
       : (form.endpointBType === 'cut' ? '切断齐头' : '剥皮沾锡');
-  const moldDesc = `${overmoldName || '黑色PVC 45P'} (${form.endpointBType === 'connector' ? '两端成型' : '单端成型'})`;
+  const moldDesc = form.outerMoldSpecId
+    ? `${overmoldName || '黑色PVC 45P'} (${form.endpointBType === 'connector' ? '两端成型' : '单端成型'})`
+    : '无外模';
 
   return [
     '【线束询价核算结果】',

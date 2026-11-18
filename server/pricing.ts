@@ -49,13 +49,13 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   if (config.connectors.some(({ connector: c }) => !/\bM(?:8|12)(?!\d)/i.test(c.series || c.name))) issues.push('自动报价仅支持 M8、M12 连接器');
   const settings = config.quotation;
   const processing = getQuoteProcessing(config);
+  issues.push(...processing.issues);
+  if (settings?.processingBasis !== undefined && !['connections', 'specification'].includes(settings.processingBasis)) issues.push('加工点数计算依据无效');
   if (settings?.crimpingPoints !== undefined && !isQuotePointCount(settings.crimpingPoints)) issues.push('压端子次数必须为 0 至 1000 的整数');
   for (const [field, label] of [['weldingPoints', '焊接点数'], ['strippingPoints', '芯线剥皮点数']] as const) {
     if (settings?.[field] !== undefined && !isQuotePointCount(settings[field])) issues.push(`${label}必须为 0 至 1000 的整数`);
-    if (processing.requiresActualCounts && settings?.[field] === undefined) issues.push(`混合规格请填写实际${label}`);
   }
   const endpointBType = settings?.endpointBType ?? (config.connectors.length === 2 ? 'connector' : 'cut');
-  const tinningEnds = endpointBType === 'strip-tin' ? 1 : 0;
   if (!['connector', 'cut', 'strip-tin'].includes(endpointBType)
     || config.connectors.length !== (endpointBType === 'connector' ? 2 : 1)) {
     issues.push('B 端形式与连接器数量不一致');
@@ -63,11 +63,8 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
   if (!settings || ![1, 2].includes(settings.processingEnds)) issues.push('请确认加工端数与 SR 点数');
   if (settings && (settings.processingEnds !== config.connectors.length
     || !Number.isInteger(settings.srPoints) || settings.srPoints < 0 || settings.srPoints > settings.processingEnds)) issues.push('加工端数须与连接器个数一致，SR 点数不能超过端数');
-  if (config.models.length !== config.connectors.length) issues.push('每个加工端必须有一个外模，外模个数须与加工端数一致');
+  if (config.models.length > config.connectors.length) issues.push('外模个数不能超过连接器加工端数');
   const innerMoldCount = config.models.filter((model) => model.includeInnerMold).length;
-  if (config.connectors.length === 2) {
-    if (innerMoldCount === 1) issues.push('双端内模必须两端都有或两端都没有');
-  }
   for (const model of config.models) {
     const spec = catalog?.overmolds.find((entry) => entry.id === model.overmoldSpecId);
     if (!spec || spec.outerMaterial !== '黑色PVC' || spec.outerHardness !== '45P') issues.push('外模须为目录中的黑色 PVC 45P');
@@ -90,16 +87,15 @@ export function calculatePrice(config: HarnessConfig, prices: MaterialPrice[], c
     materialLines.push({ name: row.name, points: row.quantity, unitPrice: amount.toString(), amount: amount.mul(row.quantity).toString(), kind: row.kind });
   }
   if (issues.length) return { status: 'blocked', issues };
-  const weldingEnds = settings!.processingEnds;
-  const ends = weldingEnds + tinningEnds;
+  const ends = processing.outerStrippingPoints;
   const shield = wire.spec.kind === 'jacketed' && wire.spec.shielded;
   const molding = config.models.length + innerMoldCount;
   const laborInput: [string, number][] = [
-    ['裁线', Math.ceil(wire.spec.lengthMm / 500)], ['去皮', settings!.strippingPoints ?? processing.strippingPoints],
+    ['裁线', Math.ceil(wire.spec.lengthMm / 500)], ['去皮', processing.strippingPoints],
     ['去外皮', ends], ['处理编织', shield ? ends : 0],
-    ['热缩编织', shield ? ends : 0], ['焊接', settings!.weldingPoints ?? processing.weldingPoints],
+    ['热缩编织', shield ? ends : 0], ['焊接', processing.weldingPoints],
     ['成型', molding],
-    ['沾锡', (cores + (shield ? 1 : 0)) * tinningEnds],
+    ['沾锡', processing.tinningPoints],
   ];
   const labor = laborInput.map(([name, points]) => ({ name, points, unitPrice: parameters.laborRates[name], amount: new Money(parameters.laborRates[name]).mul(points).toString() }));
   // 入口已限制为 1–5000mm；实际价格来自当前数据库配置快照。

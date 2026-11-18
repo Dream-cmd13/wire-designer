@@ -178,28 +178,30 @@ describe('autoQuote', () => {
     expect(deriveAutoQuoteSelection(form, null).form).toMatchObject({ connectorAId: '', connectorBId: '', wireResourceId: '' });
   });
 
-  it.each(['connector', 'cut', 'strip-tin'] as const)('rejects missing outer molds for %s in form and server', (endpointBType) => {
+  it.each(['connector', 'cut', 'strip-tin'] as const)('quotes without optional molds for %s in form and server', (endpointBType) => {
     const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8', endpointBType,
       wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1' };
-    const invalid = { ...form, outerMoldSpecId: '' };
-    expect(buildAutoQuoteConfig(invalid, mockCatalog)).toMatchObject({ config: null,
-      issues: ['请选择黑色 PVC 45P 外模规格'] });
-    const config = buildAutoQuoteConfig(form, mockCatalog).config!;
-    const prices = createPrices(config);
-    config.models = [];
-    expect(calculatePrice(config, prices, mockCatalog)).toMatchObject({ status: 'blocked',
-      issues: ['每个加工端必须有一个外模，外模个数须与加工端数一致'] });
+    const noMold = { ...form, outerMoldSpecId: '' };
+    expect(deriveAutoQuoteSelection(noMold, mockCatalog).form.outerMoldSpecId).toBe('');
+    const built = buildAutoQuoteConfig(noMold, mockCatalog);
+    expect(built.issues).toEqual([]);
+    expect(built.config?.models).toEqual([]);
+    const config = built.config!;
+    const result = calculatePrice(config, createPrices(config), mockCatalog);
+    expect(result.status).toBe('ready');
+    if (result.status === 'ready') expect(result.price.labor.find(row => row.name === '成型')?.points).toBe(0);
   });
 
-  it.each(['outer', 'inner'])('blocks asymmetric double-ended %s molds on the server', (kind) => {
+  it.each(['outer', 'inner'])('charges actual asymmetric double-ended %s molds on the server', (kind) => {
     const form = { ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', connectorBId: 'conn-m8',
       wireResourceId: 'res-wire-1', outerMoldSpecId: 'mold-pvc-1', innerMoldType: 'pe' as const };
     const config = buildAutoQuoteConfig(form, mockCatalog).config!;
     const prices = createPrices(config);
     if (kind === 'outer') { config.models.pop(); config.models[0].includeInnerMold = false; }
     else config.models[1].includeInnerMold = false;
-    expect(calculatePrice(config, prices, mockCatalog)).toMatchObject({ status: 'blocked',
-      issues: [kind === 'outer' ? '每个加工端必须有一个外模，外模个数须与加工端数一致' : '双端内模必须两端都有或两端都没有'] });
+    const result = calculatePrice(config, prices, mockCatalog);
+    expect(result.status).toBe('ready');
+    if (result.status === 'ready') expect(result.price.labor.find(row => row.name === '成型')?.points).toBe(kind === 'outer' ? 1 : 3);
   });
 
   it.each([
@@ -223,8 +225,8 @@ describe('autoQuote', () => {
     expect(result.config?.materials[0].spec).toMatchObject(spec);
   });
 
-  it('requires a catalog specification when PVC molding is selected', () => {
-    const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', endpointBType: 'cut', wireResourceId: 'res-wire-1', outerMoldSpecId: '' }, mockCatalog);
+  it('rejects an unknown selected mold instead of treating it as no mold', () => {
+    const result = buildAutoQuoteConfig({ ...DEFAULT_AUTO_QUOTE_FORM, connectorAId: 'conn-m12', endpointBType: 'cut', wireResourceId: 'res-wire-1', outerMoldSpecId: 'unknown' }, mockCatalog);
     expect(result.config).toBeNull();
   });
   it('identifies M8 and M12 connector support correctly', () => {

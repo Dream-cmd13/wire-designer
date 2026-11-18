@@ -12,13 +12,14 @@ import type { CatalogSnapshot } from '@/types/catalog';
 
 afterEach(cleanup);
 
-function Harness() {
+function Harness({ processingBasis = 'specification' }: { processingBasis?: 'connections' | 'specification' }) {
   const [config, setConfig] = useState<HarnessConfig>(() => ({
     ...createFallbackConfig(),
-    quotation: { processingEnds: 1, srPoints: 0 },
+    quotation: { processingEnds: 1, srPoints: 0, processingBasis },
     connectors: [{ id: 'a', label: 'A', position: { x: 0, y: 0 }, jumpers: [],
       connector: { id: 'c', resourceItemId: 'c', name: 'M12', pinCount: 5, shielded: false, type: 'male', pinLabels: ['1', '2', '3', '4', '5'] } }],
-    materials: [{ id: 'w', name: '六芯屏蔽线', resourceItemId: 'w', position: { x: 0, y: 0 }, width: 100, circuits: [],
+    materials: [{ id: 'w', name: '六芯屏蔽线', resourceItemId: 'w', position: { x: 0, y: 0 }, width: 100,
+      circuits: [{ id: 'core0', coreIndex: 0, color: '黑色', signalName: '', start: { connectorId: 'a', connectorSide: 'right', pin: 1 } }],
       spec: { kind: 'jacketed', coreCount: 6, shielded: true, jacketMaterial: 'PVC', jacketColor: 'black', odMm: 5,
         coreColors: ['红色', '黑色', '白色', '蓝色', '绿色', '黄色'], awg: 24, lengthMm: 500,
         endTreatment: { start: { stripped: false, termination: 'none' }, end: { stripped: false, termination: 'none' } } } }],
@@ -41,9 +42,17 @@ function Harness() {
 }
 
 describe('actual processing counts', () => {
+  it('shows automatic canvas counts without requiring editable totals', () => {
+    render(<Harness processingBasis="connections" />);
+    expect(screen.getByLabelText('自动焊接点数').textContent).toBe('1');
+    expect(screen.getByLabelText('自动芯线剥皮点数').textContent).toBe('1');
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.getByLabelText('报价结果').textContent).toBe('0.2');
+  });
+
   it('quotes user-entered counts after saving and loading without assuming all six cores are welded', () => {
     render(<Harness />);
-    expect(screen.getByLabelText('报价结果').textContent).toBe('请填写有效加工点数');
+    expect(screen.getByLabelText('报价结果').textContent).toBe('1');
     fireEvent.change(screen.getByLabelText('实际焊接点数'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('芯线剥皮点数'), { target: { value: '5' } });
     expect(screen.getByLabelText('配置校验').textContent).toBe('有效');
@@ -57,6 +66,6 @@ describe('actual processing counts', () => {
     fireEvent.change(screen.getByLabelText('芯线剥皮点数'), { target: { value: '0' } });
     expect(screen.getByLabelText('报价结果').textContent).toBe('0');
     fireEvent.change(screen.getByLabelText('实际焊接点数'), { target: { value: '' } });
-    expect(screen.getByLabelText('报价结果').textContent).toBe('请填写有效加工点数');
+    expect(screen.getByLabelText('报价结果').textContent).toBe('1');
   });
 });

@@ -349,10 +349,10 @@ describe('AutoQuotePage', () => {
     expect(html).toContain('剥皮沾锡');
     expect(html).toContain('线材物料');
     expect(html).toContain('成型模具配置');
-    expect(html).toContain('外模规格（必选）');
+    expect(html).toContain('外模规格（可选）');
     expect(html).not.toContain('TPE');
     expect(html).toContain('无内模');
-    expect(html).not.toContain('无外模');
+    expect(html).toContain('无外模');
     expect(html).not.toContain('仅A端成型');
     expect(html).toContain('PE 内模');
     expect(html).toContain('报价线长 (mm)');
