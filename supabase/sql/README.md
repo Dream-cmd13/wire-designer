@@ -2,6 +2,16 @@
 
 现有库执行 [`supabase/updates/20261118_dwg_preview.sql`](../updates/20261118_dwg_preview.sql)；全新库完成下方基础脚本后执行同一文件。它只创建 `dwg_assets`、私有 `dwg-files` 桶（上限 20 MiB）和本人权限，不修改内置图纸桶 `dwg-drawings`。
 
+### 合并旧内置 DWG 到管理员私有图纸
+
+新版前端只从 `dwg_assets`/`dwg-files` 读取当前账号的云端图纸。发布前，在确认目标项目并备份图纸记录、源清单和 Storage 原件后，先做只读预览：
+
+```powershell
+node --env-file=.env scripts/migrate-dwg-drawings.mjs --project-ref '<项目 ref>' --owner-id '<admin@local.app 的用户 UUID>'
+```
+
+确认清单无误后，以同样参数追加 `--apply` 执行。脚本仅复制 `dwg-drawings` 清单中的原件到 `admin` 名下，不覆盖或删除旧原件及已有私有图纸。再次只读运行应全部为 `verified`；中断可用同一命令继续。前端如需回退，切回旧构建即可，旧桶不动；上线后还需用 `admin` 验证列表和预览，并用其他账号确认未被共享。
+
 执行前确认目标环境，备份数据库与 Storage 实际文件，记录既有对象清单；执行后核对原有对象不变，再用工程师账号保存并重新打开一张测试图纸，确认另一账号不能读取。迁移失败会回滚该事务；应用回退时保留新增表、桶及已上传文件，不执行重置。仅在确认数据损坏时从迁移前的备份恢复。
 
 ## 三维模型私有保存（2026-11-04）

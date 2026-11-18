@@ -1,26 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
-import { getCachedDrawing, setCachedDrawing, takeCachedBuffer } from '@/lib/dwg/dwgCache';
-import {
-  fetchDwgManifest,
-  prefetchDwgBuffer,
-  primeDwgSignedUrls,
-  resolveDwgFileUrl,
-  type DwgManifestEntry,
-} from '@/lib/dwg/dwgLibrary';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
 import { parseDwg, type DwgParsePhase, type TextMeasure } from '@/lib/dwg/parseDwg';
 import { DEFAULT_FONT_FAMILY, renderDwgToCanvas } from '@/lib/dwg/renderDwg';
 import { TEXT_SIZE_RATIO, textWidthOf } from '@/lib/dwg/textMetrics';
 import type { DwgDrawing } from '@/lib/dwg/dwgTypes';
-import { supabase } from '@/lib/supabaseClient';
 import { createDwgSaveSession, DWG_PAGE_SIZE, dwgRepository, validateDwgFile, type DwgAsset } from '@/repositories/dwgRepository';
 import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 
-const SAMPLE_FILE_NAME = '线束设计器.dwg';
 const WASM_BASE = `${import.meta.env.BASE_URL}libredwg`;
 const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
@@ -46,7 +36,7 @@ function measureDwgText(text: string, height: number): number {
   return canvasTextMeasurer(text, height);
 }
 
-type LoadPhase = DwgParsePhase | 'loading' | 'rendering' | 'ready' | 'error';
+type LoadPhase = DwgParsePhase | 'idle' | 'loading' | 'rendering' | 'ready' | 'error';
 type BackgroundMode = keyof typeof BACKGROUNDS;
 type SaveStatus = 'local' | 'saving' | 'saved' | 'error';
 const saveText: Record<SaveStatus, string> = { local: '仅本地预览', saving: '保存中…', saved: '已保存', error: '保存失败，可重试' };
@@ -74,8 +64,8 @@ function nextPaint(): Promise<void> {
 }
 
 const INITIAL_STATE: ViewerState = {
-  phase: 'loading',
-  fileName: SAMPLE_FILE_NAME,
+  phase: 'idle',
+  fileName: '',
   drawing: null,
   error: null,
 };
@@ -102,13 +92,6 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
 }
 
-/** 把内置图纸的 HTTP 错误翻译成可操作的中文提示。 */
-function loadErrorMessage(status: number, fileName: string): string {
-  if (status === 400 || status === 403) return '图纸访问链接已失效，请重新登录后重试';
-  if (status === 404) return `未找到内置图纸「${fileName}」，请重新上传或打开本地文件`;
-  return `图纸加载失败（HTTP ${status}）`;
-}
-
 export function DwgViewerPage() {
   const user = useUserStore((state) => state.currentUser);
   const ownerId = user && (user.role === 'engineer' || user.role === 'admin') ? user.id : null;
@@ -125,16 +108,13 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [isPanning, setIsPanning] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'png' | null>(null);
-  const [availableDrawings, setAvailableDrawings] = useState<readonly DwgManifestEntry[]>([]);
-  /** 当前画面对应的内置图纸；本地文件为 null，用于下拉选中态与失败重试。 */
-  const [builtInFile, setBuiltInFile] = useState<string | null>(null);
+  const [cloudId, setCloudId] = useState('');
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('local');
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [listExpanded, setListExpanded] = useState(false);
-  const [list, setList] = useState<{ rows: DwgAsset[]; page: number }>({ rows: [], page: 0 });
-  const [listLoading, setListLoading] = useState(false);
+  const [cloudDrawings, setCloudDrawings] = useState<DwgAsset[]>([]);
+  const [listLoading, setListLoading] = useState(Boolean(ownerId && dwgRepository.configured));
   const [listError, setListError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -148,8 +128,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const listTask = useRef<AbortController | null>(null);
   const saveSession = useRef<DwgAsset | null>(null);
   const panRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
-  /** 清单的最新值，供后台预取查找相邻图纸，避免回调依赖 state 而反复重建。 */
-  const availableDrawingsRef = useRef<readonly DwgManifestEntry[]>([]);
   /** 加载后布局稳定前保持自动适应窗口，用户缩放/平移后交还控制权。 */
   const autoFitRef = useRef(true);
   /** 新图纸的首次画布绘制：先让遮罩绘制一帧，绘制完成后再撤下遮罩。 */
@@ -202,13 +180,13 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     setState({ phase: 'rendering', fileName, drawing, error: null });
   }, [applyView]);
 
-  const beginLoad = useCallback((fileName: string, builtIn: string | null = null) => {
+  const beginLoad = useCallback((fileName: string, assetId = '') => {
     urlLoadRef.current?.abort();
     const controller = new AbortController();
     urlLoadRef.current = controller;
     const token = ++loadTokenRef.current;
     saveSession.current = null;
-    setBuiltInFile(builtIn);
+    setCloudId(assetId);
     setLocalFile(null);
     setSaveStatus('local');
     setActionError(null);
@@ -222,7 +200,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     return { token, signal: controller.signal };
   }, []);
 
-  const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string, token: number, cacheKey?: string) => {
+  const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string, token: number) => {
     if (token !== loadTokenRef.current) return;
 
     try {
@@ -240,7 +218,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       });
       if (token !== loadTokenRef.current) return;
 
-      if (cacheKey) setCachedDrawing(cacheKey, drawing);
       showDrawing(drawing, fileName);
     } catch (error) {
       if (token !== loadTokenRef.current) return;
@@ -254,54 +231,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     }
   }, [showDrawing]);
 
-  /** 后台预取列表中下一张图纸的字节，连续切换时只需解析、无需再下载。 */
-  const prefetchNext = useCallback((entry: DwgManifestEntry) => {
-    const entries = availableDrawingsRef.current;
-    const index = entries.findIndex((item) => item.key === entry.key);
-    const next = index >= 0 ? entries[index + 1] : undefined;
-    if (next) void prefetchDwgBuffer(supabase, next);
-  }, []);
-
-  /** 加载私有桶中的内置图纸；已解析的图纸直接复用缓存，预取的字节跳过下载。 */
-  const loadFromUrl = useCallback(async (entry: DwgManifestEntry) => {
-    const { token, signal } = beginLoad(entry.name, entry.name);
-
-    const cachedDrawing = getCachedDrawing(entry.key);
-    if (cachedDrawing) {
-      showDrawing(cachedDrawing, entry.name);
-      prefetchNext(entry);
-      return;
-    }
-
-    try {
-      let buffer = takeCachedBuffer(entry.key);
-      if (!buffer) {
-        const url = await resolveDwgFileUrl(supabase, entry.key);
-        if (signal.aborted) return;
-        if (!url) {
-          throw new Error(`无法获取内置图纸「${entry.name}」的访问链接，请重新登录或稍后重试`);
-        }
-        const response = await fetch(url, { signal });
-        if (!response.ok) {
-          throw new Error(loadErrorMessage(response.status, entry.name));
-        }
-        buffer = await response.arrayBuffer();
-        if (signal.aborted) return;
-      }
-      await loadBuffer(buffer, entry.name, token, entry.key);
-      if (!signal.aborted) prefetchNext(entry);
-    } catch (error) {
-      if (signal.aborted) return;
-      setState({
-        phase: 'error',
-        fileName: entry.name,
-        drawing: null,
-        error: error instanceof Error ? error.message : '图纸加载失败',
-      });
-    }
-  }, [beginLoad, loadBuffer, prefetchNext, showDrawing]);
-
-  function clearBuiltInLink() {
+  function clearCloudLink() {
     if (getDwgFileFromSearch(window.location.search)) {
       window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname));
     }
@@ -321,7 +251,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       return;
     }
     const { token, signal } = beginLoad(file.name);
-    clearBuiltInLink();
+    clearCloudLink();
     setLocalFile(file);
     try {
       await loadBuffer(await file.arrayBuffer(), file.name, token);
@@ -331,10 +261,10 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     }
   }
 
-  async function openCloud(asset: DwgAsset) {
+  const openCloud = useCallback(async (asset: DwgAsset) => {
     if (saveTask.current) return;
-    const { token, signal } = beginLoad(asset.original_name);
-    clearBuiltInLink();
+    const { token, signal } = beginLoad(asset.original_name, asset.id);
+    window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, asset.id));
     try {
       const source = await dwgRepository.download(asset, signal);
       const buffer = await source.arrayBuffer();
@@ -345,24 +275,35 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       if (signal.aborted) return;
       setState({ phase: 'error', fileName: asset.original_name, drawing: null, error: error instanceof Error ? error.message : '云端图纸加载失败' });
     }
-  }
+  }, [beginLoad, loadBuffer]);
 
-  async function refreshList(page = 0) {
+  const refreshList = useCallback(async (restoreSelection = false) => {
     if (!ownerId || !dwgRepository.configured) return;
     listTask.current?.abort();
     const controller = new AbortController();
     listTask.current = controller;
-    setListLoading(true);
-    setListError(null);
+    const token = loadTokenRef.current;
     try {
-      const rows = await dwgRepository.list(ownerId, controller.signal, page);
-      if (!controller.signal.aborted) setList({ rows, page });
+      const rows: DwgAsset[] = [];
+      for (let page = 0; ; page += 1) {
+        const batch = await dwgRepository.list(ownerId, controller.signal, page);
+        if (controller.signal.aborted) return;
+        rows.push(...batch.slice(0, DWG_PAGE_SIZE));
+        if (batch.length <= DWG_PAGE_SIZE) break;
+      }
+      setCloudDrawings(rows);
+      setListError(null);
+      if (restoreSelection && loadTokenRef.current === token) {
+        const requested = getDwgFileFromSearch(window.location.search);
+        const asset = rows.find((row) => row.id === requested && row.status === 'ready');
+        if (asset) void openCloud(asset);
+      }
     } catch (error) {
       if (!controller.signal.aborted) setListError(error instanceof Error ? error.message : '读取云端图纸失败。');
     } finally {
       if (!controller.signal.aborted) setListLoading(false);
     }
-  }
+  }, [ownerId, openCloud]);
 
   async function saveDrawing(recovery?: DwgAsset) {
     if (!ownerId || saveTask.current || !dwgRepository.configured) return;
@@ -385,8 +326,16 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       const asset = await dwgRepository.save(session, file, controller.signal);
       if (controller.signal.aborted) return;
       if (recovery) recovered = asset;
-      else setSaveStatus('saved');
-      if (listExpanded) void refreshList();
+      else {
+        setSaveStatus('saved');
+        setCloudId(asset.id);
+        window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, asset.id));
+      }
+      listTask.current?.abort();
+      setCloudDrawings((rows) => [asset, ...rows.filter((row) => row.id !== asset.id)]);
+      setListLoading(true);
+      void refreshList();
+      notify({ tone: 'success', title: '保存成功', message: 'DWG 图纸已保存到云端。', dedupeKey: 'dwg-save-success' });
     } catch (error) {
       if (controller.signal.aborted) return;
       setActionError(error instanceof Error ? error.message : '保存失败，请重试。');
@@ -398,54 +347,19 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     if (recovered) void openCloud(recovered);
   }
 
-  /** 下拉切换内置图纸；同一文件也会重新加载，便于加载失败后重试。 */
-  const selectBuiltInFile = useCallback((fileName: string) => {
-    if (saveTask.current) return;
-    const entry = availableDrawings.find((drawing) => drawing.name === fileName);
-    if (!entry) return;
-    window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, entry.name));
-    void loadFromUrl(entry);
-  }, [availableDrawings, loadFromUrl]);
-
-  // 首次进入读取桶内图纸清单，按 ?file=、示例图纸、首张图纸的顺序加载
   useEffect(() => {
-    const controller = new AbortController();
-    // 清单读取期间的加载代次：若用户已打开本地文件，则不再用清单结果覆盖当前画面
-    const manifestToken = loadTokenRef.current;
-    void (async () => {
-      const entries = await fetchDwgManifest(supabase, controller.signal);
-      if (controller.signal.aborted) return;
-      availableDrawingsRef.current = entries;
-      setAvailableDrawings(entries);
-      // 批量预签名，之后切换图纸无需再等待签名往返
-      void primeDwgSignedUrls(supabase, entries);
-      if (loadTokenRef.current !== manifestToken) return;
-
-      const requested = getDwgFileFromSearch(window.location.search);
-      const initial = (requested && entries.find((entry) => entry.name === requested))
-        || entries.find((entry) => entry.name === SAMPLE_FILE_NAME)
-        || entries[0];
-      if (!initial) {
-        setState({
-          phase: 'error',
-          fileName: SAMPLE_FILE_NAME,
-          drawing: null,
-          error: '未找到内置图纸，请点击「打开 DWG 文件」选择本地文件',
-        });
-        return;
-      }
-      // 回写实际加载的图纸，修正无效的 ?file= 并让默认地址也可分享
-      window.history.replaceState(null, '', buildDwgViewerRoutePath(window.location.pathname, initial.name));
-      await loadFromUrl(initial);
-    })();
+    const lifecycle = new AbortController();
+    queueMicrotask(() => {
+      if (!lifecycle.signal.aborted) void refreshList(true);
+    });
     return () => {
-      controller.abort();
+      lifecycle.abort();
       urlLoadRef.current?.abort();
       loadTokenRef.current += 1;
       saveTask.current?.abort();
       listTask.current?.abort();
     };
-  }, [loadFromUrl]);
+  }, [refreshList]);
 
   // 跟踪画布尺寸，并在首次测量后自动适配视图
   useEffect(() => {
@@ -634,6 +548,10 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   }, [exporting, background, hiddenLayers]);
 
   const isReady = state.phase === 'ready' && state.drawing !== null;
+  const selectedCloudDrawing = cloudDrawings.find((asset) => asset.id === cloudId);
+  const cloudPlaceholder = !dwgRepository.configured ? '云端尚未配置'
+    : listLoading ? '正在读取云端图纸…' : listError ? '云端图纸读取失败'
+    : cloudDrawings.length ? '选择云端图纸…' : '暂无云端图纸';
   const skippedCount = state.drawing
     ? Object.values(state.drawing.stats.skipped).reduce((sum, value) => sum + value, 0)
     : 0;
@@ -648,12 +566,12 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className="text-sm font-semibold text-slate-700">DWG 图纸</span>
-          <span className="max-w-56 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
+          {state.fileName && <span className="max-w-56 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
             {state.fileName}
-          </span>
+          </span>}
           {state.phase === 'error' ? (
             <span className="shrink-0 text-xs font-medium text-red-600">加载失败</span>
-          ) : !isReady && (
+          ) : !isReady && state.phase !== 'idle' && (
             <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-blue-600">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               加载中
@@ -710,40 +628,51 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             <Layers className="h-3.5 w-3.5" />
             图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}
           </button>
-          {availableDrawings.length > 0 && (
+          {ownerId && <>
             <select
-              className="h-8 max-w-56 cursor-pointer rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              value={state.phase === 'error' ? '' : builtInFile ?? ''}
-              onChange={(event) => selectBuiltInFile(event.target.value)}
-              disabled={saving}
-              title="切换内置图纸"
+              className="h-8 max-w-56 cursor-pointer rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+              value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
+              onChange={(event) => {
+                const asset = cloudDrawings.find((item) => item.id === event.target.value);
+                if (asset?.status === 'ready') void openCloud(asset);
+                else setCloudId(asset?.id ?? '');
+              }}
+              disabled={saving || cloudDrawings.length === 0}
+              aria-label="云端图纸"
+              title="我的云端图纸"
             >
-              <option value="">选择图纸…</option>
-              {availableDrawings.map((entry) => (
-                <option key={entry.key} value={entry.name}>{entry.name}</option>
+              <option value="" disabled>{cloudPlaceholder}</option>
+              {cloudDrawings.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.original_name}{asset.status === 'uploading' ? '（保存未完成）' : ''}
+                </option>
               ))}
             </select>
-          )}
+            <button type="button" className={iconButtonClass} aria-label="刷新云端图纸" title="刷新云端图纸"
+              disabled={saving || listLoading || !dwgRepository.configured} onClick={() => {
+                setListLoading(true);
+                void refreshList();
+              }}>
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            {selectedCloudDrawing?.status === 'uploading' && (
+              <button type="button" className={toolbarButtonClass} disabled={saving} onClick={() => void saveDrawing(selectedCloudDrawing)}>
+                <CloudUpload className="h-3.5 w-3.5" />
+                恢复保存
+              </button>
+            )}
+          </>}
           <button type="button" className={toolbarButtonClass} disabled={saving} title="也可将单个 DWG 文件拖入画布（最大 20 MiB）" onClick={() => fileInputRef.current?.click()}>
             <FileUp className="h-3.5 w-3.5" />
             打开 DWG 文件
           </button>
           {ownerId && (
-            <>
-              <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
-                disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
-                title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'} onClick={() => void saveDrawing()}>
-                <CloudUpload className="h-3.5 w-3.5" />
-                {saveStatus === 'error' ? '重试保存' : '保存到云端'}
-              </button>
-              <button type="button" className={toolbarButtonClass} aria-expanded={listExpanded} aria-controls="dwg-cloud-list"
-                onClick={() => {
-                  setListExpanded(!listExpanded);
-                  if (!listExpanded) void refreshList();
-                }}>
-                {listExpanded ? '收起云端图纸' : '展开云端图纸'}
-              </button>
-            </>
+            <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
+              disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
+              title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'} onClick={() => void saveDrawing()}>
+              <CloudUpload className="h-3.5 w-3.5" />
+              {saveStatus === 'error' ? '重试保存' : '保存到云端'}
+            </button>
           )}
           <button
             type="button"
@@ -768,16 +697,16 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         </div>
       </div>
 
-      {((isReady && (localFile || saveStatus === 'saved')) || saving || actionError) && (
+      {((isReady && (localFile || saveStatus === 'saved')) || saving || actionError || listError) && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 px-4 py-1.5 text-xs">
           {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
             <span className="text-slate-600" role="status">{saving ? saveText.saving : saveText[saveStatus]}</span>
           )}
           {actionError && <span className="text-red-600" role="alert">{actionError}</span>}
+          {listError && <span className="text-red-600" role="alert">{listError}</span>}
         </div>
       )}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       <div
         ref={containerRef}
         data-testid="dwg-drop-zone"
@@ -866,9 +795,9 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
 
         {!isReady && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-100/90 px-6 text-slate-600">
-            {state.phase === 'error' ? (
+            {state.phase === 'error' || state.phase === 'idle' ? (
               <>
-                <p className="max-w-md text-center text-sm">{state.error}</p>
+                {state.error && <p className="max-w-md text-center text-sm">{state.error}</p>}
                 <button
                   type="button"
                   className="flex cursor-pointer items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
@@ -896,45 +825,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             松开以打开 DWG 文件
           </div>
         )}
-      </div>
-      {ownerId && (
-        <aside id="dwg-cloud-list" hidden={!listExpanded} className={listExpanded
-          ? 'flex max-h-48 min-w-0 shrink-0 flex-col border-t border-slate-200 bg-white p-3 lg:max-h-none lg:w-64 lg:border-l lg:border-t-0'
-          : 'hidden'}>
-          <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-slate-700">本人云端图纸</h3>
-            <button type="button" className={iconButtonClass} title="刷新图纸列表" aria-label="刷新图纸列表"
-              disabled={saving || listLoading || !dwgRepository.configured} onClick={() => void refreshList(list.page)}>
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          {!dwgRepository.configured && <p className="text-xs text-slate-500">云端尚未配置</p>}
-          {listError && <p role="alert" className="mb-2 text-xs text-red-600">{listError}</p>}
-          {listLoading && <p role="status" className="text-xs text-slate-500">正在读取列表…</p>}
-          {dwgRepository.configured && !listLoading && !listError && list.rows.length === 0 && <p className="text-xs text-slate-500">暂无云端图纸</p>}
-          <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto">
-            {list.rows.slice(0, DWG_PAGE_SIZE).map((asset) => (
-              <li key={asset.id} className="rounded-md border border-slate-200 p-2.5">
-                <p className="truncate text-sm text-slate-700" title={asset.original_name}>{asset.original_name}</p>
-                <div className="mt-1 flex items-center justify-between gap-1.5 text-xs">
-                  <span className="text-slate-500">{asset.status === 'ready' ? '已保存到云端' : '保存未完成'}</span>
-                  <button type="button" className="shrink-0 cursor-pointer text-blue-600 disabled:opacity-40" disabled={saving}
-                    onClick={() => asset.status === 'ready' ? void openCloud(asset) : void saveDrawing(asset)}>
-                    {asset.status === 'ready' ? '打开预览' : '恢复保存'}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {(list.page > 0 || list.rows.length > DWG_PAGE_SIZE) && (
-            <div className="mt-2 flex shrink-0 justify-between text-xs text-slate-600">
-              <button type="button" className="disabled:opacity-40" disabled={saving || listLoading || list.page === 0} onClick={() => void refreshList(list.page - 1)}>上一页</button>
-              <span>第 {list.page + 1} 页</span>
-              <button type="button" className="disabled:opacity-40" disabled={saving || listLoading || list.rows.length <= DWG_PAGE_SIZE} onClick={() => void refreshList(list.page + 1)}>下一页</button>
-            </div>
-          )}
-        </aside>
-      )}
       </div>
 
       <input

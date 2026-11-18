@@ -2,10 +2,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DwgViewerPage } from '@/pages/DwgViewerPage';
+import { useNoticeStore } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 
 const mocks = vi.hoisted(() => ({ parse: vi.fn(), list: vi.fn(), save: vi.fn(), download: vi.fn(), session: vi.fn() }));
-vi.mock('@/lib/dwg/dwgLibrary', () => ({ fetchDwgManifest: async () => [], primeDwgSignedUrls: vi.fn() }));
 vi.mock('@/lib/dwg/parseDwg', () => ({ parseDwg: mocks.parse }));
 vi.mock('@/lib/dwg/renderDwg', () => ({ renderDwgToCanvas: vi.fn(), DEFAULT_FONT_FAMILY: 'sans-serif' }));
 vi.mock('@/repositories/dwgRepository', async (importOriginal) => ({
@@ -44,7 +44,7 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetAllMocks(); });
+afterEach(() => { cleanup(); useNoticeStore.getState().clear(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetAllMocks(); window.history.replaceState(null, '', '/'); });
 
 describe('DWG import and save', () => {
   it('uses the same validation for picker and canvas and does not auto-upload', async () => {
@@ -59,6 +59,7 @@ describe('DWG import and save', () => {
     await waitFor(() => expect(saveButton().disabled).toBe(false));
     expect(screen.getByText('仅本地预览')).toBeTruthy();
     expect(mocks.save).not.toHaveBeenCalled();
+    expect(useNoticeStore.getState().notices).toHaveLength(0);
   });
 
   it('ignores an older local file read that completes after a later selection', async () => {
@@ -83,6 +84,7 @@ describe('DWG import and save', () => {
     expect(screen.getByRole('button', { name: '导出 PNG' }).hasAttribute('disabled')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
     await screen.findByText('已保存');
+    expect(useNoticeStore.getState().notices).toEqual([expect.objectContaining({ tone: 'success', title: '保存成功' })]);
     expect(mocks.session).toHaveBeenCalledOnce();
     expect(mocks.save).toHaveBeenCalledTimes(2);
     expect(mocks.save.mock.calls[1][0]).toBe(mocks.save.mock.calls[0][0]);
@@ -91,11 +93,52 @@ describe('DWG import and save', () => {
   it('reopens a private cloud drawing without allowing a duplicate save', async () => {
     mocks.list.mockResolvedValue([record]);
     render(<DwgViewerPage />);
-    fireEvent.click(screen.getByRole('button', { name: '展开云端图纸' }));
-    fireEvent.click(await screen.findByRole('button', { name: '打开预览' }));
+    await screen.findByRole('option', { name: record.original_name });
+    expect(screen.queryByRole('complementary')).toBeNull();
+    expect(mocks.list).toHaveBeenCalledWith(owner.id, expect.any(AbortSignal), 0);
+    fireEvent.change(screen.getByRole('combobox', { name: '云端图纸' }), { target: { value: record.id } });
     await waitFor(() => expect(screen.getByRole('button', { name: '导出 PNG' }).hasAttribute('disabled')).toBe(false));
     expect(mocks.download).toHaveBeenCalledWith(record, expect.any(AbortSignal));
     expect(saveButton().disabled).toBe(true);
     expect(mocks.save).not.toHaveBeenCalled();
+    expect(useNoticeStore.getState().notices).toHaveLength(0);
+  });
+
+  it('adds the saved DWG to the same picker without reopening it', async () => {
+    mocks.list.mockResolvedValueOnce([]).mockResolvedValueOnce([record]);
+    render(<DwgViewerPage />);
+    await screen.findByRole('option', { name: '暂无云端图纸' });
+    pick(sample(record.original_name));
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    fireEvent.click(saveButton());
+    await screen.findByRole('option', { name: record.original_name });
+    expect((screen.getByRole('combobox', { name: '云端图纸' }) as HTMLSelectElement).value).toBe(record.id);
+    expect(mocks.download).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit recovery action for a pending drawing', async () => {
+    mocks.list.mockResolvedValueOnce([{ ...record, status: 'uploading' }]).mockResolvedValueOnce([record]);
+    render(<DwgViewerPage />);
+    await screen.findByRole('option', { name: `${record.original_name}（保存未完成）` });
+    fireEvent.change(screen.getByRole('combobox', { name: '云端图纸' }), { target: { value: record.id } });
+    expect(mocks.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '恢复保存' }));
+    await screen.findByText('已保存');
+    expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ id: record.id }), undefined, expect.any(AbortSignal));
+    expect(useNoticeStore.getState().notices).toHaveLength(1);
+  });
+
+  it('allows choosing the same cloud DWG after its download fails', async () => {
+    mocks.list.mockResolvedValue([record]);
+    mocks.download.mockRejectedValueOnce(new Error('云端未找到该 DWG 原文件。'));
+    render(<DwgViewerPage />);
+    await screen.findByRole('option', { name: record.original_name });
+    const picker = screen.getByRole('combobox', { name: '云端图纸' }) as HTMLSelectElement;
+    fireEvent.change(picker, { target: { value: record.id } });
+    await screen.findByText('云端未找到该 DWG 原文件。');
+    expect(picker.value).toBe('');
+    fireEvent.change(picker, { target: { value: record.id } });
+    await screen.findByText('已保存');
+    expect(mocks.download).toHaveBeenCalledTimes(2);
   });
 });

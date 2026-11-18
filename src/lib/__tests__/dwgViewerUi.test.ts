@@ -2,31 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const pageSource = readFileSync(new URL('../../pages/DwgViewerPage.tsx', import.meta.url), 'utf8');
-const librarySource = readFileSync(new URL('../dwg/dwgLibrary.ts', import.meta.url), 'utf8');
 const routeSource = readFileSync(new URL('../appRoute.ts', import.meta.url), 'utf8');
 const routeHookSource = readFileSync(new URL('../../hooks/useAppRoute.ts', import.meta.url), 'utf8');
 const prepareScriptSource = readFileSync(new URL('../../../scripts/prepare-dwg-viewer-assets.mjs', import.meta.url), 'utf8');
 const uploadScriptSource = readFileSync(new URL('../../../scripts/upload-dwg-drawings.mjs', import.meta.url), 'utf8');
 
 describe('DWG viewer UI contract', () => {
-  it('loads built-in drawings from the private bucket through signed urls', () => {
-    expect(librarySource).toContain("DWG_BUCKET = 'dwg-drawings'");
-    expect(librarySource).toContain('resolveStorageSignedUrl');
-    expect(librarySource).toContain('manifest.json');
-    expect(pageSource).toContain('fetchDwgManifest');
-    expect(pageSource).toContain('resolveDwgFileUrl');
-    expect(pageSource).toContain('availableDrawings.map');
-    expect(pageSource).toContain('selectBuiltInFile');
-  });
-
-  it('caches parsed drawings, pre-signs the list and prefetches the next drawing', () => {
-    expect(pageSource).toContain('getCachedDrawing');
-    expect(pageSource).toContain('setCachedDrawing');
-    expect(pageSource).toContain('takeCachedBuffer');
-    expect(pageSource).toContain('prefetchDwgBuffer');
-    expect(pageSource).toContain('primeDwgSignedUrls');
-  });
-
   it('shows a loading overlay while a drawing is signed, downloaded, parsed and first rendered', () => {
     expect(pageSource).toContain("phase: 'loading'");
     expect(pageSource).toContain('正在加载图纸');
@@ -56,35 +37,18 @@ describe('DWG viewer UI contract', () => {
     expect(uploadScriptSource).toContain("endsWith('.dwg')");
   });
 
-  it('explains a missing bucket object instead of a raw 404', () => {
-    expect(pageSource).toContain('未找到内置图纸「');
-    expect(pageSource).toContain('请重新上传或打开本地文件');
-  });
-
-  it('requires login before built-in drawings can be viewed', () => {
+  it('requires login before cloud drawings can be viewed', () => {
     expect(routeSource).toContain("route.id !== 'drawing-workbench'");
     expect(routeSource).not.toContain("route.id !== 'dwg-viewer'");
   });
 
-  it('keeps the shareable ?file= link in sync with the loaded drawing', () => {
+  it('keeps the owner-only ?file= link in sync with the loaded drawing', () => {
     expect(routeSource).toContain("dwgFileQueryKey = 'file'");
     expect(routeSource).toContain('buildRoutePath');
     expect(routeHookSource).toContain('buildRoutePath');
     expect(pageSource).toContain('getDwgFileFromSearch');
     expect(pageSource).toContain('buildDwgViewerRoutePath');
     expect(pageSource).toContain('window.history.replaceState');
-  });
-
-  it('allows retrying the same built-in drawing after a failed load', () => {
-    // 失败相位下下拉回到占位值，重新选择同一文件会触发 onChange
-    expect(pageSource).toContain("value={state.phase === 'error' ? '' : builtInFile ?? ''}");
-    expect(pageSource).toContain('void loadFromUrl(entry)');
-    expect(pageSource).not.toContain('fileName === state.fileName');
-  });
-
-  it('falls back to manual file opening when the manifest is missing', () => {
-    expect(pageSource).toContain('未找到内置图纸');
-    expect(pageSource).toContain('打开 DWG 文件');
   });
 
   it('measures text with the rendering font before wrapping MTEXT', () => {

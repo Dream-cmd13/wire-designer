@@ -28,6 +28,7 @@ export default defineConfig([
       'scripts/import-cost-analyses.test.mjs', 'scripts/sync-cost-analyses.mjs',
       'scripts/upload-cost-analysis-excels.mjs', 'scripts/verify-cost-analyses.mjs',
       'scripts/reset-project-assets.mjs', 'scripts/lib/costAnalysisSync*.mjs',
+      'scripts/migrate-dwg-drawings*.mjs',
     ],
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },
