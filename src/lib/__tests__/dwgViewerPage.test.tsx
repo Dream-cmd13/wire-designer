@@ -1,0 +1,101 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DwgViewerPage } from '@/pages/DwgViewerPage';
+import { useUserStore } from '@/stores/userStore';
+
+const mocks = vi.hoisted(() => ({ parse: vi.fn(), list: vi.fn(), save: vi.fn(), download: vi.fn(), session: vi.fn() }));
+vi.mock('@/lib/dwg/dwgLibrary', () => ({ fetchDwgManifest: async () => [], primeDwgSignedUrls: vi.fn() }));
+vi.mock('@/lib/dwg/parseDwg', () => ({ parseDwg: mocks.parse }));
+vi.mock('@/lib/dwg/renderDwg', () => ({ renderDwgToCanvas: vi.fn(), DEFAULT_FONT_FAMILY: 'sans-serif' }));
+vi.mock('@/repositories/dwgRepository', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/repositories/dwgRepository')>(),
+  dwgRepository: { configured: true, list: mocks.list, save: mocks.save, download: mocks.download },
+  createDwgSaveSession: mocks.session,
+}));
+
+const owner = { id: 'owner', role: 'engineer' as const, name: 'test', email: 'test@example.com', createdAt: 1 };
+const record = { id: 'drawing', original_name: 'cloud.dwg', owner_id: owner.id, status: 'ready' };
+const drawing = { bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 }, hiddenLayers: [], layers: [], stats: { rendered: 1, text: 0, skipped: {} } };
+
+function sample(name: string, read = async () => new ArrayBuffer(10)) {
+  return Object.assign(new File(['AC1032 DWG'], name), { arrayBuffer: read });
+}
+function pick(...files: File[]) {
+  fireEvent.change(screen.getByLabelText('选择 DWG 文件'), { target: { files } });
+}
+const saveButton = () => screen.getByRole('button', { name: '保存到云端' }) as HTMLButtonElement;
+
+beforeEach(() => {
+  useUserStore.setState({ currentUser: owner });
+  mocks.parse.mockResolvedValue(drawing);
+  mocks.list.mockResolvedValue([]);
+  mocks.session.mockResolvedValue({ ...record, status: 'uploading' });
+  mocks.save.mockResolvedValue(record);
+  mocks.download.mockResolvedValue(sample(record.original_name));
+  vi.stubGlobal('ResizeObserver', class {
+    private readonly callback: ResizeObserverCallback;
+    constructor(callback: ResizeObserverCallback) { this.callback = callback; }
+    observe() { this.callback([{ contentRect: { width: 800, height: 600 } } as ResizeObserverEntry], this); }
+    unobserve() {}
+    disconnect() {}
+  });
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+});
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.resetAllMocks(); });
+
+describe('DWG import and save', () => {
+  it('uses the same validation for picker and canvas and does not auto-upload', async () => {
+    render(<DwgViewerPage />);
+    pick(sample('wrong.dxf'));
+    expect(screen.getByRole('alert').textContent).toContain('.dwg');
+    const drop = (files: File[]) => fireEvent.drop(screen.getByTestId('dwg-drop-zone'), { dataTransfer: { files, types: ['Files'] } });
+    drop([sample('a.dwg'), sample('b.dwg')]);
+    expect(screen.getByRole('alert').textContent).toContain('一个');
+    expect(mocks.parse).not.toHaveBeenCalled();
+    drop([sample('part.DWG')]);
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    expect(screen.getByText('仅本地预览')).toBeTruthy();
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older local file read that completes after a later selection', async () => {
+    render(<DwgViewerPage />);
+    let finish = () => {};
+    pick(sample('old.dwg', () => new Promise((resolve) => { finish = () => resolve(new ArrayBuffer(15)); })));
+    pick(sample('new.dwg'));
+    await act(async () => finish());
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    expect(mocks.parse).toHaveBeenCalledOnce();
+    expect(mocks.parse).toHaveBeenCalledWith(expect.any(ArrayBuffer), expect.objectContaining({ fileName: 'new.dwg' }));
+  });
+
+  it('retains the preview and save session on failure, then shows saved after retry', async () => {
+    mocks.save.mockRejectedValueOnce(new Error('数据库确认失败'));
+    render(<DwgViewerPage />);
+    const file = sample('local.dwg');
+    pick(file);
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    fireEvent.click(saveButton());
+    await screen.findByText('数据库确认失败');
+    expect(screen.getByRole('button', { name: '导出 PNG' }).hasAttribute('disabled')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
+    await screen.findByText('已保存');
+    expect(mocks.session).toHaveBeenCalledOnce();
+    expect(mocks.save).toHaveBeenCalledTimes(2);
+    expect(mocks.save.mock.calls[1][0]).toBe(mocks.save.mock.calls[0][0]);
+  });
+
+  it('reopens a private cloud drawing without allowing a duplicate save', async () => {
+    mocks.list.mockResolvedValue([record]);
+    render(<DwgViewerPage />);
+    fireEvent.click(screen.getByRole('button', { name: '展开云端图纸' }));
+    fireEvent.click(await screen.findByRole('button', { name: '打开预览' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '导出 PNG' }).hasAttribute('disabled')).toBe(false));
+    expect(mocks.download).toHaveBeenCalledWith(record, expect.any(AbortSignal));
+    expect(saveButton().disabled).toBe(true);
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+});
