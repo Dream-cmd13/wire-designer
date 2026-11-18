@@ -4,7 +4,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { ModelViewerPage } from '@/pages/ModelViewerPage';
 import { useUserStore } from '@/stores/userStore';
 
-const mocks = vi.hoisted(() => ({ parse: vi.fn(), save: vi.fn(), list: vi.fn(), get: vi.fn(), download: vi.fn(), create: vi.fn() }));
+const mocks = vi.hoisted(() => ({ parse: vi.fn(), save: vi.fn(), list: vi.fn(), get: vi.fn(), download: vi.fn(), create: vi.fn(), pdf: vi.fn(), preview: vi.fn(), downloadBlob: vi.fn() }));
+vi.mock('@/lib/models/modelThreeViewExport', async (actual) => ({
+  ...await actual<typeof import('@/lib/models/modelThreeViewExport')>(),
+  buildModelThreeViewPdf: mocks.pdf, createModelFrontPreview: mocks.preview,
+}));
+vi.mock('@/lib/drawingExport', () => ({ downloadBlob: mocks.downloadBlob }));
 vi.mock('@/lib/models/modelParser', () => ({ parseModel: mocks.parse, validateModelFile: (f: File) => {
   if (!/\.(step|stp|stl)$/i.test(f.name)) throw new Error('请选择 STEP / STP / STL'); return /\.stl$/i.test(f.name) ? 'stl' : 'step';
 } }));
@@ -13,14 +18,83 @@ vi.mock('@/components/models/ModelViewer', () => ({ ModelViewer: ({ model, statu
 const model = { boundsMm: { min: [0,0,0], max: [1,2,3] }, triangleCount: 12, meshes: [] };
 const id = '00000000-0000-4000-8000-000000000101';
 const record = { id, owner_id: 'u1', original_name: 'a.stp', source_unit: 'mm', format: 'step', status: 'ready' };
+// jsdom has the element but not the browser's modal behavior.
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: { configurable: true, value(this: HTMLDialogElement) { this.setAttribute('open', ''); } },
+  close: { configurable: true, value(this: HTMLDialogElement) { this.removeAttribute('open'); } },
+});
 function pick(name = 'part.stp') { fireEvent.change(screen.getByLabelText('选择模型文件'), { target: { files: [new File(['bytes'], name)] } }); }
 beforeEach(() => {
   window.history.replaceState(null, '', '/model-viewer');
   useUserStore.setState({ currentUser: { id: 'u1', name: 'test', email: 'test@test', createdAt: 1, role: 'engineer' } });
   mocks.parse.mockResolvedValue(model); mocks.list.mockResolvedValue([]); mocks.get.mockResolvedValue(record);
   mocks.download.mockResolvedValue(new File(['bytes'], 'a.stp')); mocks.create.mockResolvedValue({ ...record, status: 'uploading' }); mocks.save.mockResolvedValue(record);
+  mocks.preview.mockReturnValue({ draw: vi.fn(), dispose: vi.fn() });
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
+
+function exportButton() { return screen.getByRole('button', { name: '导出三视图 PDF' }); }
+function confirmExport() { return screen.getByRole('button', { name: '下载 PDF' }); }
+const pdf = new Blob(['test'], { type: 'application/pdf' });
+
+describe('model PDF export', () => {
+  it('requires a ready preview and does not offer export during a quality change', async () => {
+    render(<ModelViewerPage />);
+    expect(exportButton().hasAttribute('disabled')).toBe(true);
+    pick();
+    expect(exportButton().hasAttribute('disabled')).toBe(true);
+    await screen.findByText('包围盒尺寸（网格近似）');
+    expect(exportButton().hasAttribute('disabled')).toBe(false);
+    fireEvent.change(screen.getByLabelText('显示质量'), { target: { value: 'fine' } });
+    expect(exportButton().hasAttribute('disabled')).toBe(true);
+    await screen.findByText('精细已生效');
+    expect(exportButton().hasAttribute('disabled')).toBe(false);
+  });
+
+  it('exports the current parsed model once, with the selected front, without saving', async () => {
+    let finish!: (blob: Blob) => void;
+    mocks.pdf.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<ModelViewerPage />); pick('part.stl'); await screen.findByText('预览就绪');
+    fireEvent.click(exportButton());
+    expect((screen.getByLabelText('前视方向') as HTMLSelectElement).value).toBe('-Y');
+    fireEvent.change(screen.getByLabelText('前视方向'), { target: { value: '+Z' } });
+    const button = confirmExport();
+    fireEvent.click(button); fireEvent.click(button);
+    expect(mocks.pdf).toHaveBeenCalledExactlyOnceWith(model, 'part.stl', '+Z', expect.any(AbortSignal));
+    await act(async () => finish(pdf));
+    expect(mocks.downloadBlob).toHaveBeenCalledExactlyOnceWith(pdf, 'part_三视图.pdf');
+    expect(mocks.parse).toHaveBeenCalledOnce();
+    expect(mocks.download).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it.each(['取消', '换模型', '退出'])('discards late results after %s', async (reason) => {
+    let finish!: (blob: Blob) => void;
+    mocks.pdf.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<ModelViewerPage />); pick(); await screen.findByText('预览就绪');
+    fireEvent.click(exportButton()); fireEvent.click(confirmExport());
+    const signal = mocks.pdf.mock.calls[0][3] as AbortSignal;
+    if (reason === '取消') fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    if (reason === '换模型') pick('next.stl');
+    if (reason === '退出') act(() => useUserStore.setState({ currentUser: null }));
+    await act(async () => finish(pdf));
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+  });
+
+  it('does not download when dismissing confirmation, and can retry an export failure', async () => {
+    mocks.pdf.mockRejectedValueOnce(new Error('编码失败')).mockResolvedValueOnce(pdf);
+    render(<ModelViewerPage />); pick(); await screen.findByText('预览就绪');
+    fireEvent.click(exportButton()); fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(mocks.pdf).not.toHaveBeenCalled();
+    fireEvent.click(exportButton()); fireEvent.click(confirmExport());
+    await screen.findByText(/编码失败/);
+    expect(mocks.downloadBlob).not.toHaveBeenCalled();
+    fireEvent.click(confirmExport());
+    await waitFor(() => expect(mocks.downloadBlob).toHaveBeenCalledOnce());
+  });
+});
+
 describe('model page sessions', () => {
   it('disables recovery while a file is loading and allows recovery after parsing finishes', async () => {
     mocks.list.mockResolvedValue([{ ...record, status: 'uploading' }]);

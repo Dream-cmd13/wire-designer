@@ -88,3 +88,27 @@ export function roundedCylinderStep(): Buffer {
   add(`SHAPE_DEFINITION_REPRESENTATION(${shape},${representation})`);
   return Buffer.from(`ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Self-authored rounded cylinder'),'2;1');\nFILE_NAME('rounded-cylinder.stp','2026-11-05T00:00:00',(''),(''),'local fixture','local fixture','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\n${entities.join('\n')}\nENDSEC;\nEND-ISO-10303-21;\n`);
 }
+/** A 40 × 20 × 10 mm envelope, expressed in centimeters for STL unit testing. */
+export function offsetBossStl() {
+  type Point = [number, number, number];
+  const faces: Point[][] = [];
+  const corners: Point[] = [[2,0,0],[38,0,0],[38,20,0],[2,20,0],[2,0,10],[38,0,10],[38,20,10],[2,20,10]];
+  const quad = (a: Point, b: Point, c: Point, d: Point) => faces.push([a,b,c], [a,c,d]);
+  for (const [a,b,c,d] of [[0,3,2,1],[4,5,6,7],[0,1,5,4],[3,7,6,2],[0,4,7,3],[1,2,6,5]]) {
+    quad(corners[a], corners[b], corners[c], corners[d]);
+  }
+  const boss = (start: number, end: number, y: number, radius: number) => {
+    const ring = (x: number, i: number): Point => {
+      const angle = (i % 64) * Math.PI / 32;
+      return [x, y + radius * Math.cos(angle), 5 + radius * Math.sin(angle)];
+    };
+    for (let i = 0; i < 64; i++) {
+      const a = ring(start, i), b = ring(start, i+1), c = ring(end, i+1), d = ring(end, i);
+      quad(a,b,c,d);
+      faces.push([[start,y,5], b,a], [[end,y,5], d,c]);
+    }
+  };
+  boss(0,2,5,2); // Hidden behind the block in the default right view.
+  boss(38,40,15,3);
+  return Buffer.from(`solid offset-boss\n${faces.map((points) => `facet normal 0 0 0\nouter loop\n${points.map((p) => `vertex ${p.map((v) => v/10).join(' ')}`).join('\n')}\nendloop\nendfacet`).join('\n')}\nendsolid offset-boss`);
+}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Box, Upload, CloudUpload, RefreshCw } from 'lucide-react';
+import { Box, Upload, CloudUpload, FileDown, RefreshCw } from 'lucide-react';
 import { ModelViewer } from '@/components/models/ModelViewer';
+import { ModelThreeViewDialog } from '@/components/models/ModelThreeViewDialog';
 import { parseModel, validateModelFile } from '@/lib/models/modelParser';
 import { type ModelFormat, type ModelQuality, type ParsedModel, type ParsePhase, type StlUnit } from '@/lib/models/modelTypes';
 import { buildModelViewerRoutePath, getModelIdFromSearch } from '@/lib/appRoute';
@@ -41,6 +42,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
   const [qualityLoading, setQualityLoading] = useState(false);
   const [qualityError, setQualityError] = useState<string | null>(null);
   const [listExpanded, setListExpanded] = useState(true);
+  const [exportSignal, setExportSignal] = useState<AbortSignal | null>(null);
   const qualityBusy = useRef(false);
   const task = useRef<{ version: number; controller: AbortController }>({ version: 0, controller: new AbortController() });
   const listTask = useRef<AbortController | null>(null);
@@ -50,9 +52,11 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const saving = save === 'uploading' || save === 'finalizing';
   const loading = ['reading','engine','parsing','downloading'].includes(preview);
+  const exportReady = model && file && preview === 'ready' && !qualityLoading;
 
   const begin = useCallback(() => {
     task.current.controller.abort();
+    setExportSignal(null);
     qualityBusy.current = false;
     const next = { version: task.current.version + 1, controller: new AbortController() };
     task.current = next;
@@ -177,11 +181,13 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
   return <div className="flex h-full flex-col gap-3 overflow-auto bg-slate-50 p-3 lg:p-4">
     <header className="flex flex-wrap items-start justify-between gap-4">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Box size={18} className="text-blue-600" />3D 模型</h2>
-      <div className="flex gap-2"><button className={buttonClass} disabled={saving} onClick={() => fileInput.current?.click()}><Upload size={16} />选择文件</button>
+      <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={saving} onClick={() => fileInput.current?.click()}><Upload size={16} />选择文件</button>
         <button className={`${buttonClass} !bg-blue-600 text-white hover:!bg-blue-700`} disabled={saving || loading || qualityLoading || save === 'saved' || (!model && !recovering) || !modelRepository.configured} onClick={() => void saveCurrent(recovering ?? undefined)}>
           <CloudUpload size={16} />{save === 'error' ? '重试保存' : '保存到云端'}</button>
+        <button className={buttonClass} disabled={!exportReady} onClick={() => setExportSignal(task.current.controller.signal)}><FileDown size={16} />导出三视图 PDF</button>
         <button className={buttonClass} aria-expanded={listExpanded} onClick={() => setListExpanded(!listExpanded)}>{listExpanded ? '收起云端模型' : '展开云端模型'}</button></div>
     </header>
+    {exportSignal && exportReady && <ModelThreeViewDialog model={model} sourceName={file.name} modelSignal={exportSignal} onClose={() => setExportSignal(null)} />}
     <input ref={fileInput} type="file" className="sr-only" aria-label="选择模型文件" accept=".step,.stp,.stl" disabled={saving} onChange={(event) => { if (event.target.files) choose(event.target.files); event.target.value = ''; }} />
     {!modelRepository.configured && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">云端尚未配置，可继续本地预览，暂时无法保存。</p>}
     {recovering && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">

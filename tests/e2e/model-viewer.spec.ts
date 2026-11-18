@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { Buffer } from 'node:buffer';
 import { dirname, join, basename } from 'node:path';
-import { twoTetrahedraStep, roundedCylinderStep } from './model-fixtures';
+import { offsetBossStl, twoTetrahedraStep, roundedCylinderStep } from './model-fixtures';
 
 // Auth/API fixtures are intercepted locally. The actual Worker, OCCT WASM,
 // STLLoader and WebGL run unmocked. Never sends credentials/files to an external host.
@@ -522,6 +523,142 @@ test('self-authored multiple STEP solids keep relative positions', async ({ page
   await expect(page.getByTestId('model-bounds')).toHaveText('12.00 × 3.00 × 4.00 mm');
   await page.getByText('模型详情', { exact: true }).click();
   await expect(page.getByText('8 个三角形 · 2 个网格', { exact: true })).toBeVisible();
+});
+
+async function inspectDownloadedThreeView(page: Page, path: string) {
+  const file = readFileSync(path);
+  const text = file.toString('latin1');
+  expect(text).toContain('/MediaBox [0 0 842 595]');
+  expect(text).toContain('/Count 1');
+  expect(text).toContain('802 0 0 535 20 30 cm');
+  const image = /\/Subtype \/Image \/Width 2406 \/Height 1605 [^\n]*\/Filter \/DCTDecode \/Length (\d+) >>\nstream\n/.exec(text);
+  expect(image).not.toBeNull();
+  const start = image!.index + image![0].length;
+  const jpeg = file.subarray(start, start + Number(image![1])).toString('base64');
+  // Decode the PDF's actual raster and measure its pixels in the browser.
+  return page.evaluate(async (base64) => {
+    const image = new Image(); image.src = `data:image/jpeg;base64,${base64}`;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width; canvas.height = image.height;
+    const ctx = canvas.getContext('2d')!; ctx.drawImage(image, 0, 0);
+    const bounds = (x: number, y: number, w: number, h: number, cutoff = 220) => {
+      const { data } = ctx.getImageData(x, y, w, h);
+      let left = w, top = h, right = -1, bottom = -1, count = 0;
+      for (let row = 0; row < h; row++) for (let col = 0; col < w; col++) {
+        if (data[4 * (row * w + col)] >= cutoff) continue;
+        left = Math.min(left, col); top = Math.min(top, row);
+        right = Math.max(right, col); bottom = Math.max(bottom, row); count++;
+      }
+      return { width: right - left + 1, height: bottom - top + 1, cx: x + (left + right) / 2, cy: y + (top + bottom) / 2, count };
+    };
+    const right = bounds(60, 80, 1100, 665);
+    const front = bounds(1240, 80, 1100, 665);
+    const top = bounds(1240, 850, 1100, 665);
+    const interiorY = Math.round(right.cy - right.height * 0.4);
+    const interiorHeight = Math.round(right.height * 0.8);
+    const boss = bounds(Math.ceil(right.cx), interiorY, Math.ceil(right.width * 0.45), interiorHeight, 120);
+    const hiddenBoss = bounds(Math.ceil(right.cx - right.width * 0.45), interiorY, Math.floor(right.width * 0.45), interiorHeight, 120);
+    const labels = [bounds(500, 748, 210, 54), bounds(1690, 748, 220, 54), bounds(1690, 1516, 220, 54), bounds(100, 985, 1000, 455)];
+    return { right, front, top, boss, hiddenBoss, labels };
+  }, jpeg);
+}
+
+test('downloads proportional first-angle PDF from local STL with a non-mirrored round boss', async ({ page }, testInfo) => {
+  await localLogin(page);
+  await uploadLocal(page, '偏置圆凸台.stl', offsetBossStl());
+  await page.getByLabel('STL 用户指定单位').selectOption('cm');
+  await expect(page.getByTestId('model-bounds')).toHaveText('40.00 × 20.00 × 10.00 mm');
+  await expect(page.getByText('仅本地预览', { exact: true })).toBeVisible();
+  const download = async (filename: string, direction?: string) => {
+    await page.getByRole('button', { name: '导出三视图 PDF' }).click();
+    const dialog = page.getByRole('dialog', { name: '确认三视图前视面' });
+    if (direction) await dialog.getByLabel('前视方向').selectOption(direction);
+    else await expect(dialog.getByLabel('前视方向')).toHaveValue('-Y');
+    const preview = dialog.getByRole('img', { name: '前视预览' });
+    await expect(preview).toBeVisible();
+    expect(await preview.evaluate((element) => (element as HTMLCanvasElement).getContext('2d')!.getImageData(0, 0, 512, 288).data.some((v, i) => i % 4 !== 3 && v < 220))).toBe(true);
+    await dialog.screenshot({ path: testInfo.outputPath(`${filename}-dialog.png`) });
+    const pending = page.waitForEvent('download');
+    await dialog.getByRole('button', { name: '下载 PDF' }).click();
+    const result = await pending;
+    expect(result.suggestedFilename()).toBe('偏置圆凸台_三视图.pdf');
+    const path = testInfo.outputPath(`${filename}.pdf`);
+    await result.saveAs(path);
+    await expect(dialog).toHaveCount(0);
+    return inspectDownloadedThreeView(page, path);
+  };
+  const { front, top, right, boss, hiddenBoss, labels } = await download('stl-default');
+  expect(Math.abs(front.width - top.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(front.height - right.height)).toBeLessThanOrEqual(2);
+  expect(Math.abs(front.cx - top.cx)).toBeLessThanOrEqual(2);
+  expect(Math.abs(front.cy - right.cy)).toBeLessThanOrEqual(2);
+  expect(front.width / front.height).toBeCloseTo(4, 1);
+  expect(top.width / top.height).toBeCloseTo(2, 1);
+  expect(right.width / right.height).toBeCloseTo(2, 1);
+  expect(boss.count).toBeGreaterThan(100);
+  expect(boss.cx - right.cx).toBeCloseTo(right.width / 4, -1);
+  expect(Math.abs(boss.width - boss.height)).toBeLessThanOrEqual(2);
+  expect(boss.width / right.height).toBeCloseTo(0.6, 1);
+  expect(hiddenBoss.count).toBe(0);
+  expect(labels.every(({ count }) => count > 100)).toBe(true);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const vertical = await download('stl-plus-z-mobile', '+Z');
+  expect(vertical.front.width / vertical.front.height).toBeCloseTo(2, 1);
+  expect(vertical.top.width / vertical.top.height).toBeCloseTo(4, 1);
+  expect(vertical.right.width / vertical.right.height).toBeCloseTo(0.5, 1);
+  expect(Math.abs(vertical.front.width - vertical.top.width)).toBeLessThanOrEqual(2);
+  expect(Math.abs(vertical.front.height - vertical.right.height)).toBeLessThanOrEqual(2);
+});
+
+test('downloads an already opened private STEP without model requests or changing the viewer', async ({ page }, testInfo) => {
+  const original = roundedCylinderStep();
+  const id = '00000000-0000-4000-8000-000000000201';
+  const row = {
+    id, owner_id: uid, original_name: '圆柱样件.step', format: 'step', source_unit: 'mm', status: 'ready',
+    object_key: `${uid}/${id}/source.step`, file_size: original.length, sha256: createHash('sha256').update(original).digest('hex'),
+    bounds_mm: { min: [-5, -5, 0], max: [5, 5, 10] },
+  };
+  const cloud: LocalCloud = { records: [row], original, object: original, uploads: 0, finalizeFailures: 0 };
+  await localLogin(page, 'engineer', cloud);
+  await page.getByRole('button', { name: '打开预览' }).click();
+  await expect(page.getByTestId('model-bounds')).toBeVisible();
+  await expect(page.getByText('预览就绪', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '顶视', exact: true }).click();
+  await page.getByLabel('背景', { exact: true }).selectOption('dark');
+  const canvas = page.locator('[aria-label="三维模型画布"] canvas');
+  const { width, height } = (await canvas.boundingBox())!;
+  await canvas.click({ position: { x: width/2, y: height/2 } });
+  await expect(page.getByRole('button', { name: '清除选择' })).toBeEnabled();
+  const before = await canvas.screenshot();
+  const modelRequests: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.includes('/rest/v1/model_assets') || path.startsWith('/storage/v1/')) modelRequests.push(`${request.method()} ${path}`);
+  });
+  await page.getByRole('button', { name: '导出三视图 PDF' }).click();
+  const dialog = page.getByRole('dialog', { name: '确认三视图前视面' });
+  await expect(dialog.getByRole('img', { name: '前视预览' })).toBeVisible();
+  const pending = page.waitForEvent('download');
+  await dialog.getByRole('button', { name: '下载 PDF' }).click();
+  const result = await pending;
+  const path = testInfo.outputPath('private-step-mock.pdf');
+  await result.saveAs(path);
+  expect(result.suggestedFilename()).toBe('圆柱样件_三视图.pdf');
+  const { front, top, right, labels } = await inspectDownloadedThreeView(page, path);
+  expect([front, top, right].every(({ count }) => count > 1000)).toBe(true);
+  // OCCT tessellates the ring; compare to its mesh bounds, not an ideal CAD circle.
+  const [mmX, mmY] = (await page.getByTestId('model-bounds').innerText()).split(' × ').map(Number);
+  expect(Math.abs(top.width - top.height * mmX / mmY)).toBeLessThanOrEqual(2);
+  expect(labels.every(({ count }) => count > 100)).toBe(true);
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '顶视', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('背景', { exact: true })).toHaveValue('dark');
+  await expect(page.getByRole('button', { name: '清除选择' })).toBeEnabled();
+  expect(await canvas.screenshot()).toEqual(before);
+  expect(modelRequests).toEqual([]);
+  expect(cloud.uploads).toBe(0);
 });
 
 test('self-authored curved STEP: surface boundaries, quality, saved identity and immutable stored bounds', async ({ page }, testInfo) => {
