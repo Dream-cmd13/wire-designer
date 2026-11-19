@@ -1,6 +1,6 @@
 import type { ParsedModel } from './modelTypes';
 import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
-import { MOUSE, type PerspectiveCamera } from 'three';
+import { Matrix4, MOUSE, Vector3, type PerspectiveCamera } from 'three';
 
 /** CSS pixels keep rotation independent of canvas aspect ratio and DPR. */
 export function syncModelControlsViewport(controls: TrackballControls): void {
@@ -22,10 +22,33 @@ export function createModelTrackballControls(camera: PerspectiveCamera, canvas: 
   return controls;
 }
 
-export function getCameraFit(bounds: ParsedModel['boundsMm'], width: number, height: number) {
-  const radius = Math.max(Math.hypot(...bounds.max.map((v, i) => v - bounds.min[i])) / 2, 1e-10);
+const HALF_FOV = Math.PI / 8;
+
+export function getCameraFit(bounds: ParsedModel['boundsMm'], width: number, height: number,
+  view?: { direction: Vector3; up: Vector3 }) {
+  const halfSize = new Vector3().fromArray(bounds.max).sub(new Vector3().fromArray(bounds.min)).multiplyScalar(0.5);
+  const radius = Math.max(halfSize.length(), 1e-10);
   const aspect = Math.max(width, 1) / Math.max(height, 1);
-  const halfFov = Math.min(Math.PI / 8, Math.atan(Math.tan(Math.PI / 8) * aspect));
-  const distance = radius / Math.sin(halfFov) * 1.15;
-  return { distance, near: radius * 0.001, far: distance * 10 + radius * 10, radius, aspect };
+  const near = radius * 0.001;
+  const tanY = Math.tan(HALF_FOV);
+  const halfFov = Math.min(HALF_FOV, Math.atan(tanY * aspect));
+  let distance = radius / Math.sin(halfFov) * 1.15;
+  if (view) {
+    const toCameraSpace = new Matrix4().lookAt(view.direction, new Vector3(), view.up).transpose();
+    const corner = new Vector3();
+    const fill = 0.9;
+    distance = near * 2;
+    // Each corner must fit both axes at its own perspective depth (distance - corner.z).
+    for (const x of [-halfSize.x, halfSize.x]) {
+      for (const y of [-halfSize.y, halfSize.y]) {
+        for (const z of [-halfSize.z, halfSize.z]) {
+          corner.set(x, y, z).applyMatrix4(toCameraSpace);
+          distance = Math.max(distance, corner.z + Math.max(
+            Math.abs(corner.x) / (fill * tanY * aspect), Math.abs(corner.y) / (fill * tanY), near * 2,
+          ));
+        }
+      }
+    }
+  }
+  return { distance, near, far: distance * 10 + radius * 10, radius, aspect };
 }

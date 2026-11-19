@@ -55,7 +55,7 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
         </button>
       </div>
       <div className="flex min-h-[clamp(20rem,60dvh,39rem)] min-w-0">
-        <ModelViewer model={model} modelKey={null} detail={{ label: '查看 P1 端头', bounds: model.connectorBoundsMm }}
+        <ModelViewer model={model} modelKey={null} overview="front" detail={{ label: '查看 P1 端头', bounds: model.connectorBoundsMm }}
           status="直线示意 · 接头尺寸及针位为占位，仅供预览" />
       </div>
     </> : <form onSubmit={submit} className="space-y-4 p-4">

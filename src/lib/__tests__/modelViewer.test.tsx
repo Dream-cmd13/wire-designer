@@ -260,6 +260,39 @@ describe('camera fit and canvas ownership', () => {
     expect(openDetail.getAttribute('aria-pressed')).toBe('false');
     expect(pose()).toEqual(full);
   });
+  it('fills a wide canvas with a long harness and refits an angled view without clipping', () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(450);
+    const harness = buildDwgHarnessModel({ lengthMm: 500, lengthBasis: 'cable', diameterMm: 5, connector: 'male' });
+    testing.render(<ModelViewer model={harness} modelKey="harness" overview="front" detail={{ label: '查看 P1 端头', bounds: harness.connectorBoundsMm }} />);
+    const measureProjection = () => {
+      const camera = mocks.camera!;
+      camera.updateMatrixWorld(true);
+      const points: THREE.Vector3[] = [];
+      for (const { positions } of harness.meshes) {
+        for (let i = 0; i < positions.length; i += 3) {
+          points.push(new THREE.Vector3(positions[i] - harness.boundsMm.max[0] / 2, positions[i + 1], positions[i + 2]).project(camera));
+        }
+      }
+      expect(points.every(({ x, y, z }) => Math.abs(x) < 1 && Math.abs(y) < 1 && Math.abs(z) < 1)).toBe(true);
+      const span = (axis: 'x' | 'y') => (Math.max(...points.map((point) => point[axis])) - Math.min(...points.map((point) => point[axis]))) / 2;
+      return { width: span('x'), height: span('y') };
+    };
+    expect(testing.screen.getByRole('button', { name: '前视' }).getAttribute('aria-pressed')).toBe('true');
+    expect(measureProjection().width).toBeGreaterThan(0.82);
+    const initial = pose();
+    testing.fireEvent.click(testing.screen.getByRole('button', { name: '等轴测' }));
+    const angle = mocks.camera!.quaternion.clone();
+    const angledProjection = measureProjection();
+    expect(angledProjection.height).toBeGreaterThan(0.6);
+    mocks.camera!.position.multiplyScalar(2);
+    expect(measureProjection().height).toBeLessThan(angledProjection.height / 1.5);
+    testing.fireEvent.click(testing.screen.getByRole('button', { name: '适配窗口' }));
+    expect(mocks.camera!.quaternion.angleTo(angle)).toBeLessThan(1e-7);
+    expect(measureProjection().height).toBeCloseTo(angledProjection.height);
+    testing.fireEvent.click(testing.screen.getByRole('button', { name: '查看整线' }));
+    expect(pose()).toEqual(initial);
+  });
   it('keeps clipping and aspect finite for tiny, large, flat and zero-size containers', () => {
     for (const size of [1e-8, 1, 1e12]) for (const [width, height] of [[0,0], [1,1000], [1000,1]]) {
       const fit = getCameraFit({ min: [0,0,0], max: [size,size,0] }, width, height);

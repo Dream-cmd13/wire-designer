@@ -22,11 +22,13 @@ interface ViewerApi {
   clearSelection: () => void;
 }
 
-export function ModelViewer({ model, modelKey, status, detail }: {
+export function ModelViewer({ model, modelKey, status, detail, overview }: {
   model: ParsedModel | null;
   modelKey: string | null;
   status?: ReactNode;
   detail?: { label: string; bounds: Bounds };
+  /** Enables projection-based full-model fitting with this overview preset. */
+  overview?: ModelViewPreset;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -35,7 +37,8 @@ export function ModelViewer({ model, modelKey, status, detail }: {
   useEffect(() => { latestModel.current = model; }, [model]);
   const [edgeChoice, setEdgeChoice] = useState<{ key: string | null; mode: EdgeMode } | null>(null);
   const [background, setBackground] = useState<Background>('light');
-  const [view, setView] = useState<View | 'free'>('iso');
+  const initialView = overview ?? 'iso';
+  const [view, setView] = useState<View | 'free'>(initialView);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ model: ParsedModel; generation: number; message: string } | null>(null);
@@ -125,7 +128,6 @@ export function ModelViewer({ model, modelKey, status, detail }: {
       }
       if (preset) detailBounds = bounds;
       programmatic = true;
-      const sizing = getCameraFit(detailBounds ?? current.boundsMm, container.clientWidth, container.clientHeight);
       const target = new THREE.Vector3();
       if (detailBounds) {
         const { min, max } = detailBounds;
@@ -136,6 +138,8 @@ export function ModelViewer({ model, modelKey, status, detail }: {
       if (direction.lengthSq() === 0) direction.set(1,-1,1);
       if (preset === 'detail') camera.up.set(0, 0, 1);
       else if (preset) camera.up.fromArray(views[preset].up);
+      const projection = overview && !detailBounds ? { direction, up: camera.up } : undefined;
+      const sizing = getCameraFit(detailBounds ?? current.boundsMm, container.clientWidth, container.clientHeight, projection);
       camera.aspect = sizing.aspect; camera.zoom = 1;
       camera.position.copy(direction.normalize().multiplyScalar(sizing.distance)).add(target);
       const { min: modelMin, max: modelMax } = current.boundsMm;
@@ -163,7 +167,7 @@ export function ModelViewer({ model, modelKey, status, detail }: {
       renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix();
       syncModelControlsViewport(controls);
       if (pendingView) fit(pendingView.preset, pendingView.bounds);
-      else if (!fitted) fit('iso');
+      else if (!fitted) fit(initialView);
       renderScene();
     };
     const api: ViewerApi = {
@@ -192,7 +196,12 @@ export function ModelViewer({ model, modelKey, status, detail }: {
         group.position.fromArray(next.boundsMm.min.map((value, i) => -(value + next.boundsMm.max[i]) / 2) as [number,number,number]);
         current = next;
         selectionLayer = createModelSelectionLayer(next.meshes,solids,group);
-        if (key !== currentKey) { fitted = false; currentKey = key; fit('iso'); queueMicrotask(() => { if (controlsApi.current === api) setView('iso'); }); }
+        if (key !== currentKey) {
+          fitted = false;
+          currentKey = key;
+          fit(initialView);
+          queueMicrotask(() => { if (controlsApi.current === api) setView(initialView); });
+        }
         featureLines.forEach((line) => { line.visible = edgeMode === 'feature'; });
         surfaceLines.forEach((line) => { line.visible = edgeMode === 'surface'; });
         resize();
@@ -269,10 +278,10 @@ export function ModelViewer({ model, modelKey, status, detail }: {
       geometries.forEach((geometry) => geometry.dispose()); material.dispose(); edgeMaterial.dispose();
       group.clear(); scene.clear(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove();
     };
-  }, [hasModel, generation]);
+  }, [hasModel, generation, initialView, overview]);
 
-  useEffect(() => { if (model) controlsApi.current?.replace(model, modelKey); }, [model, modelKey, generation]);
-  useEffect(() => { controlsApi.current?.display(edges, background); }, [edges, background, model, generation]);
+  useEffect(() => { if (model) controlsApi.current?.replace(model, modelKey); }, [model, modelKey, generation, overview]);
+  useEffect(() => { controlsApi.current?.display(edges, background); }, [edges, background, model, generation, overview]);
 
   const toggleFullscreen = async () => {
     setFullscreenError(null);
@@ -287,7 +296,7 @@ export function ModelViewer({ model, modelKey, status, detail }: {
     <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2 text-xs">
       {(Object.keys(views) as ModelViewPreset[]).map((preset) => <button className={button} aria-pressed={view === preset} disabled={!model} key={preset} onClick={() => controlsApi.current?.view(preset)}>{views[preset].label}</button>)}
       {detail && <button className={button} aria-pressed={view === 'detail'} disabled={!model} onClick={() => controlsApi.current?.view('detail', detail.bounds)}>{detail.label}</button>}
-      <button className={button} disabled={!model} onClick={() => controlsApi.current?.view('iso')}>{detail ? '查看整线' : '重置视角'}</button>
+      <button className={button} disabled={!model} onClick={() => controlsApi.current?.view(initialView)}>{detail ? '查看整线' : '重置视角'}</button>
       <button className={button} disabled={!model} onClick={() => controlsApi.current?.fit()}>适配窗口</button>
       <label>边线 <select aria-label="边线" className="rounded border p-1" value={edges} disabled={!model} onChange={(event) => setEdgeChoice({ key: modelKey, mode: event.target.value as EdgeMode })}>
         <option value="none">无边线</option><option value="feature">特征边</option><option value="surface" disabled={!supportsSurface}>曲面边界</option>
