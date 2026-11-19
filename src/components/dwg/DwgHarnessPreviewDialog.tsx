@@ -19,6 +19,8 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
   const [confirmedSingleEnd, setConfirmedSingleEnd] = useState(false);
   const [model, setModel] = useState<ReturnType<typeof buildDwgHarnessModel> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const drawingDiameter = hints.diameter?.mm;
+  const diameterDiffers = drawingDiameter !== undefined && diameter !== '' && Number(diameter) !== drawingDiameter;
 
   useLayoutEffect(() => {
     const element = dialog.current;
@@ -49,7 +51,8 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
     {hints.multipleEnds ? <p className="p-4 text-sm">图纸标注了多个连接器端头，当前仅支持单端 M12 线缆。</p>
       : !hints.partNumber ? <p className="p-4 text-sm">未识别到唯一的 M12 料号，无法生成 3D 示意。</p> : model ? <>
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-        <p className="break-words">{lengthBasis === 'cable' ? '线缆长度' : '总成端到端'} {Number(length)} mm · 线缆外径 {Number(diameter)} mm · {connector && connectorLabel[connector]}占位</p>
+        <p className="break-words">{lengthBasis === 'cable' ? '线缆长度' : '总成端到端'} {Number(length)} mm · 线缆外径 {Number(diameter)} mm
+          {diameterDiffers ? `（手工输入，图纸标称 ${drawingDiameter} mm）` : drawingDiameter === undefined ? '（手工输入）' : ''} · {connector && connectorLabel[connector]}占位</p>
         <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 hover:bg-slate-50" onClick={() => setModel(null)}>
           <Pencil size={14} />修改参数
         </button>
@@ -80,6 +83,7 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
         <input aria-label="线缆外径 (mm)" className={fieldClass} type="number" inputMode="decimal" step="any" required value={diameter}
           onChange={(event) => { setDiameter(event.target.value); setError(null); }} />
         <span className="block text-xs text-slate-600">{hints.diameter ? `图纸标注：${hints.diameter.note}` : '未读到唯一的线缆外径标注，请填写。'}</span>
+        {diameterDiffers && <span role="status" className="block text-xs text-amber-800">图纸标称外径 {drawingDiameter} mm，当前输入 {Number(diameter)} mm。预览将采用输入值。</span>}
       </label>
       <label className="block space-y-1.5 text-sm">连接器占位
         <select aria-label="连接器占位" className={fieldClass} required value={connector} onChange={(event) => setConnector(event.target.value as M12Connector | '')}>

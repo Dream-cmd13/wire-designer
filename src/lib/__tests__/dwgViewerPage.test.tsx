@@ -108,6 +108,24 @@ describe('DWG 3D preview', () => {
     expect(screen.queryByRole('button', { name: '确认并生成' })).toBeNull();
   });
 
+  it('shows when a manually entered diameter differs from the drawing and carries that note into the preview', async () => {
+    mocks.parse.mockResolvedValueOnce({ ...drawing, entities: [
+      { kind: 'text', isDimension: true, lines: ['*500±10'] },
+      { kind: 'text', lines: ['OD:5.50±0.15'] },
+    ] });
+    render(<DwgViewerPage />);
+    pick(sample('M12A05-07-068-3-10-500.dwg'));
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: '生成 3D 示意' }));
+    const diameter = await screen.findByLabelText<HTMLInputElement>('线缆外径 (mm)');
+    expect(diameter.value).toBe('5.5');
+    fireEvent.change(diameter, { target: { value: '20' } });
+    expect(screen.getByText(/图纸标称外径 5.5 mm.*当前输入 20 mm/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: '我已确认图纸为单段、单端 M12 线缆' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
+    expect(await screen.findByText(/线缆外径 20 mm（手工输入，图纸标称 5.5 mm）/)).toBeTruthy();
+  });
+
   it('blocks two connector ends even when they use the same part number', async () => {
     mocks.parse.mockResolvedValueOnce({ ...drawing, entities: [
       { kind: 'text', lines: ['P1 M12A04-07-068', 'P2 M12A04-07-068'] },

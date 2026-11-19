@@ -49,7 +49,7 @@ export function suggestDwgHarness(fileName: string, entities: readonly DwgRender
   let ambiguousDiameter = false;
   for (const entity of entities) {
     if (entity.kind !== 'text') continue;
-    const lines = entity.lines.map((line) => line.normalize('NFKC').trim()).filter(Boolean);
+    const lines = (entity.sourceLines ?? entity.lines).map((line) => line.normalize('NFKC').trim()).filter(Boolean);
     const label = lines.join('\n');
     const upperLabel = label.toUpperCase();
     for (const part of upperLabel.match(PART_NUMBER) ?? []) partNumbers.add(part);
@@ -105,7 +105,8 @@ export function buildDwgHarnessModel({ lengthMm, lengthBasis, diameterMm, connec
   }
   const radius = diameterMm / 2;
   const shell = Math.max(radius, 7.25);
-  const detailed = partNumber === 'M12A04-07-068' && connector === 'male';
+  const fivePin = partNumber === 'M12A05-07-068';
+  const detailed = connector === 'male' && (partNumber === 'M12A04-07-068' || fivePin);
   const section: Vector2[] = [];
   const profile = (...points: [radius: number, fraction: number][]) => {
     for (const [r, fraction] of points) section.push(new Vector2(r, end * fraction));
@@ -128,7 +129,9 @@ export function buildDwgHarnessModel({ lengthMm, lengthBasis, diameterMm, connec
   const plug = new LatheGeometry(section, 48).rotateZ(-Math.PI / 2);
   const meshes = [takeMesh(`P1 · M12 ${connector === 'male' ? '公头' : '母头'}占位`, plug)];
   if (detailed) {
-    for (const [index, [y, z]] of [[-2, 2], [2, 2], [2, -2], [-2, -2]].entries()) {
+    const pins = [[-2, 2], [2, 2], [2, -2], [-2, -2]];
+    if (fivePin) pins.push([0, 0]);
+    for (const [index, [y, z]] of pins.entries()) {
       const pin = new CylinderGeometry(0.55, 0.55, end * 0.075, 16)
         .rotateZ(-Math.PI / 2).translate(end * 0.0525, y, z);
       meshes.push(takeMesh(`P1 针位 ${index + 1} · 示意`, pin));

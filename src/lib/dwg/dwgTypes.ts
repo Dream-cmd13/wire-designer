@@ -38,6 +38,8 @@ export type DwgTextBaseline = 'top' | 'middle' | 'bottom';
 export interface DwgTextPrimitive {
   kind: 'text';
   lines: string[];
+  /** MTEXT 解析出的原始行，仅保留显式换行，供标注识别使用。 */
+  sourceLines?: string[];
   isDimension?: boolean;
   position: DwgPoint;
   height: number;

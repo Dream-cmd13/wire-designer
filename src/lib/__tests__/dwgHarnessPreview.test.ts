@@ -99,6 +99,19 @@ describe('DWG harness preview', () => {
     expect(buildDwgHarnessModel({ ...params, partNumber: 'M12A04-07-068', connector: 'female' }).meshes.some((mesh) => mesh.name.startsWith('P1 针位'))).toBe(false);
   });
 
+  it('renders four corner pins and the center pin for the documented five-pin male connector', () => {
+    const model = buildDwgHarnessModel({ lengthMm: 500, lengthBasis: 'cable', diameterMm: 5.5,
+      connector: 'male', partNumber: 'M12A05-07-068' });
+    const pins = model.meshes.filter((mesh) => mesh.name.startsWith('P1 针位'));
+    expect(pins).toHaveLength(5);
+    const pin = pins.find((mesh) => mesh.name === 'P1 针位 5 · 示意')!;
+    for (const axis of [1, 2]) {
+      const coordinates = pin.positions.filter((_, index) => index % 3 === axis);
+      expect(Math.min(...coordinates)).toBeLessThan(0);
+      expect(Math.max(...coordinates)).toBeCloseTo(-Math.min(...coordinates));
+    }
+  });
+
   it('rejects invalid or incompatible dimensions before creating meshes', () => {
     for (const [lengthMm, diameterMm] of [[NaN, 5], [500, Infinity], [500, 0], [10, 15], [1e10, 5]]) {
       expect(() => buildDwgHarnessModel({ lengthMm, diameterMm, connector: 'male', lengthBasis: 'cable' })).toThrow();
@@ -109,6 +122,11 @@ describe('DWG harness preview', () => {
     ['M12A04-07-068-3-10-500.dwg', 5, 'male'],
     ['M12A04-07-093-1-10-500.dwg', 4.5, 'male'],
     ['M12A04-08-085-1-10-500.dwg', 4.5, 'female'],
+    ['M12A05-07-068-3-10-500.dwg', 5.5, 'male'],
+    ['M12A05-07-093-1-10-500.dwg', 5, 'male'],
+    ['M12A05-08-085-1-10-500.dwg', 5, 'female'],
+    ['M12A08-07-068-3-10-500.dwg', 5.8, 'male'],
+    ['M12A08-07-093-1-10-500.dwg', 5.5, 'male'],
   ] as const;
   it.each(samples)('reads the real DWG annotation for %s', async (fileName, diameter, connector) => {
     if (!existsSync(fileName)) return;

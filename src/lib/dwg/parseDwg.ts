@@ -801,6 +801,7 @@ function convertEntityGeometries(
       return [{
         kind: 'text',
         lines: wrapMTextLines(content.lines, rectWidth, height, context.measureText),
+        sourceLines: content.lines,
         position: applyAffine(transform, rawPosition),
         height,
         rotation: (directionAngle ?? mtext.rotation ?? 0) + (similarityText?.rotation ?? 0),
