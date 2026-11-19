@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as React from 'react';
 import * as testing from '@testing-library/react';
 import { getCameraFit } from '../models/modelView';
+import { buildDwgHarnessModel } from '../dwg/dwgHarnessPreview';
 import { ModelViewer } from '@/components/models/ModelViewer';
 import * as THREE from 'three';
 import type { ParsedModel } from '../models/modelTypes';
@@ -241,6 +242,23 @@ describe('camera fit and canvas ownership', () => {
     mocks.camera!.position.multiplyScalar(0.5);
     testing.act(() => mocks.resize());
     expect(mocks.camera!.position.length()).toBeCloseTo(position.length() * 0.5);
+  });
+  it('fits the P1 end around its own center, retains the target on refit, and restores the full assembly', () => {
+    const harness = buildDwgHarnessModel({ lengthMm: 500, lengthBasis: 'cable', diameterMm: 5, connector: 'male' });
+    testing.render(<ModelViewer model={harness} modelKey="harness" detail={{ label: '查看 P1 端头', bounds: harness.connectorBoundsMm }} />);
+    const full = pose();
+    const openDetail = testing.screen.getByRole('button', { name: '查看 P1 端头' });
+    testing.fireEvent.click(openDetail);
+    expect(openDetail.getAttribute('aria-pressed')).toBe('true');
+    expect(mocks.controls!.target.x).toBeCloseTo(-250);
+    expect(mocks.camera!.position.x).toBeLessThan(mocks.controls!.target.x);
+    expect(mocks.camera!.position.distanceTo(mocks.controls!.target)).toBeLessThan(100);
+    drag(64, 24);
+    testing.fireEvent.click(testing.screen.getByRole('button', { name: '适配窗口' }));
+    expect(mocks.controls!.target.x).toBeCloseTo(-250);
+    testing.fireEvent.click(testing.screen.getByRole('button', { name: '查看整线' }));
+    expect(openDetail.getAttribute('aria-pressed')).toBe('false');
+    expect(pose()).toEqual(full);
   });
   it('keeps clipping and aspect finite for tiny, large, flat and zero-size containers', () => {
     for (const size of [1e-8, 1, 1e12]) for (const [width, height] of [[0,0], [1,1000], [1000,1]]) {

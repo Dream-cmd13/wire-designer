@@ -1,9 +1,8 @@
 import { useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Box, Pencil, X } from 'lucide-react';
 import { ModelViewer } from '@/components/models/ModelViewer';
-import { buildDwgHarnessModel, suggestDwgHarness, type M12Connector } from '@/lib/dwg/dwgHarnessPreview';
+import { buildDwgHarnessModel, suggestDwgHarness, type HarnessLengthBasis, type M12Connector } from '@/lib/dwg/dwgHarnessPreview';
 import type { DwgDrawing } from '@/lib/dwg/dwgTypes';
-import type { ParsedModel } from '@/lib/models/modelTypes';
 
 const closeClass = 'shrink-0 rounded-md p-2 text-slate-600 hover:bg-slate-100';
 const fieldClass = 'w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-600';
@@ -14,10 +13,11 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
   const titleId = useId();
   const [hints] = useState(() => suggestDwgHarness(fileName, drawing.entities, drawing.units));
   const [length, setLength] = useState(hints.length?.mm.toString() ?? '');
+  const [lengthBasis, setLengthBasis] = useState<HarnessLengthBasis | ''>(hints.length?.basis ?? '');
   const [diameter, setDiameter] = useState(hints.diameter?.mm.toString() ?? '');
   const [connector, setConnector] = useState<M12Connector | ''>(hints.connector ?? '');
   const [confirmedSingleEnd, setConfirmedSingleEnd] = useState(false);
-  const [model, setModel] = useState<ParsedModel | null>(null);
+  const [model, setModel] = useState<ReturnType<typeof buildDwgHarnessModel> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useLayoutEffect(() => {
@@ -28,9 +28,11 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!hints.partNumber || hints.multipleEnds || !confirmedSingleEnd || !connector) return;
+    if (!hints.partNumber || hints.multipleEnds || !confirmedSingleEnd || !connector || !lengthBasis) return;
     setError(null);
-    try { setModel(buildDwgHarnessModel({ lengthMm: Number(length), diameterMm: Number(diameter), connector })); }
+    try {
+      setModel(buildDwgHarnessModel({ lengthMm: Number(length), lengthBasis, diameterMm: Number(diameter), connector, partNumber: hints.partNumber }));
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : '未能生成 3D 示意。'); }
   }
 
@@ -47,21 +49,31 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
     {hints.multipleEnds ? <p className="p-4 text-sm">图纸标注了多个连接器端头，当前仅支持单端 M12 线缆。</p>
       : !hints.partNumber ? <p className="p-4 text-sm">未识别到唯一的 M12 料号，无法生成 3D 示意。</p> : model ? <>
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-        <p className="break-words">总长 {Number(length)} mm · 外径 {Number(diameter)} mm · {connector && connectorLabel[connector]}占位</p>
+        <p className="break-words">{lengthBasis === 'cable' ? '线缆长度' : '总成端到端'} {Number(length)} mm · 线缆外径 {Number(diameter)} mm · {connector && connectorLabel[connector]}占位</p>
         <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 hover:bg-slate-50" onClick={() => setModel(null)}>
           <Pencil size={14} />修改参数
         </button>
       </div>
       <div className="flex min-h-[clamp(20rem,60dvh,39rem)] min-w-0">
-        <ModelViewer model={model} modelKey={null} status="直线示意 · 非安装模型，不用于加工或量测" />
+        <ModelViewer model={model} modelKey={null} detail={{ label: '查看 P1 端头', bounds: model.connectorBoundsMm }}
+          status="直线示意 · 接头尺寸及针位为占位，仅供预览" />
       </div>
     </> : <form onSubmit={submit} className="space-y-4 p-4">
       <p className="text-sm text-slate-700">{hints.partNumber} · 单段线缆，一端 M12，另一端为线缆截面。</p>
+      <label className="block space-y-1.5 text-sm">长度基准
+        <select aria-label="长度基准" className={fieldClass} required value={lengthBasis}
+          onChange={(event) => { setLengthBasis(event.target.value as HarnessLengthBasis | ''); setError(null); }}>
+          <option value="" disabled>请选择图纸的长度基准</option>
+          <option value="cable">线缆长度（出线口至切断端）</option>
+          <option value="overall">总成端到端（含连接器占位）</option>
+        </select>
+      </label>
       <label className="block space-y-1.5 text-sm">
-        <span>标称总长 (mm)</span>
-        <input aria-label="标称总长 (mm)" className={fieldClass} type="number" inputMode="decimal" step="any" required value={length}
+        <span>标称长度 (mm)</span>
+        <input aria-label="标称长度 (mm)" aria-describedby={`${titleId}-length-note`}
+          className={fieldClass} type="number" inputMode="decimal" step="any" required value={length}
           onChange={(event) => { setLength(event.target.value); setError(null); }} />
-        <span className="block text-xs text-slate-600">{hints.length ? `图纸标注：${hints.length.note}` : '未读到唯一的总长标注，请填写。'}</span>
+        <span id={`${titleId}-length-note`} className="block text-xs text-slate-600">{hints.length ? `图纸标注：${hints.length.note}` : '未读到明确的长度标注，请对照图纸填写。'}</span>
       </label>
       <label className="block space-y-1.5 text-sm">
         <span>线缆外径 (mm)</span>
@@ -70,7 +82,7 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
         <span className="block text-xs text-slate-600">{hints.diameter ? `图纸标注：${hints.diameter.note}` : '未读到唯一的线缆外径标注，请填写。'}</span>
       </label>
       <label className="block space-y-1.5 text-sm">连接器占位
-        <select className={fieldClass} required value={connector} onChange={(event) => setConnector(event.target.value as M12Connector | '')}>
+        <select aria-label="连接器占位" className={fieldClass} required value={connector} onChange={(event) => setConnector(event.target.value as M12Connector | '')}>
           <option value="" disabled>请选择端头</option>
           <option value="male">{connectorLabel.male}</option>
           <option value="female">{connectorLabel.female}</option>

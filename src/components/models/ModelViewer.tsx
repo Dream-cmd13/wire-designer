@@ -12,15 +12,22 @@ const views: Record<ModelViewPreset, { label: string; direction: [number, number
 };
 type EdgeMode = 'none' | 'feature' | 'surface';
 type Background = 'light' | 'dark';
+type View = ModelViewPreset | 'detail';
+type Bounds = ParsedModel['boundsMm'];
 interface ViewerApi {
-  view: (preset: ModelViewPreset) => void;
+  view: (preset: View, bounds?: Bounds) => void;
   fit: () => void;
   replace: (model: ParsedModel, key: string | null) => void;
   display: (edges: EdgeMode, background: Background) => void;
   clearSelection: () => void;
 }
 
-export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | null; modelKey: string | null; status?: ReactNode }) {
+export function ModelViewer({ model, modelKey, status, detail }: {
+  model: ParsedModel | null;
+  modelKey: string | null;
+  status?: ReactNode;
+  detail?: { label: string; bounds: Bounds };
+}) {
   const host = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
   const controlsApi = useRef<ViewerApi | null>(null);
@@ -28,7 +35,7 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
   useEffect(() => { latestModel.current = model; }, [model]);
   const [edgeChoice, setEdgeChoice] = useState<{ key: string | null; mode: EdgeMode } | null>(null);
   const [background, setBackground] = useState<Background>('light');
-  const [view, setView] = useState<ModelViewPreset | 'free'>('iso');
+  const [view, setView] = useState<View | 'free'>('iso');
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ model: ParsedModel; generation: number; message: string } | null>(null);
@@ -79,7 +86,9 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
     let geometries: THREE.BufferGeometry[] = [];
     let featureLines: THREE.LineSegments[] = []; let surfaceLines: THREE.LineSegments[] = [];
     let current: ParsedModel | null = null; let currentKey: string | null | undefined;
-    let fitted = false; let pendingPreset: ModelViewPreset | null = 'iso';
+    let fitted = false;
+    let pendingView: { preset: View; bounds?: Bounds } | null = null;
+    let detailBounds: Bounds | undefined;
     let programmatic = false;
     let freeView = false;
     const activePointers = new Set<number>();
@@ -109,23 +118,36 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
       camera.quaternion.copy(quaternion);
       controls.addEventListener('change', onChange);
     };
-    const fit = (preset?: ModelViewPreset) => {
-      if (!current || !container.clientWidth || !container.clientHeight) { if (preset) pendingPreset = preset; return; }
+    const fit = (preset?: View, bounds?: Bounds) => {
+      if (!current || !container.clientWidth || !container.clientHeight) {
+        if (preset) pendingView = { preset, bounds };
+        return;
+      }
+      if (preset) detailBounds = bounds;
       programmatic = true;
-      const sizing = getCameraFit(current.boundsMm, container.clientWidth, container.clientHeight);
-      const direction = preset ? new THREE.Vector3().fromArray(views[preset].direction) : camera.position.clone().sub(controls.target);
+      const sizing = getCameraFit(detailBounds ?? current.boundsMm, container.clientWidth, container.clientHeight);
+      const target = new THREE.Vector3();
+      if (detailBounds) {
+        const { min, max } = detailBounds;
+        target.set((min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2).add(group.position);
+      }
+      const direction = preset === 'detail' ? new THREE.Vector3(-1, -0.8, 0.65)
+        : preset ? new THREE.Vector3().fromArray(views[preset].direction) : camera.position.clone().sub(controls.target);
       if (direction.lengthSq() === 0) direction.set(1,-1,1);
-      if (preset) camera.up.fromArray(views[preset].up);
+      if (preset === 'detail') camera.up.set(0, 0, 1);
+      else if (preset) camera.up.fromArray(views[preset].up);
       camera.aspect = sizing.aspect; camera.zoom = 1;
-      camera.position.copy(direction.normalize().multiplyScalar(sizing.distance));
-      camera.near = sizing.near; camera.far = sizing.far;
-      controls.target.set(0,0,0); camera.lookAt(controls.target); camera.updateProjectionMatrix();
+      camera.position.copy(direction.normalize().multiplyScalar(sizing.distance)).add(target);
+      const { min: modelMin, max: modelMax } = current.boundsMm;
+      const fullSpan = detailBounds ? Math.hypot(...modelMax.map((v, i) => v - modelMin[i])) : 0;
+      camera.near = sizing.near; camera.far = sizing.far + fullSpan;
+      controls.target.copy(target); camera.lookAt(controls.target); camera.updateProjectionMatrix();
       // Explicit fit/presets discard unfinished input, including a pending wheel delta.
       rebuildControls();
       controls.minDistance = sizing.radius * 0.01; controls.maxDistance = sizing.distance * 10;
       controls.update();
       if (preset) freeView = false;
-      rotation.copy(camera.quaternion); programmatic = false; fitted = true; pendingPreset = null; renderScene();
+      rotation.copy(camera.quaternion); programmatic = false; fitted = true; pendingView = null; renderScene();
     };
     const display = (mode: EdgeMode, theme: Background) => {
       edgeMode = mode;
@@ -140,11 +162,12 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
       if (!width || !height) return;
       renderer.setSize(width, height); camera.aspect = width / height; camera.updateProjectionMatrix();
       syncModelControlsViewport(controls);
-      if (!fitted) fit(pendingPreset ?? 'iso');
+      if (pendingView) fit(pendingView.preset, pendingView.bounds);
+      else if (!fitted) fit('iso');
       renderScene();
     };
     const api: ViewerApi = {
-      view: (preset) => { fit(preset); setView(preset); }, fit: () => fit(), display, clearSelection,
+      view: (preset, bounds) => { fit(preset, bounds); setView(preset); }, fit: () => fit(), display, clearSelection,
       replace: (next, key) => {
         clickCandidate = null;
         // A new parse invalidates both CAD ids and any unconsumed input against old geometry.
@@ -169,7 +192,7 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
         group.position.fromArray(next.boundsMm.min.map((value, i) => -(value + next.boundsMm.max[i]) / 2) as [number,number,number]);
         current = next;
         selectionLayer = createModelSelectionLayer(next.meshes,solids,group);
-        if (key !== currentKey) { fitted = false; pendingPreset = 'iso'; currentKey = key; fit('iso'); queueMicrotask(() => { if (controlsApi.current === api) setView('iso'); }); }
+        if (key !== currentKey) { fitted = false; currentKey = key; fit('iso'); queueMicrotask(() => { if (controlsApi.current === api) setView('iso'); }); }
         featureLines.forEach((line) => { line.visible = edgeMode === 'feature'; });
         surfaceLines.forEach((line) => { line.visible = edgeMode === 'surface'; });
         resize();
@@ -263,7 +286,8 @@ export function ModelViewer({ model, modelKey, status }: { model: ParsedModel | 
   return <div ref={frame} className="flex min-h-80 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white fullscreen:h-screen">
     <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2 text-xs">
       {(Object.keys(views) as ModelViewPreset[]).map((preset) => <button className={button} aria-pressed={view === preset} disabled={!model} key={preset} onClick={() => controlsApi.current?.view(preset)}>{views[preset].label}</button>)}
-      <button className={button} disabled={!model} onClick={() => controlsApi.current?.view('iso')}>重置视角</button>
+      {detail && <button className={button} aria-pressed={view === 'detail'} disabled={!model} onClick={() => controlsApi.current?.view('detail', detail.bounds)}>{detail.label}</button>}
+      <button className={button} disabled={!model} onClick={() => controlsApi.current?.view('iso')}>{detail ? '查看整线' : '重置视角'}</button>
       <button className={button} disabled={!model} onClick={() => controlsApi.current?.fit()}>适配窗口</button>
       <label>边线 <select aria-label="边线" className="rounded border p-1" value={edges} disabled={!model} onChange={(event) => setEdgeChoice({ key: modelKey, mode: event.target.value as EdgeMode })}>
         <option value="none">无边线</option><option value="feature">特征边</option><option value="surface" disabled={!supportsSurface}>曲面边界</option>

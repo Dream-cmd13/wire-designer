@@ -68,7 +68,8 @@ describe('DWG 3D preview', () => {
     await screen.findByText('已保存');
     fireEvent.click(screen.getByRole('button', { name: '生成 3D 示意' }));
     await screen.findByRole('dialog');
-    expect((screen.getByLabelText('标称总长 (mm)') as HTMLInputElement).value).toBe('500');
+    expect((screen.getByLabelText('标称长度 (mm)') as HTMLInputElement).value).toBe('500');
+    expect((screen.getByLabelText('长度基准') as HTMLSelectElement).value).toBe('cable');
     expect((screen.getByLabelText('线缆外径 (mm)') as HTMLInputElement).value).toBe('');
     fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
     expect(screen.queryByLabelText('三维模型画布')).toBeNull();
@@ -77,9 +78,14 @@ describe('DWG 3D preview', () => {
     expect(screen.queryByLabelText('三维模型画布')).toBeNull();
     fireEvent.click(screen.getByRole('checkbox', { name: '我已确认图纸为单段、单端 M12 线缆' }));
     fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
-    expect((await screen.findByLabelText('三维模型画布')).textContent).toBe('500 mm');
+    expect((await screen.findByLabelText('三维模型画布')).textContent).toBe('526 mm');
+    expect(screen.getByText(/线缆长度 500 mm/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '修改参数' }));
     expect((screen.getByLabelText('线缆外径 (mm)') as HTMLInputElement).value).toBe('4.5');
+    fireEvent.change(screen.getByLabelText('长度基准'), { target: { value: 'overall' } });
+    fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
+    expect((await screen.findByLabelText('三维模型画布')).textContent).toBe('500 mm');
+    expect(screen.getByText(/总成端到端 500 mm/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '关闭 3D 示意' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(mocks.download).toHaveBeenCalledOnce();
@@ -104,7 +110,7 @@ describe('DWG 3D preview', () => {
 
   it('blocks two connector ends even when they use the same part number', async () => {
     mocks.parse.mockResolvedValueOnce({ ...drawing, entities: [
-      { kind: 'text', lines: ['A: M12A04-07-068', 'B: M12A04-07-068'] },
+      { kind: 'text', lines: ['P1 M12A04-07-068', 'P2 M12A04-07-068'] },
     ] });
     render(<DwgViewerPage />);
     pick(sample('M12A04-07-068-3-10-500.dwg'));
