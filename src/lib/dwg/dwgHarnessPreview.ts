@@ -7,36 +7,65 @@ interface DimensionHint { mm: number; note: string }
 interface HarnessDimensions { lengthMm: number; diameterMm: number; connector: M12Connector }
 
 const PART_NUMBER = /\bM12[A-Z]\d{2}-\d{2}-\d{3}(?!\d)/g;
+const DWG_MILLIMETERS = 4;
+const SINGLE_END_TEMPLATE = /^M12A(?:04|05|08)-(?:07-068|07-093|08-085)-\d+-\d+-(\d+)\.DWG$/;
+const END_REFERENCE = /(?:^|[\s,;，；])(?:([AB])|[JP]([12]))\s*(?:端(?:连接器)?)?\s*:\s*M12[A-Z]\d{2}-\d{2}-\d{3}(?!\d)/g;
 const DECIMAL = String.raw`\d+(?:\.\d+)?`;
 const TOLERANCE = String.raw`(?:\s*±\s*${DECIMAL})?`;
 const OVERALL = new RegExp(String.raw`^\*\s*(${DECIMAL})${TOLERANCE}\s*(?:mm)?$`, 'i');
-const NAMED_LENGTH = new RegExp(String.raw`(?:标称总长|总长|总长度)\s*:\s*(${DECIMAL})${TOLERANCE}\s*mm\b`, 'i');
-const CABLE_OD = new RegExp(String.raw`(?:\bO\.?\s*D\.?|(?:线缆|电缆|外被)\s*外径)\s*:\s*(${DECIMAL})${TOLERANCE}(?:\s*(mm\b|cm\b|m\b|in(?:ch)?\b|μm\b|um\b|"))?`, 'gi');
+const LENGTH_LABEL = /(?:标称)?总长(?:度)?\s*:\s*/g;
+const OD_LABEL = /(?:\bO\.?\s*D\.?|(?:线缆|电缆|外被)\s*外径)\s*:\s*/gi;
+const NAMED_LENGTH = new RegExp(String.raw`^(${DECIMAL})${TOLERANCE}\s*mm\b(?!\s*[-–—~～至\d./±])`, 'i');
+const CABLE_OD = new RegExp(String.raw`^(${DECIMAL})${TOLERANCE}(?:\s*(mm)\b)?(?=$|\s*(?:[;；]|,(?!\s*\d)|(?:PVC|PUR|TPE|TPU)\b|[棕白蓝黑红绿黄灰橙紫]))`, 'i');
 
 function unambiguous(hints: DimensionHint[]): DimensionHint | null {
   return hints.length && hints.every((hint) => hint.mm === hints[0].mm) ? hints[0] : null;
 }
 
-export function suggestDwgHarness(fileName: string, entities: readonly DwgRenderEntity[]) {
-  const partNumbers = new Set(fileName.normalize('NFKC').toUpperCase().match(PART_NUMBER));
+export function suggestDwgHarness(fileName: string, entities: readonly DwgRenderEntity[], units: number | null) {
+  const name = fileName.normalize('NFKC').toUpperCase();
+  const template = units === DWG_MILLIMETERS ? SINGLE_END_TEMPLATE.exec(name) : null;
+  const partNumbers = new Set(name.match(PART_NUMBER));
+  const annotatedEnds = new Set<string>();
   const lengths: DimensionHint[] = [];
   const diameters: DimensionHint[] = [];
+  let ambiguousLength = false;
+  let ambiguousDiameter = false;
   for (const entity of entities) {
     if (entity.kind !== 'text') continue;
     const lines = entity.lines.map((line) => line.normalize('NFKC').trim());
     const label = lines.join(' ');
-    for (const part of label.toUpperCase().match(PART_NUMBER) ?? []) partNumbers.add(part);
-    const length = (entity.isDimension ? OVERALL.exec(label) : null) ?? NAMED_LENGTH.exec(label);
-    if (length) lengths.push({ mm: Number(length[1]), note: length[0] });
-    for (const match of label.matchAll(CABLE_OD)) {
-      if (!match[2] || match[2].toLowerCase() === 'mm') diameters.push({ mm: Number(match[1]), note: `OD:${match[1]}` });
+    const upperLabel = label.toUpperCase();
+    for (const part of upperLabel.match(PART_NUMBER) ?? []) partNumbers.add(part);
+    for (const end of upperLabel.matchAll(END_REFERENCE)) {
+      annotatedEnds.add(end[1] === 'B' || end[2] === '2' ? 'second' : 'first');
+    }
+    if (template && entity.isDimension) {
+      const starred = OVERALL.exec(label);
+      if (starred && Number(starred[1]) === Number(template[1])) {
+        lengths.push({ mm: Number(starred[1]), note: starred[0] });
+      }
+    }
+    for (const match of label.matchAll(LENGTH_LABEL)) {
+      const length = NAMED_LENGTH.exec(label.slice(match.index + match[0].length));
+      if (length) lengths.push({ mm: Number(length[1]), note: match[0] + length[0] });
+      else ambiguousLength = true;
+    }
+    for (const match of label.matchAll(OD_LABEL)) {
+      const diameter = CABLE_OD.exec(label.slice(match.index + match[0].length));
+      if (diameter && (diameter[2] || units === DWG_MILLIMETERS)) {
+        diameters.push({ mm: Number(diameter[1]), note: `OD:${diameter[1]}` });
+      } else {
+        ambiguousDiameter = true;
+      }
     }
   }
   const partNumber = partNumbers.size === 1 ? [...partNumbers][0] : null;
   // These are the cataloged single-ended families represented in the supported DWG samples.
   const variant = partNumber?.slice(7);
   const connector: M12Connector | null = variant === '07-068' || variant === '07-093' ? 'male' : variant === '08-085' ? 'female' : null;
-  return { partNumber, connector, length: unambiguous(lengths), diameter: unambiguous(diameters) };
+  return { partNumber, connector, multipleEnds: annotatedEnds.size > 1,
+    length: ambiguousLength ? null : unambiguous(lengths), diameter: ambiguousDiameter ? null : unambiguous(diameters) };
 }
 
 function takeMesh(name: string, geometry: BufferGeometry): ParsedMesh {

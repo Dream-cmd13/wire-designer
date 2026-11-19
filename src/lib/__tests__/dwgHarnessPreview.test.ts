@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { buildDwgHarnessModel, suggestDwgHarness } from '@/lib/dwg/dwgHarnessPreview';
+import { buildDwgHarnessModel, suggestDwgHarness as readHarnessHints } from '@/lib/dwg/dwgHarnessPreview';
 import { parseDwg } from '@/lib/dwg/parseDwg';
 import type { DwgRenderEntity } from '@/lib/dwg/dwgTypes';
 
@@ -9,12 +9,42 @@ function text(line: string, isDimension = false): DwgRenderEntity {
     position: { x: 0, y: 0 }, height: 1, rotation: 0, align: 'left', baseline: 'top', color: '#000', bold: false };
 }
 
+function suggestDwgHarness(fileName: string, entities: DwgRenderEntity[], units = 4) {
+  return readHarnessHints(fileName, entities, units);
+}
+
 describe('DWG harness preview', () => {
   it('uses marked nominal dimensions and cable OD, not mating dimensions or other numbers', () => {
-    const hints = suggestDwgHarness('renamed.dwg', [text('M12A04-07-068'), text('*500±10', true),
+    const hints = suggestDwgHarness('M12A04-07-068-3-10-500.dwg', [text('M12A04-07-068'), text('*500±10', true),
       text('⌀14.5', true), text('500次'), text('4C*0.3mm² OD：5.00±0.15 PVC')]);
     expect(hints).toMatchObject({ partNumber: 'M12A04-07-068', connector: 'male',
       length: { mm: 500, note: '*500±10' }, diameter: { mm: 5, note: 'OD:5.00' } });
+  });
+
+  it.each(['4,50 mm', '1/4 inch', '4.5–5.0 mm', '4.5 mil', '4.5±0,15 cm'])('does not prefill an ambiguous OD: %s', (value) => {
+    expect(suggestDwgHarness('M12A04-07-068-3-10-500.dwg', [text(`OD:${value}`)]).diameter).toBeNull();
+  });
+
+  it('does not ignore an unsupported unit alongside a valid outer diameter', () => {
+    expect(suggestDwgHarness('M12A04-07-068-3-10-500.dwg', [text('OD:4.5 mm'), text('OD:0.2 in')]).diameter).toBeNull();
+  });
+
+  it('uses an unqualified OD only when DWG units are millimeters', () => {
+    expect(suggestDwgHarness('renamed.dwg', [text('OD:4.5')], 1).diameter).toBeNull();
+    expect(suggestDwgHarness('renamed.dwg', [text('OD:4.5 mm')], 1).diameter?.mm).toBe(4.5);
+  });
+
+  it('requires an explicit overall length or corroboration from a known template', () => {
+    expect(suggestDwgHarness('M12A04-07-068-3-10-500.dwg', [text('*15±1', true)]).length).toBeNull();
+    expect(suggestDwgHarness('M12A04-07-068-3-10-500.dwg', [text('*500±10', true)], 1).length).toBeNull();
+    expect(suggestDwgHarness('renamed.dwg', [text('M12A04-07-068'), text('*500±10', true)]).length).toBeNull();
+    expect(suggestDwgHarness('renamed.dwg', [text('M12A04-07-068'), text('总长:500 mm')]).length?.mm).toBe(500);
+  });
+
+  it('checks every named overall length in the same MTEXT', () => {
+    const annotation = { ...text(''), lines: ['总长:500 mm', '总长度:800 mm'] };
+    expect(suggestDwgHarness('renamed.dwg', [annotation]).length).toBeNull();
+    expect(suggestDwgHarness('renamed.dwg', [text(annotation.lines.join(' '))]).length).toBeNull();
   });
 
   it('leaves conflicting and missing values empty and refuses multiple part numbers', () => {
@@ -50,6 +80,6 @@ describe('DWG harness preview', () => {
   it.each(samples)('reads the real DWG annotation for %s', async (fileName, diameter, connector) => {
     if (!existsSync(fileName)) return;
     const drawing = await parseDwg(Uint8Array.from(readFileSync(fileName)).buffer, { fileName });
-    expect(suggestDwgHarness(fileName, drawing.entities)).toMatchObject({ length: { mm: 500 }, diameter: { mm: diameter }, connector });
+    expect(readHarnessHints(fileName, drawing.entities, drawing.units)).toMatchObject({ length: { mm: 500 }, diameter: { mm: diameter }, connector, multipleEnds: false });
   });
 });

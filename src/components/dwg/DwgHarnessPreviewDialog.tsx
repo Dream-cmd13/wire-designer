@@ -12,10 +12,11 @@ const connectorLabel = { male: 'M12 公头', female: 'M12 母头' } as const;
 export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawing: DwgDrawing; fileName: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  const [hints] = useState(() => suggestDwgHarness(fileName, drawing.entities));
+  const [hints] = useState(() => suggestDwgHarness(fileName, drawing.entities, drawing.units));
   const [length, setLength] = useState(hints.length?.mm.toString() ?? '');
   const [diameter, setDiameter] = useState(hints.diameter?.mm.toString() ?? '');
   const [connector, setConnector] = useState<M12Connector | ''>(hints.connector ?? '');
+  const [confirmedSingleEnd, setConfirmedSingleEnd] = useState(false);
   const [model, setModel] = useState<ParsedModel | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +28,7 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!hints.partNumber || !connector) return;
+    if (!hints.partNumber || hints.multipleEnds || !confirmedSingleEnd || !connector) return;
     setError(null);
     try { setModel(buildDwgHarnessModel({ lengthMm: Number(length), diameterMm: Number(diameter), connector })); }
     catch (cause) { setError(cause instanceof Error ? cause.message : '未能生成 3D 示意。'); }
@@ -43,14 +44,15 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
       </div>
       <button type="button" className={closeClass} title="关闭 3D 示意" aria-label="关闭 3D 示意" onClick={onClose}><X size={18} /></button>
     </header>
-    {!hints.partNumber ? <p className="p-4 text-sm">未识别到唯一的 M12 料号，无法生成 3D 示意。</p> : model ? <>
+    {hints.multipleEnds ? <p className="p-4 text-sm">图纸标注了多个连接器端头，当前仅支持单端 M12 线缆。</p>
+      : !hints.partNumber ? <p className="p-4 text-sm">未识别到唯一的 M12 料号，无法生成 3D 示意。</p> : model ? <>
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
         <p className="break-words">总长 {Number(length)} mm · 外径 {Number(diameter)} mm · {connector && connectorLabel[connector]}占位</p>
         <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 hover:bg-slate-50" onClick={() => setModel(null)}>
           <Pencil size={14} />修改参数
         </button>
       </div>
-      <div className="flex h-[clamp(20rem,60dvh,39rem)] min-w-0">
+      <div className="flex min-h-[clamp(20rem,60dvh,39rem)] min-w-0">
         <ModelViewer model={model} modelKey={null} status="直线示意 · 非安装模型，不用于加工或量测" />
       </div>
     </> : <form onSubmit={submit} className="space-y-4 p-4">
@@ -73,6 +75,10 @@ export function DwgHarnessPreviewDialog({ drawing, fileName, onClose }: { drawin
           <option value="male">{connectorLabel.male}</option>
           <option value="female">{connectorLabel.female}</option>
         </select>
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" required checked={confirmedSingleEnd} onChange={(event) => setConfirmedSingleEnd(event.target.checked)} />
+        我已确认图纸为单段、单端 M12 线缆
       </label>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <div className="flex justify-end">

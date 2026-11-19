@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Box, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
@@ -110,6 +111,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [isDragging, setIsDragging] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'png' | null>(null);
   const [harnessPreviewOpen, setHarnessPreviewOpen] = useState(false);
+  const harnessPreviewButton = useRef<HTMLButtonElement>(null);
   const [cloudId, setCloudId] = useState('');
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('local');
@@ -698,7 +700,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             导出 PDF
           </button>
-          <button type="button" className={toolbarButtonClass} disabled={!isReady || harnessPreviewOpen}
+          <button type="button" ref={harnessPreviewButton} className={toolbarButtonClass} disabled={!isReady}
             onClick={() => setHarnessPreviewOpen(true)} title="从 M12 单段线缆图纸生成 3D 示意">
             <Box className="h-3.5 w-3.5" />
             生成 3D 示意
@@ -837,9 +839,19 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       </div>
 
       {harnessPreviewOpen && state.drawing && (
-        <Suspense fallback={<span role="status" className="text-sm text-slate-600">正在加载 3D 预览…</span>}>
-          <DwgHarnessPreviewDialog drawing={state.drawing} fileName={state.fileName} onClose={() => setHarnessPreviewOpen(false)} />
-        </Suspense>
+        <ErrorBoundary fallback={
+          <div className="flex items-center gap-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p role="alert">3D 预览未能加载。保存未完成的工作后，可刷新页面再试。</p>
+            <button type="button" className={toolbarButtonClass} onClick={() => {
+              setHarnessPreviewOpen(false);
+              harnessPreviewButton.current?.focus();
+            }}>关闭提示</button>
+          </div>
+        }>
+          <Suspense fallback={<span role="status" className="text-sm text-slate-600">正在加载 3D 预览…</span>}>
+            <DwgHarnessPreviewDialog drawing={state.drawing} fileName={state.fileName} onClose={() => setHarnessPreviewOpen(false)} />
+          </Suspense>
+        </ErrorBoundary>
       )}
 
       <input

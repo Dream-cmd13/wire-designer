@@ -20,7 +20,7 @@ vi.mock('@/repositories/dwgRepository', async (importOriginal) => ({
 
 const owner = { id: 'owner', role: 'engineer' as const, name: 'test', email: 'test@example.com', createdAt: 1 };
 const record = { id: 'drawing', original_name: 'cloud.dwg', owner_id: owner.id, status: 'ready' };
-const drawing = { bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 }, hiddenLayers: [], layers: [], entities: [], stats: { rendered: 1, text: 0, skipped: {} } };
+const drawing = { bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 }, units: 4, hiddenLayers: [], layers: [], entities: [], stats: { rendered: 1, text: 0, skipped: {} } };
 
 // jsdom provides the element but not native modal behavior.
 Object.defineProperties(HTMLDialogElement.prototype, {
@@ -74,6 +74,9 @@ describe('DWG 3D preview', () => {
     expect(screen.queryByLabelText('三维模型画布')).toBeNull();
     fireEvent.change(screen.getByLabelText('线缆外径 (mm)'), { target: { value: '4.5' } });
     fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
+    expect(screen.queryByLabelText('三维模型画布')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: '我已确认图纸为单段、单端 M12 线缆' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认并生成' }));
     expect((await screen.findByLabelText('三维模型画布')).textContent).toBe('500 mm');
     fireEvent.click(screen.getByRole('button', { name: '修改参数' }));
     expect((screen.getByLabelText('线缆外径 (mm)') as HTMLInputElement).value).toBe('4.5');
@@ -96,6 +99,18 @@ describe('DWG 3D preview', () => {
     await waitFor(() => expect(saveButton().disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: '生成 3D 示意' }));
     expect(await screen.findByText('未识别到唯一的 M12 料号，无法生成 3D 示意。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '确认并生成' })).toBeNull();
+  });
+
+  it('blocks two connector ends even when they use the same part number', async () => {
+    mocks.parse.mockResolvedValueOnce({ ...drawing, entities: [
+      { kind: 'text', lines: ['A: M12A04-07-068', 'B: M12A04-07-068'] },
+    ] });
+    render(<DwgViewerPage />);
+    pick(sample('M12A04-07-068-3-10-500.dwg'));
+    await waitFor(() => expect(saveButton().disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: '生成 3D 示意' }));
+    expect(await screen.findByText('图纸标注了多个连接器端头，当前仅支持单端 M12 线缆。')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '确认并生成' })).toBeNull();
   });
 });
