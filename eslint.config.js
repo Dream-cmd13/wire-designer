@@ -23,7 +23,7 @@ export default defineConfig([
   ]),
   {
     files: [
-      'scripts/deploy.mjs', 'scripts/create-user.mjs', 'scripts/create-user.test.mjs',
+      'scripts/deploy*.mjs', 'scripts/migrate-sql*.mjs', 'scripts/create-user.mjs', 'scripts/create-user.test.mjs',
       'scripts/typecheck-functions.mjs', 'scripts/import-cost-analyses.mjs',
       'scripts/import-cost-analyses.test.mjs', 'scripts/sync-cost-analyses.mjs',
       'scripts/upload-cost-analysis-excels.mjs', 'scripts/verify-cost-analyses.mjs',

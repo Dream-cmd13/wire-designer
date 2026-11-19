@@ -28,7 +28,7 @@ npm run build
 
 ## 一键部署到宝塔
 
-在项目根目录执行 `npm run deploy`，自动检查、测试、构建、打包并通过 SSH 发布。只做本地验证使用 `npm run deploy:check`，启动时显示“本地验证模式”。正式构建使用 `npm run build`；`npm run dev` 不更新发布用的 `dist`。
+在干净的 Git 分支运行 `npm run deploy:check`，完成检查并记下发布 ID。将该提交推送到 `origin` 后，用 `npm run deploy:publish -- <发布ID>` 发布同一份前端包。已推送且尚未准备发布包时，可执行 `npm run deploy` 一次完成全流程。
 
 服务器配置、密钥登录、备份与回滚步骤见 [一键部署说明](docs/deployment.md)。此命令仅发布前端，SQL 和 Supabase 报价函数须按对应变更要求另行部署。
 

@@ -77,12 +77,28 @@
 
 ## 发布顺序（现有库）
 
-1. 完成全部本地验证（`npm run lint`、`npm run typecheck`、`npm test`、`npm run build`、生产依赖审计）。
+1. 在维护窗口前从目标提交运行 `npm run deploy:check`，保留发布 ID，并按本次变更完成生产依赖审计。
 2. 在隔离环境演练保留数据迁移、函数部署与新前端，验证旧客户端被安全拒绝。
 3. 经授权在目标库执行未安装的迁移，逐项核对数据与权限。
 4. `npm run quote:build` 后按变更范围部署 `quote`、`account-password` 等云函数；未变更的函数不无故重发。
-5. 发布前端，提示旧页面刷新；验证登录、一次保存、一次冲突与报价。
+5. 通过 `npm run deploy:publish -- <发布ID>` 发布预检产物，提示旧页面刷新，验证登录、一次保存、一次冲突与报价。
 6. 成本同步等维护脚本在单独授权后运行：先预览（完整校验 + 来源哈希 + 计划新增/更新清单），再 `--commit` 单事务写入。导入脚本只在来源对象已确认存在时更新 `source_excel_path/url`；需要刷新种子引用时使用 `--export-sql --verify-storage`，未确认的对象保持既有定位。
+
+## 迁移预览与执行记录
+
+在当前 PowerShell 进程中设置 `SUPABASE_DB_HOST`、`SUPABASE_DB_PORT`、`SUPABASE_DB_USER`、`SUPABASE_DB_NAME` 和 `SUPABASE_DB_PASSWORD`。端口默认 `5432`，选择直连或支持事务的会话连接。远程连接校验 TLS 证书，可通过 `SUPABASE_DB_CA_CERT` 提供 CA 文件路径。
+
+```powershell
+$migrations = @('YYYYMMDD_feature.sql')
+npm run supabase:migrate -- @migrations
+$confirmation = Read-Host '核对目标库和 SQL 哈希后输入迁移确认码'
+npm run supabase:migrate -- --apply $confirmation @migrations
+```
+
+- 只填写本次待迁的 `supabase/updates/` 文件名，脚本按版本顺序执行。直接运行 `npm run supabase:migrate` 会跳过数据库步骤。用旧方式手工执行过的历史文件应继续以原核验记录为准。
+- 预览开启只读事务。确认码绑定目标连接、文件哈希和数据库中的执行记录。若迁移内容或状态已变化，重新核对并生成预览。
+- 文件须由 `BEGIN` / `COMMIT` 包裹，正文须支持在事务内执行。脚本为整批迁移加事务锁，在同一事务中更新数据库与 `wire_release.sql_migrations`。任何一项失败都会回滚整批。锁等待上限为 5 秒，每个迁移文件的执行上限为 60 秒。
+- 迁移前安排备份和隔离演练，迁移后仍按具体功能核对数据、权限和业务行为。已通过此工具执行的文件应保持原内容，变更用新文件追加。
 
 ## 远程执行授权
 

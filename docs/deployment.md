@@ -32,13 +32,17 @@ location ^~ /model-engine/ {
 
 ```powershell
 cd D:\wire-harness-designer
-# 仅本地检查、测试、构建和打包，不连接服务器
+# 从已提交的版本预先完成全量检查、构建和打包
 npm run deploy:check
-# 正式发布当前工作区（包含未提交代码）
-npm run deploy
+$releaseId = Read-Host '输入上一步输出的发布 ID'
+npm run deploy:publish -- $releaseId --verify-only
+# 确认提交已推送到对应 origin 分支，并完成本次需要的 SQL 和云函数步骤后发布
+npm run deploy:publish -- $releaseId
 ```
 
-`npm run dev` 仅启动开发服务，不生成最新发布包。部署脚本会调用 `npm run build`（包含 `tsc -b` 和 Vite 构建），不会复用旧的 dist。PowerShell 中请优先使用独立的 `deploy:check`，避免 npm 参数透传差异。
+`deploy:check` 和 `--verify-only` 均在本地运行。存在未提交的受跟踪改动、未跟踪的构建输入或额外的忽略版 `public` 文件时，`deploy:check` 产出的包仅供本地验证。未跟踪的 `docs/` Markdown 文件可保留。`deploy:publish` 要求发布包中的提交与 `origin` 对应分支的最新提交一致。已推送且尚未打包时，可用 `npm run deploy` 连续完成准备与发布。
+
+`npm run build` 仍包含 `tsc -b` 和 Vite 构建。部署预检在 `typecheck` 阶段完成应用类型检查，再调用 `build:frontend` 生成 Vite 产物，省去第二次 `tsc -b`。
 
 ## 已确认的连接配置
 
@@ -63,9 +67,9 @@ ssh -i $env:DEPLOY_SSH_KEY -o IdentitiesOnly=yes -p 22 root@8.135.107.54 "echo S
 
 ## 发布流程与保留策略
 
-1. 对全仓执行 ESLint（0 告警）；执行 npm test（排除临时目录和 worktree）；执行 `npm run typecheck`（前端 `tsc -b`、服务端 `tsconfig.server.json` 与 Deno 云函数检查；缺少 Deno 工具时预检明确失败并提示安装方式）；最后执行生产构建。预检与本地开发使用同一套命令，避免只通过前端构建而漏掉服务端问题。
-2. 将 dist 内容打包到 `.tmp/deploy/<版本号>/dist.tar.gz` 并计算 SHA256。`deploy:check` 到此结束，不连接服务器。
-3. SSH 检查目标目录后上传压缩包；服务器持有 flock 锁，避免两个发布同时切换文件。
+1. 预检运行全仓 ESLint、Vitest、应用与服务端 TypeScript 检查、Deno 云函数检查和生产构建。各阶段输出实际耗时。
+2. `.tmp/deploy/<发布ID>/` 保存 `dist.tar.gz` 和 `release.json`。清单记录 Git 分支与提交、构建环境指纹和包的 SHA256。正式发布前从该目录重算 SHA256，校验远端 Git 分支后直接上传该包。
+3. SSH 检查目标目录后上传压缩包。服务器持有 `flock` 锁，避免两个发布同时切换文件。
 4. 校验压缩包 SHA256 和路径，拒绝链接及 `.well-known` 内容。复制现有 dist 到临时目录后覆盖新产物，因此原 `.well-known`、其他站点文件及旧哈希静态资源继续保留。
 5. 将旧 dist 移到 `.deploy-backup-<版本号>`，新目录改名为 dist。两次改名之间存在极短访问空窗；此方案不是零停机原子切换。
 6. 通过本机 Nginx HTTPS 请求首页，核对响应内容与新 index.html 完全一致。失败时自动恢复旧目录，失败版本保存在 `.deploy-failed-<版本号>`。
