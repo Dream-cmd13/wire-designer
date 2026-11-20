@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { PanelRightClose, SlidersHorizontal } from 'lucide-react';
 import type { DrawingDocument, DrawingObject, DrawingObjectStyle } from '@/types/drawing';
 
 interface Props {
@@ -12,12 +14,18 @@ interface Props {
 
 function numeric(value: string) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 const inputClass = 'mt-1 w-full rounded border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500 disabled:bg-slate-100';
+const panelPosition = 'absolute bottom-2 right-2 z-20 sm:bottom-auto sm:top-3 sm:right-3';
+const panelButton = 'inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
 
 export function StandaloneDrawingInspector({ drawing, selectedObjectId, selectedObjectIds, onStartEdit, onUpdateObject, onUpdateObjects, onSetLayer }: Props) {
+  const [collapsed, setCollapsed] = useState(false);
   const selectionIds = selectedObjectIds ?? (selectedObjectId ? [selectedObjectId] : []);
   const selection = drawing.objects.filter((candidate) => selectionIds.includes(candidate.id));
   const object = drawing.objects.find((candidate) => candidate.id === selectedObjectId);
-  if (!object) return <aside className="w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4 text-sm text-slate-500">选择画布对象后，可编辑位置、尺寸、图层、锁定状态与业务属性。</aside>;
+  if (!object) return null;
+  if (collapsed) return <button type="button" className={`${panelPosition} ${panelButton} border border-slate-200 bg-white shadow-md`} aria-label="展开对象属性" onClick={() => setCollapsed(false)}>
+    <SlidersHorizontal className="h-4 w-4"/>对象属性
+  </button>;
   const multiple = selection.length > 1;
   const update = (patch: Partial<DrawingObject>, stylePatch?: Partial<DrawingObjectStyle>) => {
     onStartEdit();
@@ -25,8 +33,12 @@ export function StandaloneDrawingInspector({ drawing, selectedObjectId, selected
     else onUpdateObject(object.id, stylePatch ? { ...patch, style: { ...object.style, ...stylePatch } } as Partial<DrawingObject> : patch);
   };
   const readonly = selection.every((candidate) => candidate.locked);
-  return <aside className="w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
-    <div className="flex items-center justify-between"><h3 className="text-sm font-semibold text-slate-900">对象属性</h3><span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{multiple ? `已选择 ${selection.length} 个` : object.kind}</span></div>
+  return <aside aria-label="对象属性" className={`${panelPosition} max-h-[55%] w-72 max-w-[calc(100%-1rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-lg sm:max-h-[calc(100%-1.5rem)]`}>
+    <div className="flex items-center justify-between gap-2">
+      <h3 className="text-sm font-semibold text-slate-900">对象属性</h3>
+      <span className="ml-auto rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{multiple ? `已选择 ${selection.length} 个` : object.kind}</span>
+      <button type="button" className={panelButton} aria-label="收起对象属性" title="收起对象属性" onClick={() => setCollapsed(true)}><PanelRightClose className="h-4 w-4"/></button>
+    </div>
     <label className="mt-4 flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={selection.every((candidate) => candidate.locked)} onChange={(event) => update({ locked: event.target.checked })}/> 锁定对象</label>
     {!multiple && <div className="mt-4 grid grid-cols-2 gap-3">{([['X', 'x'], ['Y', 'y'], ['宽', 'width'], ['高', 'height'], ['旋转', 'rotation']] as const).map(([label, key]) => <label key={key} className="text-xs font-medium text-slate-600">{label}<input disabled={readonly} type="number" value={object[key]} onChange={(event) => update({ [key]: numeric(event.target.value) } as Partial<DrawingObject>)} className={inputClass}/></label>)}</div>}
     <label className="mt-3 block text-xs font-medium text-slate-600">图层位置<input disabled={readonly} type="number" value={object.zIndex} onChange={(event) => { onStartEdit(); if (onSetLayer) onSetLayer(selectionIds, numeric(event.target.value)); else onUpdateObject(object.id, { zIndex: numeric(event.target.value) }); }} className={inputClass}/></label>

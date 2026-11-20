@@ -59,7 +59,7 @@ export function DrawingResourcePanel({ open, canUseCatalog = false, onClose, onA
   const visibleResources = useMemo(() => resources.filter((item) => !normalized || `${item.name} ${item.model} ${item.resourceGroup}`.toLocaleLowerCase().includes(normalized)), [normalized, resources]);
 
   if (!open) return null;
-  return <aside className="absolute left-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 flex-col rounded-lg border border-slate-200 bg-white shadow-2xl" aria-label="绘图资源">
+  return <aside className="absolute left-3 top-3 z-30 flex max-h-[calc(100%-1.5rem)] w-80 max-w-[calc(100%-1.5rem)] flex-col rounded-lg border border-slate-200 bg-white shadow-2xl" aria-label="绘图资源">
     <header className="flex items-center justify-between border-b px-4 py-3"><div><h2 className="text-sm font-semibold text-slate-900">绘图资源</h2><p className="text-xs text-slate-500">内置资源 + 公共目录</p></div><button type="button" aria-label="关闭绘图资源" onClick={onClose}><X className="h-4 w-4"/></button></header>
     <div className="flex gap-1 border-b p-2">{([['resources', '公共资源'], ['phrases', '常用语'], ['icons', '图标']] as const).map(([key, label]) => <button type="button" key={key} onClick={() => setTab(key)} className={`flex-1 rounded px-2 py-1.5 text-xs ${tab === key ? 'bg-blue-50 font-medium text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>)}</div>
     <label className="m-3 flex items-center gap-2 rounded border border-slate-200 px-2"><Search className="h-4 w-4 text-slate-400"/><input className="min-w-0 flex-1 py-2 text-xs outline-none" placeholder="搜索名称、型号、资源分组" value={query} onChange={(event) => setQuery(event.target.value)}/></label>

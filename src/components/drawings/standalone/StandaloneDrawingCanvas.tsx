@@ -896,7 +896,7 @@ export function StandaloneDrawingCanvas({
   const selectionRect = selectionStart && selectionEnd ? normalizeDrawingRect(selectionStart, selectionEnd) : null;
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[size:24px_24px] p-5">
+    <div className="isolate min-h-0 min-w-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[size:24px_24px] p-5">
       <div className="relative inline-block" onContextMenu={handleContextMenu} onWheel={handleWheel}>
         <canvas
           ref={canvasRef}

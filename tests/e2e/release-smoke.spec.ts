@@ -35,6 +35,38 @@ test.describe('release smoke (anonymous)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('drawing workbench keeps tools reachable and reserves canvas space', async ({ page }) => {
+    await page.goto('/drawing-workbench');
+    const toolbar = page.getByRole('toolbar', { name: '绘图工具栏' });
+    const canvas = page.locator('canvas').first();
+    const inspector = page.getByRole('complementary', { name: '对象属性' });
+    await expect(canvas).toBeVisible();
+    await expect(inspector).toHaveCount(0);
+
+    for (const width of [1440, 1024, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(toolbar.getByRole('button', { name: '导出 PDF', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect.poll(() => toolbar.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+    }
+
+    const viewport = canvas.locator('../..');
+    await toolbar.getByRole('button', { name: '添加文字' }).click();
+    await expect(inspector.getByRole('textbox', { name: '文字' })).toBeVisible();
+    await expect.poll(() => viewport.evaluate((element) => element.parentElement!.clientWidth - element.clientWidth)).toBe(0);
+    await inspector.getByRole('textbox', { name: '文字' }).fill('浏览器属性验证');
+    await inspector.getByRole('button', { name: '收起对象属性' }).click();
+    await expect(inspector).toHaveCount(0);
+    await page.getByRole('button', { name: '展开对象属性' }).click();
+    await expect(inspector.getByRole('textbox', { name: '文字' })).toHaveValue('浏览器属性验证');
+
+    const layerButton = toolbar.getByRole('button', { name: '图层操作' });
+    await layerButton.click();
+    const layerMenu = page.getByRole('group', { name: '图层操作' });
+    await expect(layerMenu).toBeInViewport({ ratio: 1 });
+    await layerMenu.getByRole('button', { name: '锁定/解锁当前选择' }).click();
+    await expect(inspector.getByRole('checkbox', { name: '锁定对象' })).toBeChecked();
+  });
+
   test('dwg viewer page shows the login gate anonymously', async ({ page }) => {
     await page.goto('/dwg-viewer');
     await expect(page.getByRole('heading', { name: '需要登录后使用' })).toBeVisible({ timeout: 20_000 });
