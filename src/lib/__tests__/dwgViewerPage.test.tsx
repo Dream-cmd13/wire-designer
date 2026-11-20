@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DwgViewerPage } from '@/pages/DwgViewerPage';
+import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
 import type { ParsedModel } from '@/lib/models/modelTypes';
 import { useNoticeStore } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
@@ -37,6 +38,12 @@ function pick(...files: File[]) {
   fireEvent.change(screen.getByLabelText('选择 DWG 文件'), { target: { files } });
 }
 const saveButton = () => screen.getByRole('button', { name: '保存到云端' }) as HTMLButtonElement;
+const expectControlError = (label: string, message: string) => {
+  for (const control of screen.getAllByRole('button', { name: label })) {
+    const description = control.getAttribute('aria-describedby');
+    expect(description && document.getElementById(description)?.textContent).toBe(message);
+  }
+};
 
 beforeEach(() => {
   useUserStore.setState({ currentUser: owner });
@@ -149,6 +156,7 @@ describe('DWG import and save', () => {
     const drop = (files: File[]) => fireEvent.drop(screen.getByTestId('dwg-drop-zone'), { dataTransfer: { files, types: ['Files'] } });
     drop([sample('a.dwg'), sample('b.dwg')]);
     expect(screen.getByRole('alert').textContent).toContain('一个');
+    expectControlError('打开 DWG 文件', '一次只能打开一个 DWG 文件。');
     expect(mocks.parse).not.toHaveBeenCalled();
     drop([sample('part.DWG')]);
     await waitFor(() => expect(saveButton().disabled).toBe(false));
@@ -176,6 +184,7 @@ describe('DWG import and save', () => {
     await waitFor(() => expect(saveButton().disabled).toBe(false));
     fireEvent.click(saveButton());
     await screen.findByText('数据库确认失败');
+    expectControlError('重试保存', '数据库确认失败');
     expect(screen.getByRole('button', { name: '导出 PNG' }).hasAttribute('disabled')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
     await screen.findByText('已保存');
@@ -213,10 +222,14 @@ describe('DWG import and save', () => {
 
   it('requires an explicit recovery action for a pending drawing', async () => {
     mocks.list.mockResolvedValueOnce([{ ...record, status: 'uploading' }]).mockResolvedValueOnce([record]);
+    mocks.save.mockRejectedValueOnce(new Error('恢复确认失败'));
     render(<DwgViewerPage />);
     await screen.findByRole('option', { name: `${record.original_name}（保存未完成）` });
     fireEvent.change(screen.getByRole('combobox', { name: '云端图纸' }), { target: { value: record.id } });
     expect(mocks.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '恢复保存' }));
+    await screen.findByText('恢复确认失败');
+    expectControlError('恢复保存', '恢复确认失败');
     fireEvent.click(screen.getByRole('button', { name: '恢复保存' }));
     await screen.findByText('已保存');
     expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ id: record.id }), undefined, expect.any(AbortSignal));
@@ -235,5 +248,41 @@ describe('DWG import and save', () => {
     fireEvent.change(picker, { target: { value: record.id } });
     await screen.findByText('已保存');
     expect(mocks.download).toHaveBeenCalledTimes(2);
+  });
+
+  it('attaches a list failure to refresh and removes it after retry', async () => {
+    mocks.list.mockRejectedValueOnce(new Error('读取列表失败'));
+    render(<DwgViewerPage />);
+    await screen.findByText('读取列表失败');
+    expectControlError('刷新云端图纸', '读取列表失败');
+    fireEvent.click(screen.getByRole('button', { name: '刷新云端图纸' }));
+    await screen.findByRole('option', { name: '暂无云端图纸' });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('DWG edit panel', () => {
+  it('keeps draft actions when deselected and folds long originals per object', () => {
+    const original = '技术要求\n保持端子接触区域清洁，不得沾染油污。';
+    const first = { key: 'MTEXT:A1', handle: 'A1', kind: 'MTEXT' as const, expectedText: original, multiline: true };
+    const second = { ...first, key: 'MTEXT:A2', handle: 'A2' };
+    const props = {
+      hits: [], operations: [], busy: false, generated: false, parent: false,
+      canSave: true, saving: false, saved: false, error: null,
+      onSelect: vi.fn(), onApply: vi.fn(), onUndo: vi.fn(), onGenerate: vi.fn(), onCancel: vi.fn(), onDownload: vi.fn(), onSave: vi.fn(),
+    };
+    const { rerender } = render(<DwgEditPanel {...props} selection={undefined} />);
+    expect(screen.getByText('0 项修改')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '生成 DWG' })).toBeNull();
+    rerender(<DwgEditPanel {...props} selection={undefined} operations={[{ handle: first.handle, kind: first.kind, expectedText: original, newText: '新版' }]} />);
+    expect(screen.getByRole('button', { name: '生成 DWG' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button', { name: '撤回上次修改' }).hasAttribute('disabled')).toBe(false);
+    rerender(<DwgEditPanel {...props} selection={first} />);
+    const details = screen.getByText('查看原文字').closest('details')!;
+    expect(details.open).toBe(false);
+    details.open = true;
+    expect(screen.getByLabelText('原文字').textContent).toBe(original);
+    rerender(<DwgEditPanel {...props} selection={second} />);
+    expect(screen.getByText('查看原文字').closest('details')?.open).toBe(false);
   });
 });

@@ -58,7 +58,7 @@ describe('DWG viewer UI contract', () => {
   });
 
   it('surfaces missing external images instead of claiming a full restore', () => {
-    expect(pageSource).toContain('张外部图片未加载');
+    expect(pageSource).toContain('外部图片缺失');
     expect(pageSource).toContain('仅显示占位框');
     expect(pageSource).toContain('externalImages');
   });

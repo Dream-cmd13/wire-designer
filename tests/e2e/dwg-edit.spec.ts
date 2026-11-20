@@ -175,6 +175,8 @@ test('keeps file status inline and wraps DWG output actions together', async ({ 
   const preview = page.getByRole('button', { name: '生成 3D 示意' });
   const fileName = page.getByTitle(name, { exact: true });
   const status = page.getByText('仅本地预览', { exact: true });
+  const missing = page.getByText('外部图片缺失 1 张', { exact: true });
+  const placeholder = page.getByText('浏览器无法加载图纸引用的外部图片，当前仅显示占位框。');
   await expect(preview).toBeEnabled();
   expect((await preview.boundingBox())?.y).toBe((await open.boundingBox())?.y);
 
@@ -187,6 +189,22 @@ test('keeps file status inline and wraps DWG output actions together', async ({ 
     expect((await pdf.boundingBox())?.y).toBe(previewBox.y);
     expect(previewBox.x + previewBox.width).toBeLessThanOrEqual(width);
     expect((await status.boundingBox())?.y).toBe((await fileName.boundingBox())?.y);
+    await expect(placeholder).not.toBeVisible();
+    await missing.focus();
+    await page.keyboard.press('Enter');
+    await expect(placeholder).toBeVisible();
+    await expect(page.locator('details').filter({ has: missing }).getByRole('listitem')).toHaveText(/\S/);
+    const detailsBox = (await placeholder.boundingBox())!;
+    expect(detailsBox.x).toBeGreaterThanOrEqual(0);
+    expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(width);
+    if (width < 1024) {
+      await page.getByText('图纸信息', { exact: true }).click();
+      await expect(placeholder).not.toBeVisible();
+      await expect(page.getByText(/个图元.*处文字.*个图层/).filter({ visible: true })).toBeVisible();
+      await page.getByText('图纸信息', { exact: true }).click();
+    } else {
+      await missing.click();
+    }
   }
 });
 
@@ -199,6 +217,9 @@ test('drags local DWG, edits and undoes a dimension, then downloads verified wri
   }, { name, encoded: original.toString('base64') });
   await page.getByTestId('dwg-drop-zone').dispatchEvent('drop', { dataTransfer });
   await page.getByRole('button', { name: '编辑图纸' }).click();
+  const panel = page.getByRole('complementary', { name: 'DWG 编辑属性' });
+  await expect(panel.getByText('0 项修改', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('button')).toHaveCount(0);
   await selectDimension(page);
   await page.getByLabel('尺寸显示文字').fill('*750±10');
   await page.getByRole('button', { name: '应用到草稿预览' }).click();
@@ -206,6 +227,9 @@ test('drags local DWG, edits and undoes a dimension, then downloads verified wri
   await expect(page.getByLabel('尺寸显示文字')).toHaveValue('*500±10');
   await page.getByLabel('尺寸显示文字').fill('*750±10');
   await page.getByRole('button', { name: '应用到草稿预览' }).click();
+  await page.getByTestId('dwg-drop-zone').click({ position: { x: 5, y: 5 } });
+  await expect(panel.getByText('1 项修改', { exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: '撤回上次修改' })).toBeEnabled();
   page.once('dialog', (dialog) => dialog.dismiss());
   await page.getByRole('button', { name: '生成 DWG', exact: true }).click();
   expect(activity.generates).toBe(0);

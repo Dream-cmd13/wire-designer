@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
+import { Box, ChevronDown, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
@@ -92,6 +92,12 @@ const toolbarButtonClass =
   'flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
 const iconButtonClass =
   'flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
+const toolbarDetailClass = 'absolute right-4 top-full z-10 mt-1 w-80 max-w-[calc(100%-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg';
+const toolbarSummaryClass = 'flex cursor-pointer list-none items-center gap-1 rounded px-2 py-0.5 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 [&::-webkit-details-marker]:hidden';
+
+function ToolbarError({ id, message }: { id: string; message: string | null }) {
+  return message && <span id={id} role="alert" className="min-w-0 max-w-44 break-words rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">{message}</span>;
+}
 
 function zoomPercentOf(view: DwgView | null, drawing: DwgDrawing | null, width: number, height: number): number | null {
   if (!view || !drawing || width <= 0 || height <= 0) return null;
@@ -132,7 +138,9 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('local');
   const [saving, setSaving] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [originalSaveError, setOriginalSaveError] = useState<string | null>(null);
+  const [recoveryFailure, setRecoveryFailure] = useState<{ id: string; message: string } | null>(null);
   const [cloudDrawings, setCloudDrawings] = useState<DwgAsset[]>([]);
   const [listLoading, setListLoading] = useState(Boolean(ownerId && dwgRepository.configured));
   const [listError, setListError] = useState<string | null>(null);
@@ -239,7 +247,9 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     setCloudId(assetId);
     setLocalFile(null);
     setSaveStatus('local');
-    setActionError(null);
+    setFileError(null);
+    setOriginalSaveError(null);
+    setRecoveryFailure(null);
     setHarnessPreviewOpen(false);
     autoFitRef.current = true;
     drawingRef.current = null;
@@ -296,14 +306,14 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   async function loadFile(files: FileList | readonly File[]) {
     if (saveTask.current || !files.length) return;
     if (files.length !== 1) {
-      setActionError('一次只能打开一个 DWG 文件。');
+      setFileError('一次只能打开一个 DWG 文件。');
       return;
     }
     const file = files[0];
     try {
       validateDwgFile(file);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : '无效的 DWG 文件。');
+      setFileError(error instanceof Error ? error.message : '无效的 DWG 文件。');
       return;
     }
     const { token, signal } = beginLoad(file.name);
@@ -368,9 +378,12 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     const controller = new AbortController();
     saveTask.current = controller;
     setSaving(true);
-    setActionError(null);
-    if (!recovery && !revisedFile) setSaveStatus('saving');
     if (revisedFile) setEditError(null);
+    else if (recovery) setRecoveryFailure(null);
+    else {
+      setOriginalSaveError(null);
+      setSaveStatus('saving');
+    }
     let recovered: DwgAsset | undefined;
     try {
       let session = recovery ?? (revisedFile ? revisionSession.current : saveSession.current);
@@ -399,8 +412,11 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       if (controller.signal.aborted) return;
       const message = error instanceof Error ? error.message : '保存失败，请重试。';
       if (revisedFile) setEditError(message);
-      else setActionError(message);
-      if (!recovery && !revisedFile) setSaveStatus('error');
+      else if (recovery) setRecoveryFailure({ id: recovery.id, message });
+      else {
+        setOriginalSaveError(message);
+        setSaveStatus('error');
+      }
     } finally {
       saveTask.current = null;
       if (!controller.signal.aborted) setSaving(false);
@@ -679,14 +695,13 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     ? Object.values(state.drawing.stats.skipped).reduce((sum, value) => sum + value, 0)
     : 0;
   const externalImages = state.drawing?.externalImages ?? [];
-  const externalImageTitle = externalImages
-    .map((image) => image.path ?? '未提供路径')
-    .join('\n');
+  const statistics = state.drawing && `${state.drawing.stats.rendered} 个图元 · ${state.drawing.stats.text} 处文字 · ${state.drawing.layers.length} 个图层${skippedCount > 0 ? ` · 跳过 ${skippedCount}` : ''}`;
+  const recoveryError = recoveryFailure?.id === cloudId ? recoveryFailure.message : null;
   const zoomPercent = zoomPercentOf(view, state.drawing, viewport.width, viewport.height);
 
   return (
     <div className="flex h-full flex-col bg-white">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
+      <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
           <div className="flex min-w-0 max-w-full items-center gap-2">
             <span className="shrink-0 text-sm font-semibold text-slate-700">DWG 图纸</span>
@@ -707,19 +722,27 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               加载中
             </span>
           )}
-          {isReady && (
-            <span className="hidden text-xs text-slate-500 lg:inline">
-              {state.drawing!.stats.rendered} 个图元 · {state.drawing!.stats.text} 处文字 · {state.drawing!.layers.length} 个图层
-              {skippedCount > 0 ? ` · 跳过 ${skippedCount}` : ''}
-            </span>
-          )}
+          {isReady && <>
+            <span className="hidden text-xs text-slate-500 lg:inline">{statistics}</span>
+            <details name="dwg-header-details" className="lg:hidden">
+              <summary className={`${toolbarSummaryClass} bg-slate-100 text-slate-600`}>
+                图纸信息 <ChevronDown className="h-3 w-3" />
+              </summary>
+              <div className={toolbarDetailClass}>{statistics}</div>
+            </details>
+          </>}
           {isReady && externalImages.length > 0 && (
-            <span
-              className="shrink-0 rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
-              title={`此图纸引用了外部图片，当前仅显示占位框：\n${externalImageTitle}`}
-            >
-              {externalImages.length} 张外部图片未加载（仅显示占位框）
-            </span>
+            <details name="dwg-header-details">
+              <summary className={`${toolbarSummaryClass} bg-amber-50 text-amber-800`}>
+                外部图片缺失 {externalImages.length} 张 <ChevronDown className="h-3 w-3" />
+              </summary>
+              <div className={toolbarDetailClass}>
+                <p>浏览器无法加载图纸引用的外部图片，当前仅显示占位框。</p>
+                <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-4 [overflow-wrap:anywhere]">
+                  {externalImages.map((image, index) => <li key={index}>{image.path ?? '未提供路径'}</li>)}
+                </ul>
+              </div>
+            </details>
           )}
         </div>
 
@@ -759,7 +782,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}
           </button>
           {ownerId && <>
-            <div className="flex items-center gap-1">
+            <div className="flex max-w-full min-w-0 items-center gap-1">
               <select
                 className="h-8 w-28 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50 xl:w-48"
                 value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
@@ -780,31 +803,45 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
                 ))}
               </select>
               <button type="button" className={iconButtonClass} aria-label="刷新云端图纸" title="刷新云端图纸"
+                aria-describedby={listError ? 'dwg-list-error' : undefined}
                 disabled={saving || listLoading || !dwgRepository.configured} onClick={() => {
                   setListLoading(true);
                   void refreshList();
                 }}>
                 <RefreshCw className="h-3.5 w-3.5" />
               </button>
+              <ToolbarError id="dwg-list-error" message={listError} />
             </div>
             {selectedCloudDrawing?.status === 'uploading' && (
-              <button type="button" className={toolbarButtonClass} disabled={saving} onClick={() => void saveDrawing(selectedCloudDrawing)}>
-                <CloudUpload className="h-3.5 w-3.5" />
-                恢复保存
-              </button>
+              <div className="flex max-w-full min-w-0 items-center gap-1">
+                <button type="button" className={toolbarButtonClass} disabled={saving} onClick={() => void saveDrawing(selectedCloudDrawing)}
+                  aria-describedby={recoveryError ? 'dwg-recovery-error' : undefined}>
+                  <CloudUpload className="h-3.5 w-3.5" />
+                  恢复保存
+                </button>
+                <ToolbarError id="dwg-recovery-error" message={recoveryError} />
+              </div>
             )}
           </>}
-          <button type="button" className={toolbarButtonClass} disabled={saving} aria-label="打开 DWG 文件" title="也可将单个 DWG 文件拖入画布（最大 20 MiB）" onClick={() => fileInputRef.current?.click()}>
-            <FileUp className="h-3.5 w-3.5" />
-            打开 DWG
-          </button>
-          {ownerId && !editing && (
-            <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
-              disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
-              title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'} onClick={() => void saveDrawing()}>
-              <CloudUpload className="h-3.5 w-3.5" />
-              {saveStatus === 'error' ? '重试保存' : '保存到云端'}
+          <div className="flex max-w-full min-w-0 items-center gap-1">
+            <button type="button" className={toolbarButtonClass} disabled={saving} aria-label="打开 DWG 文件" title="也可将单个 DWG 文件拖入画布（最大 20 MiB）" onClick={() => fileInputRef.current?.click()}
+              aria-describedby={fileError ? 'dwg-file-error' : undefined}>
+              <FileUp className="h-3.5 w-3.5" />
+              打开 DWG
             </button>
+            <ToolbarError id="dwg-file-error" message={fileError} />
+          </div>
+          {ownerId && !editing && (
+            <div className="flex max-w-full min-w-0 items-center gap-1">
+              <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
+                disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
+                aria-describedby={originalSaveError ? 'dwg-save-error' : undefined}
+                title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'} onClick={() => void saveDrawing()}>
+                <CloudUpload className="h-3.5 w-3.5" />
+                {saveStatus === 'error' ? '重试保存' : '保存到云端'}
+              </button>
+              <ToolbarError id="dwg-save-error" message={originalSaveError} />
+            </div>
           )}
           {ownerId && isReady && <button type="button" className={toolbarButtonClass} disabled={!editInput || saving}
             title={editInput ? undefined : '当前仅支持编辑 AC1018 图纸。'} onClick={() => {
@@ -842,13 +879,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           </div>
         </div>
       </div>
-
-      {(actionError || listError) && (
-        <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 px-4 py-1.5 text-xs">
-          {actionError && <span className="text-red-600" role="alert">{actionError}</span>}
-          {listError && <span className="text-red-600" role="alert">{listError}</span>}
-        </div>
-      )}
 
       <div
         ref={containerRef}
@@ -952,6 +982,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
                   type="button"
                   className="flex cursor-pointer items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
                   disabled={saving}
+                   aria-describedby={fileError ? 'dwg-file-error' : undefined}
                   onClick={() => fileInputRef.current?.click()}
                 >
                   <FileUp className="h-4 w-4" />
