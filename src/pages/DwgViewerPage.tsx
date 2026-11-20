@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Box, ChevronDown, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
@@ -92,8 +92,47 @@ const toolbarButtonClass =
   'flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
 const iconButtonClass =
   'flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
-const toolbarDetailClass = 'absolute right-4 top-full z-10 mt-1 w-80 max-w-[calc(100%-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg';
-const toolbarSummaryClass = 'flex cursor-pointer list-none items-center gap-1 rounded px-2 py-0.5 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 [&::-webkit-details-marker]:hidden';
+function ToolbarDetails({ label, className, tone, children }: { label: string; className?: string; tone: string; children: ReactNode }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const details = detailsRef.current;
+    const panel = panelRef.current;
+    const toolbar = details?.closest<HTMLElement>('[data-dwg-toolbar]');
+    if (!details || !panel || !toolbar) return;
+
+    const placePanel = () => {
+      if (!details.open || !details.getClientRects().length) return;
+      const trigger = details.getBoundingClientRect();
+      const boundary = toolbar.getBoundingClientRect();
+      const gutter = parseFloat(getComputedStyle(toolbar).paddingLeft);
+      const maxLeft = boundary.width - panel.getBoundingClientRect().width - gutter;
+      const left = Math.max(gutter, Math.min(trigger.left - boundary.left, maxLeft));
+      panel.style.setProperty('--dwg-detail-x', `${left}px`);
+      panel.style.setProperty('--dwg-detail-y', `${trigger.bottom - boundary.top}px`);
+    };
+
+    details.addEventListener('toggle', placePanel);
+    const observer = new ResizeObserver(placePanel);
+    observer.observe(toolbar);
+    observer.observe(details);
+    if (details.parentElement) observer.observe(details.parentElement);
+    return () => {
+      observer.disconnect();
+      details.removeEventListener('toggle', placePanel);
+    };
+  }, []);
+
+  return <details ref={detailsRef} name="dwg-header-details" className={className}>
+    <summary className={`flex cursor-pointer list-none items-center gap-1 rounded px-2 py-0.5 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 [&::-webkit-details-marker]:hidden ${tone}`}>
+      {label} <ChevronDown className="h-3 w-3" />
+    </summary>
+    <div ref={panelRef} className="absolute left-[var(--dwg-detail-x)] top-[var(--dwg-detail-y)] z-10 mt-1 w-80 max-w-[calc(100%-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg">
+      {children}
+    </div>
+  </details>;
+}
 
 function ToolbarError({ id, message }: { id: string; message: string | null }) {
   return message && <span id={id} role="alert" className="min-w-0 max-w-44 break-words rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">{message}</span>;
@@ -701,7 +740,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
 
   return (
     <div className="flex h-full flex-col bg-white">
-      <div className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
+      <div data-dwg-toolbar className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
           <div className="flex min-w-0 max-w-full items-center gap-2">
             <span className="shrink-0 text-sm font-semibold text-slate-700">DWG 图纸</span>
@@ -724,25 +763,17 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           )}
           {isReady && <>
             <span className="hidden text-xs text-slate-500 lg:inline">{statistics}</span>
-            <details name="dwg-header-details" className="lg:hidden">
-              <summary className={`${toolbarSummaryClass} bg-slate-100 text-slate-600`}>
-                图纸信息 <ChevronDown className="h-3 w-3" />
-              </summary>
-              <div className={toolbarDetailClass}>{statistics}</div>
-            </details>
+            <ToolbarDetails label="图纸信息" className="lg:hidden" tone="bg-slate-100 text-slate-600">
+              {statistics}
+            </ToolbarDetails>
           </>}
           {isReady && externalImages.length > 0 && (
-            <details name="dwg-header-details">
-              <summary className={`${toolbarSummaryClass} bg-amber-50 text-amber-800`}>
-                外部图片缺失 {externalImages.length} 张 <ChevronDown className="h-3 w-3" />
-              </summary>
-              <div className={toolbarDetailClass}>
-                <p>浏览器无法加载图纸引用的外部图片，当前仅显示占位框。</p>
-                <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-4 [overflow-wrap:anywhere]">
-                  {externalImages.map((image, index) => <li key={index}>{image.path ?? '未提供路径'}</li>)}
-                </ul>
-              </div>
-            </details>
+            <ToolbarDetails label={`外部图片缺失 ${externalImages.length} 张`} tone="bg-amber-50 text-amber-800">
+              <p>浏览器无法加载图纸引用的外部图片，当前仅显示占位框。</p>
+              <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-4 [overflow-wrap:anywhere]">
+                {externalImages.map((image, index) => <li key={index}>{image.path ?? '未提供路径'}</li>)}
+              </ul>
+            </ToolbarDetails>
           )}
         </div>
 

@@ -176,11 +176,12 @@ test('keeps file status inline and wraps DWG output actions together', async ({ 
   const fileName = page.getByTitle(name, { exact: true });
   const status = page.getByText('仅本地预览', { exact: true });
   const missing = page.getByText('外部图片缺失 1 张', { exact: true });
+  const imageDetails = page.locator('details').filter({ has: missing });
   const placeholder = page.getByText('浏览器无法加载图纸引用的外部图片，当前仅显示占位框。');
   await expect(preview).toBeEnabled();
   expect((await preview.boundingBox())?.y).toBe((await open.boundingBox())?.y);
 
-  for (const width of [1440, 1098, 390]) {
+  for (const width of [1780, 1440, 1098, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(preview).toBeInViewport();
     await expect(status).toBeInViewport();
@@ -193,15 +194,23 @@ test('keeps file status inline and wraps DWG output actions together', async ({ 
     await missing.focus();
     await page.keyboard.press('Enter');
     await expect(placeholder).toBeVisible();
-    await expect(page.locator('details').filter({ has: missing }).getByRole('listitem')).toHaveText(/\S/);
-    const detailsBox = (await placeholder.boundingBox())!;
+    await expect(imageDetails.getByRole('listitem')).toHaveText(/\S/);
+    const detailsBox = (await imageDetails.locator(':scope > div').boundingBox())!;
+    const triggerBox = (await missing.boundingBox())!;
     expect(detailsBox.x).toBeGreaterThanOrEqual(0);
     expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(width);
+    expect(detailsBox.x).toBeCloseTo(Math.min(triggerBox.x, width - detailsBox.width - 16), 0);
+    expect(detailsBox.y - triggerBox.y - triggerBox.height).toBeCloseTo(4, 0);
     if (width < 1024) {
-      await page.getByText('图纸信息', { exact: true }).click();
+      const info = page.getByText('图纸信息', { exact: true });
+      await info.click();
       await expect(placeholder).not.toBeVisible();
       await expect(page.getByText(/个图元.*处文字.*个图层/).filter({ visible: true })).toBeVisible();
-      await page.getByText('图纸信息', { exact: true }).click();
+      const infoBox = (await info.boundingBox())!;
+      const infoDetailsBox = (await page.locator('details').filter({ has: info }).locator(':scope > div').boundingBox())!;
+      expect(infoDetailsBox.x).toBeCloseTo(Math.min(infoBox.x, width - infoDetailsBox.width - 16), 0);
+      expect(infoDetailsBox.y - infoBox.y - infoBox.height).toBeCloseTo(4, 0);
+      await info.click();
     } else {
       await missing.click();
     }
