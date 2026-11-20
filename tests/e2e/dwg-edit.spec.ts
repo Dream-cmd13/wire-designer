@@ -166,6 +166,30 @@ async function inspectRevision(bytes: Buffer) {
   expect(findModel(revised).entities.find((entity) => entity.handle === 'B72')).toMatchObject({ text: expect.stringContaining('插拔次数：500次') });
 }
 
+test('keeps file status inline and wraps DWG output actions together', async ({ page }) => {
+  await logIn(page);
+  await page.locator('input[type=file]').setInputFiles(name);
+  const open = page.getByRole('button', { name: '打开 DWG 文件' });
+  const png = page.getByRole('button', { name: '导出 PNG' });
+  const pdf = page.getByRole('button', { name: '导出 PDF' });
+  const preview = page.getByRole('button', { name: '生成 3D 示意' });
+  const fileName = page.getByTitle(name, { exact: true });
+  const status = page.getByText('仅本地预览', { exact: true });
+  await expect(preview).toBeEnabled();
+  expect((await preview.boundingBox())?.y).toBe((await open.boundingBox())?.y);
+
+  for (const width of [1440, 1098, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(preview).toBeInViewport();
+    await expect(status).toBeInViewport();
+    const previewBox = (await preview.boundingBox())!;
+    expect((await png.boundingBox())?.y).toBe(previewBox.y);
+    expect((await pdf.boundingBox())?.y).toBe(previewBox.y);
+    expect(previewBox.x + previewBox.width).toBeLessThanOrEqual(width);
+    expect((await status.boundingBox())?.y).toBe((await fileName.boundingBox())?.y);
+  }
+});
+
 test('drags local DWG, edits and undoes a dimension, then downloads verified writer bytes', async ({ page }, testInfo) => {
   const activity = await logIn(page);
   const dataTransfer = await page.evaluateHandle(({ name, encoded }) => {

@@ -89,7 +89,7 @@ const INITIAL_STATE: ViewerState = {
 };
 
 const toolbarButtonClass =
-  'flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
+  'flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
 const iconButtonClass =
   'flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
 
@@ -687,11 +687,18 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   return (
     <div className="flex h-full flex-col bg-white">
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-semibold text-slate-700">DWG 图纸</span>
-          {state.fileName && <span className="max-w-56 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
-            {state.fileName}
-          </span>}
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+          <div className="flex min-w-0 max-w-full items-center gap-2">
+            <span className="shrink-0 text-sm font-semibold text-slate-700">DWG 图纸</span>
+            {state.fileName && <span className="min-w-0 max-w-56 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
+              {state.fileName}
+            </span>}
+            {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
+              <span className="shrink-0 whitespace-nowrap rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" role="status">
+                {saving ? saveText.saving : saveText[saveStatus]}
+              </span>
+            )}
+          </div>
           {state.phase === 'error' ? (
             <span className="shrink-0 text-xs font-medium text-red-600">加载失败</span>
           ) : !isReady && state.phase !== 'idle' && (
@@ -716,12 +723,12 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           )}
         </div>
 
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 border-r border-slate-200 pr-2">
+        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1 gap-y-2">
+          <div className="flex items-center gap-1 border-r border-slate-200 pr-1.5">
             <button type="button" className={iconButtonClass} onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={!isReady} title="缩小 (-)">
               <Minus className="h-4 w-4" />
             </button>
-            <span className="w-11 select-none text-center text-xs tabular-nums text-slate-500">
+            <span className="w-9 select-none text-center text-xs tabular-nums text-slate-500">
               {zoomPercent !== null ? `${zoomPercent}%` : '—'}
             </span>
             <button type="button" className={iconButtonClass} onClick={() => zoomBy(ZOOM_STEP)} disabled={!isReady} title="放大 (+)">
@@ -752,32 +759,34 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}
           </button>
           {ownerId && <>
-            <select
-              className="h-8 max-w-56 cursor-pointer rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-              value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
-              onChange={(event) => {
-                const asset = cloudDrawings.find((item) => item.id === event.target.value);
-                if (asset?.status === 'ready') void openCloud(asset);
-                else setCloudId(asset?.id ?? '');
-              }}
-              disabled={saving || cloudDrawings.length === 0}
-              aria-label="云端图纸"
-              title="我的云端图纸"
-            >
-              <option value="" disabled>{cloudPlaceholder}</option>
-              {cloudDrawings.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.original_name}{asset.parent_asset_id ? '（修订版）' : ''}{asset.status === 'uploading' ? '（保存未完成）' : ''}
-                </option>
-              ))}
-            </select>
-            <button type="button" className={iconButtonClass} aria-label="刷新云端图纸" title="刷新云端图纸"
-              disabled={saving || listLoading || !dwgRepository.configured} onClick={() => {
-                setListLoading(true);
-                void refreshList();
-              }}>
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              <select
+                className="h-8 w-28 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50 xl:w-48"
+                value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
+                onChange={(event) => {
+                  const asset = cloudDrawings.find((item) => item.id === event.target.value);
+                  if (asset?.status === 'ready') void openCloud(asset);
+                  else setCloudId(asset?.id ?? '');
+                }}
+                disabled={saving || cloudDrawings.length === 0}
+                aria-label="云端图纸"
+                title={selectedCloudDrawing?.original_name ?? '我的云端图纸'}
+              >
+                <option value="" disabled>{cloudPlaceholder}</option>
+                {cloudDrawings.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.original_name}{asset.parent_asset_id ? '（修订版）' : ''}{asset.status === 'uploading' ? '（保存未完成）' : ''}
+                  </option>
+                ))}
+              </select>
+              <button type="button" className={iconButtonClass} aria-label="刷新云端图纸" title="刷新云端图纸"
+                disabled={saving || listLoading || !dwgRepository.configured} onClick={() => {
+                  setListLoading(true);
+                  void refreshList();
+                }}>
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+            </div>
             {selectedCloudDrawing?.status === 'uploading' && (
               <button type="button" className={toolbarButtonClass} disabled={saving} onClick={() => void saveDrawing(selectedCloudDrawing)}>
                 <CloudUpload className="h-3.5 w-3.5" />
@@ -785,9 +794,9 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               </button>
             )}
           </>}
-          <button type="button" className={toolbarButtonClass} disabled={saving} title="也可将单个 DWG 文件拖入画布（最大 20 MiB）" onClick={() => fileInputRef.current?.click()}>
+          <button type="button" className={toolbarButtonClass} disabled={saving} aria-label="打开 DWG 文件" title="也可将单个 DWG 文件拖入画布（最大 20 MiB）" onClick={() => fileInputRef.current?.click()}>
             <FileUp className="h-3.5 w-3.5" />
-            打开 DWG 文件
+            打开 DWG
           </button>
           {ownerId && !editing && (
             <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
@@ -802,39 +811,40 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               if (!editing) setEditing(true);
               else if (!operations.length || revisionSaved || window.confirm('退出编辑会丢弃本次草稿和预览。是否继续？')) resetEditing();
             }}>{editing ? '退出编辑' : '编辑图纸'}</button>}
-          <button
-            type="button"
-            className={toolbarButtonClass}
-            onClick={() => void handleExport('png')}
-            disabled={!isReady || exporting !== null}
-            title="导出 PNG（适应图纸范围，含背景与图层显示）"
-          >
-            {exporting === 'png' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            导出 PNG
-          </button>
-          <button
-            type="button"
-            className={toolbarButtonClass}
-            onClick={() => void handleExport('pdf')}
-            disabled={!isReady || exporting !== null}
-            title="导出 A4 横向 PDF（适应图纸范围，含背景与图层显示）"
-          >
-            {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            导出 PDF
-          </button>
-          <button type="button" ref={harnessPreviewButton} className={toolbarButtonClass} disabled={!isReady}
-            onClick={() => setHarnessPreviewOpen(true)} title="从 M12 单段线缆图纸生成 3D 示意">
-            <Box className="h-3.5 w-3.5" />
-            生成 3D 示意
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className={toolbarButtonClass}
+              onClick={() => void handleExport('png')}
+              disabled={!isReady || exporting !== null}
+              aria-label="导出 PNG"
+              title="导出 PNG（适应图纸范围，含背景与图层显示）"
+            >
+              {exporting === 'png' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              PNG
+            </button>
+            <button
+              type="button"
+              className={toolbarButtonClass}
+              onClick={() => void handleExport('pdf')}
+              disabled={!isReady || exporting !== null}
+              aria-label="导出 PDF"
+              title="导出 A4 横向 PDF（适应图纸范围，含背景与图层显示）"
+            >
+              {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              PDF
+            </button>
+            <button type="button" ref={harnessPreviewButton} className={toolbarButtonClass} disabled={!isReady} aria-label="生成 3D 示意"
+              onClick={() => setHarnessPreviewOpen(true)} title="从 M12 单段线缆图纸生成 3D 示意">
+              <Box className="h-3.5 w-3.5" />
+              3D 示意
+            </button>
+          </div>
         </div>
       </div>
 
-      {((isReady && (localFile || saveStatus === 'saved')) || saving || actionError || listError) && (
+      {(actionError || listError) && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 px-4 py-1.5 text-xs">
-          {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
-            <span className="text-slate-600" role="status">{saving ? saveText.saving : saveText[saveStatus]}</span>
-          )}
           {actionError && <span className="text-red-600" role="alert">{actionError}</span>}
           {listError && <span className="text-red-600" role="alert">{listError}</span>}
         </div>
