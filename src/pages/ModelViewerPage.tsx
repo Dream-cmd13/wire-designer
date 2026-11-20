@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Box, Upload, CloudUpload, FileDown, RefreshCw } from 'lucide-react';
+import { Box, Upload, CloudUpload, FileDown, PanelRightClose, RefreshCw } from 'lucide-react';
 import { ModelViewer } from '@/components/models/ModelViewer';
 import { ModelThreeViewDialog } from '@/components/models/ModelThreeViewDialog';
 import { parseModel, validateModelFile } from '@/lib/models/modelParser';
@@ -10,9 +10,11 @@ import { useUserStore } from '@/stores/userStore';
 
 type Preview = 'idle' | ParsePhase | 'ready' | 'error' | 'downloading';
 type SaveState = 'local' | SavePhase | 'saved' | 'error';
-const phases: Record<Preview, string> = { idle: '尚未选择文件', reading: '正在读取文件…', engine: '正在加载 STEP 解析引擎…', parsing: '正在解析模型…', ready: '预览就绪', error: '预览失败', downloading: '正在下载私有模型…' };
+const phases: Record<Exclude<Preview, 'idle'>, string> = { reading: '正在读取文件…', engine: '正在加载 STEP 解析引擎…', parsing: '正在解析模型…', ready: '预览就绪', error: '预览失败', downloading: '正在下载私有模型…' };
 const saves: Record<SaveState, string> = { local: '仅本地预览', uploading: '保存中：正在上传原文件…', finalizing: '原文件已上传，正在写入数据库确认…', saved: '已保存', error: '保存失败，可重试' };
-const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
+const buttonClass = 'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-xs font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40';
+const primaryButtonClass = `${buttonClass} !border-blue-600 !bg-blue-600 text-white hover:!bg-blue-700`;
+const selectClass = 'h-8 rounded-md border border-slate-200 bg-white px-1.5 text-xs';
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : '操作失败，请检查网络后重试。'; }
 function isAbort(error: unknown) { return error instanceof Error && error.name === 'AbortError'; }
 function setModelUrl(id: string | null) { window.history.replaceState(null, '', buildModelViewerRoutePath('/model-viewer', id)); }
@@ -177,16 +179,31 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
     finally { if (current === task.current) busy.current = false; }
   };
   const cancel = () => { begin(); setPreview('idle'); setError('已取消，可重新选择文件。'); };
+  const showHeader = preview !== 'idle' || Boolean(recovering);
+  const chooseButton = (primary = false) => <button type="button" className={primary ? primaryButtonClass : buttonClass} disabled={saving} onClick={() => fileInput.current?.click()}><Upload size={14} />选择文件</button>;
+  const toggleList = () => setListExpanded((expanded) => !expanded);
+  const listLabel = listExpanded ? '收起云端模型' : '展开云端模型';
+  const listButton = <button type="button" className={buttonClass} aria-expanded={listExpanded} aria-controls="private-model-list" onClick={toggleList}>{listLabel}</button>;
 
-  return <div className="flex h-full flex-col gap-3 overflow-auto bg-slate-50 p-3 lg:p-4">
-    <header className="flex flex-wrap items-start justify-between gap-4">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900"><Box size={18} className="text-blue-600" />3D 模型</h2>
-      <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={saving} onClick={() => fileInput.current?.click()}><Upload size={16} />选择文件</button>
-        <button className={`${buttonClass} !bg-blue-600 text-white hover:!bg-blue-700`} disabled={saving || loading || qualityLoading || save === 'saved' || (!model && !recovering) || !modelRepository.configured} onClick={() => void saveCurrent(recovering ?? undefined)}>
-          <CloudUpload size={16} />{save === 'error' ? '重试保存' : '保存到云端'}</button>
-        <button className={buttonClass} disabled={!exportReady} onClick={() => setExportSignal(task.current.controller.signal)}><FileDown size={16} />导出三视图 PDF</button>
-        <button className={buttonClass} aria-expanded={listExpanded} onClick={() => setListExpanded(!listExpanded)}>{listExpanded ? '收起云端模型' : '展开云端模型'}</button></div>
-    </header>
+  return <div className="flex h-full flex-col gap-2 overflow-auto bg-slate-50 p-3">
+    <h2 className="sr-only">3D 模型</h2>
+    {showHeader && <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+      {preview !== 'idle' && file && <div className="flex min-w-0 max-w-full items-center gap-2 text-xs">
+        <span className="min-w-0 truncate text-sm font-medium text-slate-900" title={file.name}>{file.name}</span>
+        <span className="shrink-0 whitespace-nowrap text-slate-500">{format.toUpperCase()} · {(file.size / 1024).toFixed(1)} KiB</span>
+      </div>}
+      {model && <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600" role="status">{saves[save]}</span>}
+      {preview === 'ready' && <span className="sr-only" role="status">{phases.ready}</span>}
+      {loading && <button type="button" className={buttonClass} onClick={cancel}>取消加载</button>}
+      {preview === 'error' && file && <button type="button" className={buttonClass} onClick={() => void parse(file, unit, begin())}>重试解析</button>}
+      <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
+        {(model || loading) && chooseButton()}
+        {(model || recovering) && <button type="button" className={save === 'saved' ? buttonClass : primaryButtonClass} disabled={saving || loading || qualityLoading || save === 'saved' || !modelRepository.configured} onClick={() => void saveCurrent(recovering ?? undefined)}>
+          <CloudUpload size={14} />{save === 'error' ? '重试保存' : '保存到云端'}</button>}
+        {model && <button type="button" className={buttonClass} disabled={!exportReady} onClick={() => setExportSignal(task.current.controller.signal)}><FileDown size={14} />导出三视图 PDF</button>}
+        {listButton}
+      </div>
+    </header>}
     {exportSignal && exportReady && <ModelThreeViewDialog model={model} sourceName={file.name} modelSignal={exportSignal} onClose={() => setExportSignal(null)} />}
     <input ref={fileInput} type="file" className="sr-only" aria-label="选择模型文件" accept=".step,.stp,.stl" disabled={saving} onChange={(event) => { if (event.target.files) choose(event.target.files); event.target.value = ''; }} />
     {!modelRepository.configured && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">云端尚未配置，可继续本地预览，暂时无法保存。</p>}
@@ -195,52 +212,59 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
       <button className={buttonClass} disabled={saving} onClick={() => { saveSession.current = null; setRecovering(null); setSave('local'); setError(null); setModelUrl(null); }}>结束恢复，预览新模型</button>
     </div>}
     {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-    <div className={`grid min-h-[520px] flex-1 grid-cols-1 gap-3 ${listExpanded ? 'xl:grid-cols-[minmax(0,1fr)_260px]' : ''}`}>
-      <section data-testid="model-drop-zone" className="flex min-h-[500px] min-w-0 flex-col gap-3" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); choose(event.dataTransfer.files); }}>
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-3 text-sm">
-          <span className="min-w-0 truncate font-medium" title={file?.name}>{file?.name ?? '选择或拖入一个 STEP / STP / STL 文件'}</span>
-          {file && <span className="text-slate-500">{format.toUpperCase()} · {(file.size / 1024).toFixed(1)} KiB</span>}
-          {file && format === 'step' && <label className="flex items-center gap-2">显示质量
-            <select aria-label="显示质量" className="rounded border p-1" value={requestedQuality} disabled={saving || loading || !model} onChange={(event) => void changeQuality(event.target.value as ModelQuality)}>
+    <div className={`grid min-h-[420px] flex-1 grid-cols-1 gap-2 ${listExpanded ? 'grid-rows-[minmax(420px,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_240px] xl:grid-rows-[minmax(0,1fr)]' : ''}`}>
+      <section data-testid="model-drop-zone" className="flex min-h-[420px] min-w-0 flex-col gap-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); choose(event.dataTransfer.files); }}>
+        <ModelViewer model={model} modelKey={modelKey} emptyState={loading && preview !== 'idle' ? <span role="status">{phases[preview]}</span> : <div className="flex flex-col items-center gap-2">
+          <Box size={28} className="mb-1 text-slate-400" />
+          {chooseButton(true)}
+          <p>也可拖入 STEP / STP / STL 文件（最大 20 MiB）</p>
+          {!showHeader && !listExpanded && listButton}
+        </div>} status={qualityLoading && <><span>正在生成{requestedQuality === 'fine' ? '精细' : '标准'}预览…</span><button type="button" className="text-blue-700" onClick={cancelQuality}>取消质量生成</button></>} />
+        {qualityError && <p role="alert" className="text-xs text-amber-800">{qualityError}</p>}
+        {model && file && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600">
+          <span className="flex flex-wrap gap-x-2 gap-y-1"><span>包围盒尺寸（网格近似）</span>
+            <span className="font-medium tabular-nums text-slate-800" data-testid="model-bounds">{model.boundsMm.max.map((value, i) => (value - model.boundsMm.min[i]).toFixed(2)).join(' × ')} mm</span>
+          </span>
+          {format === 'step' && <label className="flex items-center gap-1">显示质量
+            <select aria-label="显示质量" className={selectClass} value={requestedQuality} disabled={saving || loading} onChange={(event) => void changeQuality(event.target.value as ModelQuality)}>
               <option value="standard">标准</option><option value="fine">精细</option>
             </select></label>}
-          {file && format === 'stl' && <label className="flex items-center gap-2">用户指定单位
-            <select className="rounded border p-1" aria-label="STL 用户指定单位" value={unit} disabled={saving || Boolean(recovering)} onChange={(event) => {
+          {format === 'step' && <span className="sr-only" role="status">{appliedQuality === 'fine' ? '精细' : '标准'}已生效</span>}
+          {format === 'stl' && <label className="flex items-center gap-1">STL 单位
+            <select className={selectClass} aria-label="STL 用户指定单位" value={unit} disabled={saving || Boolean(recovering)} onChange={(event) => {
               const next = event.target.value as StlUnit; const current = begin(); saveSession.current = null; setSave('local'); setUnit(next); setModelUrl(null); void parse(file, next, current);
             }}><option value="mm">毫米</option><option value="cm">厘米</option><option value="m">米</option><option value="inch">英寸</option></select></label>}
-          <span className="ml-auto text-slate-500" role="status">{phases[preview]}</span>
-          {loading && <button className="text-blue-600" onClick={cancel}>取消加载</button>}
-          {preview === 'error' && file && <button className="text-blue-600" onClick={() => void parse(file, unit, begin())}>重试解析</button>}
-        </div>
-        {qualityError && <p role="alert" className="text-sm text-amber-800">{qualityError}</p>}
-        <ModelViewer model={model} modelKey={modelKey} status={<><span className="max-w-64 truncate" title={file?.name}>{file?.name}</span><span>{saves[save]}</span>{qualityLoading && <><span>正在生成{requestedQuality === 'fine' ? '精细' : '标准'}预览…</span><button onClick={cancelQuality}>取消质量生成</button></>}{model && <span>{model.boundsMm.max.map((value, i) => (value - model.boundsMm.min[i]).toFixed(2)).join(' × ')} mm（网格近似）</span>}</>} />
-        {model && <div className="flex flex-wrap gap-x-5 gap-y-1 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">
-          <span>包围盒尺寸（网格近似）</span>
-          <span data-testid="model-bounds">{model.boundsMm.max.map((value, i) => (value - model.boundsMm.min[i]).toFixed(2)).join(' × ')} mm</span>
-          {format === 'step' && <span>{appliedQuality === 'fine' ? '精细' : '标准'}已生效</span>}
-          <details className="w-full"><summary className="cursor-pointer">模型详情</summary>
+          <details className="ml-auto open:w-full"><summary className="cursor-pointer rounded px-1 py-1 font-medium text-slate-700 hover:bg-slate-50">模型详情</summary>
             <p>{model.triangleCount.toLocaleString()} 个三角形 · {model.meshes.length} 个网格</p>
             <p>{format === 'step' ? 'STEP 输出单位：毫米' : `STL 单位由用户指定（${unit}），显示已换算为毫米`}</p>
             <p>原文件仅在主动保存时上传，上限 20 MiB。文件解析最长 60 秒，返回后最多接受 1,000,000 个三角形。</p>
             <p>显示质量不改变原文件精度。曲面边界为模型网格派生线，仅供查看，可能包含接缝；不代表精确 CAD 拓扑边。</p>
-            <p>{format === 'stl' ? 'STL 使用原始网格，不支持曲面边界及质量细化。' : model.surfaceEdgeWarning}</p>
+            {format === 'stl' && <p>STL 使用原始网格，不支持曲面边界及质量细化。</p>}
           </details>
         </div>}
         {model?.surfaceEdgeWarning && <p className="text-xs text-amber-800">{model.surfaceEdgeWarning}</p>}
       </section>
-      <aside hidden={!listExpanded} className={listExpanded ? 'flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white p-3' : 'hidden'}>
-        <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-semibold">本人云端模型</h3><button className="text-slate-500 disabled:opacity-40" aria-label="刷新模型列表" disabled={saving || listLoading || !modelRepository.configured} onClick={() => void refresh(listPage)}><RefreshCw size={16} /></button></div>
-        {listError && <p className="mb-3 text-xs text-red-600">{listError}</p>}
-        {listLoading && <p className="text-xs text-slate-500">正在读取列表…</p>}
-        {!listLoading && !records.length && <p className="text-xs text-slate-400">暂无模型。保存后可在此重新打开。</p>}
-        <ul className="min-h-0 flex-1 space-y-2">{records.map((asset) => <li key={asset.id} className="rounded-lg border border-slate-200 p-3">
-          <p className="truncate text-sm" title={asset.original_name}>{asset.original_name}</p>
-          <p className="mt-1 text-xs text-slate-500">{asset.format.toUpperCase()} · {asset.status === 'ready' ? '已保存' : '保存未完成'}</p>
-          <button className="mt-2 text-xs text-blue-600 disabled:opacity-40" disabled={saving || ((loading || qualityLoading) && asset.status !== 'ready')} onClick={() => { if (asset.status === 'ready') { setModelUrl(asset.id); void openCloud(asset.id); } else {
+      <aside id="private-model-list" hidden={!listExpanded} className={listExpanded ? 'flex max-h-72 min-h-0 min-w-0 flex-col rounded-xl border border-slate-200 bg-white xl:max-h-none' : 'hidden'}>
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-3 py-1.5">
+          <h3 className="text-sm font-semibold">本人云端模型</h3>
+          <div className="flex items-center gap-1">
+            <button type="button" className={buttonClass} title="刷新模型列表" aria-label="刷新模型列表" disabled={saving || listLoading || !modelRepository.configured} onClick={() => void refresh(listPage)}><RefreshCw size={14} /></button>
+            {!showHeader && <button type="button" className={buttonClass} aria-label={listLabel} title={listLabel} aria-expanded={listExpanded} aria-controls="private-model-list" onClick={toggleList}><PanelRightClose size={14} /></button>}
+          </div>
+        </div>
+        {listError && <p role="alert" className="px-3 py-2 text-xs text-red-700">{listError}</p>}
+        {listLoading && <p role="status" className="px-3 py-2 text-xs text-slate-500">正在读取列表…</p>}
+        {!listLoading && !listError && !records.length && <p className="px-3 py-3 text-xs text-slate-500">暂无模型。保存后可在此重新打开。</p>}
+        <ul className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">{records.map((asset) => <li key={asset.id} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium" title={asset.original_name}>{asset.original_name}</p>
+            <p className="text-xs text-slate-500">{asset.format.toUpperCase()}{asset.status !== 'ready' && ' · 保存未完成'}</p>
+          </div>
+          <button type="button" className="shrink-0 rounded px-1 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-40" title={`${asset.status === 'ready' ? '打开预览' : '恢复保存'}：${asset.original_name}`} disabled={saving || ((loading || qualityLoading) && asset.status !== 'ready')} onClick={() => { if (asset.status === 'ready') { setModelUrl(asset.id); void openCloud(asset.id); } else {
             begin(); saveSession.current = asset; setRecovering(asset); setFile(null); setModel(null); setPreview('idle'); setQualityLoading(false); void saveCurrent(asset, null);
           } }}>{asset.status === 'ready' ? '打开预览' : '恢复保存'}</button>
         </li>)}</ul>
-        <div className="mt-3 flex justify-between text-xs"><button disabled={listPage === 0 || saving || listLoading} className="disabled:opacity-30" onClick={() => void refresh(listPage - 1)}>上一页</button><span>第 {listPage + 1} 页</span><button disabled={records.length < 20 || saving || listLoading} className="disabled:opacity-30" onClick={() => void refresh(listPage + 1)}>下一页</button></div>
+        {(listPage > 0 || records.length >= 20) && <div className="flex shrink-0 justify-between border-t border-slate-100 px-3 py-2 text-xs"><button disabled={listPage === 0 || saving || listLoading} className="disabled:opacity-30" onClick={() => void refresh(listPage - 1)}>上一页</button><span>第 {listPage + 1} 页</span><button disabled={records.length < 20 || saving || listLoading} className="disabled:opacity-30" onClick={() => void refresh(listPage + 1)}>下一页</button></div>}
       </aside>
     </div>
   </div>;

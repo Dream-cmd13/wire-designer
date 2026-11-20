@@ -22,10 +22,11 @@ interface ViewerApi {
   clearSelection: () => void;
 }
 
-export function ModelViewer({ model, modelKey, status, detail, overview }: {
+export function ModelViewer({ model, modelKey, status, emptyState, detail, overview }: {
   model: ParsedModel | null;
   modelKey: string | null;
   status?: ReactNode;
+  emptyState?: ReactNode;
   detail?: { label: string; bounds: Bounds };
   /** Enables projection-based full-model fitting with this overview preset. */
   overview?: ModelViewPreset;
@@ -40,6 +41,7 @@ export function ModelViewer({ model, modelKey, status, detail, overview }: {
   const initialView = overview ?? 'iso';
   const [view, setView] = useState<View | 'free'>(initialView);
   const [fullscreen, setFullscreen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ model: ParsedModel; generation: number; message: string } | null>(null);
   const [generation, setGeneration] = useState(0);
@@ -291,26 +293,29 @@ export function ModelViewer({ model, modelKey, status, detail, overview }: {
       else setFullscreenError('当前浏览器不支持全屏查看。');
     } catch { setFullscreenError('无法进入全屏，请检查浏览器权限后重试。'); }
   };
-  const button = 'rounded border border-slate-200 px-3 py-2 hover:bg-slate-100 disabled:opacity-40 aria-pressed:bg-blue-100 aria-pressed:text-blue-800';
+  const button = 'h-8 whitespace-nowrap rounded-md border border-slate-200 px-2 hover:bg-slate-50 disabled:opacity-40 aria-pressed:border-blue-200 aria-pressed:bg-blue-50 aria-pressed:text-blue-800';
+  const select = 'h-8 rounded-md border border-slate-200 bg-white px-1.5';
   return <div ref={frame} className="flex min-h-80 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white fullscreen:h-screen">
-    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2 text-xs">
-      {(Object.keys(views) as ModelViewPreset[]).map((preset) => <button className={button} aria-pressed={view === preset} disabled={!model} key={preset} onClick={() => controlsApi.current?.view(preset)}>{views[preset].label}</button>)}
-      {detail && <button className={button} aria-pressed={view === 'detail'} disabled={!model} onClick={() => controlsApi.current?.view('detail', detail.bounds)}>{detail.label}</button>}
-      <button className={button} disabled={!model} onClick={() => controlsApi.current?.view(initialView)}>{detail ? '查看整线' : '重置视角'}</button>
-      <button className={button} disabled={!model} onClick={() => controlsApi.current?.fit()}>适配窗口</button>
-      <label>边线 <select aria-label="边线" className="rounded border p-1" value={edges} disabled={!model} onChange={(event) => setEdgeChoice({ key: modelKey, mode: event.target.value as EdgeMode })}>
+    {model && <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-b border-slate-200 bg-white p-2 text-xs" role="group" aria-label="模型视图工具">
+      {(Object.keys(views) as ModelViewPreset[]).map((preset) => <button className={button} aria-pressed={view === preset} key={preset} onClick={() => controlsApi.current?.view(preset)}>{views[preset].label}</button>)}
+      {detail && <button className={button} aria-pressed={view === 'detail'} onClick={() => controlsApi.current?.view('detail', detail.bounds)}>{detail.label}</button>}
+      <button className={button} onClick={() => controlsApi.current?.view(initialView)}>{detail ? '查看整线' : '重置视角'}</button>
+      <button className={button} onClick={() => controlsApi.current?.fit()}>适配窗口</button>
+      <label className="flex items-center gap-1">边线 <select aria-label="边线" className={select} value={edges} onChange={(event) => setEdgeChoice({ key: modelKey, mode: event.target.value as EdgeMode })}>
         <option value="none">无边线</option><option value="feature">特征边</option><option value="surface" disabled={!supportsSurface}>曲面边界</option>
       </select></label>
-      <label>背景 <select aria-label="背景" className="rounded border p-1" value={background} onChange={(event) => setBackground(event.target.value as Background)}><option value="light">浅色</option><option value="dark">深色</option></select></label>
+      <label className="flex items-center gap-1">背景 <select aria-label="背景" className={select} value={background} onChange={(event) => setBackground(event.target.value as Background)}><option value="light">浅色</option><option value="dark">深色</option></select></label>
       <button className={button} onClick={() => void toggleFullscreen()}>{fullscreen ? '退出全屏' : '全屏查看'}</button>
       <button className={button} disabled={!selection} onClick={() => controlsApi.current?.clearSelection()}>清除选择</button>
-      <span data-testid="model-selection" aria-live="polite">{selection?.kind === 'face' ? `曲面 ${selection.faceId+1}` : selection?.kind === 'mesh' ? `网格：${model?.meshes[selection.meshIndex].name || '未命名'}` : ''}</span>
-      <span className="ml-auto basis-full text-right text-slate-500"><span className="inline-block w-16">{view === 'free' ? '自由视角 · ' : ''}</span>点击选择曲面 · 左键拖动旋转 · 右键拖动平移 · 滚轮缩放</span>
-    </div>
+      <button className={button} aria-expanded={showHelp} onClick={() => setShowHelp((open) => !open)}>操作说明</button>
+      {view === 'free' && <span className="text-slate-500">自由视角</span>}
+      {showHelp && <p className="basis-full rounded-md bg-slate-50 px-2 py-1.5 text-slate-600">点击选取曲面或网格 · 左键拖动旋转 · 右键拖动平移 · 滚轮缩放</p>}
+    </div>}
     {(status || fullscreenError) && <div className="flex flex-wrap gap-3 bg-white px-3 py-2 text-xs" role="status">{status}{fullscreenError}</div>}
     <div className="relative min-h-64 flex-1">
       <div className="absolute inset-0" ref={host} aria-label="三维模型画布" />
-      {!model && <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-500">选择 STEP / STL 文件开始预览</div>}
+      <span className="pointer-events-none absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-md bg-white/95 text-xs text-slate-700 not-empty:px-2 not-empty:py-1" data-testid="model-selection" aria-live="polite">{selection?.kind === 'face' ? `曲面 ${selection.faceId+1}` : selection?.kind === 'mesh' ? `网格：${model?.meshes[selection.meshIndex].name || '未命名'}` : ''}</span>
+      {!model && <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-sm text-slate-500">{emptyState ?? '选择 STEP / STL 文件开始预览'}</div>}
       {failureMessage && <div role="alert" className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-white/95 p-6 text-sm text-red-700">
         {failureMessage}<button className="rounded border px-4 py-2" onClick={() => { setFailure(null); setGeneration((value) => value + 1); }}>重建画布</button>
       </div>}

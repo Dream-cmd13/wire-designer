@@ -74,6 +74,35 @@ async function uploadLocal(page: Page, name: string, buffer: Buffer) {
   await expect(page.locator('[aria-label="三维模型画布"] canvas')).toBeVisible();
 }
 
+test('keeps the empty model workspace actionable and the loaded workspace compact', async ({ page }) => {
+  await localLogin(page);
+  const workspace = page.getByTestId('model-drop-zone');
+  await expect(workspace.getByRole('button', { name: '选择文件', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重置视角' })).toHaveCount(0);
+  await expect(page.getByText('仅本地预览', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '下一页' })).toHaveCount(0);
+  await page.getByRole('button', { name: '收起云端模型' }).click();
+  await expect(page.getByRole('heading', { name: '本人云端模型' })).not.toBeVisible();
+  await workspace.getByRole('button', { name: '展开云端模型' }).click();
+  await expect(page.getByRole('heading', { name: '本人云端模型' })).toBeVisible();
+
+  await uploadLocal(page, 'compact-workspace.stl', asciiStl());
+  const fit = page.getByRole('button', { name: '适配窗口' });
+  const help = page.getByRole('button', { name: '操作说明' });
+  const shortcuts = page.getByText(/左键拖动旋转/);
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.getByText('compact-workspace.stl', { exact: true })).toHaveCount(1);
+    await expect(page.getByText(/2\.00 × 3\.00 × 4\.00 mm/)).toHaveCount(1);
+    await expect(fit).toBeInViewport();
+    await expect(help).toBeInViewport();
+    await expect(shortcuts).not.toBeVisible();
+    await help.click();
+    await expect(shortcuts).toBeVisible();
+    await help.click();
+  }
+});
+
 async function trackViewerResources(page: Page) {
   await page.addInitScript(() => {
     const liveBuffers = new Set<WebGLBuffer>(); const activeWorkers = new Set<Worker>();

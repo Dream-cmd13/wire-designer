@@ -134,6 +134,7 @@ describe('camera fit and canvas ownership', () => {
     const fill=faceFills()[0]; const geometryDispose=vi.spyOn(fill.geometry,'dispose'); const materialDispose=vi.spyOn(fill.material as THREE.Material,'dispose');
     rerender(<ModelViewer model={null} modelKey="revive" />);
     expect(geometryDispose).toHaveBeenCalledOnce(); expect(materialDispose).toHaveBeenCalledOnce();
+    expect(testing.screen.queryByRole('button',{name:'清除选择'})).toBeNull();
     rerender(<ModelViewer model={pickingModel} modelKey="revive" />);
     expect(testing.screen.getByTestId('model-selection').textContent).toBe('');
     expect(testing.screen.getByRole('button',{name:'清除选择'})).toHaveProperty('disabled',true);

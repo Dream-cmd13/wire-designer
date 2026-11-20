@@ -60,9 +60,9 @@ describe('model PDF export', () => {
   });
   it('requires a ready preview and does not offer export during a quality change', async () => {
     render(<ModelViewerPage />);
-    expect(exportButton().hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByRole('button', { name: '导出三视图 PDF' })).toBeNull();
     pick();
-    expect(exportButton().hasAttribute('disabled')).toBe(true);
+    expect(screen.queryByRole('button', { name: '导出三视图 PDF' })).toBeNull();
     await screen.findByText('包围盒尺寸（网格近似）');
     expect(exportButton().hasAttribute('disabled')).toBe(false);
     fireEvent.change(screen.getByLabelText('显示质量'), { target: { value: 'fine' } });
