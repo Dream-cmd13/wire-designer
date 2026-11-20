@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { createDrawingFromWizard } from '@/lib/drawingGenerator';
-import { defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+import { createBlankDrawingDocument, createWiringTable, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { renderDrawingCanvas } from '@/lib/drawingRenderer';
+import { serializeDrawingSvg } from '@/lib/drawingExport';
 import type { DrawingDocument, DrawingWizardDraft } from '@/types/drawing';
 
 function createRecordingContext() {
   let currentFillStyle = '';
   const textCalls: Array<{ text: string; fillStyle: string }> = [];
+  const strokedRects: number[][] = [];
   const context = {
     get fillStyle() { return currentFillStyle; },
     set fillStyle(value: string) { currentFillStyle = value; },
@@ -17,7 +19,7 @@ function createRecordingContext() {
     setLineDash: () => undefined,
     clearRect: () => undefined,
     fillRect: () => undefined,
-    strokeRect: () => undefined,
+    strokeRect: (...rect: number[]) => strokedRects.push(rect),
     save: () => undefined,
     restore: () => undefined,
     beginPath: () => undefined,
@@ -31,10 +33,20 @@ function createRecordingContext() {
     rotate: () => undefined,
     fillText: (text: string) => textCalls.push({ text, fillStyle: currentFillStyle }),
   };
-  return { context: context as unknown as CanvasRenderingContext2D, textCalls };
+  return { context: context as unknown as CanvasRenderingContext2D, textCalls, strokedRects };
 }
 
 describe('standalone drawing table templates', () => {
+  it('renders the full outer border for saved wiring tables with a stale height', () => {
+    const table = createWiringTable();
+    const drawing = { ...createBlankDrawingDocument(), objects: [{ ...table, height: 94, rows: Array.from({ length: 4 }, () => table.rows[0]) }] };
+    const { context, strokedRects } = createRecordingContext();
+
+    renderDrawingCanvas(context, drawing);
+
+    expect(strokedRects).toContainEqual([0, 0, table.width, 112]);
+    expect(serializeDrawingSvg(drawing)).toContain(`<rect width="${table.width}" height="112"/>`);
+  });
   it('keeps non-table canvas text edits from drawing a second visible input value', () => {
     const source = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
 
@@ -107,7 +119,7 @@ describe('standalone drawing table templates', () => {
     expect(source).toContain('rotateDrawingObject(interaction.object');
     expect(source).toContain('<StandaloneDrawingSelectionOverlay');
     expect(source).toContain('transform: `rotate(${object.rotation}deg)`');
-    expect(source).toContain("transformOrigin: 'center center'");
+    expect(source).toContain('transformOrigin: `center ${object.height * zoom / 2}px`');
     expect(source).not.toContain('ring-2 ring-blue-500 ring-offset-1');
     expect(renderer).not.toContain('context.strokeRect(object.x - 4');
   });
@@ -225,7 +237,7 @@ describe('standalone drawing table templates', () => {
     expect(tables.some((table) => table.title === '变更记录' && table.columns.includes('变更内容'))).toBe(true);
     expect(tables.some((table) => table.tableRole === 'title-block' && table.rows.some((row) => row.C6 === '单位' && row.C7 === 'mm'))).toBe(true);
     expect(tables.some((table) => table.tableRole === 'title-block' && table.rows.some((row) => row.C3 === '工程图号' && row.C4 === 'WH-001'))).toBe(true);
-    expect(tables.some((table) => table.title === '接线表' && table.rows.some((row) => row.P1 === '1' && row.颜色 === '黑' && row.P2 === '2' && row.长度 === '2'))).toBe(true);
+    expect(tables.some((table) => table.title === '接线表' && table.rows.some((row) => row.P1 === '1' && row.颜色 === '黑色' && row.P2 === '自由端' && row.长度 === '2'))).toBe(true);
     expect(tables.some((table) => table.kind === 'bom-table' && table.rows.some((row) => row['物料名称/规格'] === 'AC电源插座C20公座-1' && row.单位 === 'PCS' && row.用量 === '1'))).toBe(true);
     expect(tables.some((table) => table.kind === 'bom-table' && table.rows.some((row) => row['物料名称/规格'] === 'UL1007'))).toBe(true);
   });

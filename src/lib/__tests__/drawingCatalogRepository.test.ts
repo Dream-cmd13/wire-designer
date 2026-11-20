@@ -122,7 +122,10 @@ describe('DrawingCatalogRepository', () => {
     }));
 
     await expect(repository.listResources({ resourceType: 'wire' })).resolves.toEqual([
-      expect.objectContaining({ resourceType: 'wire', specification: 'SHIELD-4C · 24AWG · 4C · shielded · OD 5.2mm±0.2 · UL20276' }),
+      expect.objectContaining({
+        resourceType: 'wire', wireKind: 'jacketed', shielded: true, coreColors: ['red', 'black', 'white', 'green'],
+        specification: 'SHIELD-4C · 24AWG · 4C · shielded · OD 5.2mm±0.2 · UL20276',
+      }),
     ]);
   });
 

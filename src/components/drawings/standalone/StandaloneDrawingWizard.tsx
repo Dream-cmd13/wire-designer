@@ -6,7 +6,8 @@ import { DrawingWireBatchEditor } from '@/components/drawings/standalone/Drawing
 import { useCatalogStore } from '@/stores/catalogStore';
 import { getCatalogWireColors } from '@/lib/catalogRuntime';
 import { drawingCatalogRepository, filterDrawingCatalogResources } from '@/lib/drawingCatalogRepository';
-import { applyDrawingWireBatch, countDrawingMaterialKinds, createDrawingFromWizard, validateStandaloneDrawingWizard } from '@/lib/drawingGenerator';
+import { applyDrawingWireBatch, countDrawingMaterialKinds, createDrawingFromWizard, getDrawingWireColorHex, getDrawingWireColorName, getDrawingWireMaterialLengthMm, validateStandaloneDrawingWizard } from '@/lib/drawingGenerator';
+import { serializeDrawingSvg } from '@/lib/drawingExport';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type {
   DrawingCatalogFilters,
@@ -35,6 +36,7 @@ function connectorFromResource(resource: DrawingCatalogResource): DrawingConnect
   return {
     id: resource.id,
     name: resource.name,
+    model: resource.model,
     gender: resource.gender ?? 'receptacle',
     pinCount: resource.pinCount ?? 1,
     category: resource.resourceGroup,
@@ -56,11 +58,31 @@ function defaultWire(index: number, lengthMm: number, wireColors: Array<{ hex: s
   };
 }
 
-function resizeWires(draft: DrawingWizardDraft, count: number, wireColors: Array<{ hex: string }>) {
+function resizeWires(draft: DrawingWizardDraft, wireColors: Array<{ hex: string }>) {
+  const pinCount = draft.endpointForm === 'single-end'
+    ? draft.singleConnector?.pinCount ?? 1
+    : Math.min(draft.leftConnector?.pinCount ?? 1, draft.rightConnector?.pinCount ?? 1);
+  const count = Math.min(pinCount, draft.wireResource?.coreColors?.length || 40);
   return Array.from(
     { length: Math.min(40, Math.max(1, count)) },
-    (_, index) => draft.wires[index] ?? defaultWire(index, draft.totalLengthMm, wireColors),
+    (_, index) => {
+      if (draft.wires[index]) return draft.wires[index];
+      const wire = defaultWire(index, draft.totalLengthMm, wireColors);
+      const coreColor = draft.wireResource?.coreColors?.[index];
+      return coreColor ? { ...wire, color: getDrawingWireColorName(coreColor) } : wire;
+    },
   );
+}
+
+function withWireResource(draft: DrawingWizardDraft, wireResource: DrawingCatalogResource | undefined): DrawingWizardDraft {
+  const coreColors = wireResource?.coreColors;
+  return {
+    ...draft, wireResource, cableCutLengthMm: undefined, shieldTermination: undefined,
+    wires: coreColors?.length ? draft.wires.map((wire, index) => ({
+      ...wire,
+      color: coreColors[index] ? getDrawingWireColorName(coreColors[index]) : wire.color,
+    })) : draft.wires.map((wire) => ({ ...wire, color: getDrawingWireColorHex(wire.color) ?? '#111827' })),
+  };
 }
 
 function initialDraft(wireColors: Array<{ hex: string }>): DrawingWizardDraft {
@@ -76,7 +98,8 @@ function initialDraft(wireColors: Array<{ hex: string }>): DrawingWizardDraft {
 
 function resourceSummary(resource: DrawingCatalogResource | undefined) {
   if (!resource) return '未选择';
-  return [resource.name, resource.model, resource.specification].filter(Boolean).join(' · ');
+  const specification = resource.specification?.split(' · ').filter((part) => part !== resource.model);
+  return [resource.name, resource.name.includes(resource.model) ? '' : resource.model, ...(specification ?? [])].filter(Boolean).join(' · ');
 }
 
 function stripCatalogSelections(draft: DrawingWizardDraft): DrawingWizardDraft {
@@ -119,6 +142,14 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
   const wireResources = resources.filter((resource) => resource.resourceType === 'wire');
   const protectiveSleeveResources = resources.filter((resource) => resource.resourceType === 'protective_sleeve');
   const validation = validateStandaloneDrawingWizard(draft);
+  const canPreview = open && mode === 'drawing' && step === 2 && !validation.errors.length;
+  const preview = useMemo(() => {
+    if (!canPreview) return null;
+    const drawing = createDrawingFromWizard(draft);
+    return { drawing, src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serializeDrawingSvg(drawing))}` };
+  }, [canPreview, draft]);
+  const isJacketed = draft.wireResource?.wireKind === 'jacketed';
+  const coreColorOptions = [...new Set(draft.wireResource?.coreColors?.map(getDrawingWireColorName))];
 
   const loadResources = async () => {
     const selectedProtectiveSleeveId = draft.protectiveSleeveResource?.resourceItemId;
@@ -147,10 +178,10 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
           singleConnector: current.singleConnector ?? connector,
           leftConnector: current.leftConnector ?? connector,
           rightConnector: current.rightConnector ?? connector,
-          wireResource: current.wireResource ?? wireResource,
           protectiveSleeveResource,
         };
-        return { ...next, wires: resizeWires(next, connector?.pinCount ?? 1, wireColors) };
+        const configured = current.wireResource ? next : withWireResource(next, wireResource);
+        return { ...configured, wires: resizeWires(configured, wireColors) };
       });
       if (selectedProtectiveSleeveId && !catalog.some((resource) => resource.resourceItemId === selectedProtectiveSleeveId && resource.resourceType === 'protective_sleeve')) {
         setNotice('已选热缩套管已失效，请重新选择。');
@@ -182,10 +213,7 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
 
   const selectEndpointForm = (endpointForm: DrawingEndpointForm) => setDraft((current) => {
     const next = { ...current, endpointForm };
-    const pinCount = endpointForm === 'single-end'
-      ? next.singleConnector?.pinCount
-      : Math.min(next.leftConnector?.pinCount ?? 1, next.rightConnector?.pinCount ?? 1);
-    return { ...next, wires: resizeWires(next, pinCount ?? 1, wireColors) };
+    return { ...next, wires: resizeWires(next, wireColors) };
   });
 
   const selectConnector = (key: 'singleConnector' | 'leftConnector' | 'rightConnector', resource: DrawingCatalogResource) => setDraft((current) => {
@@ -194,11 +222,16 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
       [key]: connectorFromResource(resource),
       modelResource: resource.resourceType === 'model' ? resource : current.modelResource,
     };
-    const count = next.endpointForm === 'single-end'
-      ? next.singleConnector?.pinCount
-      : Math.min(next.leftConnector?.pinCount ?? 1, next.rightConnector?.pinCount ?? 1);
-    return { ...next, wires: resizeWires(next, count ?? 1, wireColors) };
+    return { ...next, wires: resizeWires(next, wireColors) };
   });
+
+  const selectWireResource = (resourceItemId: string) => {
+    const resource = wireResources.find((item) => item.resourceItemId === resourceItemId);
+    setDraft((current) => {
+      const next = withWireResource(current, resource);
+      return { ...next, wires: resizeWires(next, wireColors) };
+    });
+  };
 
   const selectProtectiveSleeve = (resourceItemId: string) => {
     const protectiveSleeveResource = protectiveSleeveResources.find((resource) => resource.resourceItemId === resourceItemId);
@@ -336,9 +369,15 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
             <label className="text-sm">图号
               <input className={fieldClass} value={draft.drawingNo} onChange={(event) => setDraft({ ...draft, drawingNo: event.target.value })} />
             </label>
+            <label className="text-sm">品名
+              <input className={fieldClass} value={draft.productName ?? ''} placeholder="线束组件" onChange={(event) => setDraft({ ...draft, productName: event.target.value })} />
+            </label>
+            <label className="text-sm">公司名称
+              <input className={fieldClass} value={draft.companyName ?? ''} onChange={(event) => setDraft({ ...draft, companyName: event.target.value })} />
+            </label>
             {canUseCatalog ? <>
               <label className="text-sm">线材规格
-                <select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => setDraft({ ...draft, wireResource: wireResources.find((resource) => resource.resourceItemId === event.target.value) })}>
+                <select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => selectWireResource(event.target.value)}>
                   <option value="">请选择</option>
                   {wireResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
                 </select>
@@ -350,9 +389,15 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
                 </select>
               </label>
             </> : <div className="md:col-span-2"><LoginRequiredHint message="登录后可使用公共物料目录，选择线材与热缩套管。" /></div>}
-            <label className="text-sm">总长度(mm)
+            <label className="text-sm">成品总长 (mm)
               <input className={fieldClass} type="number" value={draft.totalLengthMm} onChange={(event) => setDraft({ ...draft, totalLengthMm: Number(event.target.value) })} />
             </label>
+            {isJacketed && <label className="text-sm">护套线下料长度 (mm)
+              <input className={fieldClass} type="number" min="0" step="any" value={draft.cableCutLengthMm ?? ''} onChange={(event) => setDraft({ ...draft, cableCutLengthMm: event.target.value === '' ? undefined : Number(event.target.value) })} />
+            </label>}
+            {draft.wireResource?.shielded && <label className="text-sm md:col-span-2">屏蔽层端接
+              <input className={fieldClass} value={draft.shieldTermination ?? ''} placeholder="填写两端接壳或绝缘要求" onChange={(event) => setDraft({ ...draft, shieldTermination: event.target.value })} />
+            </label>}
             <label className="text-sm">公差(mm)
               <input className={fieldClass} type="number" value={draft.toleranceMm} onChange={(event) => setDraft({ ...draft, toleranceMm: Number(event.target.value) })} />
             </label>
@@ -366,17 +411,20 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
             <input type="checkbox" checked={draft.hasMold} onChange={(event) => setDraft({ ...draft, hasMold: event.target.checked })} />
             使用模具
           </label>
-          <DrawingWireBatchEditor onApply={(batch) => setDraft({ ...draft, wires: applyDrawingWireBatch(draft.wires, batch) })} />
+          <DrawingWireBatchEditor allowColor={coreColorOptions.length === 0} onApply={(batch) => setDraft({ ...draft, wires: applyDrawingWireBatch(draft.wires, batch) })} />
           <div className="overflow-auto rounded border">
             <table className="w-full text-xs">
-              <thead><tr>{['PIN', '颜色', '长度', '线号', '接线号', '目标 PIN'].map((label) => <th key={label} className="p-2 text-left">{label}</th>)}</tr></thead>
+              <thead><tr>{['PIN', '颜色', '芯长 (mm)', '线号', '接线号', ...(!isSingle ? ['目标 PIN'] : [])].map((label) => <th key={label} className="p-2 text-left">{label}</th>)}</tr></thead>
               <tbody>{draft.wires.map((wire, index) => <tr key={wire.pin} className="border-t">
                 <td className="p-2">{wire.pin}</td>
-                <td><input type="color" value={wire.color} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, itemIndex) => itemIndex === index ? { ...item, color: event.target.value } : item) })} /></td>
+                <td>{coreColorOptions.length ? <select aria-label={`PIN ${wire.pin} 芯色`} value={getDrawingWireColorName(wire.color)} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, itemIndex) => itemIndex === index ? { ...item, color: event.target.value } : item) })}>
+                  {!coreColorOptions.includes(getDrawingWireColorName(wire.color)) && <option value={getDrawingWireColorName(wire.color)}>请选择</option>}
+                  {coreColorOptions.map((color) => <option key={color}>{color}</option>)}
+                </select> : <input type="color" value={getDrawingWireColorHex(wire.color) ?? '#111827'} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, itemIndex) => itemIndex === index ? { ...item, color: event.target.value } : item) })} />}</td>
                 <td><input className="w-20 border" type="number" value={wire.lengthMm} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, itemIndex) => itemIndex === index ? { ...item, lengthMm: Number(event.target.value) } : item) })} /></td>
                 <td><input className="w-24 border" value={wire.wireNo} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, itemIndex) => itemIndex === index ? { ...item, wireNo: event.target.value } : item) })} /></td>
                 <td>{wire.connectionNo}</td>
-                <td><input className="w-16 border" type="number" value={wire.targetPin ?? ''} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, itemIndex) => itemIndex === index ? { ...item, targetPin: Number(event.target.value) } : item) })} /></td>
+                {!isSingle && <td><input className="w-16 border" type="number" value={wire.targetPin ?? ''} onChange={(event) => setDraft({ ...draft, wires: draft.wires.map((item, itemIndex) => itemIndex === index ? { ...item, targetPin: Number(event.target.value) } : item) })} /></td>}
               </tr>)}</tbody>
             </table>
           </div>
@@ -391,11 +439,13 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
             <div><dt className="text-slate-500">热缩套管</dt><dd>{resourceSummary(draft.protectiveSleeveResource)}</dd></div>
             <div><dt className="text-slate-500">芯数</dt><dd>{draft.wires.length}</dd></div>
             <div><dt className="text-slate-500">长度与公差</dt><dd>{draft.totalLengthMm}±{draft.toleranceMm}mm</dd></div>
+            {draft.wireResource && <div><dt className="text-slate-500">BOM 线材用量</dt><dd>{getDrawingWireMaterialLengthMm(draft) > 0 ? `${Number((getDrawingWireMaterialLengthMm(draft) / 1000).toFixed(3))} m` : '待填写'}</dd></div>}
             <div><dt className="text-slate-500">物料种类</dt><dd>{countDrawingMaterialKinds(draft)}</dd></div>
             <div><dt className="text-slate-500">图号</dt><dd>{draft.drawingNo || '未填写'}</dd></div>
           </dl>
           {validation.errors.length > 0 && <ul className="rounded bg-red-50 p-3 text-sm text-red-700">{validation.errors.map((item) => <li key={item}>{item}</li>)}</ul>}
           {validation.warnings.length > 0 && <ul className="rounded bg-amber-50 p-3 text-sm text-amber-700">{validation.warnings.map((item) => <li key={item}>{item}</li>)}</ul>}
+          {preview && <img className="w-full border border-slate-200 bg-white" src={preview.src} alt="待生成的线束图纸" />}
         </div>}
       </main>
 
@@ -411,7 +461,7 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
             ? <button type="button" disabled={!canNext} onClick={() => setStep((value) => value + 1)} className="flex items-center rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40">
               下一步<ChevronRight className="h-4 w-4" />
             </button>
-            : <button type="button" disabled={validation.errors.length > 0} onClick={() => onGenerate(createDrawingFromWizard(draft))} className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-40">确认生成</button>}
+            : <button type="button" disabled={!preview} onClick={() => { if (preview) onGenerate(preview.drawing); }} className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-40">确认生成</button>}
         </footer>}
     </div>
   </div>;

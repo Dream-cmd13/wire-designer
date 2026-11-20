@@ -328,13 +328,13 @@ function DrawingTableLayer({
         left: object.x * zoom,
         top: object.y * zoom,
         width: object.width * zoom,
-        height: object.height * zoom,
+        height: Math.max(object.height, layout.contentHeight) * zoom,
         boxShadow: `inset 0 0 0 1px ${DRAWING_TABLE_LINE_COLOR}`,
         fontFamily: DRAWING_FONT_FAMILY,
         fontSize: object.style.fontSize * zoom,
         lineHeight: `${rowHeight}px`,
         transform: `rotate(${object.rotation}deg)`,
-        transformOrigin: 'center center',
+        transformOrigin: `center ${object.height * zoom / 2}px`,
       }}
       aria-selected={selected}
       onClick={(event) => { event.stopPropagation(); onSelect(); }}

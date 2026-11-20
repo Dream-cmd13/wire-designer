@@ -141,6 +141,9 @@ function mapCatalogItem(item: CatalogItemRow): CatalogResourceWithStoragePath | 
     return {
       ...common,
       specification: wireSpecification(item),
+      wireKind: item.spec.kind,
+      coreColors: item.spec.kind === 'jacketed' ? [...item.spec.coreColors] : undefined,
+      shielded: item.spec.kind === 'jacketed' ? item.spec.shielded : undefined,
       wireEngineering: {
         ratedVoltageV: item.spec.ratedVoltageV,
         temperatureRangeC: item.spec.temperatureRangeC

@@ -115,6 +115,7 @@ export function isDrawingObject(value: unknown): value is DrawingObject {
     case 'connector':
       return typeof value.label === 'string'
         && isFiniteNumber(value.pinCount)
+        && (value.showPinGrid === undefined || typeof value.showPinGrid === 'boolean')
         && (value.gender === 'male' || value.gender === 'female' || value.gender === 'receptacle')
         && (value.side === 'left' || value.side === 'right' || value.side === 'none');
     case 'wire-bundle':

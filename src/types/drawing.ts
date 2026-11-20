@@ -81,6 +81,7 @@ export type DrawingConnectorObject = DrawingObjectBase & {
   pinCount: number;
   gender: 'male' | 'female' | 'receptacle';
   side: 'left' | 'right' | 'none';
+  showPinGrid?: boolean;
 };
 
 export type DrawingWireBundleObject = DrawingObjectBase & {
@@ -206,6 +207,7 @@ export type DrawingEndpointForm = 'single-end' | 'double-end';
 export type DrawingConnectorResource = {
   id: string;
   name: string;
+  model?: string;
   gender: 'male' | 'female' | 'receptacle';
   pinCount: number;
   category: string;
@@ -232,6 +234,10 @@ export type DrawingWizardDraft = {
   drawingNo: string;
   totalLengthMm: number;
   toleranceMm: number;
+  cableCutLengthMm?: number;
+  shieldTermination?: string;
+  productName?: string;
+  companyName?: string;
   hasMold: boolean;
   protectiveSleeveResource?: DrawingCatalogResource;
   wires: DrawingWireDraft[];
@@ -274,6 +280,8 @@ export type DrawingCatalogResource = {
   ingressProtection?: string;
   flammabilityRating?: string;
   matingCyclesMin?: number;
+  wireKind?: 'electronic' | 'jacketed';
+  coreColors?: string[];
   wireEngineering?: {
     ratedVoltageV?: number;
     temperatureRangeC?: TemperatureRangeC;

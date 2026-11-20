@@ -109,6 +109,34 @@ describe('standalone drawing generator', () => {
     expect(renderedBottom).toBe(bom.height);
   });
 
+  it('fits every wiring row inside the frame and clears the connector boxes', () => {
+    const drawing = createDrawingFromWizard(draft());
+    const wiring = drawing.objects.find((object) => object.kind === 'wiring-table')!;
+    expect(wiring.kind).toBe('wiring-table');
+    if (wiring.kind !== 'wiring-table') return;
+    const lastRow = resolveDrawingTableCells(wiring).find((cell) => cell.key === 'row-3-column-0')!;
+    expect(lastRow.x).toBe(0);
+    expect(lastRow.y + lastRow.height).toBe(wiring.height);
+    expect(wiring.y).toBeGreaterThan(Math.max(...drawing.objects.filter((object) => object.kind === 'connector').map((object) => object.y + object.height)));
+    expect(wiring.columns).toContain('线号');
+  });
+
+  it('uses one cable cut length and the specified material codes for a jacketed cable', () => {
+    const input: DrawingWizardDraft = {
+      ...draft(),
+      wireResource: { ...wireResource, model: 'WL-HTX-PVC-033', wireKind: 'jacketed', coreColors: ['棕色', '白色', '蓝色', '黑色'] },
+      wires: wires.map((wire, index) => ({ ...wire, color: ['#92400e', '#f5f5f5', '#2563eb', '#171717'][index] })),
+      cableCutLengthMm: 300,
+    };
+    expect(validateStandaloneDrawingWizard({ ...input, cableCutLengthMm: undefined }).errors).toContain('护套线下料长度必须大于 0 mm。');
+    expect(validateStandaloneDrawingWizard({ ...input, wires }).errors).toContain('芯线颜色必须与所选护套线的规格一致。');
+    const drawing = createDrawingFromWizard(input);
+    const bom = drawing.objects.find((object) => object.kind === 'bom-table');
+    const wiring = drawing.objects.find((object) => object.kind === 'wiring-table');
+    expect(bom?.rows).toContainEqual(expect.objectContaining({ 物料编码: 'WL-HTX-PVC-033', 单位: 'M', 用量: '0.3' }));
+    expect(wiring?.rows.map((row) => row.颜色)).toEqual(['棕色', '白色', '蓝色', '黑色']);
+  });
+
   it('leaves the title block drawing number blank when no drawing number is provided', () => {
     const drawing = createDrawingFromWizard({ ...draft(), drawingNo: '' });
     const title = drawing.objects.find((object) => object.kind === 'table' && object.tableRole === 'title-block')!;

@@ -1,6 +1,6 @@
 import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
 import { safeFilename } from '@/lib/designFile';
-import { getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
+import { DRAWING_TABLE_LINE_COLOR, getDrawingTableTextFontSize, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import type { DrawingDocument, DrawingObject } from '@/types/drawing';
 
 function escapeXml(value: string) {
@@ -16,7 +16,7 @@ function svgObject(object: DrawingObject): string {
     return `<text ${common} x="0" y="${object.style.fontSize}" font-size="${object.style.fontSize}" fill="${object.style.color}">${escapeXml(object.text)}</text>`;
   }
   if (object.kind === 'dimension') {
-    return `<g ${common} ${style}><line x1="0" y1="${object.height / 2}" x2="${object.width}" y2="${object.height / 2}"/><line x1="0" y1="${object.height / 2 - 8}" x2="0" y2="${object.height / 2 + 8}"/><line x1="${object.width}" y1="${object.height / 2 - 8}" x2="${object.width}" y2="${object.height / 2 + 8}"/><text x="${object.width / 2}" y="${object.height / 2}" text-anchor="middle" font-size="${object.style.fontSize}" fill="${object.style.color}">${escapeXml(object.label)}</text></g>`;
+    return `<g ${common} ${style}><line x1="0" y1="${object.height / 2}" x2="${object.width}" y2="${object.height / 2}"/><line x1="0" y1="${object.height / 2 - 8}" x2="0" y2="${object.height / 2 + 8}"/><line x1="${object.width}" y1="${object.height / 2 - 8}" x2="${object.width}" y2="${object.height / 2 + 8}"/><text x="${object.width / 2}" y="${object.height / 2 + 1}" text-anchor="middle" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="white" stroke-width="6" stroke-linejoin="round" paint-order="stroke">${escapeXml(object.label)}</text></g>`;
   }
   if ((object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') && object.points.length === 1) {
     const point = object.points[0];
@@ -43,7 +43,7 @@ function svgObject(object: DrawingObject): string {
     return `<g ${common} ${style}><rect x="0" y="${object.height / 2 - 16}" width="${object.width}" height="32" rx="16"/><g fill="none">${lines}</g><text x="8" y="${object.height - 5}" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(object.label)} · ${object.wireCount}芯</text></g>`;
   }
   if (object.kind === 'connector') {
-    const pins = Array.from({ length: Math.min(40, object.pinCount) }, (_, index) => `<text x="${18 + (index % 2) * 65}" y="${45 + Math.floor(index / 2) * 9}" font-size="9" fill="${object.style.color}" stroke="none">${index + 1}</text>`).join('');
+    const pins = Array.from({ length: object.showPinGrid === false ? 0 : Math.min(40, object.pinCount) }, (_, index) => `<text x="${18 + (index % 2) * 65}" y="${45 + Math.floor(index / 2) * 9}" font-size="9" fill="${object.style.color}" stroke="none">${index + 1}</text>`).join('');
     return `<g ${common} ${style}><rect width="${object.width}" height="${object.height}"/><line x1="0" y1="25" x2="${object.width}" y2="25"/><text x="8" y="18" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(object.label)}</text>${pins}</g>`;
   }
   if (object.kind === 'tech-requirements') {
@@ -74,7 +74,8 @@ function svgObject(object: DrawingObject): string {
       return `<g data-table-cell="${cell.key}"><rect x="${cell.x}" y="${cell.y}" width="${cell.width}" height="${cell.height}" fill="none"/>${projection}</g>`;
     }).join('');
     const titleSeparator = layout.showTitleRow ? `<line x1="0" y1="${layout.titleRowHeight}" x2="${object.width}" y2="${layout.titleRowHeight}"/>` : '';
-    return `<g ${common} ${style}><rect width="${object.width}" height="${object.height}"/>${titleSeparator}${title}${cells}</g>`;
+    const height = Math.max(object.height, layout.contentHeight);
+    return `<g ${common} fill="${object.style.fill}" stroke="${DRAWING_TABLE_LINE_COLOR}" stroke-width="${object.style.strokeWidth}"><rect width="${object.width}" height="${height}"/>${titleSeparator}${title}${cells}</g>`;
   }
   if (object.kind === 'group') {
     const children = object.children.filter((child) => child.visible).sort((left, right) => left.zIndex - right.zIndex).map(svgObject).join('');

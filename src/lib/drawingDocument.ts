@@ -7,6 +7,7 @@ import type {
   DrawingTableRole,
   DrawingTableObject,
   DrawingTitleBlockObject,
+  DrawingWiringTableObject,
 } from '@/types/drawing';
 
 export const DRAWING_PAGE = {
@@ -125,9 +126,9 @@ function createTitleInformationTable(drawingNo: string, date: Date): DrawingObje
   };
 }
 
-export function createWiringTable(): DrawingObject {
+export function createWiringTable(): DrawingWiringTableObject {
   return {
-    ...objectBase('wiring-table', { x: 600, y: 430 }, 520, 94),
+    ...objectBase('wiring-table', { x: 600, y: 430 }, 520, 58),
     kind: 'wiring-table',
     title: '接线表',
     columns: ['P1', '颜色', 'P2', '长度'],

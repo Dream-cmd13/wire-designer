@@ -8,6 +8,7 @@ export type ResolvedDrawingTableLayout = {
   titleRowHeight: number;
   headerRowHeight: number;
   rowHeights: number[];
+  contentHeight: number;
   textSizes: Record<string, DrawingTableTextSize>;
 };
 export type ResolvedDrawingTableCell = {
@@ -63,12 +64,17 @@ function fittedColumnWidths(
 
 export function resolveDrawingTableLayout(table: DrawingTableObject): ResolvedDrawingTableLayout {
   const columnCount = Math.max(1, table.columns.length);
+  const showTitleRow = table.showTitleRow ?? true;
+  const titleRowHeight = Math.max(MIN_TABLE_ROW_HEIGHT, table.titleRowHeight ?? DEFAULT_TITLE_ROW_HEIGHT);
+  const headerRowHeight = Math.max(MIN_TABLE_ROW_HEIGHT, table.headerRowHeight ?? DEFAULT_TABLE_ROW_HEIGHT);
+  const rowHeights = normalizedSizes(table.rowHeights, table.rows.length, DEFAULT_TABLE_ROW_HEIGHT, MIN_TABLE_ROW_HEIGHT);
   return {
-    showTitleRow: table.showTitleRow ?? true,
+    showTitleRow,
     columnWidths: fittedColumnWidths(table.columnWidths, columnCount, table.width / columnCount, MIN_TABLE_COLUMN_WIDTH, table.width),
-    titleRowHeight: Math.max(MIN_TABLE_ROW_HEIGHT, table.titleRowHeight ?? DEFAULT_TITLE_ROW_HEIGHT),
-    headerRowHeight: Math.max(MIN_TABLE_ROW_HEIGHT, table.headerRowHeight ?? DEFAULT_TABLE_ROW_HEIGHT),
-    rowHeights: normalizedSizes(table.rowHeights, table.rows.length, DEFAULT_TABLE_ROW_HEIGHT, MIN_TABLE_ROW_HEIGHT),
+    titleRowHeight,
+    headerRowHeight,
+    rowHeights,
+    contentHeight: (showTitleRow ? titleRowHeight : 0) + headerRowHeight + rowHeights.reduce((sum, height) => sum + height, 0),
     textSizes: { ...table.textSizes },
   };
 }

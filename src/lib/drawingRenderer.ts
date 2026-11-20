@@ -43,10 +43,11 @@ function drawPolyline(context: CanvasRenderingContext2D, points: DrawingPoint[],
 
 function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObject, { kind: 'table' | 'bom-table' | 'wiring-table' }>) {
   const layout = resolveDrawingTableLayout(object);
+  const height = Math.max(object.height, layout.contentHeight);
   context.strokeStyle = DRAWING_TABLE_LINE_COLOR;
   context.fillStyle = object.style.fill;
-  context.fillRect(0, 0, object.width, object.height);
-  context.strokeRect(0, 0, object.width, object.height);
+  context.fillRect(0, 0, object.width, height);
+  context.strokeRect(0, 0, object.width, height);
   context.fillStyle = object.style.color;
   const drawCellText = (key: string, text: string, x: number, y: number, fallbackSize: number, cellWidth: number, centered = false) => {
     const offset = object.textOffsets?.[key] ?? { x: 0, y: 0 };
@@ -106,7 +107,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
     context.lineTo(object.width, 25);
     context.stroke();
     context.font = `9px ${DRAWING_FONT_FAMILY}`;
-    Array.from({ length: Math.min(object.pinCount, 40) }, (_, index) => {
+    Array.from({ length: object.showPinGrid === false ? 0 : Math.min(object.pinCount, 40) }, (_, index) => {
       const column = index % 2;
       const row = Math.floor(index / 2);
       context.fillText(String(index + 1), 18 + column * 65, 45 + row * 9);
