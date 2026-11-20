@@ -7,7 +7,9 @@ import { useNoticeStore } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 
 const mocks = vi.hoisted(() => ({ parse: vi.fn(), list: vi.fn(), save: vi.fn(), download: vi.fn(), session: vi.fn() }));
-vi.mock('@/lib/dwg/parseDwg', () => ({ parseDwg: mocks.parse }));
+vi.mock('@/lib/dwg/parseDwg', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/dwg/parseDwg')>(), parseDwg: mocks.parse,
+}));
 vi.mock('@/lib/dwg/renderDwg', () => ({ renderDwgToCanvas: vi.fn(), DEFAULT_FONT_FAMILY: 'sans-serif' }));
 vi.mock('@/components/models/ModelViewer', () => ({ ModelViewer: ({ model }: { model: ParsedModel }) => (
   <div aria-label="三维模型画布">{model.boundsMm.max[0]} mm</div>

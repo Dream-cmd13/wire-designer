@@ -19,6 +19,7 @@ export interface DwgRenderOptions {
   fontFamily?: string;
   /** 隐藏的图层集合。 */
   hiddenLayers?: ReadonlySet<string>;
+  selectedKey?: string;
 }
 
 /** 图纸文字字体：屏幕渲染、解析期文本测量与导出共用。 */
@@ -291,5 +292,17 @@ export function renderDwgToCanvas(
   context.setTransform(1, 0, 0, 1, 0, 0);
   for (const entity of texts) {
     renderText(context, entity, options, darkBackground);
+  }
+  if (options.selectedKey) {
+    context.save();
+    context.strokeStyle = '#3b82f6';
+    context.lineWidth = options.lineWidth;
+    for (const entity of drawing.entities) {
+      if (entity.editSource?.key !== options.selectedKey || hiddenLayers?.has(entity.layer)) continue;
+      const { minX, minY, maxX, maxY } = entity.bounds;
+      const start = worldToScreen(options, { x: minX, y: maxY });
+      context.strokeRect(start.x - 2, start.y - 2, (maxX - minX) * scale + 4, (maxY - minY) * scale + 4);
+    }
+    context.restore();
   }
 }

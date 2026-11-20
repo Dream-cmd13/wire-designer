@@ -1,14 +1,17 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
-import { parseDwg, type DwgParsePhase, type TextMeasure } from '@/lib/dwg/parseDwg';
+import { parseDwg, previewDwgOperations, type DwgParsePhase, type TextMeasure } from '@/lib/dwg/parseDwg';
+import { hitDwgEditSources, updateDwgOperations, type DwgEditOperation } from '@/lib/dwg/dwgEdit';
+import { downloadDwgRevision, generateDwgRevision } from '@/lib/dwg/dwgEditClient';
 import { DEFAULT_FONT_FAMILY, renderDwgToCanvas } from '@/lib/dwg/renderDwg';
 import { TEXT_SIZE_RATIO, textWidthOf } from '@/lib/dwg/textMetrics';
-import type { DwgDrawing } from '@/lib/dwg/dwgTypes';
-import { createDwgSaveSession, DWG_PAGE_SIZE, dwgRepository, validateDwgFile, type DwgAsset } from '@/repositories/dwgRepository';
+import type { DwgDrawing, DwgEditSource } from '@/lib/dwg/dwgTypes';
+import { createDwgSaveSession, DWG_PAGE_SIZE, dwgRepository, dwgSha256, validateDwgFile, type DwgAsset } from '@/repositories/dwgRepository';
 import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 
@@ -49,6 +52,19 @@ interface ViewerState {
   drawing: DwgDrawing | null;
   error: string | null;
 }
+
+interface EditInput {
+  file: File;
+  sha256: string;
+  parentId?: string;
+}
+
+interface Revision {
+  file: File;
+  drawing: DwgDrawing;
+}
+
+const NO_EDITS: DwgEditOperation[] = [];
 
 /** 加载遮罩文案：签名/下载、引擎、解析与首次渲染四个阶段分别提示。 */
 function loadPhaseText(phase: LoadPhase): string {
@@ -120,6 +136,18 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [cloudDrawings, setCloudDrawings] = useState<DwgAsset[]>([]);
   const [listLoading, setListLoading] = useState(Boolean(ownerId && dwgRepository.configured));
   const [listError, setListError] = useState<string | null>(null);
+  const [editInput, setEditInput] = useState<EditInput | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [hits, setHits] = useState<DwgEditSource[]>([]);
+  const [selectedKey, setSelectedKey] = useState('');
+  const [history, setHistory] = useState<DwgEditOperation[][]>([]);
+  const [generating, setGenerating] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [revision, setRevision] = useState<Revision | null>(null);
+  const [revisionSaved, setRevisionSaved] = useState(false);
+  const operations = history.at(-1) ?? NO_EDITS;
+  const displayedDrawing = useMemo(() => state.drawing && (revision?.drawing ?? previewDwgOperations(state.drawing, operations, measureDwgText)),
+    [state.drawing, operations, revision]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -131,11 +159,27 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const saveTask = useRef<AbortController | null>(null);
   const listTask = useRef<AbortController | null>(null);
   const saveSession = useRef<DwgAsset | null>(null);
-  const panRef = useRef<{ pointerId: number; lastX: number; lastY: number } | null>(null);
+  const revisionSession = useRef<DwgAsset | null>(null);
+  const generationTask = useRef<AbortController | null>(null);
+  const panRef = useRef<{ pointerId: number; startX: number; startY: number; lastX: number; lastY: number; moved: boolean; select: boolean } | null>(null);
   /** 加载后布局稳定前保持自动适应窗口，用户缩放/平移后交还控制权。 */
   const autoFitRef = useRef(true);
   /** 新图纸的首次画布绘制：先让遮罩绘制一帧，绘制完成后再撤下遮罩。 */
   const firstRenderRef = useRef(false);
+
+  const resetEditing = useCallback(() => {
+    generationTask.current?.abort();
+    generationTask.current = null;
+    revisionSession.current = null;
+    setEditing(false);
+    setHits([]);
+    setSelectedKey('');
+    setHistory([]);
+    setGenerating(false);
+    setEditError(null);
+    setRevision(null);
+    setRevisionSaved(false);
+  }, []);
 
   const applyView = useCallback((next: DwgView) => {
     viewRef.current = next;
@@ -185,6 +229,8 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   }, [applyView]);
 
   const beginLoad = useCallback((fileName: string, assetId = '') => {
+    resetEditing();
+    setEditInput(null);
     urlLoadRef.current?.abort();
     const controller = new AbortController();
     urlLoadRef.current = controller;
@@ -203,10 +249,11 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     setLayersOpen(false);
     setState({ phase: 'loading', fileName, drawing: null, error: null });
     return { token, signal: controller.signal };
-  }, []);
+  }, [resetEditing]);
 
-  const loadBuffer = useCallback(async (buffer: ArrayBuffer, fileName: string, token: number) => {
+  const loadBuffer = useCallback(async (buffer: ArrayBuffer, file: File, token: number, asset?: DwgAsset) => {
     if (token !== loadTokenRef.current) return;
+    const fileName = file.name;
 
     try {
       const drawing = await parseDwg(buffer, {
@@ -224,6 +271,10 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       if (token !== loadTokenRef.current) return;
 
       showDrawing(drawing, fileName);
+      if (drawing.version === 'AC1018') {
+        const sha256 = asset?.sha256 ?? await dwgSha256(buffer).catch(() => null);
+        if (sha256 && token === loadTokenRef.current) setEditInput({ file, sha256, parentId: asset?.id });
+      }
     } catch (error) {
       if (token !== loadTokenRef.current) return;
       drawingRef.current = null;
@@ -259,7 +310,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     clearCloudLink();
     setLocalFile(file);
     try {
-      await loadBuffer(await file.arrayBuffer(), file.name, token);
+      await loadBuffer(await file.arrayBuffer(), file, token);
     } catch (error) {
       if (signal.aborted) return;
       setState({ phase: 'error', fileName: file.name, drawing: null, error: error instanceof Error ? error.message : '无法读取所选文件' });
@@ -275,7 +326,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       const buffer = await source.arrayBuffer();
       if (signal.aborted) return;
       setSaveStatus('saved');
-      await loadBuffer(buffer, asset.original_name, token);
+      await loadBuffer(buffer, new File([source], asset.original_name, { type: 'application/octet-stream' }), token, asset);
     } catch (error) {
       if (signal.aborted) return;
       setState({ phase: 'error', fileName: asset.original_name, drawing: null, error: error instanceof Error ? error.message : '云端图纸加载失败' });
@@ -310,27 +361,30 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     }
   }, [ownerId, openCloud]);
 
-  async function saveDrawing(recovery?: DwgAsset) {
+  async function saveDrawing(recovery?: DwgAsset, revisedFile?: File) {
     if (!ownerId || saveTask.current || !dwgRepository.configured) return;
-    const file = state.phase === 'ready' ? localFile ?? undefined : undefined;
-    if (!recovery && (!file || saveStatus === 'saved')) return;
+    const file = revisedFile ?? (state.phase === 'ready' ? localFile ?? undefined : undefined);
+    if (!recovery && (!file || (revisedFile ? revisionSaved : saveStatus === 'saved'))) return;
     const controller = new AbortController();
     saveTask.current = controller;
     setSaving(true);
     setActionError(null);
-    if (!recovery) setSaveStatus('saving');
+    if (!recovery && !revisedFile) setSaveStatus('saving');
+    if (revisedFile) setEditError(null);
     let recovered: DwgAsset | undefined;
     try {
-      let session = recovery ?? saveSession.current;
+      let session = recovery ?? (revisedFile ? revisionSession.current : saveSession.current);
       if (!session && file) {
-        session = await createDwgSaveSession(ownerId, file);
+        session = revisedFile ? await createDwgSaveSession(ownerId, file, editInput?.parentId) : await createDwgSaveSession(ownerId, file);
         if (controller.signal.aborted) return;
-        saveSession.current = session;
+        if (revisedFile) revisionSession.current = session;
+        else saveSession.current = session;
       }
       if (!session) return;
       const asset = await dwgRepository.save(session, file, controller.signal);
       if (controller.signal.aborted) return;
       if (recovery) recovered = asset;
+      else if (revisedFile) setRevisionSaved(true);
       else {
         setSaveStatus('saved');
         setCloudId(asset.id);
@@ -343,13 +397,63 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       notify({ tone: 'success', title: '保存成功', message: 'DWG 图纸已保存到云端。', dedupeKey: 'dwg-save-success' });
     } catch (error) {
       if (controller.signal.aborted) return;
-      setActionError(error instanceof Error ? error.message : '保存失败，请重试。');
-      if (!recovery) setSaveStatus('error');
+      const message = error instanceof Error ? error.message : '保存失败，请重试。';
+      if (revisedFile) setEditError(message);
+      else setActionError(message);
+      if (!recovery && !revisedFile) setSaveStatus('error');
     } finally {
       saveTask.current = null;
       if (!controller.signal.aborted) setSaving(false);
     }
     if (recovered) void openCloud(recovered);
+  }
+
+  async function generateRevision() {
+    if (!ownerId || !editInput || !operations.length || generationTask.current || saveTask.current) return;
+    if (!window.confirm('生成 DWG 会将当前原图发送到本系统的转换服务。文件仅用于本次处理。是否继续？')) return;
+    const controller = new AbortController();
+    generationTask.current = controller;
+    const timeout = AbortSignal.timeout(60_000);
+    const signal = AbortSignal.any([controller.signal, timeout]);
+    setGenerating(true);
+    setEditError(null);
+    try {
+      const file = await generateDwgRevision(editInput.file, ownerId, editInput.sha256, operations, signal);
+      const drawing = await parseDwg(await file.arrayBuffer(), { fileName: file.name, wasmBase: WASM_BASE, measureText: measureDwgText });
+      signal.throwIfAborted();
+      const result = new Map(drawing.entities.flatMap(({ editSource }) => editSource ? [[editSource.handle, editSource] as const] : []));
+      if (drawing.version !== 'AC1018' || operations.some((item) => {
+        const source = result.get(item.handle);
+        return source?.kind !== item.kind || source.expectedText !== item.newText;
+      })) throw new Error('写入文件的读回结果与草稿不一致。');
+      setRevision({ file, drawing });
+    } catch (error) {
+      if (!controller.signal.aborted) setEditError(timeout.aborted ? 'DWG 生成超时，请重试。' : error instanceof Error ? error.message : 'DWG 生成失败。');
+    } finally {
+      if (generationTask.current === controller) {
+        generationTask.current = null;
+        setGenerating(false);
+      }
+    }
+  }
+
+  function applyEdit(target: DwgEditSource, value: string) {
+    if (generationTask.current || saveTask.current || revision) return;
+    try {
+      setHistory([...history.slice(-100), updateDwgOperations(operations, target, value)]);
+      setEditError(null);
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '无法应用文字修改。');
+    }
+  }
+
+  function undoEdit() {
+    if (generationTask.current || saveTask.current) return;
+    setRevision(null);
+    setRevisionSaved(false);
+    revisionSession.current = null;
+    setEditError(null);
+    setHistory((previous) => previous.slice(0, -1));
   }
 
   useEffect(() => {
@@ -363,6 +467,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       loadTokenRef.current += 1;
       saveTask.current?.abort();
       listTask.current?.abort();
+      generationTask.current?.abort();
     };
   }, [refreshList]);
 
@@ -385,7 +490,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   // 绘制（用 rAF 合并连续的缩放/平移更新）
   useEffect(() => {
     const canvas = canvasRef.current;
-    const drawing = state.drawing;
+    const drawing = displayedDrawing;
     if (!canvas || !drawing || !view || viewport.width <= 0 || viewport.height <= 0) return;
 
     let cancelled = false;
@@ -407,6 +512,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           lineWidth: Math.max(1, ratio),
           background: BACKGROUNDS[background],
           hiddenLayers,
+          selectedKey: editing && !revision ? selectedKey : undefined,
         });
       }
       // 首次绘制完成后再撤下遮罩，避免同步渲染期间界面看起来没有反应
@@ -426,7 +532,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       cancelled = true;
       cancelAnimationFrame(frame);
     };
-  }, [state.drawing, view, viewport, background, hiddenLayers]);
+  }, [displayedDrawing, view, viewport, background, hiddenLayers, editing, selectedKey, revision]);
 
   // 滚轮缩放（以光标为锚点，需非 passive 监听才能阻止默认滚动）
   useEffect(() => {
@@ -499,7 +605,8 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     if (isInteractiveTarget(event.target)) return;
     autoFitRef.current = false;
     event.preventDefault();
-    panRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
+    panRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+      lastX: event.clientX, lastY: event.clientY, moved: false, select: event.button === 0 };
     event.currentTarget.setPointerCapture(event.pointerId);
     setIsPanning(true);
   };
@@ -508,6 +615,8 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     const pan = panRef.current;
     const current = viewRef.current;
     if (!pan || pan.pointerId !== event.pointerId || !current) return;
+    if (!pan.moved && Math.hypot(event.clientX - pan.startX, event.clientY - pan.startY) < 4) return;
+    pan.moved = true;
     const deltaX = event.clientX - pan.lastX;
     const deltaY = event.clientY - pan.lastY;
     pan.lastX = event.clientX;
@@ -516,9 +625,17 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   };
 
   const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (panRef.current?.pointerId !== event.pointerId) return;
+    const pan = panRef.current;
+    if (pan?.pointerId !== event.pointerId) return;
     panRef.current = null;
     setIsPanning(false);
+    const current = viewRef.current;
+    if (event.type !== 'pointerup' || !pan.select || pan.moved || !editing || !displayedDrawing || !current || revision || generating) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const next = hitDwgEditSources(displayedDrawing, current, { x: event.clientX - rect.left, y: event.clientY - rect.top }, hiddenLayers);
+    setHits(next);
+    setSelectedKey(next.length === 1 ? next[0].key : '');
+    setEditError(null);
   };
 
   const toggleLayer = useCallback((name: string) => {
@@ -531,7 +648,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   }, []);
 
   const handleExport = useCallback(async (format: 'pdf' | 'png') => {
-    const drawing = drawingRef.current;
+    const drawing = displayedDrawing;
     if (!drawing || exporting) return;
     setExporting(format);
     try {
@@ -551,7 +668,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     } finally {
       setExporting(null);
     }
-  }, [exporting, background, hiddenLayers]);
+  }, [displayedDrawing, exporting, background, hiddenLayers]);
 
   const isReady = state.phase === 'ready' && state.drawing !== null;
   const selectedCloudDrawing = cloudDrawings.find((asset) => asset.id === cloudId);
@@ -650,7 +767,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               <option value="" disabled>{cloudPlaceholder}</option>
               {cloudDrawings.map((asset) => (
                 <option key={asset.id} value={asset.id}>
-                  {asset.original_name}{asset.status === 'uploading' ? '（保存未完成）' : ''}
+                  {asset.original_name}{asset.parent_asset_id ? '（修订版）' : ''}{asset.status === 'uploading' ? '（保存未完成）' : ''}
                 </option>
               ))}
             </select>
@@ -672,7 +789,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             <FileUp className="h-3.5 w-3.5" />
             打开 DWG 文件
           </button>
-          {ownerId && (
+          {ownerId && !editing && (
             <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
               disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
               title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'} onClick={() => void saveDrawing()}>
@@ -680,6 +797,11 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               {saveStatus === 'error' ? '重试保存' : '保存到云端'}
             </button>
           )}
+          {ownerId && isReady && <button type="button" className={toolbarButtonClass} disabled={!editInput || saving}
+            title={editInput ? undefined : '当前仅支持编辑 AC1018 图纸。'} onClick={() => {
+              if (!editing) setEditing(true);
+              else if (!operations.length || revisionSaved || window.confirm('退出编辑会丢弃本次草稿和预览。是否继续？')) resetEditing();
+            }}>{editing ? '退出编辑' : '编辑图纸'}</button>}
           <button
             type="button"
             className={toolbarButtonClass}
@@ -729,7 +851,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         onPointerUp={handlePointerEnd}
         onPointerCancel={handlePointerEnd}
         onDoubleClick={(event) => {
-          if (isInteractiveTarget(event.target)) return;
+          if (editing || isInteractiveTarget(event.target)) return;
           fitManually();
         }}
         onDragOver={(event) => {
@@ -748,6 +870,13 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         }}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+
+        {editing && <DwgEditPanel hits={hits} selection={hits.find((target) => target.key === selectedKey)} operations={operations}
+          busy={generating} generated={Boolean(revision)} parent={Boolean(editInput?.parentId)} canSave={dwgRepository.configured}
+          saving={saving} saved={revisionSaved} error={editError} onSelect={setSelectedKey} onApply={applyEdit} onUndo={undoEdit}
+          onGenerate={() => void generateRevision()} onCancel={() => generationTask.current?.abort()}
+          onDownload={() => { if (revision) downloadDwgRevision(revision.file); }}
+          onSave={() => { if (revision) void saveDrawing(undefined, revision.file); }} />}
 
         {isReady && layersOpen && (
           <div
@@ -838,7 +967,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         )}
       </div>
 
-      {harnessPreviewOpen && state.drawing && (
+      {harnessPreviewOpen && displayedDrawing && (
         <ErrorBoundary fallback={
           <div className="flex items-center gap-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
             <p role="alert">3D 预览未能加载。保存未完成的工作后，可刷新页面再试。</p>
@@ -849,7 +978,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           </div>
         }>
           <Suspense fallback={<span role="status" className="text-sm text-slate-600">正在加载 3D 预览…</span>}>
-            <DwgHarnessPreviewDialog drawing={state.drawing} fileName={state.fileName} onClose={() => setHarnessPreviewOpen(false)} />
+            <DwgHarnessPreviewDialog drawing={displayedDrawing} fileName={state.fileName} onClose={() => setHarnessPreviewOpen(false)} />
           </Suspense>
         </ErrorBoundary>
       )}

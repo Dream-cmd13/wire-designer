@@ -13,10 +13,12 @@ import {
 } from '@/lib/dwg/affine';
 import { flattenBulges, sampleArcRange } from '@/lib/dwg/bulge';
 import { decodePercentCodes, parseMText } from '@/lib/dwg/mtextFormat';
+import { readEditableDwgText, type DwgEditOperation } from '@/lib/dwg/dwgEdit';
 import { TEXT_LINE_SPACING, TEXT_SIZE_RATIO, isWideChar, textWidthOf } from '@/lib/dwg/textMetrics';
 import type {
   DwgBounds,
   DwgDrawing,
+  DwgEditSource,
   DwgExternalImage,
   DwgGeometry,
   DwgHatchPath,
@@ -959,13 +961,32 @@ function geometryBounds(geometry: DwgGeometry, measureText: TextMeasure | null):
   }
 }
 
+export function previewDwgOperations(drawing: DwgDrawing, operations: DwgEditOperation[], measureText: TextMeasure | null = null): DwgDrawing {
+  if (!operations.length) return drawing;
+  const changes = new Map(operations.map((operation) => [operation.handle, operation]));
+  let bounds = drawing.bounds;
+  const entities = drawing.entities.map((entity) => {
+    const source = entity.editSource;
+    if (entity.kind !== 'text' || !source || source.readOnlyReason) return entity;
+    const operation = changes.get(source.handle);
+    if (!operation || operation.kind !== source.kind || operation.expectedText !== source.expectedText) return entity;
+    const sourceLines = operation.newText.split('\n');
+    const lines = wrapMTextLines(sourceLines, entity.wrapWidth ?? 0, entity.height, measureText);
+    const next = { ...entity, lines, sourceLines };
+    const nextBounds = geometryBounds(next, measureText);
+    bounds = extendBounds(extendBounds(bounds, nextBounds.minX, nextBounds.minY), nextBounds.maxX, nextBounds.maxY);
+    return { ...next, bounds: nextBounds };
+  });
+  return { ...drawing, entities, bounds };
+}
+
 /**
  * 将 libredwg 的 DwgDatabase 归一化为可直接渲染的图元列表（纯函数，便于测试）。
  */
 export function normalizeDwgDatabase(
   db: DwgDatabase,
   fileName: string,
-  options: { measureText?: TextMeasure } = {},
+  options: { measureText?: TextMeasure; hasAssociativeDimensions?: boolean } = {},
 ): DwgDrawing {
   const layerColors = new Map<string, Rgb>();
   const layers: DwgLayerInfo[] = [];
@@ -1002,6 +1023,7 @@ export function normalizeDwgDatabase(
   }
 
   const blocks = new Map<string, BlockDefinition>();
+  const hasExternalDwgReference = (db.tables?.BLOCK_RECORD?.entries ?? []).some((record) => (record.flags & 28) !== 0);
   const paperSpaceHandles = new Set<string>();
   let modelSpaceEntities: DwgEntity[] | null = null;
   for (const record of db.tables?.BLOCK_RECORD?.entries ?? []) {
@@ -1053,6 +1075,21 @@ export function normalizeDwgDatabase(
     }
   }
 
+  const blockReferences = new Map<string, number>();
+  const blockEntities = modelSpaceEntities ? [...blocks.values()].flatMap((block) => block.entities)
+    : [...allEntities, ...[...blocks.values()].flatMap((block) => block.entities)];
+  for (const entity of blockEntities) {
+    const name = (entity as DwgEntity & { name?: string }).name?.toUpperCase();
+    if (name && (entity.type === 'DIMENSION' || entity.type === 'INSERT' || entity.type === 'MINSERT')) {
+      blockReferences.set(name, (blockReferences.get(name) ?? 0) + 1);
+    }
+  }
+  const handleCounts = new Map<string, number>();
+  for (const entity of allEntities) {
+    const handle = entity.handle?.toUpperCase();
+    if (handle) handleCounts.set(handle, (handleCounts.get(handle) ?? 0) + 1);
+  }
+
   for (const entity of allEntities) {
     if (entity.isInPaperSpace === true) continue;
     if (entity.type === 'ATTRIB' && entity.handle && expandedAttribHandles.has(entity.handle)) continue;
@@ -1062,12 +1099,43 @@ export function normalizeDwgDatabase(
       continue;
     }
     const layer = resolveLayerName(entity, context);
+    const handle = entity.handle?.toUpperCase() ?? '';
+    const sourceEntity = entity as DwgEntity & { text?: string; name?: string; columnType?: number; xDictionaryHardOwnerId?: string };
+    let editSource: DwgEditSource | undefined;
+    if (entity.type === 'TEXT' || entity.type === 'MTEXT' || entity.type === 'DIMENSION') {
+      let multiline = entity.type !== 'TEXT';
+      const visible = readEditableDwgText(sourceEntity.text, multiline);
+      let readOnlyReason = !modelSpaceEntities || !/^[0-9A-F]{1,16}$/.test(handle) || handleCounts.get(handle) !== 1
+        ? '无法唯一定位模型空间对象。' : undefined;
+      if (visible === null || sourceEntity.columnType || sourceEntity.xDictionaryHardOwnerId) readOnlyReason ??= '自动字段、测量值或复杂文字格式仅支持预览。';
+      if (hasExternalDwgReference) readOnlyReason = '包含外部 DWG 参照的图纸仅支持预览。';
+      if (options.hasAssociativeDimensions) readOnlyReason = '当前写入器无法保全关联尺寸，图纸仅支持预览。';
+      if (entity.type === 'DIMENSION') {
+        const name = sourceEntity.name ?? '';
+        const labels = blocks.get(name)?.entities.filter((part) => ['TEXT', 'MTEXT', 'ATTRIB', 'ATTDEF'].includes(part.type)) ?? [];
+        const label = labels[0] as (DwgEntity & { text?: string; columnType?: number }) | undefined;
+        multiline = label?.type === 'MTEXT';
+        if (!/^\*D[0-9]+$/i.test(name) || blockReferences.get(name.toUpperCase()) !== 1 || labels.length !== 1 ||
+          !label || !['TEXT', 'MTEXT'].includes(label.type) || label.columnType ||
+          readEditableDwgText(label.text, multiline) !== visible || geometries.filter((geometry) => geometry.kind === 'text').length !== 1) {
+          readOnlyReason ??= '尺寸显示块共享或显示文字无法唯一定位。';
+        }
+      }
+      editSource = {
+        key: `${entity.type}:${handle || entities.length}`,
+        handle, kind: entity.type, expectedText: visible ?? '', readOnlyReason, multiline,
+      };
+    }
     for (const geometry of geometries) {
       const entityBounds = geometryBounds(geometry, context.measureText);
       if (geometry.kind === 'text') textCount += 1;
       bounds = extendBounds(bounds, entityBounds.minX, entityBounds.minY);
       bounds = extendBounds(bounds, entityBounds.maxX, entityBounds.maxY);
-      entities.push({ ...geometry, layer, bounds: entityBounds });
+      const source = editSource ?? (geometry.kind === 'text' && ['INSERT', 'MINSERT', 'ATTRIB'].includes(entity.type) ? {
+        key: `block:${entities.length}`, handle, kind: 'BLOCK' as const, expectedText: geometry.lines.join('\n'),
+        readOnlyReason: '共享块文字和块实例属性仅支持预览。',
+      } : undefined);
+      entities.push({ ...geometry, layer, bounds: entityBounds, ...(source ? { editSource: source } : {}) });
     }
   }
 
@@ -1123,7 +1191,16 @@ export async function parseDwg(buffer: ArrayBuffer, options: ParseDwgOptions = {
   }
 
   let db: DwgDatabase;
+  let hasAssociativeDimensions = false;
   try {
+    const classCount = lib.dwg_get_num_classes(dataPointer);
+    for (let index = 0; index < classCount; index += 1) {
+      const dwgClass = lib.dwg_get_class(dataPointer, index);
+      if (dwgClass?.dxfname === 'DIMASSOC' && dwgClass.num_instances > 0) {
+        hasAssociativeDimensions = true;
+        break;
+      }
+    }
     db = lib.convert(dataPointer);
   } finally {
     try {
@@ -1133,7 +1210,8 @@ export async function parseDwg(buffer: ArrayBuffer, options: ParseDwgOptions = {
     }
   }
 
-  const drawing = normalizeDwgDatabase(db, fileName, { measureText });
+  const drawing = normalizeDwgDatabase(db, fileName, { measureText, hasAssociativeDimensions });
+  drawing.version ||= new TextDecoder().decode(new Uint8Array(buffer, 0, 6));
   if (drawing.layers.length === 0) {
     throw new Error('无法解析该 DWG 图纸（文件已损坏或格式不受支持）');
   }

@@ -14,6 +14,7 @@ export interface DwgAsset {
   file_size: number;
   sha256: string;
   status: 'uploading' | 'ready';
+  parent_asset_id?: string | null;
 }
 
 export function validateDwgFile(file: Pick<File, 'name' | 'size'>) {
@@ -22,20 +23,21 @@ export function validateDwgFile(file: Pick<File, 'name' | 'size'>) {
   if (file.size > MAX_BYTES) throw new Error('DWG 文件不能超过 20 MiB。');
 }
 
-async function sha256(file: Blob) {
-  const hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+export async function dwgSha256(bytes: ArrayBuffer) {
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function createDwgSaveSession(ownerId: string, file: File): Promise<DwgAsset> {
+export async function createDwgSaveSession(ownerId: string, file: File, parentAssetId?: string): Promise<DwgAsset> {
   validateDwgFile(file);
   const id = crypto.randomUUID();
   return { id, owner_id: ownerId, original_name: file.name, object_key: `${ownerId}/${id}/source.dwg`,
-    file_size: file.size, sha256: await sha256(file), status: 'uploading' };
+    file_size: file.size, sha256: await dwgSha256(await file.arrayBuffer()), status: 'uploading',
+    ...(parentAssetId ? { parent_asset_id: parentAssetId } : {}) };
 }
 
 async function verify(asset: DwgAsset, file: Blob, signal: AbortSignal) {
-  if (file.size > MAX_BYTES || file.size !== Number(asset.file_size) || await sha256(file) !== asset.sha256) {
+  if (file.size > MAX_BYTES || file.size !== Number(asset.file_size) || await dwgSha256(await file.arrayBuffer()) !== asset.sha256) {
     throw new Error('文件大小或 SHA-256 不匹配，请核对保存时的原文件。');
   }
   signal.throwIfAborted();
@@ -50,7 +52,8 @@ function isMissing(error: unknown) {
 
 function matchesAsset(record: DwgAsset, session: DwgAsset) {
   return record.id === session.id && record.owner_id === session.owner_id && record.object_key === session.object_key
-    && Number(record.file_size) === Number(session.file_size) && record.sha256 === session.sha256;
+    && record.original_name === session.original_name && Number(record.file_size) === Number(session.file_size) && record.sha256 === session.sha256
+    && (record.parent_asset_id ?? null) === (session.parent_asset_id ?? null);
 }
 
 export class DwgRepository {
@@ -132,7 +135,7 @@ export class DwgRepository {
         upsert: false, contentType: 'application/octet-stream',
       });
       signal.throwIfAborted();
-      if (error && !await this.readObject(record, signal)) throw new Error('DWG 原文件上传失败，请重试保存。');
+      if (!await this.readObject(record, signal)) throw new Error(error ? 'DWG 原文件上传失败，请重试保存。' : 'DWG 已上传，暂时无法核对文件，请重试保存。');
     }
 
     const { data, error } = await client.from(TABLE).update({ status: 'ready' }).eq('id', record.id)

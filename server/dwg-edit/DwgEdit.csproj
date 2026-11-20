@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;vendor/**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ACadSharp" Version="3.8.35" Condition="'$(DwgUseStockAcadSharp)' == 'true'" />
+    <ProjectReference Include="vendor/ACadSharp/src/ACadSharp/ACadSharp.csproj" Condition="'$(DwgUseStockAcadSharp)' != 'true'" />
+  </ItemGroup>
+  <Target Name="RequireDwgWriterSource" BeforeTargets="PrepareForBuild"
+          Condition="'$(DwgUseStockAcadSharp)' != 'true' and !Exists('vendor/ACadSharp/.dwg-edit-prepared')">
+    <Error Text="Prepare the pinned CAD writer: node server/dwg-edit/prepare-acadsharp.mjs" />
+  </Target>
+</Project>

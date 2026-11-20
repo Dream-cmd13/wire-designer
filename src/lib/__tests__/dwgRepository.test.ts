@@ -80,4 +80,19 @@ describe('private DWG original files', () => {
     replace(different);
     await expect(repo.download(ready, signal)).rejects.toThrow();
   });
+
+  it('binds a revision retry to the ready parent and the exact revised file', async () => {
+    const { repo, faults, upload } = backend();
+    const revision = new File(['AC1018 revised'], 'drawing_修订.dwg');
+    const session = await createDwgSaveSession('owner', revision, 'parent');
+    expect(session.parent_asset_id).toBe('parent');
+    expect(session.object_key).not.toContain('/parent/');
+    faults.finalize = true;
+    await expect(repo.save(session, revision, signal)).rejects.toThrow('确认失败');
+    faults.finalize = false;
+    await expect(repo.save({ ...session, parent_asset_id: 'different' }, revision, signal)).rejects.toThrow('不匹配');
+    const ready = await repo.save(session, revision, signal);
+    expect(ready).toMatchObject({ id: session.id, parent_asset_id: 'parent', status: 'ready' });
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
 });

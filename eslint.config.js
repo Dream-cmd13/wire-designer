@@ -20,6 +20,7 @@ export default defineConfig([
     '**/output/**',
     '**/outputs/**',
     '**/backups/**',
+    'server/dwg-edit/vendor/**',
   ]),
   {
     files: [
@@ -29,6 +30,7 @@ export default defineConfig([
       'scripts/upload-cost-analysis-excels.mjs', 'scripts/verify-cost-analyses.mjs',
       'scripts/reset-project-assets.mjs', 'scripts/lib/costAnalysisSync*.mjs',
       'scripts/migrate-dwg-drawings*.mjs',
+      'server/dwg-edit/*.mjs',
     ],
     extends: [js.configs.recommended],
     languageOptions: { globals: globals.node },

@@ -35,6 +35,8 @@ export type DwgTextAlign = 'left' | 'center' | 'right';
 
 export type DwgTextBaseline = 'top' | 'middle' | 'bottom';
 
+export type DwgEditKind = 'TEXT' | 'MTEXT' | 'DIMENSION';
+
 export interface DwgTextPrimitive {
   kind: 'text';
   lines: string[];
@@ -61,6 +63,7 @@ export interface DwgEntityMeta {
   layer: string;
   /** 图元包围盒，用于视口裁剪。 */
   bounds: DwgBounds;
+  editSource?: DwgEditSource;
 }
 
 export type DwgGeometry =
@@ -88,6 +91,15 @@ export interface DwgDrawingStats {
   rendered: number;
   text: number;
   skipped: Record<string, number>;
+}
+
+export interface DwgEditSource {
+  key: string;
+  handle: string;
+  kind: DwgEditKind | 'BLOCK';
+  expectedText: string;
+  readOnlyReason?: string;
+  multiline?: boolean;
 }
 
 /** 图纸引用的外部图片；浏览器无法访问其本地路径，当前只显示占位框。 */
