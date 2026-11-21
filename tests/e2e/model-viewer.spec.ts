@@ -35,7 +35,9 @@ async function localLogin(page: Page, role = 'engineer', cloud?: LocalCloud) {
         if (record) Object.assign(record, { status: 'ready' });
         return route.fulfill({ json: record ?? null });
       }
-      return route.fulfill({ json: id ? record ?? null : cloud.records });
+      const offset = Number(url.searchParams.get('offset') ?? '0');
+      const limit = Number(url.searchParams.get('limit') ?? cloud.records.length);
+      return route.fulfill({ json: id ? record ?? null : cloud.records.slice(offset, offset + limit) });
     }
     if (cloud && url.pathname.includes('/storage/v1/object/sign/model-files/')) {
       if (route.request().method() === 'POST') return cloud.object
@@ -75,16 +77,29 @@ async function uploadLocal(page: Page, name: string, buffer: Buffer) {
 }
 
 test('keeps the empty model workspace actionable and the loaded workspace compact', async ({ page }) => {
-  await localLogin(page);
+  const original = asciiStl();
+  const records = Array.from({ length: 21 }, (_, index) => {
+    const id = `00000000-0000-4000-8000-${String(index + 101).padStart(12, '0')}`;
+    return { id, owner_id: uid, original_name: `cloud-${index + 1}.stl`, format: 'stl', source_unit: 'mm', status: 'ready',
+      object_key: `${uid}/${id}/source.stl`, file_size: original.length, sha256: createHash('sha256').update(original).digest('hex') };
+  });
+  await localLogin(page, 'engineer', { records, original, object: original, uploads: 0, finalizeFailures: 0 });
   const workspace = page.getByTestId('model-drop-zone');
+  const selector = page.getByRole('combobox', { name: '云端模型' });
+  const refresh = page.getByRole('button', { name: '刷新云端模型' });
   await expect(workspace.getByRole('button', { name: '选择文件', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '重置视角' })).toHaveCount(0);
   await expect(page.getByText('仅本地预览', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '下一页' })).toHaveCount(0);
-  await page.getByRole('button', { name: '收起云端模型' }).click();
-  await expect(page.getByRole('heading', { name: '本人云端模型' })).not.toBeVisible();
-  await workspace.getByRole('button', { name: '展开云端模型' }).click();
-  await expect(page.getByRole('heading', { name: '本人云端模型' })).toBeVisible();
+  await expect(selector).toBeVisible();
+  await expect(page.getByRole('heading', { name: '本人云端模型' })).toHaveCount(0);
+  await expect(selector.getByRole('option', { name: 'cloud-21.stl' })).toHaveCount(0);
+  await page.getByRole('button', { name: '下一页' }).click();
+  await selector.selectOption({ label: 'cloud-21.stl' });
+  await expect(page.getByTestId('model-bounds')).toHaveText('2.00 × 3.00 × 4.00 mm');
+  await expect(page).toHaveURL(new RegExp(`modelId=${records[20].id}`));
+  await expect(page.getByRole('button', { name: '下一页' })).toBeDisabled();
+  await page.getByRole('button', { name: '上一页' }).click();
+  await expect(selector.getByRole('option', { name: 'cloud-1.stl' })).toHaveCount(1);
 
   await uploadLocal(page, 'compact-workspace.stl', asciiStl());
   const fit = page.getByRole('button', { name: '适配窗口' });
@@ -96,6 +111,10 @@ test('keeps the empty model workspace actionable and the loaded workspace compac
     await expect(page.getByText(/2\.00 × 3\.00 × 4\.00 mm/)).toHaveCount(1);
     await expect(fit).toBeInViewport();
     await expect(help).toBeInViewport();
+    await expect(selector).toBeInViewport();
+    await expect(refresh).toBeInViewport();
+    expect((await selector.boundingBox())!.y).toBe((await refresh.boundingBox())!.y);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(shortcuts).not.toBeVisible();
     await help.click();
     await expect(shortcuts).toBeVisible();
@@ -203,11 +222,10 @@ async function yellowPixels(page: Page) {
   },screenshot.toString('base64'));
 }
 
-test('calibrated 100px rotation is stable across sidebar and fullscreen',async ({page},testInfo) => {
+test('calibrated 100px rotation is stable across normal and fullscreen layouts',async ({page},testInfo) => {
   await trackViewerResources(page); await localLogin(page); await uploadLocal(page,'calibration.stl',asciiStl());
   const measurements = [];
-  for(const layout of ['sidebar','collapsed','fullscreen']) {
-    if(layout==='collapsed') await page.getByRole('button',{name:'收起云端模型',exact:true}).click();
+  for(const layout of ['normal','fullscreen']) {
     if(layout==='fullscreen') await page.getByRole('button',{name:'全屏查看',exact:true}).click();
     await settleViewer(page);
     for(const [dx,dy] of [[100,0],[0,100]]) {
@@ -695,7 +713,7 @@ test('downloads an already opened private STEP without model requests or changin
   };
   const cloud: LocalCloud = { records: [row], original, object: original, uploads: 0, finalizeFailures: 0 };
   await localLogin(page, 'engineer', cloud);
-  await page.getByRole('button', { name: '打开预览' }).click();
+  await page.getByRole('combobox', { name: '云端模型' }).selectOption(id);
   await expect(page.getByTestId('model-bounds')).toBeVisible();
   await expect(page.getByText('预览就绪', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '顶视', exact: true }).click();
@@ -742,7 +760,7 @@ test('self-authored curved STEP: surface boundaries, quality, saved identity and
   await expect(page.getByLabel('边线', { exact: true })).toHaveValue('surface');
   await page.getByRole('button', { name: '保存到云端', exact: true }).click();
   await expect(page.getByRole('button', { name: '保存到云端', exact: true })).toBeDisabled();
-  await expect(page.getByRole('button', { name: '打开预览', exact: true })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: '云端模型' })).toHaveValue(String(cloud.records[0].id));
   const url = page.url(); const stored = JSON.stringify(cloud.records[0]);
   await page.screenshot({ path: testInfo.outputPath('rounded-cylinder-standard.png') });
   await page.getByLabel('显示质量').selectOption('fine');
@@ -765,13 +783,16 @@ test('local HTTP fixture: upload succeeds, finalize fails, reload resumes withou
   expect(cloud.records[0].status).toBe('uploading');
   await expect(page.getByText('保存失败，可重试', { exact: true })).toBeVisible();
   await page.reload();
+  await page.getByRole('combobox', { name: '云端模型' }).selectOption({ label: 'saved.stl（保存未完成）' });
+  expect(cloud.records[0].status).toBe('uploading');
   await page.getByRole('button', { name: '恢复保存', exact: true }).click();
   await expect(page.getByTestId('model-bounds')).toHaveText('2.00 × 3.00 × 4.00 mm');
   expect(cloud.uploads).toBe(1); expect(cloud.records[0].status).toBe('ready');
   await expect(page).toHaveURL(new RegExp(`modelId=${cloud.records[0].id}`));
   await page.reload();
   await expect(page.getByTestId('model-bounds')).toHaveText('2.00 × 3.00 × 4.00 mm');
-  await page.getByRole('button', { name: '打开预览', exact: true }).click();
+  await page.goto('/model-viewer');
+  await page.getByRole('combobox', { name: '云端模型' }).selectOption({ label: 'saved.stl' });
   await expect(page.getByTestId('model-bounds')).toHaveText('2.00 × 3.00 × 4.00 mm');
 });
 
@@ -783,13 +804,13 @@ test('local HTTP fixture: wrong recovery source is never marked saved', async ({
   await page.goto(`/model-viewer?modelId=${cloud.records[0].id}`);
   await expect(page.getByText(/正在恢复：original.stl/)).toBeVisible();
   await uploadLocal(page, 'different.stl', binaryStl());
-  await page.getByRole('button', { name: '保存到云端', exact: true }).click();
+  await page.getByRole('button', { name: '恢复保存', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('不匹配');
   expect(cloud.records[0].status).toBe('uploading'); expect(cloud.uploads).toBe(1);
   await expect(page.getByText('保存失败，可重试', { exact: true })).toBeVisible();
   await uploadLocal(page, 'original.stl', cloud.original);
-  await page.getByRole('button', { name: '保存到云端', exact: true }).click();
-  await expect(page.getByRole('button', { name: '打开预览', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '恢复保存', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: '云端模型' }).locator('option:checked')).toHaveText('original.stl');
   expect(cloud.records[0].status).toBe('ready'); expect(cloud.uploads).toBe(1);
 });
 
@@ -843,7 +864,6 @@ test('private real STEP fixture parses in Worker with approximate dimensions and
   const before = await page.evaluate(() => ({ ...Reflect.get(window, '__modelResources') }));
   for (const viewport of [{ width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
     await page.setViewportSize(viewport);
-    await page.getByRole('button', { name: '收起云端模型', exact: true }).click();
     await page.getByRole('button', { name: '全屏查看', exact: true }).click();
     await expect(page.getByRole('button', { name: '退出全屏', exact: true })).toBeVisible();
     (await cameraMatrix(page)).forEach((value, i) => expect(value).toBeCloseTo(pose[i], 4));
@@ -851,7 +871,7 @@ test('private real STEP fixture parses in Worker with approximate dimensions and
     // Chromium headless may not deliver the native Esc fullscreen exit.
     if (await page.evaluate(() => Boolean(document.fullscreenElement))) await page.getByRole('button', { name: '退出全屏', exact: true }).click();
     await expect(page.getByRole('button', { name: '全屏查看', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '展开云端模型', exact: true }).click();
+    await expect(page.getByRole('combobox', { name: '云端模型' })).toBeInViewport();
     (await cameraMatrix(page)).forEach((value, i) => expect(value).toBeCloseTo(pose[i], 4));
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const box = (await canvas.boundingBox())!; expect(box.height).toBeGreaterThanOrEqual(256); expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);

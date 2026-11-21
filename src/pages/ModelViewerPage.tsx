@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Box, Upload, CloudUpload, FileDown, PanelRightClose, RefreshCw } from 'lucide-react';
+import { Box, Upload, CloudUpload, FileDown, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { ModelViewer } from '@/components/models/ModelViewer';
 import { ModelThreeViewDialog } from '@/components/models/ModelThreeViewDialog';
 import { parseModel, validateModelFile } from '@/lib/models/modelParser';
@@ -37,13 +37,13 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
   const [listError, setListError] = useState<string | null>(null);
   const [listPage, setListPage] = useState(0);
   const [listLoading, setListLoading] = useState(false);
+  const [cloudId, setCloudId] = useState('');
   const [recovering, setRecovering] = useState<ModelAsset | null>(null);
   const [modelKey, setModelKey] = useState<string | null>(null);
   const [requestedQuality, setRequestedQuality] = useState<ModelQuality>('standard');
   const [appliedQuality, setAppliedQuality] = useState<ModelQuality>('standard');
   const [qualityLoading, setQualityLoading] = useState(false);
   const [qualityError, setQualityError] = useState<string | null>(null);
-  const [listExpanded, setListExpanded] = useState(true);
   const [exportSignal, setExportSignal] = useState<AbortSignal | null>(null);
   const qualityBusy = useRef(false);
   const task = useRef<{ version: number; controller: AbortController }>({ version: 0, controller: new AbortController() });
@@ -55,6 +55,9 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
   const saving = save === 'uploading' || save === 'finalizing';
   const loading = ['reading','engine','parsing','downloading'].includes(preview);
   const exportReady = model && file && preview === 'ready' && !qualityLoading;
+  const selectedAsset = records.find((asset) => asset.id === cloudId);
+  const hasNextPage = records.length >= 20;
+  const cloudPlaceholder = listLoading ? '正在读取云端模型…' : listError ? '云端模型读取失败' : records.length ? '选择云端模型…' : '暂无云端模型';
 
   const begin = useCallback(() => {
     task.current.controller.abort();
@@ -95,6 +98,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
     if (busy.current) return;
     const current = begin();
     const active = () => mounted.current && current === task.current && !current.controller.signal.aborted;
+    setCloudId(id);
     saveSession.current = null; setRecovering(null); setFile(null); setModel(null); setPreview('downloading'); setSave('local'); setError(null);
     setQualityLoading(false); setQualityError(null);
     try {
@@ -104,13 +108,13 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
       // Persistence is independent of downloading or parsing the display mesh.
       saveSession.current = asset;
       if (asset.status === 'uploading') {
-        setRecovering(asset); setPreview('idle'); setSave('error');
-        setError('此模型保存未完成，请点击恢复保存；若原文件尚未上传，将要求重新选择。'); return;
+        setRecovering(asset); setPreview('idle'); setSave('local');
+        return;
       }
       setSave('saved');
       const source = await modelRepository.download(asset, current.controller.signal);
       if (active()) await parse(source, asset.source_unit, current);
-    } catch (cause) { if (active() && !isAbort(cause)) { setPreview('error'); setError(errorMessage(cause)); } }
+    } catch (cause) { if (active() && !isAbort(cause)) { setCloudId(''); setPreview('error'); setError(errorMessage(cause)); } }
   }, [begin, ownerId, parse]);
 
   useEffect(() => {
@@ -121,7 +125,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
       busy.current = false;
       const id = getModelIdFromSearch(window.location.search);
       if (id) void openCloud(id);
-      else { begin(); saveSession.current = null; setFile(null); setModel(null); setRecovering(null); setPreview('idle'); setSave('local'); setError(null); setQualityLoading(false); setQualityError(null); }
+      else { begin(); saveSession.current = null; setCloudId(''); setFile(null); setModel(null); setRecovering(null); setPreview('idle'); setSave('local'); setError(null); setQualityLoading(false); setQualityError(null); }
     };
     queueMicrotask(() => { if (!controller.signal.aborted) { void refresh(); if (getModelIdFromSearch(window.location.search)) fromLocation(); } });
     window.addEventListener('popstate', fromLocation);
@@ -137,7 +141,8 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
     const nextUnit = recovery?.source_unit ?? 'mm';
     const current = begin();
     saveSession.current = recovery;
-    setSave('local'); setModelUrl(null);
+    setSave('local');
+    if (!recovery) { setCloudId(''); setModelUrl(null); }
     void parse(source, nextUnit, current);
   };
   const changeQuality = async (quality: ModelQuality) => {
@@ -173,52 +178,73 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
       if (!active()) return;
       const asset = await modelRepository.save(saveSession.current, source ?? undefined, current.controller.signal, (phase) => { if (active()) setSave(phase); });
       if (!active()) return;
-      saveSession.current = asset; setRecovering(null); setSave('saved'); setModelUrl(asset.id); void refresh();
+      saveSession.current = asset; setRecovering(null); setSave('saved'); setCloudId(asset.id); setModelUrl(asset.id); void refresh();
       if (!model || (recovery && !source)) { busy.current = false; void openCloud(asset.id); }
     } catch (cause) { if (active() && !isAbort(cause)) { setSave('error'); setError(errorMessage(cause)); } }
     finally { if (current === task.current) busy.current = false; }
   };
-  const cancel = () => { begin(); setPreview('idle'); setError('已取消，可重新选择文件。'); };
-  const showHeader = preview !== 'idle' || Boolean(recovering);
+  const cancel = () => {
+    begin(); setPreview('idle'); setError('已取消，可重新选择文件。');
+    if (!recovering) { setCloudId(''); setModelUrl(null); }
+  };
   const chooseButton = (primary = false) => <button type="button" className={primary ? primaryButtonClass : buttonClass} disabled={saving} onClick={() => fileInput.current?.click()}><Upload size={14} />选择文件</button>;
-  const toggleList = () => setListExpanded((expanded) => !expanded);
-  const listLabel = listExpanded ? '收起云端模型' : '展开云端模型';
-  const listButton = <button type="button" className={buttonClass} aria-expanded={listExpanded} aria-controls="private-model-list" onClick={toggleList}>{listLabel}</button>;
 
   return <div className="flex h-full flex-col gap-2 overflow-auto bg-slate-50 p-3">
     <h2 className="sr-only">3D 模型</h2>
-    {showHeader && <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
-      {preview !== 'idle' && file && <div className="flex min-w-0 max-w-full items-center gap-2 text-xs">
+    <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+      {preview !== 'idle' && file && <div className="flex min-w-0 max-w-full items-center gap-2 text-xs sm:max-w-xs">
         <span className="min-w-0 truncate text-sm font-medium text-slate-900" title={file.name}>{file.name}</span>
         <span className="shrink-0 whitespace-nowrap text-slate-500">{format.toUpperCase()} · {(file.size / 1024).toFixed(1)} KiB</span>
       </div>}
       {model && <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600" role="status">{saves[save]}</span>}
       {preview === 'ready' && <span className="sr-only" role="status">{phases.ready}</span>}
+      <div className="flex min-w-0 max-w-full items-center gap-1" role="group" aria-label="本人云端模型" aria-busy={listLoading}>
+        <select className={`${selectClass} w-48 min-w-0 truncate disabled:opacity-50`} aria-label="云端模型"
+          aria-describedby={listError ? 'model-list-error' : undefined}
+          title={selectedAsset?.original_name ?? '本人云端模型'} value={selectedAsset?.id ?? ''}
+          disabled={saving || listLoading || !records.length} onChange={(event) => {
+            const id = event.target.value;
+            setModelUrl(id);
+            void openCloud(id);
+          }}>
+          <option value="" disabled>{cloudPlaceholder}</option>
+          {records.map((asset) => <option key={asset.id} value={asset.id}>
+            {asset.original_name}{asset.status === 'uploading' ? '（保存未完成）' : ''}
+          </option>)}
+        </select>
+        <button type="button" className={buttonClass} aria-label="刷新云端模型" title="刷新云端模型"
+          disabled={saving || listLoading || !modelRepository.configured} onClick={() => void refresh(listPage)}><RefreshCw size={14} /></button>
+        {(listPage > 0 || hasNextPage) && <>
+          <button type="button" className={buttonClass} aria-label="上一页" title="上一页" disabled={saving || listLoading || listPage === 0}
+            onClick={() => void refresh(listPage - 1)}><ChevronLeft size={14} /></button>
+          <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-slate-500" aria-label={`第 ${listPage + 1} 页`}>{listPage + 1}</span>
+          <button type="button" className={buttonClass} aria-label="下一页" title="下一页" disabled={saving || listLoading || !hasNextPage}
+            onClick={() => void refresh(listPage + 1)}><ChevronRight size={14} /></button>
+        </>}
+      </div>
       {loading && <button type="button" className={buttonClass} onClick={cancel}>取消加载</button>}
       {preview === 'error' && file && <button type="button" className={buttonClass} onClick={() => void parse(file, unit, begin())}>重试解析</button>}
       <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
         {(model || loading) && chooseButton()}
         {(model || recovering) && <button type="button" className={save === 'saved' ? buttonClass : primaryButtonClass} disabled={saving || loading || qualityLoading || save === 'saved' || !modelRepository.configured} onClick={() => void saveCurrent(recovering ?? undefined)}>
-          <CloudUpload size={14} />{save === 'error' ? '重试保存' : '保存到云端'}</button>}
+          <CloudUpload size={14} />{recovering ? '恢复保存' : save === 'error' ? '重试保存' : '保存到云端'}</button>}
         {model && <button type="button" className={buttonClass} disabled={!exportReady} onClick={() => setExportSignal(task.current.controller.signal)}><FileDown size={14} />导出三视图 PDF</button>}
-        {listButton}
       </div>
-    </header>}
+    </header>
     {exportSignal && exportReady && <ModelThreeViewDialog model={model} sourceName={file.name} modelSignal={exportSignal} onClose={() => setExportSignal(null)} />}
     <input ref={fileInput} type="file" className="sr-only" aria-label="选择模型文件" accept=".step,.stp,.stl" disabled={saving} onChange={(event) => { if (event.target.files) choose(event.target.files); event.target.value = ''; }} />
     {!modelRepository.configured && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">云端尚未配置，可继续本地预览，暂时无法保存。</p>}
+    {listError && <p id="model-list-error" role="alert" className="text-xs text-red-700">{listError}</p>}
     {recovering && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-      <span>正在恢复：{recovering.original_name}。重新选择的原文件将校验大小和 SHA-256。</span>
-      <button className={buttonClass} disabled={saving} onClick={() => { saveSession.current = null; setRecovering(null); setSave('local'); setError(null); setModelUrl(null); }}>结束恢复，预览新模型</button>
+      <span>正在恢复：{recovering.original_name}。若云端没有原文件，请重新选择，系统将校验大小和 SHA-256。</span>
+      <button className={buttonClass} disabled={saving} onClick={() => { saveSession.current = null; setRecovering(null); setCloudId(''); setSave('local'); setError(null); setModelUrl(null); }}>结束恢复，预览新模型</button>
     </div>}
     {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-    <div className={`grid min-h-[420px] flex-1 grid-cols-1 gap-2 ${listExpanded ? 'grid-rows-[minmax(420px,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_240px] xl:grid-rows-[minmax(0,1fr)]' : ''}`}>
-      <section data-testid="model-drop-zone" className="flex min-h-[420px] min-w-0 flex-col gap-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); choose(event.dataTransfer.files); }}>
+      <section data-testid="model-drop-zone" className="flex min-h-[420px] min-w-0 flex-1 flex-col gap-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); choose(event.dataTransfer.files); }}>
         <ModelViewer model={model} modelKey={modelKey} emptyState={loading && preview !== 'idle' ? <span role="status">{phases[preview]}</span> : <div className="flex flex-col items-center gap-2">
           <Box size={28} className="mb-1 text-slate-400" />
           {chooseButton(true)}
           <p>也可拖入 STEP / STP / STL 文件（最大 20 MiB）</p>
-          {!showHeader && !listExpanded && listButton}
         </div>} status={qualityLoading && <><span>正在生成{requestedQuality === 'fine' ? '精细' : '标准'}预览…</span><button type="button" className="text-blue-700" onClick={cancelQuality}>取消质量生成</button></>} />
         {qualityError && <p role="alert" className="text-xs text-amber-800">{qualityError}</p>}
         {model && file && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600">
@@ -232,7 +258,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
           {format === 'step' && <span className="sr-only" role="status">{appliedQuality === 'fine' ? '精细' : '标准'}已生效</span>}
           {format === 'stl' && <label className="flex items-center gap-1">STL 单位
             <select className={selectClass} aria-label="STL 用户指定单位" value={unit} disabled={saving || Boolean(recovering)} onChange={(event) => {
-              const next = event.target.value as StlUnit; const current = begin(); saveSession.current = null; setSave('local'); setUnit(next); setModelUrl(null); void parse(file, next, current);
+              const next = event.target.value as StlUnit; const current = begin(); saveSession.current = null; setCloudId(''); setSave('local'); setUnit(next); setModelUrl(null); void parse(file, next, current);
             }}><option value="mm">毫米</option><option value="cm">厘米</option><option value="m">米</option><option value="inch">英寸</option></select></label>}
           <details className="ml-auto open:w-full"><summary className="cursor-pointer rounded px-1 py-1 font-medium text-slate-700 hover:bg-slate-50">模型详情</summary>
             <p>{model.triangleCount.toLocaleString()} 个三角形 · {model.meshes.length} 个网格</p>
@@ -244,28 +270,5 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
         </div>}
         {model?.surfaceEdgeWarning && <p className="text-xs text-amber-800">{model.surfaceEdgeWarning}</p>}
       </section>
-      <aside id="private-model-list" hidden={!listExpanded} className={listExpanded ? 'flex max-h-72 min-h-0 min-w-0 flex-col rounded-xl border border-slate-200 bg-white xl:max-h-none' : 'hidden'}>
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-3 py-1.5">
-          <h3 className="text-sm font-semibold">本人云端模型</h3>
-          <div className="flex items-center gap-1">
-            <button type="button" className={buttonClass} title="刷新模型列表" aria-label="刷新模型列表" disabled={saving || listLoading || !modelRepository.configured} onClick={() => void refresh(listPage)}><RefreshCw size={14} /></button>
-            {!showHeader && <button type="button" className={buttonClass} aria-label={listLabel} title={listLabel} aria-expanded={listExpanded} aria-controls="private-model-list" onClick={toggleList}><PanelRightClose size={14} /></button>}
-          </div>
-        </div>
-        {listError && <p role="alert" className="px-3 py-2 text-xs text-red-700">{listError}</p>}
-        {listLoading && <p role="status" className="px-3 py-2 text-xs text-slate-500">正在读取列表…</p>}
-        {!listLoading && !listError && !records.length && <p className="px-3 py-3 text-xs text-slate-500">暂无模型。保存后可在此重新打开。</p>}
-        <ul className="min-h-0 flex-1 divide-y divide-slate-100 overflow-y-auto">{records.map((asset) => <li key={asset.id} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium" title={asset.original_name}>{asset.original_name}</p>
-            <p className="text-xs text-slate-500">{asset.format.toUpperCase()}{asset.status !== 'ready' && ' · 保存未完成'}</p>
-          </div>
-          <button type="button" className="shrink-0 rounded px-1 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-40" title={`${asset.status === 'ready' ? '打开预览' : '恢复保存'}：${asset.original_name}`} disabled={saving || ((loading || qualityLoading) && asset.status !== 'ready')} onClick={() => { if (asset.status === 'ready') { setModelUrl(asset.id); void openCloud(asset.id); } else {
-            begin(); saveSession.current = asset; setRecovering(asset); setFile(null); setModel(null); setPreview('idle'); setQualityLoading(false); void saveCurrent(asset, null);
-          } }}>{asset.status === 'ready' ? '打开预览' : '恢复保存'}</button>
-        </li>)}</ul>
-        {(listPage > 0 || records.length >= 20) && <div className="flex shrink-0 justify-between border-t border-slate-100 px-3 py-2 text-xs"><button disabled={listPage === 0 || saving || listLoading} className="disabled:opacity-30" onClick={() => void refresh(listPage - 1)}>上一页</button><span>第 {listPage + 1} 页</span><button disabled={records.length < 20 || saving || listLoading} className="disabled:opacity-30" onClick={() => void refresh(listPage + 1)}>下一页</button></div>}
-      </aside>
-    </div>
   </div>;
 }

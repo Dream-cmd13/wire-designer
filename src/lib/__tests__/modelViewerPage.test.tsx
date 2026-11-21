@@ -118,17 +118,36 @@ describe('model PDF export', () => {
 });
 
 describe('model page sessions', () => {
-  it('disables recovery while a file is loading and allows recovery after parsing finishes', async () => {
-    mocks.list.mockResolvedValue([{ ...record, status: 'uploading' }]);
-    let resolveParse: (value: typeof model) => void = () => {};
-    mocks.parse.mockImplementationOnce(() => new Promise((resolve) => { resolveParse = resolve; }));
-    render(<ModelViewerPage />); const recovery = await screen.findByRole('button', { name: '恢复保存' });
-    pick();
-    expect(recovery.hasAttribute('disabled')).toBe(true);
-    fireEvent.click(recovery); expect(mocks.save).not.toHaveBeenCalled();
-    await act(async () => resolveParse(model));
-    expect(recovery.hasAttribute('disabled')).toBe(false);
-    fireEvent.click(recovery); await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
+  it('opens pending models from the selector and waits for explicit recovery', async () => {
+    const pending = { ...record, status: 'uploading' };
+    mocks.list.mockResolvedValue([pending]);
+    mocks.get.mockResolvedValue(pending);
+    render(<ModelViewerPage />);
+    await screen.findByRole('option', { name: 'a.stp（保存未完成）' });
+    fireEvent.change(screen.getByRole('combobox', { name: '云端模型' }), { target: { value: id } });
+    const recovery = await screen.findByRole('button', { name: '恢复保存' });
+    expect(mocks.download).not.toHaveBeenCalled();
+    expect(mocks.save).not.toHaveBeenCalled();
+    mocks.get.mockResolvedValue(record);
+    fireEvent.click(recovery);
+    await screen.findByText('预览就绪');
+    expect(mocks.save).toHaveBeenCalledExactlyOnceWith(pending, undefined, expect.any(AbortSignal), expect.any(Function));
+  });
+  it('pages through cloud models and opens a ready model directly from the selector', async () => {
+    mocks.list.mockResolvedValueOnce(Array.from({ length: 20 }, (_, index) => ({ ...record, id: `${index}`, original_name: `part-${index}.stp` })))
+      .mockResolvedValue([record]);
+    render(<ModelViewerPage />);
+    const selector = screen.getByRole<HTMLSelectElement>('combobox', { name: '云端模型' });
+    await screen.findByRole('option', { name: 'part-19.stp' });
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    await screen.findByRole('option', { name: 'a.stp' });
+    expect(mocks.list).toHaveBeenLastCalledWith('u1', expect.any(AbortSignal), 1);
+    fireEvent.change(selector, { target: { value: id } });
+    await screen.findByText('预览就绪');
+    expect(selector.value).toBe(id);
+    expect(window.location.search).toBe(`?modelId=${id}`);
+    expect(mocks.download).toHaveBeenCalledExactlyOnceWith(record, expect.any(AbortSignal));
+    expect(mocks.save).not.toHaveBeenCalled();
   });
   it('changes saved STEP quality without changing cloud identity or starting any persistence', async () => {
     window.history.replaceState(null, '', `/model-viewer?modelId=${id}`);
@@ -175,9 +194,10 @@ describe('model page sessions', () => {
     act(() => useUserStore.setState({ currentUser: null }));
     await act(async () => resolveOld(model)); expect(screen.queryByTestId('mesh')).toBeNull();
   });
-  it('folds the cloud list without parsing or saving and hides quality selection for STL', async () => {
+  it('refreshes cloud models without parsing or saving and hides quality selection for STL', async () => {
     render(<ModelViewerPage />); pick('part.stl'); await screen.findByText('包围盒尺寸（网格近似）');
-    fireEvent.click(screen.getByRole('button', { name: '收起云端模型' }));
+    fireEvent.click(screen.getByRole('button', { name: '刷新云端模型' }));
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
     expect(screen.queryByLabelText('显示质量')).toBeNull();
     expect(mocks.parse).toHaveBeenCalledOnce(); expect(mocks.save).not.toHaveBeenCalled();
     expect(screen.getByTestId('mesh').textContent).toBe('mesh ready');
