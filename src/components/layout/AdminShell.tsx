@@ -237,7 +237,7 @@ export function AdminShell({
     <div className="flex h-screen overflow-hidden bg-slate-100 text-slate-900">
       <aside
         className={`flex shrink-0 flex-col border-r border-slate-800 bg-slate-950 text-slate-100 transition-[width] duration-200 ${
-          sidebarCollapsed ? 'w-14' : 'w-16 sm:w-64'
+          sidebarCollapsed ? 'w-14' : 'w-16 sm:w-48'
         }`}
       >
         <div
