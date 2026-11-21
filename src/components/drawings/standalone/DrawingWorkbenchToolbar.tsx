@@ -40,8 +40,11 @@ interface Props {
   exporting?: boolean;
 }
 
-function Button({ title, active, expanded, disabled, iconOnly, onClick, children }: { title: string; active?: boolean; expanded?: boolean; disabled?: boolean; iconOnly?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" title={title} aria-label={title} aria-pressed={active} aria-expanded={expanded} disabled={disabled} onClick={onClick} className={`flex h-8 shrink-0 items-center whitespace-nowrap rounded-md border text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 ${iconOnly ? 'w-8 justify-center' : 'gap-1 px-2'} ${active || expanded ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>{children}</button>;
+function Button({ title, active, expanded, disabled, iconOnly, primary, onClick, children }: { title: string; active?: boolean; expanded?: boolean; disabled?: boolean; iconOnly?: boolean; primary?: boolean; onClick: () => void; children: React.ReactNode }) {
+  const color = primary ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+    : active || expanded ? 'border-blue-500 bg-blue-50 text-blue-700'
+      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50';
+  return <button type="button" title={title} aria-label={title} aria-pressed={active} aria-expanded={expanded} disabled={disabled} onClick={onClick} className={`flex h-8 shrink-0 items-center whitespace-nowrap rounded-md border text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40 ${iconOnly ? 'w-8 justify-center' : 'gap-1 px-2'} ${color}`}>{children}</button>;
 }
 
 const toolGroup = 'flex shrink-0 items-center gap-1';
@@ -82,7 +85,7 @@ export function DrawingWorkbenchToolbar(props: Props) {
   };
   return <div className="relative z-40 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white px-2 py-1.5" role="toolbar" aria-label="绘图工具栏">
     <div className={toolGroup} role="group" aria-label="配置和资源">
-      <Button title="配置向导" onClick={() => run(props.onWizard)}><Wand2 className="h-4 w-4 text-blue-600"/>配置向导</Button>
+      <Button title="配置向导" primary onClick={() => run(props.onWizard)}><Wand2 className="h-4 w-4"/>配置向导</Button>
       <Button title="绘图资源" onClick={() => run(props.onResources)}><Menu className="h-4 w-4"/>绘图资源</Button>
     </div>
     <div className={toolGroup} role="group" aria-label="画板编辑">
@@ -121,7 +124,7 @@ export function DrawingWorkbenchToolbar(props: Props) {
       <Button title={props.saveState === 'error' ? '重试保存' : '保存'} iconOnly onClick={() => run(props.onSave)}><Save className="h-4 w-4"/></Button>
       <Button title="下载图纸副本" iconOnly onClick={() => run(props.onExportLocal)}><Download className="h-4 w-4"/></Button>
       <Button title="导入图纸副本" iconOnly onClick={() => run(props.onImportLocal)}><FileUp className="h-4 w-4"/></Button>
-      <Button title={props.exporting ? '正在导出 PDF' : '导出 PDF'} iconOnly disabled={props.exporting} onClick={() => run(props.onPdf)}><FileText className="h-4 w-4"/></Button>
+      <Button title={props.exporting ? '正在导出 PDF' : '导出 PDF'} disabled={props.exporting} onClick={() => run(props.onPdf)}><FileText className="h-4 w-4"/>PDF</Button>
     </div>
   </div>;
 }

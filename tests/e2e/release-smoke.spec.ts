@@ -40,6 +40,8 @@ test.describe('release smoke (anonymous)', () => {
     const toolbar = page.getByRole('toolbar', { name: '绘图工具栏' });
     const canvas = page.locator('canvas').first();
     const inspector = page.getByRole('complementary', { name: '对象属性' });
+    const viewport = page.getByRole('region', { name: '图纸画布' });
+    const zoom = page.getByRole('group', { name: '画布缩放' });
     await expect(canvas).toBeVisible();
     await expect(inspector).toHaveCount(0);
 
@@ -47,9 +49,32 @@ test.describe('release smoke (anonymous)', () => {
       await page.setViewportSize({ width, height: 900 });
       await expect(toolbar.getByRole('button', { name: '导出 PDF', exact: true })).toBeInViewport({ ratio: 1 });
       await expect.poll(() => toolbar.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+      await expect(canvas).toBeInViewport({ ratio: 1 });
+      await expect.poll(async () => {
+        const paper = (await canvas.boundingBox())!;
+        const area = (await viewport.boundingBox())!;
+        return Math.max(Math.abs(paper.x + paper.width / 2 - area.x - area.width / 2),
+          Math.abs(paper.y + paper.height / 2 - area.y - area.height / 2));
+      }).toBeLessThan(2);
     }
 
-    const viewport = canvas.locator('../..');
+    const fittedWidth = (await canvas.boundingBox())!.width;
+    await zoom.getByRole('button', { name: '放大画布' }).click();
+    await expect.poll(async () => (await canvas.boundingBox())!.width).toBeGreaterThan(fittedWidth);
+    const manualWidth = (await canvas.boundingBox())!.width;
+    await page.setViewportSize({ width: 430, height: 900 });
+    await expect.poll(async () => (await canvas.boundingBox())!.width).toBe(manualWidth);
+    await zoom.getByRole('button', { name: '适应窗口' }).click();
+    await expect(canvas).toBeInViewport({ ratio: 1 });
+    await expect(zoom.getByRole('button', { name: '适应窗口' })).toHaveAttribute('aria-pressed', 'true');
+
+    const paper = (await canvas.boundingBox())!;
+    await page.mouse.move(paper.x + paper.width / 2, paper.y + paper.height / 2);
+    await page.mouse.wheel(0, -100);
+    await expect.poll(async () => (await canvas.boundingBox())!.width).toBeGreaterThan(paper.width);
+    await zoom.getByRole('button', { name: '适应窗口' }).click();
+    await expect(canvas).toBeInViewport({ ratio: 1 });
+
     await toolbar.getByRole('button', { name: '添加文字' }).click();
     await expect(inspector.getByRole('textbox', { name: '文字' })).toBeVisible();
     await expect.poll(() => viewport.evaluate((element) => element.parentElement!.clientWidth - element.clientWidth)).toBe(0);

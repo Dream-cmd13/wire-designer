@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Maximize2, Minus, Plus } from 'lucide-react';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
 import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
@@ -20,7 +20,7 @@ import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
 import { appendDrawingMaterial, type DrawingMaterialInput } from '@/lib/drawingMaterials';
 import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
-import { getDrawingTransformObject, MAX_OBJECT_SCALE, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
+import { getDrawingTransformObject, getWheelScaleFactor, MAX_CANVAS_ZOOM, MAX_OBJECT_SCALE, MIN_CANVAS_ZOOM, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
 import { enterDrawingWorkbench } from '@/lib/drawingWorkbenchSession';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import {
@@ -54,6 +54,7 @@ const resourceDefaultPoints: Record<DrawingResourceKind, { x: number; y: number 
   line: { x: 360, y: 330 }, polyline: { x: 360, y: 330 }, curve: { x: 360, y: 330 }, freehand: { x: 360, y: 330 },
   dimension: { x: 320, y: 170 }, label: { x: 420, y: 120 }, text: { x: 420, y: 120 }, 'tech-requirements': { x: 70, y: 520 },
 };
+const zoomButtonClass = 'inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border border-transparent px-1.5 font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40';
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
 function overlaps(left: DrawingObject, right: DrawingObject) { return left.x < right.x + right.width && left.x + left.width > right.x && left.y < right.y + right.height && left.y + left.height > right.y; }
@@ -105,7 +106,8 @@ export function DrawingWorkbenchPage() {
   const [toolMode, setToolMode] = useState<DrawingToolMode>('select');
   const [drawingAction, setDrawingAction] = useState<{ id: number; type: 'finish' | 'cancel' }>({ id: 0, type: 'cancel' });
   const [orthogonal, setOrthogonal] = useState(false);
-  const [zoom, setZoom] = useState(0.72);
+  const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
+  const [manualZoom, setManualZoom] = useState<number | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [iconLibraryOpen, setIconLibraryOpen] = useState(false);
@@ -136,6 +138,15 @@ export function DrawingWorkbenchPage() {
   const materialTableObject = materialTableObjectId
     ? drawing?.objects.find((object): object is DrawingBomTableObject => object.id === materialTableObjectId && object.kind === 'bom-table')
     : undefined;
+  const fitZoom = drawing && viewport
+    ? Math.min(MAX_CANVAS_ZOOM, viewport.width / drawing.page.width, viewport.height / drawing.page.height)
+    : 0.72;
+  const zoom = manualZoom ?? fitZoom;
+  const minZoom = Math.min(MIN_CANVAS_ZOOM, zoom);
+  const changeZoom = (next: number) => {
+    const adjusted = Math.min(MAX_CANVAS_ZOOM, Math.max(minZoom, next));
+    if (adjusted !== zoom) setManualZoom(adjusted);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -500,8 +511,23 @@ export function DrawingWorkbenchPage() {
     <div className="relative flex min-h-0 flex-1">
       <DrawingResourcePanel open={resourcesOpen} canUseCatalog={Boolean(currentUser)} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
       <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>
-      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onCanvasZoom={setZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
+      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onViewportResize={setViewport} onCanvasZoom={changeZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector key={primaryId} drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
+    </div>
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 border-t border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">
+      <span>{drawing.page.size} · 横向</span>
+      <div role="group" aria-label="画布缩放" className="ml-auto flex items-center gap-0.5">
+        <button type="button" className={zoomButtonClass} aria-label="缩小画布" title="缩小画布" disabled={zoom <= minZoom} onClick={() => changeZoom(zoom * getWheelScaleFactor(1))}>
+          <Minus className="h-3.5 w-3.5" />
+        </button>
+        <span className="min-w-9 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+        <button type="button" className={zoomButtonClass} aria-label="放大画布" title="放大画布" disabled={zoom >= MAX_CANVAS_ZOOM} onClick={() => changeZoom(zoom * getWheelScaleFactor(-1))}>
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+        <button type="button" className={`${zoomButtonClass} aria-pressed:bg-blue-50 aria-pressed:text-blue-700`} aria-pressed={manualZoom === null} onClick={() => setManualZoom(null)}>
+          <Maximize2 className="h-3.5 w-3.5" />适应窗口
+        </button>
+      </div>
     </div>
     {contextMenu && (!contextMenu.objectId || contextObject) && <DrawingCanvasContextMenu
       target={contextMenu.objectId ? 'object' : 'canvas'}

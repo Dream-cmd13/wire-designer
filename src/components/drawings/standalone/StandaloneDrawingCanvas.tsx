@@ -13,7 +13,7 @@ import { getDrawingObjectAtPoint, renderDrawingCanvas } from '@/lib/drawingRende
 import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/drawingTableInteraction';
 import { DRAWING_TABLE_LINE_COLOR, getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
-import { clampDrawingZoom, containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
+import { containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
 import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableLocalTarget, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
 
@@ -26,6 +26,7 @@ interface StandaloneDrawingCanvasProps {
   onSelectionChange?: (objectIds: string[]) => void;
   onStartEdit: () => void;
   onUpdateObject: (objectId: string, patch: Partial<DrawingObject>) => void;
+  onViewportResize: (size: { width: number; height: number }) => void;
   onCanvasZoom?: (zoom: number) => void;
   onScaleObject?: (objectId: string, factor: number) => void;
   onScaleTableTarget?: (objectId: string, target: DrawingTableLocalTarget, factor: number) => void;
@@ -402,6 +403,7 @@ export function StandaloneDrawingCanvas({
   onSelectionChange,
   onStartEdit,
   onUpdateObject,
+  onViewportResize,
   onCanvasZoom,
   onScaleObject,
   onScaleTableTarget,
@@ -413,6 +415,7 @@ export function StandaloneDrawingCanvas({
   drawingAction,
   onContextMenuRequest,
 }: StandaloneDrawingCanvasProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const editorInputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const [measurementContext] = useState<CanvasRenderingContext2D | null>(() =>
@@ -445,6 +448,18 @@ export function StandaloneDrawingCanvas({
       || (selectedObject.kind !== 'table' && selectedObject.kind !== 'bom-table' && selectedObject.kind !== 'wiring-table')) return selectedTransformObject;
     return getDrawingTableTargetObject(selectedObject, activeTableTarget);
   }, [activeTableTarget, selectedObject, selectedTransformObject]);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) onViewportResize({ width, height });
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [onViewportResize]);
 
   const finalizeActiveDraft = (action: 'finish' | 'cancel') => {
     const object = finalizeDrawingDraft(draftKind, draftPoints, action, orthogonal);
@@ -589,7 +604,7 @@ export function StandaloneDrawingCanvas({
       onScaleObject?.(selectedObject.id, factor);
       return;
     }
-    onCanvasZoom?.(clampDrawingZoom(zoom * factor));
+    onCanvasZoom?.(zoom * factor);
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -896,8 +911,8 @@ export function StandaloneDrawingCanvas({
   const selectionRect = selectionStart && selectionEnd ? normalizeDrawingRect(selectionStart, selectionEnd) : null;
 
   return (
-    <div className="isolate min-h-0 min-w-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[size:24px_24px] p-5">
-      <div className="relative inline-block" onContextMenu={handleContextMenu} onWheel={handleWheel}>
+    <div ref={viewportRef} role="region" aria-label="图纸画布" className="isolate flex min-h-0 min-w-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[length:24px_24px] p-4">
+      <div className="relative m-auto shrink-0" onContextMenu={handleContextMenu} onWheel={handleWheel}>
         <canvas
           ref={canvasRef}
           className={`block bg-white shadow-lg touch-none ${toolMode !== 'select' ? 'cursor-crosshair' : ''}`}

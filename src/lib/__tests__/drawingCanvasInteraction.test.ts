@@ -78,9 +78,8 @@ describe('standalone drawing canvas interactions', () => {
     expect(canvasSource).toContain('onWheel={handleWheel}');
     expect(canvasSource).toContain('containsDrawingPoint(activeTransformObject, point)');
     expect(canvasSource).toContain('selectedObject.locked');
-    expect(canvasSource).toContain('onCanvasZoom?.(clampDrawingZoom');
+    expect(canvasSource).toContain('onCanvasZoom?.(zoom * factor)');
     expect(canvasSource).toContain('onScaleObject?.(');
-    expect(pageSource).toContain('const [zoom, setZoom] = useState(0.72)');
     expect(pageSource).toContain('wheelGestureRef');
   });
 
