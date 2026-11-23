@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Download, FolderOpen, Loader2 } from 'lucide-react';
+import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { LoginRequiredPanel } from '@/components/auth/LoginRequiredPanel';
 import { AdminShell } from '@/components/layout/AdminShell';
@@ -10,7 +10,7 @@ import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { ProjectList } from '@/components/project/ProjectList';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { useAppRoute } from '@/hooks/useAppRoute';
-import { appRoutes, getRouteByPath, requiresAuth, shouldKeepRouteAfterLogin } from '@/lib/appRoute';
+import { appRoutes, defaultRoute, getRouteByPath, requiresAuth, shouldKeepRouteAfterLogin } from '@/lib/appRoute';
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
 import { supabase } from '@/lib/supabaseClient';
@@ -114,59 +114,6 @@ function ProjectRestoringState() {
   );
 }
 
-function ProjectRequiredState({ ownerId, openError, onOpenProject, onNavigateHome }: {
-  ownerId: string | undefined;
-  openError: string | null;
-  onOpenProject: (project: Project) => void;
-  onNavigateHome: () => void;
-}) {
-  const { projects, projectsStatus, projectsError, loadProjects } = useProjectStore();
-  const [selectedId, setSelectedId] = useState('');
-  const ownedProjects = projects
-    .filter((project) => project.userId === ownerId)
-    .sort((left, right) => right.updatedAt - left.updatedAt);
-  const selected = ownedProjects.find((project) => project.id === selectedId);
-  const loading = projectsStatus === 'idle' || projectsStatus === 'loading';
-  const failed = projectsStatus === 'error';
-  const placeholder = loading ? '正在读取项目…' : failed ? '项目列表加载失败' : '暂无项目';
-
-  return (
-    <div className="grid h-full place-items-center overflow-y-auto bg-slate-100 p-4">
-      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-        <div className="flex items-center gap-3">
-          <div className="rounded-lg bg-blue-50 p-2 text-blue-700"><FolderOpen className="h-5 w-5" /></div>
-          <h2 className="text-base font-semibold text-slate-900">尚未打开项目</h2>
-        </div>
-        <form className="mt-4 flex flex-wrap gap-2" onSubmit={(event) => {
-          event.preventDefault();
-          if (selected) onOpenProject(selected);
-        }}>
-          <select aria-label="项目" className="h-9 min-w-0 flex-1 truncate rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 disabled:bg-slate-50"
-            value={selected?.id ?? ''} disabled={!ownedProjects.length} onChange={(event) => setSelectedId(event.target.value)}>
-            <option value="" disabled>{ownedProjects.length ? '选择项目…' : placeholder}</option>
-            {ownedProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-          </select>
-          <button type="submit" disabled={!selected} className="h-9 shrink-0 cursor-pointer rounded-md bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-            打开项目
-          </button>
-        </form>
-        {openError && <p role="alert" className="mt-3 break-words text-sm text-red-700">{openError}</p>}
-        {failed && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-amber-800">
-            <p role="alert" className="min-w-0 break-words">{projectsError || '项目列表暂时无法加载。'}</p>
-            <button type="button" className="shrink-0 font-medium text-blue-700 hover:underline" onClick={() => {
-              if (ownerId) void loadProjects(ownerId, { force: true });
-            }}>重试加载</button>
-          </div>
-        )}
-        <button type="button" onClick={onNavigateHome} className="mt-3 text-sm font-medium text-slate-600 hover:text-blue-700 hover:underline">
-          前往项目管理
-        </button>
-      </div>
-    </div>
-  );
-}
-
 interface LoadErrorBannerProps {
   message: string;
   recoveryRaw: string | null;
@@ -214,11 +161,10 @@ function LoadErrorBanner({ message, recoveryRaw, projectName, onClose }: LoadErr
 export default function App() {
   const currentUser = useUserStore((state) => state.currentUser);
   const restricted = Boolean(currentUser && currentUser.role !== 'engineer' && currentUser.role !== 'admin');
-  const { route: requestedRoute, projectId: requestedProjectId, navigate } = useAppRoute();
-  const route = restricted ? appRoutes['auto-quote'] : requestedRoute;
+  const { route: requestedRoute, projectId: requestedProjectId, navigate, navigationVersion, getNavigationVersion } = useAppRoute();
   const projectId = restricted ? null : requestedProjectId;
   useEffect(() => {
-    if (currentUser?.role === 'sales' && requestedRoute.id !== 'auto-quote') navigate(appRoutes['auto-quote'].path);
+    if (currentUser?.role === 'sales' && requestedRoute.id !== 'auto-quote') navigate(appRoutes['auto-quote'].path, { replace: true });
   }, [currentUser?.role, requestedRoute.id, navigate]);
   const [authOpen, setAuthOpen] = useState(false);
   const [bomModalOpen, setBomModalOpen] = useState(false);
@@ -236,15 +182,8 @@ export default function App() {
   const storageCheckInFlightRef = useRef<Promise<StorageBootstrapState> | null>(null);
   const previousAuthUserIdRef = useRef<string | null | undefined>(undefined);
   const restoreProjectAttemptRef = useRef<string | null>(null);
-  const projectsLoadRequestRef = useRef(0);
   const workspaceSessionRef = useRef(0);
   const projectOpenRequestRef = useRef(0);
-  const [projectsReady, setProjectsReady] = useState<{
-    userId: string;
-    requestId: number;
-  } | null>(null);
-  const [isRestoringProject, setIsRestoringProject] = useState(false);
-  const [failedProjectId, setFailedProjectId] = useState<string | null>(null);
   const [draftRecovery, setDraftRecovery] = useState<{
     ownerId: string;
     projectId: string;
@@ -257,7 +196,6 @@ export default function App() {
   const [conflictReadConfirmOpen, setConflictReadConfirmOpen] = useState(false);
   const [conflictResolving, setConflictResolving] = useState(false);
   const switchConfirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
-  const restoreFailed = Boolean(projectId && failedProjectId === projectId);
 
   const currentUserId = currentUser?.id;
   const authReady = useUserStore((state) => state.authReady);
@@ -267,15 +205,21 @@ export default function App() {
   const catalogError = useCatalogStore((state) => state.error);
   const loadPrices = usePriceStore((state) => state.load);
   const {
-    currentProject,
+    currentProject: storedProject,
     projects,
+    projectsStatus,
     createProject,
     saveCurrentConfig,
     setCurrentProject,
     setCurrentProjectVersion,
-    updateProject,
     loadProjects,
   } = useProjectStore();
+  const currentProject = !restricted && storedProject?.userId === currentUserId ? storedProject : null;
+  const route = restricted ? appRoutes['auto-quote']
+    : currentUserId && requestedRoute.section === 'designer' && !projectId && !currentProject ? defaultRoute
+    : requestedRoute;
+  const isEditingCurrentProject = route.section === 'designer'
+    && Boolean(currentProject && (!projectId || currentProject.id === projectId));
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
   const catalogSnapshot = useCatalogStore((state) => state.snapshot);
   const refreshCatalogReferences = useHarnessStore((state) => state.refreshCatalogReferences);
@@ -415,11 +359,9 @@ export default function App() {
 
     const saveUserId = useUserStore.getState().currentUser?.id ?? null;
     const saveSession = workspaceSessionRef.current;
-    const saveOpenRequest = projectOpenRequestRef.current;
     const saveProjectId = currentProject.id;
     const isSaveContextCurrent = () => (
       workspaceSessionRef.current === saveSession
-      && projectOpenRequestRef.current === saveOpenRequest
       && (useUserStore.getState().currentUser?.id ?? null) === saveUserId
       && (useProjectStore.getState().currentProject?.id ?? null) === saveProjectId
     );
@@ -708,7 +650,7 @@ export default function App() {
     return true;
   }, [currentProject, doSave, drawingSaveState, requestSwitchConfirmation, retryProjectSave, saveActiveDrawing, saveBlocked, saveConflict, saveState.status]);
 
-  const resetWorkspaceForUser = useCallback((destinationPath = appRoutes.home.path) => {
+  const resetWorkspaceForUser = useCallback((destinationPath = defaultRoute.path, destinationProjectId: string | null = null) => {
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
@@ -717,8 +659,6 @@ export default function App() {
     workspaceSessionRef.current += 1;
     projectOpenRequestRef.current += 1;
     restoreProjectAttemptRef.current = null;
-    setFailedProjectId(null);
-    setIsRestoringProject(false);
     setWizardOpen(false);
     setLoadError(null);
     setRecoveryRaw(null);
@@ -738,7 +678,7 @@ export default function App() {
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
     useHistoryStore.getState().clear();
-    navigate(destinationPath);
+    navigate(destinationPath, { projectId: destinationProjectId, replace: true });
   }, [navigate, replaceDocument]);
 
   useEffect(() => {
@@ -752,9 +692,10 @@ export default function App() {
     const keepRequestedRoute = previousUserId === null
       && shouldKeepRouteAfterLogin(route);
     resetWorkspaceForUser(
-      keepRequestedRoute ? route.path : appRoutes.home.path,
+      keepRequestedRoute ? route.path : defaultRoute.path,
+      keepRequestedRoute ? projectId : null,
     );
-  }, [authReady, currentUser?.id, resetWorkspaceForUser, route]);
+  }, [authReady, currentUser?.id, projectId, resetWorkspaceForUser, route]);
 
   // 必须在账号重置（resetWorkspaceForUser 会清空目录/价格数据并使旧请求失效）之后执行，
   // 否则登录后刚发起的目录请求会被同一次提交中的重置丢弃。
@@ -770,26 +711,8 @@ export default function App() {
 
   // 必须在账号重置（resetWorkspaceForUser 使旧会话代次失效）之后执行，否则新账号的列表请求会捕获旧代次并被丢弃。
   useEffect(() => {
-    const requestId = ++projectsLoadRequestRef.current;
-    if (!authReady || !currentUserId || restricted) {
-      return;
-    }
-
-    let cancelled = false;
-    void loadProjects(currentUserId)
-      .then(() => {
-        if (!cancelled && requestId === projectsLoadRequestRef.current) {
-          setProjectsReady({ userId: currentUserId, requestId });
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error('项目列表加载失败:', error);
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    if (!authReady || !currentUserId || restricted) return;
+    void loadProjects(currentUserId);
   }, [authReady, currentUserId, loadProjects, restricted]);
 
   useEffect(() => {
@@ -855,7 +778,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (route.section !== 'designer') return;
+      if (!isEditingCurrentProject) return;
 
       const isCtrlOrCmd = event.ctrlKey || event.metaKey;
       if (!isCtrlOrCmd || isEditableTarget(event.target)) return;
@@ -874,7 +797,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleRedo, handleUndo, route.section]);
+  }, [handleRedo, handleUndo, isEditingCurrentProject]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -900,21 +823,21 @@ export default function App() {
       setAuthOpen(true);
       return;
     }
-    if (!(await saveBeforeLeavingWorkspace())) {
-      return;
-    }
+    const requestId = ++projectOpenRequestRef.current;
+    const navigation = getNavigationVersion();
+    if (!(await saveBeforeLeavingWorkspace())) return;
+    if (requestId !== projectOpenRequestRef.current || navigation !== getNavigationVersion()
+      || useUserStore.getState().currentUser?.id !== currentUser.id
+      || useUserStore.getState().currentUser?.role !== currentUser.role) return;
 
-    setLoadError(null);
-    setRecoveryRaw(null);
-    setSaveBlocked(false);
     setWizardOpen(true);
   };
 
   const handleNavigate = useCallback((path: string) => {
     const nextRoute = getRouteByPath(path);
     const activeProjectId = currentProject?.id;
-    if (nextRoute.section === 'designer' && activeProjectId) {
-      navigate(path, { projectId: activeProjectId });
+    if (nextRoute.section === 'designer') {
+      navigate(activeProjectId ? nextRoute.path : defaultRoute.path, { projectId: activeProjectId });
       return;
     }
 
@@ -924,170 +847,147 @@ export default function App() {
   const handleOpenProject = useCallback(async (
     project: Project,
     destinationPath = appRoutes['designer-design'].path,
-    { keepPickerOnError = false } = {},
+    fromDeepLink = false,
   ) => {
-    const requestUserId = useUserStore.getState().currentUser?.id ?? null;
-    if (!requestUserId || project.userId !== requestUserId) {
-      return;
-    }
+    const owner = useUserStore.getState().currentUser;
+    if (!owner || project.userId !== owner.id || (owner.role !== 'engineer' && owner.role !== 'admin')) return;
 
     const requestSession = workspaceSessionRef.current;
     const requestId = ++projectOpenRequestRef.current;
-    const isRequestCurrent = () => (
-      workspaceSessionRef.current === requestSession
-      && projectOpenRequestRef.current === requestId
-      && (useUserStore.getState().currentUser?.id ?? null) === requestUserId
-    );
+    const navigation = getNavigationVersion();
+    const isRequestCurrent = () => {
+      const user = useUserStore.getState().currentUser;
+      return workspaceSessionRef.current === requestSession
+        && projectOpenRequestRef.current === requestId
+        && getNavigationVersion() === navigation
+        && user?.id === owner.id
+        && (user.role === 'engineer' || user.role === 'admin')
+        && !user.mustChangePassword;
+    };
+    const returnToList = () => {
+      if (fromDeepLink) navigate(defaultRoute.path, { replace: true });
+    };
 
     const saved = await saveBeforeLeavingWorkspace();
     if (!isRequestCurrent()) return;
-    if (!saved) return;
-
-    setIsRestoringProject(true);
-    setFailedProjectId(null);
-    setDraftRecovery(null);
-    setCorruptDrafts([]);
-    setDraftBackupError(null);
-    setSaveConflict(null);
-    setConflictReadConfirmOpen(false);
-    setCurrentProject(project);
-    useHarnessStore.getState().setCanvasViewport(null);
-    useHarnessStore.getState().setTwoDViewport(null);
-    const history = useHistoryStore.getState();
-    history.clear();
-    history.pause();
+    if (!saved) {
+      returnToList();
+      return;
+    }
+    if (useProjectStore.getState().currentProject?.id === project.id) {
+      navigate(destinationPath, { projectId: project.id });
+      return;
+    }
 
     try {
       const result = await projectRepository.load(project.id);
-
       if (!isRequestCurrent()) return;
 
-      if (result.status === 'ok') {
-        setCurrentProjectVersion(result.version);
-        replaceDocument(result.config, { markSaved: true });
-        if (result.config.name !== project.name) {
-          await updateProject(project.id, { name: result.config.name });
-          if (!isRequestCurrent()) return;
-        }
-        const drafts = listWorkspaceDrafts(requestUserId, 'project', project.id);
-        if (drafts.length > 0) {
-          // 每个候选都携带云端基线与唯一 draftId，由用户逐份决定恢复或丢弃；
-          // 不自动丢弃，避免误删其他窗口尚未确认的草稿。
-          setDraftRecovery({ ownerId: requestUserId, projectId: project.id, draft: drafts[0] });
-        }
-        setCorruptDrafts(
-          listCorruptWorkspaceDrafts(requestUserId, 'project')
-            .filter((entry) => entry.documentId === project.id),
-        );
-        setLoadError(null);
-        setRecoveryRaw(null);
-        setSaveBlocked(false);
-      } else {
-        setCurrentProjectVersion(null);
-        replaceDocument(createDefaultConfig(), { markSaved: true });
-        if (result.status === 'invalid') {
-          setLoadError(
-            `项目“${project.name}”的结构校验失败，已保留原始恢复副本（${result.issues.slice(0, 2).join('；')}）。`,
-          );
-          setRecoveryRaw(result.raw);
-        } else {
-          setLoadError(`无法加载项目“${project.name}”的配置数据，已打开空白工作区。`);
-          setRecoveryRaw(null);
-        }
-        setSaveBlocked(true);
+      if (result.status === 'missing') {
+        notify({ tone: 'danger', message: '项目不存在或当前账号无权访问。' });
+        returnToList();
+        return;
       }
+
+      if (useHarnessStore.getState().saveState.status !== 'saved') {
+        const latestSaved = await saveBeforeLeavingWorkspace();
+        if (!isRequestCurrent()) return;
+        if (!latestSaved) {
+          returnToList();
+          return;
+        }
+      }
+
+      const drafts = result.status === 'ok' ? listWorkspaceDrafts(owner.id, 'project', project.id) : [];
+      const damagedDrafts = result.status === 'ok'
+        ? listCorruptWorkspaceDrafts(owner.id, 'project').filter((entry) => entry.documentId === project.id)
+        : [];
+      setDraftRecovery(drafts[0] ? { ownerId: owner.id, projectId: project.id, draft: drafts[0] } : null);
+      setCorruptDrafts(damagedDrafts);
+      setDraftBackupError(null);
+      setSaveConflict(null);
+      setConflictReadConfirmOpen(false);
+      setCurrentProject(result.status === 'ok' ? { ...project, name: result.config.name } : project);
+      setCurrentProjectVersion(result.status === 'ok' ? result.version : null);
+      useHarnessStore.getState().setCanvasViewport(null);
+      useHarnessStore.getState().setTwoDViewport(null);
+      const history = useHistoryStore.getState();
+      history.clear();
+      history.pause();
+      try {
+        replaceDocument(result.status === 'ok' ? result.config : createDefaultConfig(), { markSaved: true });
+      } finally {
+        history.resume();
+      }
+      setLoadError(result.status === 'invalid'
+        ? `项目“${project.name}”的结构校验失败，已保留原始恢复副本（${result.issues.slice(0, 2).join('；')}）。`
+        : null);
+      setRecoveryRaw(result.status === 'invalid' ? result.raw : null);
+      setSaveBlocked(result.status === 'invalid');
+      navigate(destinationPath, { projectId: project.id });
     } catch (error) {
       if (!isRequestCurrent()) return;
       console.error('项目打开失败:', error);
-      setFailedProjectId(project.id);
-      setCurrentProject(null);
-      setCurrentProjectVersion(null);
-      replaceDocument(createDefaultConfig(), { markSaved: true });
-      setLoadError(getUserErrorMessage(error, '项目加载失败，请重试。'));
-      setRecoveryRaw(null);
-      setSaveBlocked(false);
-      useHistoryStore.getState().clear();
-      if (!keepPickerOnError) navigate(appRoutes.home.path);
-      return;
-    } finally {
-      if (isRequestCurrent()) {
-        history.resume();
-        setIsRestoringProject(false);
-      }
+      notify({ tone: 'danger', title: '打开项目失败', message: getUserErrorMessage(error, '项目加载失败，请重试。') });
+      returnToList();
     }
-
-    if (!isRequestCurrent()) return;
-    navigate(destinationPath, { projectId: project.id });
-  }, [navigate, replaceDocument, saveBeforeLeavingWorkspace, setCurrentProject, setCurrentProjectVersion, updateProject]);
+  }, [getNavigationVersion, navigate, replaceDocument, saveBeforeLeavingWorkspace, setCurrentProject, setCurrentProjectVersion]);
 
   useEffect(() => {
-    if (!projectId || route.section !== 'designer' || !authReady || !currentUserId) {
-      if (!projectId || !currentUserId) {
-        restoreProjectAttemptRef.current = null;
-      }
+    if (!authReady || !currentUserId || restricted || requestedRoute.section !== 'designer' || projectId) return;
+    navigate(currentProject ? requestedRoute.path : defaultRoute.path, {
+      projectId: currentProject?.id,
+      replace: true,
+    });
+  }, [authReady, currentProject, currentUserId, navigate, projectId, requestedRoute, restricted]);
+
+  useEffect(() => {
+    if (restricted) {
+      restoreProjectAttemptRef.current = null;
       return;
     }
+    if (!projectId || route.section !== 'designer' || !authReady || !currentUserId || currentProject?.id === projectId) return;
+    if (projectsStatus !== 'success' && projectsStatus !== 'error') return;
 
-    if (currentProject?.id === projectId && config.id === projectId) {
-      return;
-    }
+    const attemptKey = `${navigationVersion}:${currentUserId}:${projectId}`;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled || navigationVersion !== getNavigationVersion() || restoreProjectAttemptRef.current === attemptKey
+        || useUserStore.getState().currentUser?.id !== currentUserId
+        || useProjectStore.getState().projectsStatus !== projectsStatus) return;
+      restoreProjectAttemptRef.current = attemptKey;
 
-    const isRemoteReady = Boolean(
-      projectsReady
-      && projectsReady.userId === currentUserId
-      && projectsReady.requestId === projectsLoadRequestRef.current,
-    );
-
-    const project = projects.find((candidate) => candidate.id === projectId);
-    if (!project) {
-      if (!isRemoteReady) {
+      if (projectsStatus === 'error') {
+        navigate(defaultRoute.path, { replace: true });
         return;
       }
-      setFailedProjectId(projectId);
-      setCurrentProject(null);
-      replaceDocument(createDefaultConfig(), { markSaved: true });
-      navigate(appRoutes.home.path);
-      return;
-    }
 
-    const attemptKey = `${currentUserId}:${projectId}`;
-    if (restoreProjectAttemptRef.current === attemptKey) {
-      return;
-    }
-    restoreProjectAttemptRef.current = attemptKey;
-
-    let cancelled = false;
-    void Promise.resolve()
-      .then(() => {
-        if (cancelled) return;
-        return handleOpenProject(project, route.path);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error('项目恢复失败:', error);
-        setFailedProjectId(projectId);
-        setCurrentProject(null);
-        replaceDocument(createDefaultConfig(), { markSaved: true });
-        navigate(appRoutes.home.path);
-      });
+      const project = projects.find((candidate) => candidate.id === projectId && candidate.userId === currentUserId);
+      if (!project) {
+        notify({ tone: 'danger', message: '项目不存在或当前账号无权访问。' });
+        navigate(defaultRoute.path, { replace: true });
+        return;
+      }
+      return handleOpenProject(project, route.path, true);
+    });
 
     return () => {
       cancelled = true;
     };
   }, [
     authReady,
-    config.id,
     currentProject?.id,
     currentUserId,
+    getNavigationVersion,
     handleOpenProject,
     navigate,
+    navigationVersion,
     projectId,
     projects,
-    projectsReady,
-    replaceDocument,
+    projectsStatus,
+    restricted,
     route.path,
     route.section,
-    setCurrentProject,
   ]);
 
   const handleWizardComplete = () => {
@@ -1140,8 +1040,7 @@ export default function App() {
     setDraftBackupError(null);
 
     restoreProjectAttemptRef.current = null;
-    setFailedProjectId(null);
-    setIsRestoringProject(false);
+    projectOpenRequestRef.current += 1;
     setCurrentProject(null);
     setLoadError(null);
     setRecoveryRaw(null);
@@ -1149,30 +1048,24 @@ export default function App() {
     useHarnessStore.getState().setCanvasViewport(null);
     useHarnessStore.getState().setTwoDViewport(null);
     useHistoryStore.getState().clear();
-    navigate(appRoutes.home.path);
+    navigate(defaultRoute.path);
   };
 
   const handleUpdateProjectName = useCallback((nextName: string) => {
-    const project = useProjectStore.getState().currentProject;
-    if (!project || !useUserStore.getState().currentUser) return;
     const trimmed = nextName.trim();
-    if (!trimmed || trimmed === project.name) return;
-    useHarnessStore.getState().setConfig({ name: trimmed });
+    const harness = useHarnessStore.getState();
+    if (!saveBlocked && trimmed && trimmed !== harness.config.name) harness.setConfig({ name: trimmed });
+  }, [saveBlocked]);
 
-    const attemptRename: () => void = () => {
-      void useProjectStore.getState().updateProject(project.id, { name: trimmed }).catch((error) => {
-        console.error('项目重命名失败:', error);
-        notify({
-          tone: 'danger',
-          title: '项目重命名失败',
-          message: getUserErrorMessage(error, '项目重命名失败，请保持页面打开后重试。'),
-          action: { label: '重试重命名', onClick: attemptRename },
-          dedupeKey: `project-rename-failed:${project.id}`,
-        });
-      });
-    };
-    attemptRename();
-  }, []);
+  const handleRenameActiveProject = async (id: string, name: string) => {
+    if (currentProject?.id !== id) return false;
+    if (saveBlocked) {
+      notify({ tone: 'danger', message: '当前项目无法保存，请先打开项目处理恢复提示。' });
+      return false;
+    }
+    handleUpdateProjectName(name);
+    return saveBeforeLeavingWorkspace();
+  };
 
   const saveStatusLabel =
     saveState.status === 'saved'
@@ -1193,19 +1086,7 @@ export default function App() {
           : 'text-red-700 bg-red-50';
 
   const renderDesignerContent = () => {
-    if (isRestoringProject) return <ProjectRestoringState />;
-    if (!currentProject || (projectId && currentProject.id !== projectId)) {
-      if (projectId && !restoreFailed) {
-        return <ProjectRestoringState />;
-      }
-      return <ProjectRequiredState
-        key={currentUserId}
-        ownerId={currentUserId}
-        openError={loadError}
-        onOpenProject={(project) => void handleOpenProject(project, route.path, { keepPickerOnError: true })}
-        onNavigateHome={() => navigate(appRoutes.home.path)}
-      />;
-    }
+    if (!isEditingCurrentProject || !currentProject) return <ProjectRestoringState />;
 
     const isProductImage = route.id === 'designer-product-image';
 
@@ -1255,12 +1136,16 @@ export default function App() {
       return <MaterialLibraryPage key={`${currentUser?.id}:${currentUser?.role}`} />;
     }
 
-    return (
-      <ProjectList
-        onNewProject={handleNewProject}
-        onOpenProject={(project) => void handleOpenProject(project)}
-      />
-    );
+    if (route.id === 'designer-projects') {
+      return (
+        <ProjectList
+          key={currentUserId}
+          onNewProject={handleNewProject}
+          onOpenProject={(project) => void handleOpenProject(project)}
+          onRenameActiveProject={handleRenameActiveProject}
+        />
+      );
+    }
   };
 
   if (!authReady) {
@@ -1272,7 +1157,8 @@ export default function App() {
       <AdminShell
         route={route}
         currentUser={currentUser}
-        currentProjectName={currentProject?.name}
+        currentProjectId={currentProject?.id}
+        currentProjectName={isEditingCurrentProject ? (saveBlocked ? currentProject?.name : config.name) : undefined}
         saveStatusLabel={saveStatusLabel}
         saveStatusClass={saveStatusClass}
         saveBlocked={saveBlocked}
@@ -1281,6 +1167,7 @@ export default function App() {
         onNavigate={handleNavigate}
         onUndo={handleUndo}
         onRedo={handleRedo}
+        onRetrySave={saveState.status === 'error' && !saveConflict && !saveBlocked ? retryProjectSave : undefined}
         onOpenAuth={() => setAuthOpen(true)}
         onCloseProject={handleCloseProject}
         onUpdateProjectName={handleUpdateProjectName}
@@ -1321,7 +1208,7 @@ export default function App() {
         />
       )}
 
-      {draftRecovery && (
+      {isEditingCurrentProject && draftRecovery && draftRecovery.ownerId === currentUserId && (
         <ActionToast
           role="alertdialog"
           title="发现本地草稿"
@@ -1372,7 +1259,7 @@ export default function App() {
         />
       )}
 
-      {saveConflict && currentProject && saveConflict.projectId === currentProject.id && (
+      {isEditingCurrentProject && saveConflict && saveConflict.projectId === currentProject?.id && (
         <ActionToast
           role="alertdialog"
           tone="danger"
@@ -1398,7 +1285,7 @@ export default function App() {
         />
       )}
 
-      {conflictReadConfirmOpen && currentProject && (
+      {isEditingCurrentProject && conflictReadConfirmOpen && (
         <ActionToast
           role="alertdialog"
           tone="danger"
@@ -1418,7 +1305,7 @@ export default function App() {
         />
       )}
 
-      {corruptDrafts.length > 0 && !draftRecovery && (
+      {isEditingCurrentProject && corruptDrafts.length > 0 && !draftRecovery && (
         <ActionToast
           role="alertdialog"
           tone="danger"
@@ -1466,14 +1353,14 @@ export default function App() {
       )}
 
       <Suspense fallback={null}>
-        {!restricted && bomModalOpen && (
+        {isEditingCurrentProject && bomModalOpen && (
           <BomModal
             isOpen
             onClose={() => setBomModalOpen(false)}
           />
         )}
 
-        {!restricted && quoteModalOpen && (
+        {isEditingCurrentProject && quoteModalOpen && (
           <QuoteModal
             key={`${currentUser?.id}:${currentUser?.role}`}
             isOpen

@@ -11,6 +11,7 @@ describe('AdminShell view toggle buttons', () => {
       <AdminShell
         route={appRoutes['designer-design']}
         currentUser={engineer}
+        currentProjectId="p1"
         currentProjectName="测试线束项目"
         saveBlocked={false}
         canUndo={false}
@@ -45,6 +46,7 @@ describe('AdminShell view toggle buttons', () => {
       <AdminShell
         route={appRoutes['designer-design']}
         currentUser={engineer}
+        currentProjectId="p1"
         currentProjectName="项目A"
         saveBlocked={false}
         canUndo={false}
@@ -68,6 +70,7 @@ describe('AdminShell view toggle buttons', () => {
       <AdminShell
         route={appRoutes['designer-product-image']}
         currentUser={engineer}
+        currentProjectId="p1"
         currentProjectName="项目B"
         saveBlocked={false}
         canUndo={false}
@@ -89,7 +92,7 @@ describe('AdminShell view toggle buttons', () => {
   it('does not render toggle buttons, BOM, quote, or project name when currentProjectName is undefined', () => {
     const html = renderToStaticMarkup(
       <AdminShell
-        route={appRoutes.home}
+        route={appRoutes['designer-projects']}
         currentUser={engineer}
         saveBlocked={false}
         canUndo={false}
@@ -102,7 +105,7 @@ describe('AdminShell view toggle buttons', () => {
         onOpenBom={vi.fn()}
         onOpenQuote={vi.fn()}
       >
-        <div>首页</div>
+        <div>项目管理</div>
       </AdminShell>,
     );
 
@@ -114,7 +117,7 @@ describe('AdminShell view toggle buttons', () => {
 
   it('does not render BOM, quote, view toggle, or project name on non-designer sidebar tabs even if project exists', () => {
     const nonDesignerRoutes = [
-      appRoutes.home,
+      appRoutes['designer-projects'],
       appRoutes['drawing-workbench'],
       appRoutes.materials,
     ];
@@ -124,6 +127,7 @@ describe('AdminShell view toggle buttons', () => {
         <AdminShell
           route={route}
           currentUser={engineer}
+          currentProjectId="p1"
           currentProjectName="test"
           saveBlocked={false}
           canUndo={false}
@@ -154,6 +158,7 @@ describe('AdminShell view toggle buttons', () => {
       <AdminShell
         route={appRoutes['designer-design']}
         currentUser={engineer}
+        currentProjectId="p1"
         currentProjectName="test"
         saveBlocked={false}
         canUndo={false}
@@ -183,6 +188,7 @@ describe('AdminShell view toggle buttons', () => {
       <AdminShell
         route={appRoutes['designer-design']}
         currentUser={engineer}
+        currentProjectId="p1"
         currentProjectName="超长测试线束项目名称用于测试极端排版"
         saveBlocked={false}
         canUndo={true}

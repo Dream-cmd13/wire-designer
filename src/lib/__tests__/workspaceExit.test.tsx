@@ -125,7 +125,7 @@ function installWindow(): WindowMock {
   };
   Object.defineProperty(globalThis, 'window', {
     value: {
-      location: { pathname: '/home', search: '', hash: '' },
+      location: { pathname: '/designer', search: '', hash: '' },
       history: { replaceState: vi.fn(), pushState: vi.fn() },
       addEventListener: mock.addEventListener,
       removeEventListener: mock.removeEventListener,
@@ -202,7 +202,8 @@ describe('workspace exit protection', () => {
     // useAppRoute registers the location effect before App registers its role guard.
     reactState.effects[1]();
     if (role === 'sales') {
-      expect(window.history.pushState).toHaveBeenCalled();
+      expect(window.history.replaceState).toHaveBeenCalledWith(null, '', '/auto-quote');
+      expect(window.history.pushState).not.toHaveBeenCalled();
     } else {
       expect(window.history.pushState).not.toHaveBeenCalled();
       expect(window.history.replaceState).not.toHaveBeenCalled();

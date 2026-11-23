@@ -1,14 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CatalogSnapshot } from '@/types/catalog';
 import type { DocumentVersion } from '@/types/document';
 import type { Project } from '@/types/user';
-
-vi.mock('@/components/layout/AdminShell', () => ({
-  AdminShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
 
 vi.mock('@/components/layout/MainLayout', () => ({
   MainLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -18,12 +14,17 @@ vi.mock('@/components/canvas/HarnessCanvas', () => ({
   HarnessCanvas: () => <div data-testid="canvas" />,
 }));
 
+vi.mock('@/components/drawings/TwoDView', () => ({
+  TwoDView: () => <div data-testid="product-image" />,
+}));
+
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: null,
   isSupabaseConfigured: false,
 }));
 
 import App from '@/App';
+import { NoticeHost } from '@/components/shared/NoticeHost';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { setCatalogSnapshot } from '@/lib/catalogRuntime';
 import { DocumentWriteError } from '@/lib/documentWriteError';
@@ -32,6 +33,7 @@ import { projectRepository } from '@/repositories/projectRepository';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { useHistoryStore } from '@/stores/historyStore';
+import { useNoticeStore } from '@/stores/noticeStore';
 import { usePriceStore } from '@/stores/priceStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
@@ -60,6 +62,12 @@ function makeProject(id: string): Project {
     updatedAt: 1,
   };
 }
+
+function loadedProject(id: string) {
+  return { status: 'ok' as const, config: { ...createFallbackConfig(), id, name: id }, version: { revision: 1, updatedAt: '2026-01-01' } };
+}
+
+const sidebar = () => within(screen.getByRole('navigation'));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -103,52 +111,45 @@ describe('project save lifecycle (real React + real stores)', () => {
 
   afterEach(() => {
     cleanup();
+    useNoticeStore.getState().clear();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it.each(['/designer/design', '/designer/product-image'])('opens a selected project on %s', async (path) => {
+  it.each(['/designer/design', '/designer/product-image'])('normalizes a bare %s to the list and opens the design from a card', async (path) => {
     window.history.replaceState(null, '', path);
     useProjectStore.getState().setCurrentProject(null);
     const load = deferred<Awaited<ReturnType<typeof projectRepository.load>>>();
     const loadProject = vi.spyOn(projectRepository, 'load').mockReturnValue(load.promise);
     render(<App />);
 
-    await screen.findByRole('option', { name: 'p1' });
-    const openButton = screen.getByRole('button', { name: '打开项目' });
-    expect(openButton).toHaveProperty('disabled', true);
-    fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p1' } });
-    fireEvent.click(openButton);
-    await screen.findByRole('heading', { name: '正在加载项目...' });
-    expect(loadProject).toHaveBeenCalledExactlyOnceWith('p1');
-    expect(window.location.pathname).toBe(path);
+    fireEvent.click(await screen.findByRole('button', { name: /^打开$/ }));
+    await waitFor(() => expect(loadProject).toHaveBeenCalledExactlyOnceWith('p1'));
+    expect(window.location.pathname).toBe('/designer');
+    expect(sidebar().queryByRole('button', { name: /^设计图$/ })).toBeNull();
 
-    await act(async () => load.resolve({ status: 'ok', config: { ...createFallbackConfig(), id: 'p1', name: 'p1' }, version: { revision: 1, updatedAt: '2026-01-01' } }));
-    await waitFor(() => expect(window.location.search).toBe('?projectId=p1'));
-    expect(window.location.pathname).toBe(path);
-    expect(screen.queryByRole('heading', { name: '尚未打开项目' })).toBeNull();
+    await act(async () => load.resolve(loadedProject('p1')));
+    expect(window.location.pathname + window.location.search).toBe('/designer/design?projectId=p1');
+    expect(screen.queryByRole('heading', { name: '项目管理' })).toBeNull();
   });
 
-  it('keeps the project picker available if opening a project fails', async () => {
-    window.history.replaceState(null, '', '/designer/design');
+  it('keeps the project cards available if opening a project fails', async () => {
+    window.history.replaceState(null, '', '/designer');
     useProjectStore.getState().setCurrentProject(null);
     vi.spyOn(projectRepository, 'load')
       .mockRejectedValueOnce(new Error('项目连接失败'))
-      .mockResolvedValueOnce({ status: 'ok', config: { ...createFallbackConfig(), id: 'p1', name: 'p1' }, version: { revision: 1, updatedAt: '2026-01-01' } });
-    render(<App />);
+      .mockResolvedValueOnce(loadedProject('p1'));
+    render(<><App /><NoticeHost /></>);
 
-    await screen.findByRole('option', { name: 'p1' });
-    fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p1' } });
-    fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^打开$/ }));
     await screen.findByText('项目加载失败，请重试。');
-    expect(window.location.pathname).toBe('/designer/design');
-    fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p1' } });
-    fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+    expect(window.location.pathname).toBe('/designer');
+    fireEvent.click(screen.getByRole('button', { name: /^打开$/ }));
     await waitFor(() => expect(window.location.search).toBe('?projectId=p1'));
   });
 
-  it('keeps the designer route after login and only offers projects for the current account', async () => {
-    window.history.replaceState(null, '', '/designer/design');
+  it('keeps a product image deep link after login and only lists projects for the current account', async () => {
+    window.history.replaceState(null, '', '/designer/product-image?projectId=p1');
     const user = useUserStore.getState().currentUser;
     useUserStore.setState({ currentUser: null });
     vi.mocked(projectRepository.listProjects).mockResolvedValue([
@@ -156,12 +157,63 @@ describe('project save lifecycle (real React + real stores)', () => {
       { ...makeProject('p2'), updatedAt: 2 },
       { ...makeProject('other'), userId: 'user-b' },
     ]);
+    vi.spyOn(projectRepository, 'load').mockResolvedValue(loadedProject('p1'));
     render(<App />);
-    expect(screen.queryByRole('combobox', { name: '项目' })).toBeNull();
+    expect(screen.getByRole('heading', { name: '需要登录后使用' })).toBeTruthy();
     act(() => useUserStore.setState({ currentUser: user }));
-    await screen.findByRole('option', { name: 'p2' });
-    expect(screen.getAllByRole<HTMLOptionElement>('option').map((option) => option.value)).toEqual(['', 'p2', 'p1']);
-    expect(window.location.pathname).toBe('/designer/design');
+    await screen.findByTestId('product-image');
+    expect(window.location.pathname + window.location.search).toBe('/designer/product-image?projectId=p1');
+    fireEvent.click(sidebar().getByRole('button', { name: /^线束设计器$/ }));
+    await screen.findByRole('heading', { name: 'p2' });
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['p2', 'p1']);
+  });
+
+  it('preserves autosave and undo when returning to the list and disables editor shortcuts there', async () => {
+    const save = vi.spyOn(projectRepository, 'save').mockResolvedValue({ revision: 2, updatedAt: 'save-2' });
+    render(<App />);
+    await flush();
+    act(() => useHarnessStore.getState().setConfig({ name: '在列表继续保存' }));
+    const before = useHistoryStore.getState().past;
+    expect(before).not.toHaveLength(0);
+    fireEvent.click(sidebar().getByRole('button', { name: /^线束设计器$/ }));
+    expect(window.location.pathname + window.location.search).toBe('/designer');
+    expect(sidebar().getByRole('button', { name: /^线束设计器$/ }).getAttribute('aria-current')).toBe('page');
+    expect(sidebar().getByRole('button', { name: /^设计图$/ }).getAttribute('aria-current')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^撤销$/ })).toBeNull();
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(useHistoryStore.getState().past).toBe(before);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    expect(save.mock.calls[0]?.[1].name).toBe('在列表继续保存');
+    fireEvent.click(screen.getByRole('button', { name: '收缩侧边栏' }));
+    fireEvent.click(sidebar().getByRole('button', { name: /^成品图$/ }));
+    await screen.findByTestId('product-image');
+    expect(window.location.search).toBe('?projectId=p1');
+    expect(useHistoryStore.getState().past).toBe(before);
+    fireEvent.click(screen.getByRole('button', { name: '关闭项目' }));
+    await screen.findByRole('heading', { name: '项目管理' });
+    expect(sidebar().queryByRole('button', { name: /^成品图$/ })).toBeNull();
+  });
+
+  it('returns a foreign deep link to the list without loading or naming the project', async () => {
+    window.history.replaceState(null, '', '/designer/product-image?projectId=other');
+    useProjectStore.getState().setCurrentProject(null);
+    vi.mocked(projectRepository.listProjects).mockResolvedValue([{ ...makeProject('other'), userId: 'user-b', name: '私有项目' }]);
+    const load = vi.spyOn(projectRepository, 'load');
+    render(<><App /><NoticeHost /></>);
+    await screen.findByText('项目不存在或当前账号无权访问。');
+    expect(window.location.pathname + window.location.search).toBe('/designer');
+    expect(screen.queryByText('私有项目')).toBeNull();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('shows the list retry on a failed deep-link list request', async () => {
+    useProjectStore.getState().setCurrentProject(null);
+    vi.mocked(projectRepository.listProjects).mockRejectedValueOnce(new Error('network down'));
+    render(<App />);
+    const retry = await screen.findByRole('button', { name: '重新加载' });
+    expect(window.location.pathname + window.location.search).toBe('/designer');
+    fireEvent.click(retry);
+    await screen.findByRole('heading', { name: 'p1' });
   });
 
   it('keeps selection and viewports when the document becomes dirty', async () => {
@@ -255,9 +307,9 @@ describe('project save lifecycle (real React + real stores)', () => {
     render(<App />);
     await flush();
 
-    act(() => {
-      useHarnessStore.getState().setConfig({ name: '会失败' });
-    });
+    const nameField = screen.getByPlaceholderText('未命名项目');
+    fireEvent.change(nameField, { target: { value: '会失败' } });
+    fireEvent.blur(nameField);
     await waitFor(
       () => expect(useHarnessStore.getState().saveState.status).toBe('error'),
       { timeout: 4000 },
@@ -275,6 +327,10 @@ describe('project save lifecycle (real React + real stores)', () => {
 
     expect(useHarnessStore.getState().saveState.status).toBe('error');
     expect(saveSpy).toHaveBeenCalledTimes(1);
+    saveSpy.mockResolvedValueOnce({ revision: 2, updatedAt: 'retried' });
+    fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
+    await waitFor(() => expect(useHarnessStore.getState().saveState.status).toBe('saved'));
+    expect(saveSpy).toHaveBeenCalledTimes(2);
   });
 
   it('keeps an edit made within the same millisecond during a save and persists it afterwards', async () => {

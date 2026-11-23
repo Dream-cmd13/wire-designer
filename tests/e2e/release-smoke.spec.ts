@@ -9,20 +9,21 @@ const password = process.env.E2E_TEST_PASSWORD;
 const hasAccount = Boolean(email && password);
 
 async function signIn(page: Page): Promise<void> {
-  await page.goto('/home');
+  await page.goto('/designer');
   await page.getByRole('button', { name: '登录' }).first().click();
   await page.getByPlaceholder('用户名或 name@example.com').fill(email!);
   await page.locator('input[type="password"]').first().fill(password!);
   await page.getByRole('button', { name: '登录', exact: true }).last().click();
-  await expect(page.getByText('项目').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: '项目管理' })).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe('release smoke (anonymous)', () => {
-  test('home shell loads without uncaught errors', async ({ page }) => {
+  test('project entry loads without uncaught errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto('/');
     await expect(page.getByRole('heading', { name: '需要登录后使用' })).toBeVisible({ timeout: 20_000 });
+    await expect(page).toHaveURL('/designer');
     expect(errors).toEqual([]);
   });
 
@@ -97,10 +98,13 @@ test.describe('release smoke (anonymous)', () => {
     await expect(page.getByRole('heading', { name: '需要登录后使用' })).toBeVisible({ timeout: 20_000 });
   });
 
-  test('unknown routes fall back to the home shell', async ({ page }) => {
-    await page.goto('/not-a-real-route');
-    await expect(page.getByRole('heading', { name: '需要登录后使用' })).toBeVisible({ timeout: 20_000 });
-  });
+  for (const legacyPath of ['/home?projectId=old', '/not-a-real-route']) {
+    test(`${legacyPath} falls back to the project entry`, async ({ page }) => {
+      await page.goto(legacyPath);
+      await expect(page.getByRole('heading', { name: '需要登录后使用' })).toBeVisible({ timeout: 20_000 });
+      await expect(page).toHaveURL('/designer');
+    });
+  }
 });
 
 test.describe('release smoke (authenticated, requires E2E account)', () => {
@@ -108,15 +112,17 @@ test.describe('release smoke (authenticated, requires E2E account)', () => {
 
   test('login reaches the project list', async ({ page }) => {
     await signIn(page);
-    expect(page.url()).toContain('/home');
+    await expect(page).toHaveURL('/designer');
   });
 
   test('project rename persists through a real save and reload', async ({ page }) => {
     await signIn(page);
-    const projectTitle = page.locator('h3.cursor-pointer').first();
-    if (await projectTitle.count() === 0) test.skip(true, '账号下没有可打开的项目');
-    const projectName = await projectTitle.innerText();
-    await projectTitle.click();
+    const projectId = process.env.E2E_TEST_PROJECT_ID;
+    test.skip(!projectId, '未指定获准修改的 E2E_TEST_PROJECT_ID');
+    const card = page.getByTestId(`project-card-${projectId}`);
+    const projectName = await card.getByRole('heading', { level: 3 }).innerText();
+    await card.getByRole('button', { name: '打开', exact: true }).click();
+    await expect(page).toHaveURL(`/designer/design?projectId=${encodeURIComponent(projectId!)}`);
     await expect(page.locator('canvas').first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('已保存')).toBeVisible({ timeout: 20_000 });
 

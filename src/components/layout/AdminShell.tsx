@@ -7,7 +7,6 @@ import {
   Database,
   DraftingCompass,
   FileImage,
-  Home,
   LayoutDashboard,
   LogOut,
   PanelLeftClose,
@@ -30,9 +29,14 @@ export interface SidebarItem {
 
 const sidebarItems: SidebarItem[] = [
   {
-    label: '首页',
-    path: appRoutes.home.path,
-    icon: Home,
+    label: '线束设计器',
+    path: appRoutes['designer-projects'].path,
+    icon: Cable,
+    access: 'projects',
+    children: [
+      { label: '设计图', path: appRoutes['designer-design'].path, icon: PenTool },
+      { label: '成品图', path: appRoutes['designer-product-image'].path, icon: FileImage },
+    ],
   },
   {
     label: '自动报价',
@@ -45,16 +49,6 @@ const sidebarItems: SidebarItem[] = [
     path: appRoutes.materials.path,
     icon: Database,
     access: 'materials',
-  },
-  {
-    label: '线束设计器',
-    path: appRoutes['designer-design'].path,
-    icon: Cable,
-    access: 'projects',
-    children: [
-      { label: '设计图', path: appRoutes['designer-design'].path, icon: PenTool },
-      { label: '成品图', path: appRoutes['designer-product-image'].path, icon: FileImage },
-    ],
   },
   {
     label: '制作图纸',
@@ -72,6 +66,7 @@ const sidebarItems: SidebarItem[] = [
 interface AdminShellProps {
   route: AppRoute;
   currentUser: AppUser | null;
+  currentProjectId?: string;
   currentProjectName?: string;
   saveStatusLabel?: string;
   saveStatusClass?: string;
@@ -84,6 +79,7 @@ interface AdminShellProps {
   onNavigate: (path: string) => void;
   onUndo: () => void;
   onRedo: () => void;
+  onRetrySave?: () => void;
   onOpenAuth: () => void;
   onCloseProject: () => void;
   onUpdateProjectName?: (name: string) => void;
@@ -191,6 +187,7 @@ function pathMatches(route: AppRoute, item: SidebarItem) {
 export function AdminShell({
   route,
   currentUser,
+  currentProjectId,
   currentProjectName,
   saveStatusLabel,
   saveStatusClass,
@@ -203,6 +200,7 @@ export function AdminShell({
   onNavigate,
   onUndo,
   onRedo,
+  onRetrySave,
   onOpenAuth,
   onCloseProject,
   onUpdateProjectName,
@@ -217,7 +215,7 @@ export function AdminShell({
     if (item.access === 'materials') return accessMaterials;
     return true;
   });
-  const showDesignerActions = (currentUser?.role === 'engineer' || currentUser?.role === 'admin') && route.section === 'designer' && Boolean(currentProjectName);
+  const showDesignerActions = (currentUser?.role === 'engineer' || currentUser?.role === 'admin') && route.section === 'designer' && Boolean(currentProjectId && currentProjectName);
   const contextLabel = route.id === 'drawing-workbench'
     ? '独立制图 · 新建后导出'
     : route.id === 'model-viewer'
@@ -228,7 +226,7 @@ export function AdminShell({
         ? '独立选配与实时测算'
         : route.section === 'designer'
           ? (currentProjectName || '选择项目后可进入完整设计流程')
-          : route.section === 'home'
+          : route.section === 'projects'
             ? '选择项目后可进入完整设计流程'
             : '标准元器件与物料规格';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -280,6 +278,7 @@ export function AdminShell({
                       active ? 'bg-blue-500 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     } ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-2'}`}
                     aria-current={active ? 'page' : undefined}
+                    aria-label={item.label}
                     title={item.label}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
@@ -288,7 +287,7 @@ export function AdminShell({
                     </span>
                   </button>
 
-                  {item.children && (
+                  {item.children && currentProjectId && (
                     <div
                       className={`mt-1 space-y-1 ${
                         sidebarCollapsed ? '' : 'sm:ml-4 sm:border-l sm:border-slate-800 sm:pl-2'
@@ -308,6 +307,7 @@ export function AdminShell({
                                 : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                             } ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-2'}`}
                             aria-current={childActive ? 'page' : undefined}
+                            aria-label={child.label}
                             title={child.label}
                           >
                             <ChildIcon className="h-3.5 w-3.5 shrink-0" />
@@ -365,6 +365,11 @@ export function AdminShell({
                   <span className={`hidden rounded px-2 py-0.5 text-xs sm:inline-flex ${saveStatusClass}`}>
                     {saveStatusLabel}
                   </span>
+                )}
+                {onRetrySave && (
+                  <button type="button" onClick={onRetrySave} className="cursor-pointer rounded px-2 py-1 text-xs text-red-700 hover:bg-red-50">
+                    重试保存
+                  </button>
                 )}
                 {saveBlocked && (
                   <span className="hidden rounded bg-red-50 px-2 py-0.5 text-xs text-red-600 sm:inline-flex">

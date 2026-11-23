@@ -7,7 +7,7 @@ import type { User } from '@/types/user';
 function renderShell(currentUser: User | null) {
   return renderToStaticMarkup(
     <AdminShell
-      route={appRoutes.home}
+      route={appRoutes['designer-projects']}
       currentUser={currentUser}
       saveBlocked={false}
       canUndo={false}
@@ -32,19 +32,23 @@ describe('AdminShell access menu', () => {
     expect(html).not.toContain('自动报价');
     expect(html).toContain('制作图纸');
     expect(html).toContain('3D 模型');
-    expect(html).toContain('首页');
+    expect(html).not.toContain('aria-label="线束设计器"');
+    expect(html).not.toContain('首页');
   });
 
-  it('shows the full menu for engineers', () => {
+  it.each(['engineer', 'admin'] as const)('shows the project list first for %s, with no editor items before opening a project', (role) => {
     const html = renderShell({
       id: 'u-1',
       name: '测试用户',
       email: 'test@example.com',
       createdAt: 1,
-      role: 'engineer',
+      role,
     });
 
-    expect(html).toContain('设计图');
+    expect(html).toMatch(/<nav[^>]*>.*?<button[^>]*aria-current="page"[^>]*aria-label="线束设计器"/);
+    expect(html).not.toContain('title="设计图"');
+    expect(html).not.toContain('title="成品图"');
+    expect(html).not.toContain('首页');
     expect(html).toContain('物料库');
     expect(html).toContain('自动报价');
     expect(html).not.toContain('自动报价2');
@@ -57,9 +61,10 @@ describe('AdminShell access menu', () => {
     for (const role of ['sales', undefined] as const) {
       const html = renderShell({ id: 'sales', name: '业务员', email: 'sales@test', createdAt: 1, role });
       expect(html).toContain('title="自动报价"');
-      for (const title of ['首页','制作图纸','DWG 图纸','3D 模型','物料库']) {
+      for (const title of ['首页','制作图纸','DWG 图纸','3D 模型','物料库','设计图','成品图']) {
         expect(html).not.toContain(`title="${title}"`);
       }
+      expect(html).not.toContain('aria-label="线束设计器"');
     }
   });
 });

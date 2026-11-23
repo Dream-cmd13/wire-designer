@@ -224,12 +224,19 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   saveCurrentConfig: async (config) => {
     const { currentProject, currentProjectVersion } = get();
     if (!currentProject || currentProject.id !== config.id) return;
+    const generation = projectSessionGeneration;
     const version = await projectRepository.save(currentProject.id, config, currentProjectVersion);
-    if (
-      useProjectStore.getState().currentProject?.id === currentProject.id
-    ) {
+    const state = get();
+    if (!isCurrentSession(currentProject.userId, generation) || state.currentProject?.id !== currentProject.id) return;
+    if (state.currentProject.name === config.name) {
       set({ currentProjectVersion: version });
+      return;
     }
+
+    const updatedProject = { ...state.currentProject, name: config.name, updatedAt: config.updatedAt };
+    const projects = state.projects.map((project) => project.id === updatedProject.id ? updatedProject : project);
+    setCachedProjects(updatedProject.userId, projects.filter((project) => project.userId === updatedProject.userId));
+    set({ projects, currentProject: updatedProject, currentProjectVersion: version });
   },
 
   loadCurrentConfig: async () => {

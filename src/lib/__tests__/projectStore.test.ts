@@ -334,6 +334,7 @@ describe('project store', () => {
   });
 
   it('passes the tracked version to the save RPC and updates the baseline', async () => {
+    setCurrentUser('user-1');
     const repository = await import('@/repositories/projectRepository');
     const save = vi.spyOn(repository.projectRepository, 'save')
       .mockResolvedValue({ revision: 7, updatedAt: '2026-02-02T00:00:00.000Z' });

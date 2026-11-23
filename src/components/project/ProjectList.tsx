@@ -23,6 +23,7 @@ import type { Project } from '@/types/user';
 interface ProjectListProps {
   onNewProject: () => void;
   onOpenProject: (project: Project) => void;
+  onRenameActiveProject: (projectId: string, name: string) => Promise<boolean>;
 }
 
 function getTimestamp() {
@@ -53,7 +54,7 @@ function ProjectCardSkeleton() {
   );
 }
 
-export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
+export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject }: ProjectListProps) {
   const { currentUser, authReady } = useUserStore();
   const {
     projects,
@@ -125,6 +126,11 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
     const newName = editName.trim();
 
     try {
+      if (useProjectStore.getState().currentProject?.id === projectId) {
+        if (await onRenameActiveProject(projectId, newName)) setEditingId(null);
+        return;
+      }
+
       // Update project metadata
       await updateProject(projectId, { name: newName });
 
@@ -304,8 +310,10 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {userProjects.map((project) => (
-              <div
+              <article
                 key={project.id}
+                aria-label={project.name}
+                data-testid={`project-card-${project.id}`}
                 className="group rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-md"
               >
                 <div className="mb-3 flex items-start justify-between">
@@ -380,7 +388,7 @@ export function ProjectList({ onNewProject, onOpenProject }: ProjectListProps) {
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}

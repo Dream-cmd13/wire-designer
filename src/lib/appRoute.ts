@@ -1,5 +1,5 @@
 export type AppRouteId =
-  | 'home'
+  | 'designer-projects'
   | 'auto-quote'
   | 'designer-design'
   | 'designer-product-image'
@@ -12,15 +12,15 @@ export interface AppRoute {
   id: AppRouteId;
   path: string;
   title: string;
-  section: 'home' | 'auto-quote' | 'designer' | 'drawing' | 'materials';
+  section: 'projects' | 'auto-quote' | 'designer' | 'drawing' | 'materials';
 }
 
 export const appRoutes: Record<AppRouteId, AppRoute> = {
-  home: {
-    id: 'home',
-    path: '/home',
-    title: '首页',
-    section: 'home',
+  'designer-projects': {
+    id: 'designer-projects',
+    path: '/designer',
+    title: '线束设计器',
+    section: 'projects',
   },
   'auto-quote': {
     id: 'auto-quote',
@@ -61,7 +61,7 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
   },
 };
 
-export const defaultRoute = appRoutes.home;
+export const defaultRoute = appRoutes['designer-projects'];
 
 /**
  * 需要登录后才能访问的路由；`drawing-workbench` 为独立工具，允许匿名使用。
@@ -72,8 +72,7 @@ export function requiresAuth(route: AppRoute): boolean {
 }
 
 /**
- * 匿名用户登录成功后是否保留当前路由（而不是被送回首页）。
- * 设计器可以恢复指定项目，也可以在当前页面选择项目。
+ * 匿名用户登录成功后是否保留当前路由，以恢复项目或独立工具的直达链接。
  */
 export function shouldKeepRouteAfterLogin(route: AppRoute): boolean {
   return route.section === 'designer'
@@ -95,9 +94,7 @@ function toUrl(path: string): URL {
 const routeByPath = new Map(
   Object.values(appRoutes).flatMap((route) => {
     let aliases: string[];
-    if (route.id === 'home') {
-      aliases = ['/', route.path];
-    } else if (route.id === 'materials') {
+    if (route.id === 'materials') {
       aliases = [route.path, '/library/connectors', '/library/harnesses', '/library'];
     } else {
       aliases = [route.path];
@@ -135,15 +132,14 @@ export function buildDwgViewerRoutePath(path: string, file: string | null = null
 }
 
 /**
- * 计算路由的规范 URL：DWG 查看页保留 `?file=` 直达参数（与设计器保留 projectId 同理），
- * 其余路由只保留 projectId。
+ * 计算路由的规范 URL，只保留当前路由支持的直达参数。
  */
 export function buildRoutePath(route: AppRoute, projectId: string | null, search: string): string {
   if (route.id === 'model-viewer') return buildModelViewerRoutePath(route.path, getModelIdFromSearch(search));
   if (route.id === 'dwg-viewer') {
     return buildDwgViewerRoutePath(route.path, getDwgFileFromSearch(search));
   }
-  return buildProjectRoutePath(route.path, projectId);
+  return buildProjectRoutePath(route.path, route.section === 'designer' ? projectId : null);
 }
 
 export function getModelIdFromSearch(search: string): string | null {

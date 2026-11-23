@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 
-// 交互性能测量：首页冷加载与制作图纸首次进入各采样 3 次，记录中位数。
+// 交互性能测量：项目入口冷加载与制作图纸首次进入各采样 3 次，记录中位数。
 // 结果写入 output/playwright/performance.json（output/ 已在 .gitignore）。
 interface Sample {
   scenario: string;
@@ -33,17 +33,17 @@ async function measure(page: import('@playwright/test').Page, scenario: string, 
   samples.push({ scenario, run, ...metrics });
 }
 
-test('home cold load median over three runs', async ({ browser }) => {
+test('designer entry cold load median over three runs', async ({ browser }) => {
   for (let run = 1; run <= 3; run += 1) {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto('/home');
+    await page.goto('/designer');
     await expect(page.getByRole('heading', { name: '需要登录后使用' })).toBeVisible({ timeout: 20_000 });
     await page.waitForLoadState('networkidle');
-    await measure(page, 'home-cold-load', run);
+    await measure(page, 'designer-entry-cold-load', run);
     await context.close();
   }
-  const loads = samples.filter((s) => s.scenario === 'home-cold-load').map((s) => s.loadEventMs);
+  const loads = samples.filter((s) => s.scenario === 'designer-entry-cold-load').map((s) => s.loadEventMs);
   expect(median(loads)).toBeLessThan(30_000);
 });
 

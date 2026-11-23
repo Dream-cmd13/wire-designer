@@ -32,12 +32,10 @@ describe('project list request failure feedback', () => {
     expect(renameSource).not.toMatch(/instanceof Error \? .*\.message/);
   });
 
-  it('reports header rename request failures with a retry action', () => {
-    const headerRenameSource = sliceBetween(appSource, 'const handleUpdateProjectName', 'const saveStatusLabel');
+  it('saves header renames through the versioned document path', () => {
+    const headerRenameSource = sliceBetween(appSource, 'const handleUpdateProjectName', 'const handleRenameActiveProject');
 
-    expect(headerRenameSource).toContain('.catch((error)');
-    expect(headerRenameSource).toContain('重试重命名');
-    expect(headerRenameSource).toContain("getUserErrorMessage(error, '项目重命名失败");
-    expect(headerRenameSource).not.toMatch(/void updateProject\(/);
+    expect(headerRenameSource).toContain('harness.setConfig({ name: trimmed })');
+    expect(headerRenameSource).not.toContain('updateProject(');
   });
 });

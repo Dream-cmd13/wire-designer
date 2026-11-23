@@ -75,12 +75,12 @@ describe('Project restoration UI state', () => {
       currentUser: { id: 'user-a', name: 'user-a', email: 'user-a@test', createdAt: 1, role: 'engineer' },
       authReady: true,
     });
-    setMockLocation('/home');
+    setMockLocation('/designer');
   });
 
   it('renders only auto quote when sales directly opens an internal route', () => {
     useUserStore.setState({ currentUser: { id: 'sales', name: '业务员', email: 'sales@test', createdAt: 1, role: 'sales' } });
-    for (const path of ['/home', '/designer/design', '/materials', '/drawing-workbench', '/dwg-viewer']) {
+    for (const path of ['/designer', '/designer/design', '/materials', '/drawing-workbench', '/dwg-viewer']) {
       setMockLocation(path, '?projectId=other-project');
       const html = renderToStaticMarkup(<App />);
       expect(html).toContain('自动报价');
@@ -91,14 +91,13 @@ describe('Project restoration UI state', () => {
     }
   });
 
-  it('shows "尚未打开项目" when visiting designer route without projectId and no active project', () => {
-    setMockLocation('/designer/design');
+  it.each(['/designer/design', '/designer/product-image'])('shows the project list on bare editor route %s', (path) => {
+    setMockLocation(path);
 
     const html = renderToStaticMarkup(<App />);
 
-    expect(html).toContain('尚未打开项目');
-    expect(html).toContain('打开项目');
-    expect(html).not.toContain('返回首页');
+    expect(html).toContain('data-testid="project-list"');
+    expect(html).not.toContain('尚未打开项目');
     expect(html).not.toContain('正在加载项目...');
   });
 
