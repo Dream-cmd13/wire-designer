@@ -57,6 +57,7 @@ const resourceDefaultPoints: Record<DrawingResourceKind, { x: number; y: number 
 const zoomButtonClass = 'inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md border border-transparent px-1.5 font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-40';
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T; }
+function stampDrawingEdit(document: DrawingDocument): DrawingDocument { return { ...document, updatedAt: Date.now() }; }
 function overlaps(left: DrawingObject, right: DrawingObject) { return left.x < right.x + right.width && left.x + left.width > right.x && left.y < right.y + right.height && left.y + left.height > right.y; }
 function topLayer(drawing: DrawingDocument) { return Math.max(...drawing.objects.map((object) => object.zIndex), 0) + 1; }
 function isLineObject(object: DrawingObject): object is DrawingLineObject { return object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand'; }
@@ -90,8 +91,12 @@ function createPlacedNumberTube(drawing: DrawingDocument): DrawingObject {
 }
 
 export function DrawingWorkbenchPage() {
-  const currentUser = useUserStore((state) => state.currentUser);
-  const drawingOwnerId = currentUser?.id ?? null;
+  const drawingOwnerId = useUserStore((state) => state.currentUser?.id ?? null);
+  return <DrawingWorkbenchSession key={drawingOwnerId === null ? 'anonymous' : `account:${drawingOwnerId}`} drawingOwnerId={drawingOwnerId} />;
+}
+
+function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | null }) {
+  const storeOwnerId = useDrawingStore((state) => state.ownerId);
   const documents = useDrawingStore((state) => state.documents);
   const activeDocumentId = useDrawingStore((state) => state.activeDocumentId);
   const saveState = useDrawingStore((state) => state.saveState);
@@ -99,9 +104,9 @@ export function DrawingWorkbenchPage() {
   const hydrationError = useDrawingStore((state) => state.hydrationError);
   const replaceWithNewDocument = useDrawingStore((state) => state.replaceWithNewDocument);
   const updateDocument = useDrawingStore((state) => state.updateDocument);
-  const updateObject = useDrawingStore((state) => state.updateObject);
   const saveActiveDocument = useDrawingStore((state) => state.saveActiveDocument);
-  const drawing = activeDocumentId ? documents[activeDocumentId] : undefined;
+  const drawing = storeOwnerId === drawingOwnerId && activeDocumentId && documents[activeDocumentId]?.id === activeDocumentId
+    ? documents[activeDocumentId] : undefined;
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
   const [toolMode, setToolMode] = useState<DrawingToolMode>('select');
   const [drawingAction, setDrawingAction] = useState<{ id: number; type: 'finish' | 'cancel' }>({ id: 0, type: 'cancel' });
@@ -122,12 +127,12 @@ export function DrawingWorkbenchPage() {
   const [clipboard, setClipboard] = useState<DrawingObject[]>([]);
   const [lineEditorObjectId, setLineEditorObjectId] = useState<string | null>(null);
   const [materialTableObjectId, setMaterialTableObjectId] = useState<string | null>(null);
-  const [drawingStoreHydrated, setDrawingStoreHydrated] = useState(false);
   const [hydrationAttempt, setHydrationAttempt] = useState(0);
   const [corruptDrafts, setCorruptDrafts] = useState<CorruptWorkspaceDraft[]>([]);
   const [entryReady, setEntryReady] = useState(false);
   const importFileRef = useRef<HTMLInputElement>(null);
   const importGenerationRef = useRef(0);
+  const sessionActiveRef = useRef(false);
   const wheelGestureRef = useRef<WheelGestureState | null>(null);
   const primaryId = selectedObjectIds.at(-1) ?? null;
   const selected = drawing?.objects.filter((object) => selectedObjectIds.includes(object.id)) ?? [];
@@ -152,36 +157,22 @@ export function DrawingWorkbenchPage() {
     let cancelled = false;
 
     const initialize = async () => {
-      setSelectedObjectIds([]);
-      setPast([]);
-      setFuture([]);
-      setContextMenu(null);
-      setClipboard([]);
-      setLineEditorObjectId(null);
-      setMaterialTableObjectId(null);
-      setCorruptDrafts([]);
-
+      await Promise.resolve();
+      if (cancelled || (useUserStore.getState().currentUser?.id ?? null) !== drawingOwnerId) return;
       const state = useDrawingStore.getState();
-      const alreadyHasDrawing = Boolean(state.activeDocumentId && state.documents[state.activeDocumentId]);
-
-      let hydrationFailed = false;
+      const alreadyHasDrawing = state.ownerId === drawingOwnerId && state.activeDocumentId
+        && state.documents[state.activeDocumentId]?.id === state.activeDocumentId;
       if (!alreadyHasDrawing) {
-        setDrawingStoreHydrated(false);
-        setEntryReady(false);
         const result = await hydrateDrawingStore(drawingOwnerId);
-        hydrationFailed = result === 'failed';
-        if (!cancelled) setDrawingStoreHydrated(true);
-      } else {
-        setDrawingStoreHydrated(true);
-      }
-
-      if (cancelled) return;
-      if (hydrationFailed) {
-        setEntryReady(true);
-        return;
+        if (cancelled || (useUserStore.getState().currentUser?.id ?? null) !== drawingOwnerId) return;
+        if (result === 'failed') {
+          setEntryReady(true);
+          return;
+        }
       }
 
       const currentState = useDrawingStore.getState();
+      if (currentState.ownerId !== drawingOwnerId) return;
       const hasExisting = Boolean(currentState.activeDocumentId && currentState.documents[currentState.activeDocumentId]);
       const entry = enterDrawingWorkbench(hasExisting);
 
@@ -191,21 +182,34 @@ export function DrawingWorkbenchPage() {
 
       setCorruptDrafts(listCorruptWorkspaceDrafts(drawingOwnerId ?? 'anonymous', 'drawing'));
 
-      if (!cancelled) {
-        setEntryReady(true);
-      }
+      sessionActiveRef.current = true;
+      setEntryReady(true);
     };
 
     void initialize();
-    return () => { cancelled = true; importGenerationRef.current += 1; };
+    return () => { cancelled = true; sessionActiveRef.current = false; importGenerationRef.current += 1; };
   }, [drawingOwnerId, hydrationAttempt, replaceWithNewDocument]);
   useEffect(() => { if (!selectionWarning) return; const timer = window.setTimeout(() => setSelectionWarning(false), 2200); return () => window.clearTimeout(timer); }, [selectionWarning]);
   useEffect(() => () => { if (wheelGestureRef.current) window.clearTimeout(wheelGestureRef.current.timeoutId); }, []);
 
   const remember = () => { if (!drawing) return; setPast((items) => [...items.slice(-49), clone(drawing)]); setFuture([]); };
-  const apply = (next: DrawingDocument) => updateDocument(next);
+  const isCurrentDrawing = () => {
+    const state = useDrawingStore.getState();
+    return sessionActiveRef.current && (useUserStore.getState().currentUser?.id ?? null) === drawingOwnerId
+      && state.ownerId === drawingOwnerId && Boolean(drawing && state.activeDocumentId === drawing.id);
+  };
+  const apply = (next: DrawingDocument) => {
+    if (isCurrentDrawing()) updateDocument(next);
+  };
+  const updateObject = (objectId: string, patch: Partial<DrawingObject>) => {
+    if (isCurrentDrawing()) useDrawingStore.getState().updateObject(objectId, patch);
+  };
+  const saveDrawing = () => {
+    if (!isCurrentDrawing()) return;
+    void saveActiveDocument().catch((error) => notify({ tone: 'danger', title: '本地保存失败', message: getUserErrorMessage(error, '请保持页面打开，下载副本后重试。') }));
+  };
   const applyCommand = (command: (document: DrawingDocument) => DrawingDocument) => { if (!drawing) return; const next = command(drawing); if (next === drawing) return; remember(); apply(next); };
-  const addObject = (object: DrawingObject) => { if (!drawing) return; remember(); const named = isLineObject(object) && !object.name ? { ...object, name: nextLineName(drawing) } : object; const next = { ...named, zIndex: topLayer(drawing) } as DrawingObject; apply({ ...drawing, objects: [...drawing.objects, next], updatedAt: Date.now() }); setSelectedObjectIds([next.id]); };
+  const addObject = (object: DrawingObject) => { if (!drawing) return; remember(); const named = isLineObject(object) && !object.name ? { ...object, name: nextLineName(drawing) } : object; const next = { ...named, zIndex: topLayer(drawing) } as DrawingObject; apply(stampDrawingEdit({ ...drawing, objects: [...drawing.objects, next] })); setSelectedObjectIds([next.id]); };
   const updateSelectedObjects = (objectIds: string[], patch: Partial<DrawingObject>, stylePatch?: Partial<DrawingObjectStyle>) => {
     if (!drawing) return;
     apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
@@ -279,7 +283,7 @@ export function DrawingWorkbenchPage() {
       })();
     updateObject(objectId, patch as Partial<DrawingObject>);
   };
-  const removeSelected = () => { if (!drawing) return; const ids = new Set(selected.filter((object) => !object.locked && object.kind !== 'title-block').map((object) => object.id)); if (!ids.size) return; remember(); apply({ ...drawing, objects: drawing.objects.filter((object) => !ids.has(object.id)), updatedAt: Date.now() }); setSelectedObjectIds([]); };
+  const removeSelected = () => { if (!drawing) return; const ids = new Set(selected.filter((object) => !object.locked && object.kind !== 'title-block').map((object) => object.id)); if (!ids.size) return; remember(); apply(stampDrawingEdit({ ...drawing, objects: drawing.objects.filter((object) => !ids.has(object.id)) })); setSelectedObjectIds([]); };
   const undo = () => { if (!drawing || !past.length) return; const previous = past.at(-1)!; setPast((items) => items.slice(0, -1)); setFuture((items) => [clone(drawing), ...items].slice(0, 50)); apply(previous); setSelectedObjectIds([]); };
   const redo = () => { if (!drawing || !future.length) return; const next = future[0]; setFuture((items) => items.slice(1)); setPast((items) => [...items, clone(drawing)].slice(-50)); apply(next); setSelectedObjectIds([]); };
   const copySelected = () => setClipboard(clone(selected.filter((object) => object.kind !== 'title-block')));
@@ -291,7 +295,7 @@ export function DrawingWorkbenchPage() {
     const copies = placeDrawingCopiesAtPoint(clipboard, target, topLayer(drawing));
     if (!copies.length) return;
     remember();
-    apply({ ...drawing, objects: [...drawing.objects, ...copies], updatedAt: Date.now() });
+    apply(stampDrawingEdit({ ...drawing, objects: [...drawing.objects, ...copies] }));
     setSelectedObjectIds(copies.map((object) => object.id));
   };
   const clear = () => {
@@ -331,7 +335,7 @@ export function DrawingWorkbenchPage() {
     const generation = ++importGenerationRef.current;
     try {
       const text = await file.text();
-      if (generation !== importGenerationRef.current || (useUserStore.getState().currentUser?.id ?? null) !== drawingOwnerId) return;
+      if (generation !== importGenerationRef.current || !isCurrentDrawing()) return;
       const raw: unknown = JSON.parse(text);
       const document = raw && typeof raw === 'object' && 'document' in raw ? raw.document : raw;
       if (!isDrawingDocument(document)) {
@@ -339,7 +343,7 @@ export function DrawingWorkbenchPage() {
         return;
       }
       // 导入始终生成新 ID，避免覆盖当前图纸或同名的本地记录。
-      updateDocument({ ...document, id: createDrawingId(), updatedAt: Date.now() });
+      updateDocument(stampDrawingEdit({ ...document, id: createDrawingId() }));
       resetTransientState();
       await saveActiveDocument();
       notify({ tone: 'success', message: '图纸副本已导入并保存到本地。' });
@@ -476,7 +480,7 @@ export function DrawingWorkbenchPage() {
     return () => window.removeEventListener('keydown', onKeyDown);
   });
 
-  if (!drawingStoreHydrated || !entryReady) return null;
+  if (!entryReady) return null;
   if (!drawing) {
     if (!hydrationError) return null;
     return <div className="flex h-full items-center justify-center bg-slate-100 p-4">
@@ -488,7 +492,6 @@ export function DrawingWorkbenchPage() {
         <button
           type="button"
           onClick={() => {
-            setDrawingStoreHydrated(false);
             setEntryReady(false);
             setHydrationAttempt((value) => value + 1);
           }}
@@ -507,9 +510,9 @@ export function DrawingWorkbenchPage() {
         if (file) void importLocalDrawingCopy(file);
       }}/>
     </form>
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={() => void saveActiveDocument().catch((error) => notify({ tone: 'danger', title: '本地保存失败', message: getUserErrorMessage(error, '请保持页面打开，下载副本后重试。') }))} onExportLocal={downloadLocalDrawingCopy} onImportLocal={() => importFileRef.current?.click()} onPdf={requestPdfExport} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={saveDrawing} onExportLocal={downloadLocalDrawingCopy} onImportLocal={() => importFileRef.current?.click()} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
-      <DrawingResourcePanel open={resourcesOpen} canUseCatalog={Boolean(currentUser)} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
+    <DrawingResourcePanel open={resourcesOpen} canUseCatalog={Boolean(drawingOwnerId)} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
       <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>
       <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onViewportResize={setViewport} onCanvasZoom={changeZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector key={primaryId} drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
@@ -575,8 +578,8 @@ export function DrawingWorkbenchPage() {
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
     {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
     <DrawingTableCreateDialog open={tableDialogOpen} onClose={() => setTableDialogOpen(false)} onConfirm={addTable}/>
-    {materialTableObject && <DrawingMaterialTableDialog drawing={drawing} table={materialTableObject} canUseCatalog={Boolean(currentUser)} onAddCurrent={addCurrentMaterial} onClose={() => setMaterialTableObjectId(null)}/>}
+    {materialTableObject && <DrawingMaterialTableDialog drawing={drawing} table={materialTableObject} canUseCatalog={Boolean(drawingOwnerId)} onAddCurrent={addCurrentMaterial} onClose={() => setMaterialTableObjectId(null)}/>}
     {lineEditorObject && <DrawingLinePropertiesDialog object={lineEditorObject} defaultName={lineEditorObject.name || fallbackLineName(drawing, lineEditorObject.id)} onClose={() => setLineEditorObjectId(null)} onConfirm={updateLineProperties}/>}
-    <StandaloneDrawingWizard open={wizardOpen} canUseCatalog={Boolean(currentUser)} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
+    <StandaloneDrawingWizard open={wizardOpen} canUseCatalog={Boolean(drawingOwnerId)} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
   </div>;
 }

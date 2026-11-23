@@ -9,7 +9,6 @@ export type DrawingHydrationResult = 'hydrated' | 'recovered' | 'failed';
 
 const AUTO_SAVE_DELAY_MS = 500;
 const ANONYMOUS_DRAWING_OWNER = 'anonymous';
-let activeDrawingOwner = ANONYMOUS_DRAWING_OWNER;
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 interface DocumentSaveEntry {
@@ -22,6 +21,7 @@ interface DocumentSaveEntry {
 const documentSaves = new Map<string, DocumentSaveEntry>();
 
 interface DrawingStore {
+  ownerId: string | null;
   documents: Record<string, DrawingDocument>;
   activeDocumentId: string | null;
   saveState: DrawingSaveState;
@@ -63,10 +63,12 @@ function syncSaveState(): void {
 /** 本地草稿就是正式保存内容；成功后不能再按云端同步逻辑清理。每个窗口只写自己的副本。 */
 function writeDocumentSnapshot(documentId: string): DraftWriteResult {
   const entry = documentSaves.get(documentId);
-  const document = useDrawingStore.getState().documents[documentId];
-  if (!entry || !document || entry.revision <= entry.savedRevision) return { ok: true };
+  const { ownerId, documents } = useDrawingStore.getState();
+  const document = documents[documentId];
+  if (!entry || entry.revision <= entry.savedRevision) return { ok: true };
+  if (document?.id !== documentId) return { ok: false, error: '图纸身份已变化，未能保存。' };
   const result = writeWorkspaceDraft({
-    ownerId: activeDrawingOwner,
+    ownerId: ownerId ?? ANONYMOUS_DRAWING_OWNER,
     kind: 'drawing',
     documentId,
     localRevision: entry.revision,
@@ -114,6 +116,7 @@ export function hasPendingDrawingChanges(documentId?: string): boolean {
 }
 
 export const useDrawingStore = create<DrawingStore>((set, get) => ({
+  ownerId: null,
   documents: {},
   activeDocumentId: null,
   saveState: 'saved',
@@ -158,7 +161,7 @@ export const useDrawingStore = create<DrawingStore>((set, get) => ({
 
   removeDocument: (documentId) => {
     documentSaves.delete(documentId);
-    removeWorkspaceDraft(activeDrawingOwner, 'drawing', documentId);
+    removeWorkspaceDraft(get().ownerId ?? ANONYMOUS_DRAWING_OWNER, 'drawing', documentId);
     set((state) => {
       const documents = { ...state.documents };
       delete documents[documentId];
@@ -188,22 +191,34 @@ export async function flushDrawingSaves(): Promise<void> {
 }
 
 export function resetDrawingStore(): void {
-  activeDrawingOwner = ANONYMOUS_DRAWING_OWNER;
   clearSaveScheduling();
-  useDrawingStore.setState({ documents: {}, activeDocumentId: null, saveState: 'saved', draftError: null, hydrationError: null });
+  useDrawingStore.setState({ ownerId: null, documents: {}, activeDocumentId: null, saveState: 'saved', draftError: null, hydrationError: null });
 }
 
-export async function hydrateDrawingStore(ownerId?: string | null): Promise<DrawingHydrationResult> {
+export function releaseDrawingStore(nextOwnerId: string | null): DraftWriteResult {
+  const state = useDrawingStore.getState();
+  if (state.ownerId === nextOwnerId) return { ok: true };
+  const result = flushDrawingDrafts();
+  if (result.ok) resetDrawingStore();
+  return result;
+}
+
+export async function hydrateDrawingStore(ownerId: string | null = null): Promise<DrawingHydrationResult> {
+  const release = releaseDrawingStore(ownerId);
+  if (!release.ok) {
+    useDrawingStore.setState({ hydrationError: release.error ?? '上一工作区的图纸未能保存，请检查浏览器存储后重试。' });
+    return 'failed';
+  }
   resetDrawingStore();
-  activeDrawingOwner = ownerId || ANONYMOUS_DRAWING_OWNER;
+  useDrawingStore.setState({ ownerId });
   try {
     // listWorkspaceDrafts 对损坏记录进行隔离；存储被禁用则必须报错，不能误判为空库。
     void localStorage.length;
-    const drafts = listWorkspaceDrafts(activeDrawingOwner, 'drawing');
+    const drafts = listWorkspaceDrafts(ownerId ?? ANONYMOUS_DRAWING_OWNER, 'drawing');
     const documents: Record<string, DrawingDocument> = {};
     for (const draft of drafts) {
       // 按实际保存时间取同一图纸最新的窗口副本，其他副本原样保留。
-      if (documents[draft.documentId]) continue;
+      if (documents[draft.documentId] || draft.document.id !== draft.documentId) continue;
       documents[draft.documentId] = draft.document as DrawingDocument;
       const entry = getSaveEntry(draft.documentId);
       entry.revision = draft.localRevision;
@@ -216,9 +231,9 @@ export async function hydrateDrawingStore(ownerId?: string | null): Promise<Draw
       markDocumentEdited(document.id);
     }
     // 迁移只改变内存及当前窗口副本，不删除旧草稿。
-    useDrawingStore.setState({ documents, activeDocumentId: drafts[0]?.documentId ?? null });
+    useDrawingStore.setState({ documents, activeDocumentId: Object.keys(documents)[0] ?? null });
     syncSaveState();
-    return drafts.length ? 'hydrated' : 'recovered';
+    return Object.keys(documents).length ? 'hydrated' : 'recovered';
   } catch (error) {
     useDrawingStore.setState({ hydrationError: getUserErrorMessage(error, '本地图纸读取失败，请检查浏览器存储设置后重试。') });
     return 'failed';

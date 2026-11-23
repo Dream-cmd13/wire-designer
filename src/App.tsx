@@ -30,7 +30,7 @@ import {
 } from '@/lib/workspaceDraftCache';
 import { DocumentWriteError } from '@/lib/documentWriteError';
 import { projectRepository } from '@/repositories/projectRepository';
-import { flushDrawingDrafts, resetDrawingStore, useDrawingStore } from '@/stores/drawingStore';
+import { flushDrawingDrafts, releaseDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { createDefaultConfig, useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
@@ -184,6 +184,7 @@ export default function App() {
   const restoreProjectAttemptRef = useRef<string | null>(null);
   const workspaceSessionRef = useRef(0);
   const projectOpenRequestRef = useRef(0);
+  const restoredDraftRef = useRef<{ draft: WorkspaceDraft; backupInstanceId: string } | null>(null);
   const [draftRecovery, setDraftRecovery] = useState<{
     ownerId: string;
     projectId: string;
@@ -330,13 +331,32 @@ export default function App() {
     applyHistoryDocument(next);
   }, [applyHistoryDocument]);
 
+  const advanceDraftRecovery = useCallback((ownerId: string, projectId: string, handledDraftId: string) => {
+    const remaining = listWorkspaceDrafts(ownerId, 'project', projectId)
+      .filter((candidate) => candidate.draftId !== handledDraftId);
+    setDraftRecovery(remaining.length > 0 ? { ownerId, projectId, draft: remaining[0] } : null);
+  }, []);
+
+  const finishRestoredDraft = useCallback((ownerId: string, projectId: string, localRevision: number) => {
+    const restored = restoredDraftRef.current;
+    if (!restored || restored.draft.ownerId !== ownerId || restored.draft.documentId !== projectId) return false;
+    removeWorkspaceDraftForInstance(ownerId, 'project', projectId, restored.backupInstanceId, localRevision);
+    removeWorkspaceDraft(ownerId, 'project', projectId, restored.draft.draftId);
+    restoredDraftRef.current = null;
+    advanceDraftRecovery(ownerId, projectId, restored.draft.draftId);
+    return true;
+  }, [advanceDraftRecovery]);
+
   const writeProjectDraft = useCallback((): void => {
     if (saveBlocked) return;
     const project = useProjectStore.getState().currentProject;
     const ownerId = useUserStore.getState().currentUser?.id ?? null;
     const harness = useHarnessStore.getState();
-    if (!project || !ownerId || harness.saveState.status === 'saved') return;
+    if (!project || !ownerId || project.userId !== ownerId || harness.saveState.status === 'saved') return;
     if (harness.config.id !== project.id) return;
+    const restored = restoredDraftRef.current;
+    const backupInstanceId = restored?.draft.ownerId === ownerId && restored.draft.documentId === project.id
+      ? restored.backupInstanceId : undefined;
     const baseVersion = useProjectStore.getState().currentProjectVersion;
     const result = writeWorkspaceDraft({
       ownerId,
@@ -345,7 +365,7 @@ export default function App() {
       localRevision: harness.localRevision,
       baseServerRevision: baseVersion?.revision ?? null,
       document: harness.config,
-    });
+    }, backupInstanceId);
     setDraftBackupError(
       result.ok
         ? null
@@ -362,14 +382,15 @@ export default function App() {
       return;
     }
 
-    const saveUserId = useUserStore.getState().currentUser?.id ?? null;
+    const saveUserId = currentProject.userId;
     const saveSession = workspaceSessionRef.current;
     const saveProjectId = currentProject.id;
-    const isSaveContextCurrent = () => (
-      workspaceSessionRef.current === saveSession
-      && (useUserStore.getState().currentUser?.id ?? null) === saveUserId
-      && (useProjectStore.getState().currentProject?.id ?? null) === saveProjectId
-    );
+    const isSaveContextCurrent = () => {
+      const user = useUserStore.getState().currentUser;
+      return workspaceSessionRef.current === saveSession
+        && user?.id === saveUserId && (user.role === 'engineer' || user.role === 'admin') && !user.mustChangePassword
+        && useProjectStore.getState().currentProject?.id === saveProjectId;
+    };
 
     let allowErrorRetry = options?.retry === true;
     while (true) {
@@ -403,9 +424,8 @@ export default function App() {
           // 用对象身份而不是 updatedAt 相等判断，避免同毫秒编辑被旧响应误标为已保存。
           if (useHarnessStore.getState().config === latestConfig) {
             markSaved();
-            const ownerId = useUserStore.getState().currentUser?.id;
-            if (ownerId) {
-              removeWorkspaceDraftForInstance(ownerId, 'project', saveProjectId, currentDraftInstanceId(), savedLocalRevision);
+            if (!finishRestoredDraft(saveUserId, saveProjectId, savedLocalRevision)) {
+              removeWorkspaceDraftForInstance(saveUserId, 'project', saveProjectId, currentDraftInstanceId(), savedLocalRevision);
             }
           } else {
             useHarnessStore.getState().markDirty();
@@ -438,7 +458,7 @@ export default function App() {
       }
       if (saveConflict) return;
     }
-  }, [currentProject, markSaveError, markSaved, markSaving, saveBlocked, saveConflict, saveCurrentConfig]);
+  }, [currentProject, finishRestoredDraft, markSaveError, markSaved, markSaving, saveBlocked, saveConflict, saveCurrentConfig]);
 
   const requestSwitchConfirmation = useCallback((): Promise<boolean> => (
     new Promise<boolean>((resolve) => {
@@ -457,12 +477,6 @@ export default function App() {
   const retryProjectSave = useCallback(() => {
     void doSave({ retry: true });
   }, [doSave]);
-
-  const advanceDraftRecovery = useCallback((ownerId: string, projectId: string, handledDraftId: string) => {
-    const remaining = listWorkspaceDrafts(ownerId, 'project', projectId)
-      .filter((candidate) => candidate.draftId !== handledDraftId);
-    setDraftRecovery(remaining.length > 0 ? { ownerId, projectId, draft: remaining[0] } : null);
-  }, []);
 
   const downloadLocalProjectCopy = useCallback(() => {
     const localConfig = useHarnessStore.getState().config;
@@ -500,10 +514,9 @@ export default function App() {
       if (result.status === 'ok') {
         useProjectStore.getState().setCurrentProjectVersion(result.version);
         replaceDocument(result.config, { markSaved: true });
-        const ownerId = useUserStore.getState().currentUser?.id ?? null;
-        if (ownerId) {
+        if (!finishRestoredDraft(owner.id, project.id, localRevision)) {
           removeWorkspaceDraftForInstance(
-            ownerId,
+            owner.id,
             'project',
             project.id,
             currentDraftInstanceId(),
@@ -533,18 +546,33 @@ export default function App() {
     } finally {
       setConflictResolving(false);
     }
-  }, [replaceDocument]);
+  }, [finishRestoredDraft, replaceDocument]);
 
   const resolveConflictSaveAsNew = useCallback(async () => {
     const project = useProjectStore.getState().currentProject;
     const owner = useUserStore.getState().currentUser;
     if (!project || !owner) return;
+    const session = workspaceSessionRef.current;
+    const workspaceIsCurrent = () => {
+      const user = useUserStore.getState().currentUser;
+      return workspaceSessionRef.current === session && user?.id === owner.id
+        && user.role === owner.role && !user.mustChangePassword;
+    };
+    const localConfig = useHarnessStore.getState().config;
+    const localRevision = useHarnessStore.getState().localRevision;
+    const canApplyResult = () => workspaceIsCurrent()
+      && useProjectStore.getState().currentProject?.id === project.id
+      && useHarnessStore.getState().config === localConfig;
     setConflictResolving(true);
     try {
-      const localConfig = useHarnessStore.getState().config;
       const newName = `${localConfig.name || project.name}（本地副本）`;
-      const created = await createProject(owner.id, newName, project.description, { ...localConfig, name: newName });
+      const created = await createProject(owner.id, newName, project.description, { ...localConfig, name: newName }, { activate: false });
       if (!created) return;
+      if (!canApplyResult()) {
+        if (workspaceIsCurrent()) notify({ tone: 'success', message: `已另存为新项目“${newName}”，当前编辑仍保留。` });
+        return;
+      }
+      finishRestoredDraft(owner.id, project.id, localRevision);
       setCurrentProject(created.project);
       setCurrentProjectVersion(created.version);
       replaceDocument({ ...localConfig, id: created.project.id, name: newName }, { markSaved: true });
@@ -556,15 +584,16 @@ export default function App() {
       notify({ tone: 'success', message: `已另存为新项目“${newName}”。` });
       navigate(appRoutes['designer-design'].path, { projectId: created.project.id });
     } catch (error) {
+      if (!workspaceIsCurrent()) return;
       notify({
         tone: 'danger',
         title: '另存失败',
         message: getUserErrorMessage(error, '另存为新项目失败，请保持页面打开后重试。'),
       });
     } finally {
-      setConflictResolving(false);
+      if (workspaceSessionRef.current === session) setConflictResolving(false);
     }
-  }, [createProject, navigate, replaceDocument, setCurrentProject, setCurrentProjectVersion]);
+  }, [createProject, finishRestoredDraft, navigate, replaceDocument, setCurrentProject, setCurrentProjectVersion]);
 
   const saveBeforeLeavingWorkspace = useCallback(async (): Promise<boolean> => {
     const project = useProjectStore.getState().currentProject;
@@ -671,6 +700,7 @@ export default function App() {
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
+    restoredDraftRef.current = null;
     setDraftRecovery(null);
     setCorruptDrafts([]);
     setDraftBackupError(null);
@@ -678,7 +708,7 @@ export default function App() {
     setConflictReadConfirmOpen(false);
     setConflictResolving(false);
     useProjectStore.getState().resetProjects();
-    resetDrawingStore();
+    releaseDrawingStore(useUserStore.getState().currentUser?.id ?? null);
     useCatalogStore.getState().reset();
     usePriceStore.getState().reset();
     useFinishedHarnessStore.getState().reset();
@@ -1255,7 +1285,7 @@ export default function App() {
         <ActionToast
           role="alertdialog"
           title="发现本地草稿"
-          message="本地保存了未同步到云端的项目修改。恢复本地草稿会使用本地版本；使用云端版本只会丢弃这一份草稿，其他窗口的草稿仍会保留。"
+          message="本地保存了未同步到云端的项目修改。请先保存当前修改，再恢复草稿。恢复后须先处理这一份，才能恢复下一份。使用云端版本只会丢弃这一份草稿。"
           secondaryAction={{
             label: '使用云端版本',
             onClick: () => {
@@ -1269,15 +1299,20 @@ export default function App() {
           }}
           primaryAction={{
             label: '恢复本地草稿',
+            disabled: saveState.status !== 'saved' || Boolean(saveConflict),
             onClick: () => {
+              if (restoredDraftRef.current || useHarnessStore.getState().saveState.status !== 'saved' || saveConflict) return;
               const ownerId = useUserStore.getState().currentUser?.id ?? null;
               const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
               if (!canApplyWorkspaceDraft(activeDraftRecovery.draft, { ownerId, documentId: currentProjectId })) {
                 setDraftRecovery(null);
                 return;
               }
-              const { draft, ownerId: draftOwner, projectId: draftProject } = activeDraftRecovery;
+              const { draft, projectId: draftProject } = activeDraftRecovery;
+              restoredDraftRef.current = { draft, backupInstanceId: `${currentDraftInstanceId()}-recovery-${crypto.randomUUID()}` };
+              setDraftRecovery(null);
               replaceDocument(draft.document as HarnessConfig, { markSaved: false });
+              useHistoryStore.getState().clear();
               const currentVersion = useProjectStore.getState().currentProjectVersion;
               if (draft.baseServerRevision === null) {
                 // 旧格式草稿没有可确认的云端基线：不能套用云端最新版本，
@@ -1285,7 +1320,6 @@ export default function App() {
                 useProjectStore.getState().setCurrentProjectVersion(null);
                 setSaveConflict({ projectId: draftProject, kind: 'conflict' });
                 useHarnessStore.getState().markSaveError('恢复的草稿缺少云端基线，请选择“读取云端版本”或“另存为新文档”。');
-                setDraftRecovery(null);
                 return;
               }
               // 恢复草稿的原始基线：云端若已前进，后续保存会被数据库原子拒绝并进入冲突处理；
@@ -1294,8 +1328,6 @@ export default function App() {
                 revision: draft.baseServerRevision,
                 updatedAt: currentVersion?.updatedAt ?? '',
               });
-              removeWorkspaceDraft(draftOwner, 'project', draftProject, draft.draftId);
-              advanceDraftRecovery(draftOwner, draftProject, draft.draftId);
             },
           }}
           onClose={() => setDraftRecovery(null)}

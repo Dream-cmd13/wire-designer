@@ -21,6 +21,7 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
   canLoad?: () => boolean;
   beforeCreate?: (id: string) => Promise<boolean | 'invalid'>;
   beforeList?: () => Promise<void>;
+  startAnonymous?: boolean;
 }) {
   const projects = empty ? [] : [{ id: projectId, name: projectName, owner_id: ownerId, description: '', created_at: timestamp, updated_at: timestamp }];
   const documents = new Map([[projectId, design]]);
@@ -29,6 +30,12 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
   await page.context().route(`${fixtureOrigin}/**`, async (route) => {
     const url = new URL(route.request().url());
     requests.push(url.pathname);
+    if (url.pathname === '/auth/v1/token') {
+      return route.fulfill({ json: {
+        access_token: 'local-project-entry-fixture', refresh_token: 'local-project-entry-fixture', expires_in: 3600,
+        user: { id: ownerId, email: 'designer-fixture@example.invalid', created_at: timestamp, user_metadata: {}, app_metadata: {} },
+      } });
+    }
     if (url.pathname === '/rest/v1/rpc/current_app_role') return route.fulfill({ json: role });
     if (url.pathname === '/rest/v1/rpc/delete_project_document') {
       const payload = route.request().postDataJSON() as { project_id: string; expected_revision: number };
@@ -72,14 +79,16 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
     }
     return route.fulfill({ json: [] });
   });
-  await page.context().addInitScript(({ origin, id, createdAt }) => {
-    if (location.origin !== origin || localStorage.getItem('sb-localhost-auth-token')) return;
-    localStorage.setItem('sb-localhost-auth-token', JSON.stringify({
-      access_token: 'local-project-entry-fixture', refresh_token: 'local-project-entry-fixture',
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
-      user: { id, email: 'designer-fixture@example.invalid', created_at: createdAt, user_metadata: {}, app_metadata: {} },
-    }));
-  }, { origin: appOrigin, id: ownerId, createdAt: timestamp });
+  if (!options?.startAnonymous) {
+    await page.context().addInitScript(({ origin, id, createdAt }) => {
+      if (location.origin !== origin || localStorage.getItem('sb-localhost-auth-token')) return;
+      localStorage.setItem('sb-localhost-auth-token', JSON.stringify({
+        access_token: 'local-project-entry-fixture', refresh_token: 'local-project-entry-fixture',
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        user: { id, email: 'designer-fixture@example.invalid', created_at: createdAt, user_metadata: {}, app_metadata: {} },
+      }));
+    }, { origin: appOrigin, id: ownerId, createdAt: timestamp });
+  }
   return requests;
 }
 
@@ -153,6 +162,69 @@ test('engineer keeps the same project when changing views, refreshing, visiting 
   await expect(designView).toHaveCount(0);
   await expect(productView).toHaveCount(0);
   expect(requests).not.toContain('/rest/v1/rpc/save_project_document');
+});
+
+test('signing in switches the drawing workspace and keeps guest and engineer saves separate', async ({ page }) => {
+  await installFixture(page, 'engineer', false, { startAnonymous: true });
+  await page.goto('/drawing-workbench');
+  const toolbar = page.getByRole('toolbar', { name: '绘图工具栏' });
+  const drawingDrafts = (owner: string) => page.evaluate((id) => Object.keys(localStorage)
+    .filter((key) => key.startsWith(`wh_draft_v2:${id}:drawing:`))
+    .map((key) => JSON.parse(localStorage.getItem(key)!).document as { id: string; objects: { kind: string }[] }), owner);
+
+  await toolbar.getByTitle('添加文字').click();
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  const login = page.getByRole('dialog', { name: '登录' });
+  await login.getByLabel('账号').fill('designer-fixture@example.invalid');
+  await login.getByLabel('密码').fill('local-fixture-only');
+  await login.getByRole('button', { name: '登录' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page).toHaveURL('/drawing-workbench');
+  await toolbar.getByTitle('添加文字').click();
+  await toolbar.getByTitle('保存', { exact: true }).click();
+
+  const [guest] = await drawingDrafts('anonymous');
+  const [engineer] = await drawingDrafts(ownerId);
+  expect(guest?.objects.filter(({ kind }) => kind === 'text')).toHaveLength(1);
+  expect(engineer?.objects.filter(({ kind }) => kind === 'text')).toHaveLength(1);
+  expect(guest?.id).not.toBe(engineer?.id);
+  await page.reload();
+  await toolbar.getByTitle('保存', { exact: true }).click();
+  expect(await drawingDrafts(ownerId)).toEqual([engineer]);
+  expect(await drawingDrafts('anonymous')).toEqual([guest]);
+});
+
+test('the next project draft waits for the current recovery to be saved', async ({ page }) => {
+  const allowSave = Promise.withResolvers<boolean>();
+  const saveResponse = await installFixture(page, 'engineer', false, { beforeSave: () => allowSave.promise });
+  await page.goto('/designer');
+  const drafts = [
+    { draftId: 'first', instanceId: 'browser-one', name: '第一份浏览器草稿', savedAt: 20 },
+    { draftId: 'second', instanceId: 'browser-two', name: '第二份浏览器草稿', savedAt: 10 },
+  ];
+  const draftKeys = await page.evaluate(({ drafts, ownerId, design }) => drafts.map(({ draftId, instanceId, name, savedAt }) => {
+    const key = `wh_draft_v2:${ownerId}:project:${design.id}:${instanceId}`;
+    localStorage.setItem(key, JSON.stringify({
+      version: 2, ownerId, kind: 'project', documentId: design.id, draftId, instanceId,
+      localRevision: 1, baseServerRevision: 1, savedAt, document: { ...design, name },
+    }));
+    return key;
+  }), { drafts, ownerId, design });
+  const hasSourceDrafts = () => page.evaluate((keys) => keys.map((key) => localStorage.getItem(key) !== null), draftKeys);
+  await openFixtureProject(page);
+  const recover = page.getByRole('button', { name: '恢复本地草稿' });
+  const savePath = '/rest/v1/rpc/save_project_document';
+  try {
+    await recover.click();
+    await expect(recover).toHaveCount(0);
+    await expect.poll(() => saveResponse.filter((path) => path === savePath).length).toBe(1);
+    expect(await hasSourceDrafts()).toEqual([true, true]);
+    await expect(page.getByPlaceholder('未命名项目')).toHaveValue(drafts[0].name);
+  } finally {
+    allowSave.resolve(true);
+  }
+  await expect(recover).toBeVisible();
+  expect(await hasSourceDrafts()).toEqual([false, true]);
 });
 
 test('admin with an empty list can import without entering the editor', async ({ page }) => {

@@ -28,7 +28,7 @@ import { NoticeHost } from '@/components/shared/NoticeHost';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { setCatalogSnapshot } from '@/lib/catalogRuntime';
 import { DocumentWriteError } from '@/lib/documentWriteError';
-import { writeWorkspaceDraft } from '@/lib/workspaceDraftCache';
+import { currentDraftInstanceId, listWorkspaceDrafts, workspaceDraftKey, writeWorkspaceDraft } from '@/lib/workspaceDraftCache';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useHarnessStore } from '@/stores/harnessStore';
@@ -455,6 +455,72 @@ describe('project save lifecycle (real React + real stores)', () => {
     expect(loadSpy).toHaveBeenCalledWith('p1');
     expect(useProjectStore.getState().currentProjectVersion).toEqual({ revision: 5, updatedAt: 'cloud-5' });
     expect(screen.queryByText('保存冲突')).toBeNull();
+  });
+
+  it('retains both recovery sources during a failed save and offers the next only after retry succeeds', async () => {
+    localStorage.clear();
+    useProjectStore.getState().resetProjects();
+    const sources = [
+      { instanceId: currentDraftInstanceId(), draftId: 'first', name: '第一份草稿', savedAt: 20 },
+      { instanceId: 'other-tab', draftId: 'second', name: '第二份草稿', savedAt: 10 },
+    ];
+    for (const { instanceId, draftId, name, savedAt } of sources) {
+      localStorage.setItem(workspaceDraftKey('user-a', 'project', 'p1', instanceId), JSON.stringify({
+        version: 2, ownerId: 'user-a', kind: 'project', documentId: 'p1', instanceId, draftId,
+        localRevision: 5, baseServerRevision: 1, savedAt,
+        document: { ...createFallbackConfig(), id: 'p1', name },
+      }));
+    }
+    const remaining = () => listWorkspaceDrafts('user-a', 'project', 'p1').map(({ draftId }) => draftId);
+    vi.spyOn(projectRepository, 'load').mockResolvedValue(loadedProject('p1'));
+    const firstSave = deferred<DocumentVersion>();
+    const save = vi.spyOn(projectRepository, 'save')
+      .mockReturnValueOnce(firstSave.promise)
+      .mockResolvedValueOnce({ revision: 2, updatedAt: 'save-2' });
+    render(<App />);
+
+    const recover = await screen.findByRole('button', { name: '恢复本地草稿' });
+    fireEvent.click(recover);
+    fireEvent.click(recover);
+    expect(screen.queryByRole('button', { name: '恢复本地草稿' })).toBeNull();
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    expect(save.mock.calls[0]?.[1].name).toBe('第一份草稿');
+    expect(remaining()).toEqual(expect.arrayContaining(['first', 'second']));
+
+    await act(async () => firstSave.reject(new Error('network down')));
+    expect(remaining()).toEqual(expect.arrayContaining(['first', 'second']));
+    expect(screen.queryByRole('button', { name: '恢复本地草稿' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
+    await screen.findByRole('button', { name: '恢复本地草稿' });
+    expect(save.mock.calls[1]?.[1].name).toBe('第一份草稿');
+    expect(remaining()).toEqual(['second']);
+  });
+
+  it('consumes the restored source only after the conflict copy has been created', async () => {
+    localStorage.clear();
+    useProjectStore.getState().resetProjects();
+    const sourceKey = workspaceDraftKey('user-a', 'project', 'p1');
+    writeWorkspaceDraft({
+      ownerId: 'user-a', kind: 'project', documentId: 'p1', localRevision: 5, baseServerRevision: null,
+      document: { ...createFallbackConfig(), id: 'p1', name: '待另存草稿' },
+    });
+    const source = localStorage.getItem(sourceKey);
+    vi.spyOn(projectRepository, 'load').mockResolvedValue(loadedProject('p1'));
+    const response = deferred<DocumentVersion>();
+    const create = vi.spyOn(projectRepository, 'createProject').mockReturnValue(response.promise);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '恢复本地草稿' }));
+    fireEvent.click(screen.getByRole('button', { name: '另存为新文档' }));
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(useProjectStore.getState().currentProject?.id).toBe('p1');
+    expect(localStorage.getItem(sourceKey)).toBe(source);
+    await act(async () => response.resolve({ revision: 1, updatedAt: 'copy-1' }));
+
+    const copyId = create.mock.calls[0]?.[0].id;
+    expect(useProjectStore.getState().currentProject?.id).toBe(copyId);
+    expect(useHarnessStore.getState().config).toMatchObject({ id: copyId, name: '待另存草稿（本地副本）' });
+    expect(localStorage.getItem(sourceKey)).toBeNull();
   });
 
   it('restores a draft with its original base revision so a newer cloud version is not silently overwritten', async () => {

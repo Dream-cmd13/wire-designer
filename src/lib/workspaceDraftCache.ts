@@ -367,8 +367,7 @@ export function corruptWorkspaceDraftsToJson(drafts: CorruptWorkspaceDraft[]): s
   );
 }
 
-export function writeWorkspaceDraft(input: DraftWriteInput): DraftWriteResult {
-  const instanceId = currentDraftInstanceId();
+export function writeWorkspaceDraft(input: DraftWriteInput, instanceId = currentDraftInstanceId()): DraftWriteResult {
   const key = workspaceDraftKey(input.ownerId, input.kind, input.documentId, instanceId);
   // 本实例已有损坏记录时先隔离，不影响其他实例的草稿。
   let existing: string | null;
