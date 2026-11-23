@@ -116,6 +116,24 @@ describe('project save lifecycle (real React + real stores)', () => {
     vi.restoreAllMocks();
   });
 
+  it('keeps project actions and count in the header and removes them on route change', async () => {
+    window.history.replaceState(null, '', '/designer');
+    useProjectStore.getState().setCurrentProject(null);
+    render(<App />);
+
+    const header = within(screen.getByRole('banner'));
+    expect(header.getByRole('heading', { name: '项目管理', level: 1 })).toBeTruthy();
+    await header.findByText('项目总数 1');
+    expect(within(screen.getByRole('main')).queryByText('项目管理')).toBeNull();
+    fireEvent.click(header.getByRole('button', { name: '导入设计' }));
+    await screen.findByRole('heading', { name: '导入设计文件' });
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+
+    fireEvent.click(sidebar().getByRole('button', { name: '自动报价' }));
+    await header.findByRole('heading', { name: '自动报价', level: 1 });
+    expect(header.queryByRole('button', { name: '导入设计' })).toBeNull();
+  });
+
   it.each(['/designer/design', '/designer/product-image'])('normalizes a bare %s to the list and opens the design from a card', async (path) => {
     window.history.replaceState(null, '', path);
     useProjectStore.getState().setCurrentProject(null);

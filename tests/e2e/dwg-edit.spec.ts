@@ -140,8 +140,8 @@ async function selectDimension(page: Page, label = '*500±10') {
 }
 
 async function generate(page: Page) {
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '生成 DWG', exact: true }).click();
+  await page.getByRole('alertdialog', { name: '确认生成 DWG？' }).getByRole('button', { name: '确认生成' }).click();
 }
 
 async function inspectRevision(bytes: Buffer) {
@@ -168,20 +168,19 @@ async function inspectRevision(bytes: Buffer) {
 
 test('keeps file status inline and wraps DWG output actions together', async ({ page }) => {
   await logIn(page);
-  const open = page.getByRole('button', { name: '选择文件' });
+  const header = page.getByRole('banner');
   const fileChooser = page.waitForEvent('filechooser');
   await page.getByTestId('dwg-drop-zone').getByRole('button', { name: '选择文件' }).click();
   await (await fileChooser).setFiles(name);
-  const png = page.getByRole('button', { name: '导出 PNG' });
-  const pdf = page.getByRole('button', { name: '导出 PDF' });
-  const preview = page.getByRole('button', { name: '生成 3D 示意' });
-  const fileName = page.getByTitle(name, { exact: true });
-  const status = page.getByText('仅本地预览', { exact: true });
+  const png = header.getByRole('button', { name: '导出 PNG' });
+  const pdf = header.getByRole('button', { name: '导出 PDF' });
+  const preview = header.getByRole('button', { name: '生成 3D 示意' });
+  const fileName = header.getByTitle(name, { exact: true });
+  const status = header.getByText('仅本地预览', { exact: true });
   const missing = page.getByText('外部图片缺失 1 张', { exact: true });
   const imageDetails = page.locator('details').filter({ has: missing });
   const placeholder = page.getByText('浏览器无法加载图纸引用的外部图片，当前仅显示占位框。');
   await expect(preview).toBeEnabled();
-  expect((await preview.boundingBox())?.y).toBe((await open.boundingBox())?.y);
 
   for (const width of [1780, 1440, 1098, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -201,22 +200,53 @@ test('keeps file status inline and wraps DWG output actions together', async ({ 
     const triggerBox = (await missing.boundingBox())!;
     expect(detailsBox.x).toBeGreaterThanOrEqual(0);
     expect(detailsBox.x + detailsBox.width).toBeLessThanOrEqual(width);
-    expect(detailsBox.x).toBeCloseTo(Math.min(triggerBox.x, width - detailsBox.width - 16), 0);
+    const gutter = await header.evaluate((element) => parseFloat(getComputedStyle(element).paddingLeft));
+    expect(detailsBox.x).toBeCloseTo(Math.min(triggerBox.x, width - detailsBox.width - gutter), 0);
     expect(detailsBox.y - triggerBox.y - triggerBox.height).toBeCloseTo(4, 0);
-    if (width < 1024) {
+    {
       const info = page.getByText('图纸信息', { exact: true });
       await info.click();
       await expect(placeholder).not.toBeVisible();
       await expect(page.getByText(/个图元.*处文字.*个图层/).filter({ visible: true })).toBeVisible();
       const infoBox = (await info.boundingBox())!;
       const infoDetailsBox = (await page.locator('details').filter({ has: info }).locator(':scope > div').boundingBox())!;
-      expect(infoDetailsBox.x).toBeCloseTo(Math.min(infoBox.x, width - infoDetailsBox.width - 16), 0);
+      expect(infoDetailsBox.x).toBeCloseTo(Math.min(infoBox.x, width - infoDetailsBox.width - gutter), 0);
       expect(infoDetailsBox.y - infoBox.y - infoBox.height).toBeCloseTo(4, 0);
       await info.click();
-    } else {
-      await missing.click();
     }
   }
+});
+
+test('asks before discarding a draft or sending a DWG to the conversion service', async ({ page }) => {
+  const activity = await logIn(page);
+  await page.route('**/api/dwg/edit', (route) => route.fulfill({ status: 503, json: { message: '本地转换服务测试响应' } }));
+  await page.getByRole('combobox', { name: '云端图纸', exact: true }).selectOption(originalId);
+  await page.getByRole('button', { name: '编辑图纸' }).click();
+  await selectDimension(page);
+  await page.getByLabel('尺寸显示文字').fill('*750±10');
+  await page.getByRole('button', { name: '应用到草稿预览' }).click();
+
+  const generateButton = page.getByRole('button', { name: '生成 DWG', exact: true });
+  const sendDialog = page.getByRole('alertdialog', { name: '确认生成 DWG？' });
+  await generateButton.click();
+  await expect(sendDialog.getByRole('button', { name: '取消' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(sendDialog).toHaveCount(0);
+  await expect(generateButton).toBeFocused();
+  expect(activity.generates).toBe(0);
+  await generate(page);
+  await expect(page.getByRole('alert')).toContainText('本地转换服务测试响应');
+  expect(activity.generates).toBe(1);
+
+  const exitButton = page.getByRole('button', { name: '退出编辑' });
+  const discardDialog = page.getByRole('alertdialog', { name: '放弃当前 DWG 草稿？' });
+  await exitButton.click();
+  await discardDialog.getByRole('button', { name: '取消' }).click();
+  await expect(page.getByLabel('尺寸显示文字')).toHaveValue('*750±10');
+  await exitButton.click();
+  await discardDialog.getByRole('button', { name: '放弃草稿' }).click();
+  await expect(page.getByRole('complementary', { name: 'DWG 编辑属性' })).toHaveCount(0);
+  expect(activity.writes).toBe(0);
 });
 
 test('drags local DWG, edits and undoes a dimension, then downloads verified writer bytes', async ({ page }, testInfo) => {
@@ -241,8 +271,8 @@ test('drags local DWG, edits and undoes a dimension, then downloads verified wri
   await page.getByTestId('dwg-drop-zone').click({ position: { x: 5, y: 5 } });
   await expect(panel.getByText('1 项修改', { exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: '撤回上次修改' })).toBeEnabled();
-  page.once('dialog', (dialog) => dialog.dismiss());
   await page.getByRole('button', { name: '生成 DWG', exact: true }).click();
+  await page.getByRole('alertdialog', { name: '确认生成 DWG？' }).getByRole('button', { name: '取消' }).click();
   expect(activity.generates).toBe(0);
   expect(activity.writes).toBe(0);
   backendRole = 'sales';

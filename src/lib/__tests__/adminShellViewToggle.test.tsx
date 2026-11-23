@@ -183,7 +183,7 @@ describe('AdminShell view toggle buttons', () => {
     expect(html).toContain('成品图');
   });
 
-  it('prevents narrow viewport header regression by hiding project name on small screens and protecting title and action buttons', () => {
+  it('exposes the design view as the page heading alongside accessible history controls', () => {
     const html = renderToStaticMarkup(
       <AdminShell
         route={appRoutes['designer-design']}
@@ -203,15 +203,8 @@ describe('AdminShell view toggle buttons', () => {
       </AdminShell>,
     );
 
-    // 1. Project name editor has `hidden sm:flex` to avoid taking 180px+ on small viewports (e.g. 375px)
-    expect(html).toMatch(/class="[^"]*hidden\s+sm:flex[^"]*"[^>]*>[^<]*<span[^>]*>项目名称<\/span>/);
-
-    // 2. Title container and undo/redo action container have shrink-0 so they never collapse to 0px/1px
-    expect(html).toMatch(/class="[^"]*min-w-0\s+shrink-0[^"]*"[^>]*>[^<]*<p[^>]*>设计图<\/p>/);
-    expect(html).toMatch(/class="[^"]*flex\s+shrink-0\s+items-center[^"]*"[^>]*>[^<]*<span[^>]*>[^<]*<button[^>]*title="撤销/);
-
-    // 3. Toggle button text labels have `hidden sm:inline` so buttons collapse to icon-only on mobile
-    expect(html).toMatch(/<span\s+class="hidden\s+sm:inline">设计图<\/span>/);
-    expect(html).toMatch(/<span\s+class="hidden\s+sm:inline">成品图<\/span>/);
+    expect(html).toMatch(/<header[^>]*>.*<h1[^>]*>设计图<\/h1>/);
+    expect(html).toContain('aria-label="撤销"');
+    expect(html).toContain('aria-label="重做"');
   });
 });

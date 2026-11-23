@@ -84,9 +84,10 @@ test('keeps the empty model workspace actionable and the loaded workspace compac
       object_key: `${uid}/${id}/source.stl`, file_size: original.length, sha256: createHash('sha256').update(original).digest('hex') };
   });
   await localLogin(page, 'engineer', { records, original, object: original, uploads: 0, finalizeFailures: 0 });
+  const header = page.getByRole('banner');
   const workspace = page.getByTestId('model-drop-zone');
-  const selector = page.getByRole('combobox', { name: '云端模型' });
-  const refresh = page.getByRole('button', { name: '刷新云端模型' });
+  const selector = header.getByRole('combobox', { name: '云端模型' });
+  const refresh = header.getByRole('button', { name: '刷新云端模型' });
   await expect(workspace.getByRole('button', { name: '选择文件', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '重置视角' })).toHaveCount(0);
   await expect(page.getByText('仅本地预览', { exact: true })).toHaveCount(0);
@@ -113,6 +114,8 @@ test('keeps the empty model workspace actionable and the loaded workspace compac
     await expect(help).toBeInViewport();
     await expect(selector).toBeInViewport();
     await expect(refresh).toBeInViewport();
+    await expect(header.getByRole('button', { name: '导出三视图 PDF' })).toBeInViewport({ ratio: 1 });
+    expect(await header.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
     expect((await selector.boundingBox())!.y).toBe((await refresh.boundingBox())!.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(shortcuts).not.toBeVisible();

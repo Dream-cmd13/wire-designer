@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import type { DrawingSaveState } from '@/stores/drawingStore';
 import type { DrawingToolMode } from '@/types/drawing';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 
 interface Props {
   toolMode: DrawingToolMode;
@@ -119,12 +120,14 @@ export function DrawingWorkbenchToolbar(props: Props) {
       <Button title="长度标注" iconOnly onClick={() => run(props.onAddDimension)}><span className="text-xs leading-none">↔</span></Button>
       <Button title="表格" iconOnly onClick={() => run(props.onAddTable)}><span className="text-xs leading-none">▦</span></Button>
     </div>
-    <div className={`${toolGroup} sm:ml-auto`} role="group" aria-label="保存和导出">
+    <PageHeaderActions>
+    <div className="flex min-w-0 flex-wrap items-center gap-1" role="group" aria-label="保存和导出">
       <span role="status" aria-live="polite" title="仅保存在当前浏览器，不同步云端；可下载图纸副本备份或转移。" className={`shrink-0 px-1 text-xs font-medium ${SAVE_STATE_CLASSES[props.saveState]}`}>{SAVE_STATE_LABELS[props.saveState]}</span>
       <Button title={props.saveState === 'error' ? '重试保存' : '保存'} iconOnly onClick={() => run(props.onSave)}><Save className="h-4 w-4"/></Button>
       <Button title="下载图纸副本" iconOnly onClick={() => run(props.onExportLocal)}><Download className="h-4 w-4"/></Button>
       <Button title="导入图纸副本" iconOnly onClick={() => run(props.onImportLocal)}><FileUp className="h-4 w-4"/></Button>
       <Button title={props.exporting ? '正在导出 PDF' : '导出 PDF'} disabled={props.exporting} onClick={() => run(props.onPdf)}><FileText className="h-4 w-4"/>PDF</Button>
     </div>
+    </PageHeaderActions>
   </div>;
 }

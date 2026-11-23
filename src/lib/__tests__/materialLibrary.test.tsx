@@ -156,7 +156,7 @@ const mockPriceBook: PriceBook = {
 };
 
 describe('MaterialLibraryPage', () => {
-  it('renders material library title, tabs, and action buttons', () => {
+  it('renders material library tabs and action buttons', () => {
     setCatalogSnapshot(mockSnapshot);
     useCatalogStore.setState({ status: 'ready', snapshot: mockSnapshot });
     useCatalogStore.getInitialState = () => useCatalogStore.getState();
@@ -165,8 +165,7 @@ describe('MaterialLibraryPage', () => {
 
     const html = renderToStaticMarkup(<MaterialLibraryPage />);
 
-    // 标题与操作栏
-    expect(html).toContain('物料库');
+    // 操作栏
     expect(html).toContain('导出价格表');
     expect(html).toContain('导入价格表');
 

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { appRoutes, type AppRoute, type AppRouteId } from '@/lib/appRoute';
 import type { User as AppUser } from '@/types/user';
+import { PageHeaderActionsTarget } from './pageHeaderActionsTarget';
 
 export interface SidebarItem {
   label: string;
@@ -126,7 +127,7 @@ function ProjectNameEditor({
             e.currentTarget.blur();
           }
         }}
-        className="w-28 sm:w-44 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+        className="w-24 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400 @min-[1150px]:w-32"
         placeholder="未命名项目"
         title="点击修改项目名称，回车或失焦生效"
       />
@@ -221,15 +222,16 @@ export function AdminShell({
     : route.id === 'model-viewer'
       ? 'STEP / STL · 本地预览与私有保存'
     : route.id === 'dwg-viewer'
-      ? 'DWG 图纸 · 浏览器内解析与导出'
+      ? '浏览器内解析与导出'
       : route.section === 'auto-quote'
-        ? '独立选配与实时测算'
+        ? '基于物料目录与工时基准实时测算'
         : route.section === 'designer'
-          ? (currentProjectName || '选择项目后可进入完整设计流程')
+          ? (showDesignerActions ? undefined : '选择项目后可进入完整设计流程')
           : route.section === 'projects'
             ? '选择项目后可进入完整设计流程'
-            : '标准元器件与物料规格';
+            : '工程规格检索与采购价格管理';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [pageActionsTarget, setPageActionsTarget] = useState<HTMLDivElement | null>(null);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 text-slate-900">
@@ -249,7 +251,7 @@ export function AdminShell({
                 <Cable className="h-4 w-4" />
               </div>
               <div className="hidden min-w-0 flex-1 sm:block">
-                <h1 className="truncate text-sm font-bold">线束设计器</h1>
+                <p className="truncate text-sm font-bold">线束设计器</p>
               </div>
             </>
           )}
@@ -326,18 +328,15 @@ export function AdminShell({
         </nav>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-4">
-          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-            <div className="min-w-0 shrink-0">
-              <p className="truncate text-sm font-semibold text-slate-900">{route.title}</p>
-              <p className="hidden text-xs text-slate-500 sm:block">
-                {contextLabel}
-              </p>
-            </div>
+      <div className="@container flex min-w-0 flex-1 flex-col">
+        <header data-page-header className="relative flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4">
+          <div className="mr-auto min-w-0">
+            <h1 className="truncate text-sm font-semibold text-slate-900">{route.title}</h1>
+            {contextLabel && <p className="hidden max-w-52 truncate text-xs text-slate-500 @min-[580px]:block" title={contextLabel}>{contextLabel}</p>}
+          </div>
 
-            {showDesignerActions && (
-              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {showDesignerActions && (
+            <div className="order-2 flex min-w-0 basis-full flex-wrap items-center gap-1 sm:gap-2 @min-[660px]:order-none @min-[660px]:basis-auto">
                 <span className="flex shrink-0 items-center gap-0.5">
                   <button
                     type="button"
@@ -379,18 +378,18 @@ export function AdminShell({
                 <button
                   type="button"
                   onClick={onCloseProject}
+                  aria-label="关闭项目"
+                  title="关闭项目"
                   className="hidden cursor-pointer items-center gap-1 rounded-md border border-slate-200 px-2 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 sm:flex"
                 >
                   <LogOut className="h-3.5 w-3.5" />
-                  关闭项目
+                  <span className="hidden @min-[1150px]:inline">关闭项目</span>
                 </button>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            {showDesignerActions && (
-              <>
+          {showDesignerActions && (
+            <div className="order-2 flex min-w-0 basis-full flex-wrap items-center gap-2 @min-[660px]:order-none @min-[660px]:basis-auto">
                 {onOpenBom && (
                   <button
                     type="button"
@@ -400,7 +399,7 @@ export function AdminShell({
                     aria-label="BOM物料清单"
                   >
                     <ClipboardList className="h-4 w-4 text-blue-600" />
-                    <span className="font-semibold">BOM清单</span>
+                    <span className="hidden font-semibold @min-[1150px]:inline">BOM清单</span>
                   </button>
                 )}
                 {onOpenQuote && (
@@ -412,7 +411,7 @@ export function AdminShell({
                     aria-label="线束报价"
                   >
                     <Calculator className="h-4 w-4 text-blue-600" />
-                    <span className="font-semibold">线束报价</span>
+                    <span className="hidden font-semibold @min-[1150px]:inline">线束报价</span>
                   </button>
                 )}
                 <DesignViewToggle
@@ -423,13 +422,17 @@ export function AdminShell({
                   projectName={currentProjectName!}
                   onUpdate={onUpdateProjectName}
                 />
-              </>
-            )}
+            </div>
+          )}
 
+          <div ref={setPageActionsTarget} className="order-2 flex min-w-0 max-w-full basis-full flex-wrap items-center gap-1.5 empty:hidden @min-[660px]:order-none @min-[660px]:basis-auto @min-[660px]:flex-[1_1_0%] @min-[660px]:justify-end" />
+
+          <div className="ml-auto flex shrink-0 items-center">
             {currentUser ? (
               <button
                 type="button"
                 onClick={onOpenAuth}
+                aria-label={currentUser.name}
                 className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
               >
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
@@ -441,6 +444,7 @@ export function AdminShell({
               <button
                 type="button"
                 onClick={onOpenAuth}
+                aria-label="登录"
                 className="flex cursor-pointer items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
               >
                 <User className="h-4 w-4" />
@@ -450,7 +454,9 @@ export function AdminShell({
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+        <main className="min-h-0 flex-1 overflow-hidden">
+          <PageHeaderActionsTarget value={pageActionsTarget}>{children}</PageHeaderActionsTarget>
+        </main>
       </div>
     </div>
   );

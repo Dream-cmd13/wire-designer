@@ -49,7 +49,8 @@ describe('anonymous catalog access guards', () => {
     expect(panel).toContain('canUseCatalog');
     expect(wizard).toContain('canUseCatalog');
     expect(materialDialog).toContain('canUseCatalog');
-    expect(page.match(/canUseCatalog=\{Boolean\(currentUser\)\}/g)).toHaveLength(3);
+    expect(page).toContain('const drawingOwnerId = useUserStore((state) => state.currentUser?.id ?? null)');
+    expect(page.match(/canUseCatalog=\{Boolean\(drawingOwnerId\)\}/g) ?? []).toHaveLength(3);
   });
 
   it('gates protected routes and resets catalog data in App', () => {

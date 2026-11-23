@@ -6,6 +6,7 @@ import { canManageUsers, canViewPricing, type AppRole } from '@/lib/permissions'
 import type { PricingSettings } from '@/types/pricingSettings';
 import { parsePricingSettingsImport, validatePricingSettings } from '@/lib/pricingSettingsImport';
 import { FINISHING_LABOR_NAMES, FINISHING_LENGTHS_MM } from '@/lib/finishingLaborRates';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 
 interface RoleRow { user_id: string; email: string; role: AppRole }
 const labels: Record<string, string> = {
@@ -61,9 +62,13 @@ export function PricingManagement() {
     } catch { setMessage('角色更新失败，不能修改自己的角色。'); }
     finally { setBusy(false); }
   };
-  return <section className="border-b border-slate-200 bg-white p-4">
-    <button onClick={() => setOpen(v => !v)} className="flex items-center gap-2 text-sm font-medium"><Settings size={16} />定价参数{canManageUsers(role) ? '与用户权限' : ''}</button>
-    {open && <div className="mt-3 space-y-3">
+  return <>
+    <PageHeaderActions>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(v => !v)} className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+        <Settings size={14} />定价参数{canManageUsers(role) ? '与用户权限' : ''}
+      </button>
+    </PageHeaderActions>
+    {open && <section className="min-h-0 max-h-[55%] shrink-0 space-y-3 overflow-auto rounded-lg border border-slate-200 bg-white p-4" aria-label="定价设置">
       <button title="刷新配置" aria-label="刷新配置" onClick={() => { setSettings(null); setRefresh(n => n + 1); }} disabled={busy}><RefreshCw size={16} /></button>
       {settings && <>
         <div className="flex gap-4 text-sm text-blue-700">
@@ -118,6 +123,6 @@ export function PricingManagement() {
         </label>)}
       </div>}
       {message && <p role="status" className="text-sm">{message}</p>}
-    </div>}
-  </section>;
+    </section>}
+  </>;
 }

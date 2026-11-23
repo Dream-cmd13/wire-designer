@@ -268,6 +268,37 @@ describe('DWG import and save', () => {
 });
 
 describe('DWG edit panel', () => {
+  it('preserves the draft on cancel and discards it only after confirming exit', async () => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    mocks.parse.mockResolvedValueOnce({ ...drawing, version: 'AC1018', entities: [{
+      kind: 'line', layer: '0', a: { x: 0, y: 5 }, b: { x: 10, y: 5 },
+      bounds: { minX: 0, minY: 5, maxX: 10, maxY: 5 },
+      editSource: { key: 'DIMENSION:1', handle: '1', kind: 'DIMENSION', expectedText: '500' },
+    }] });
+    render(<DwgViewerPage />);
+    pick(sample('local.dwg'));
+    fireEvent.click(await screen.findByRole('button', { name: '编辑草稿' }));
+    const viewport = screen.getByTestId('dwg-drop-zone');
+    Object.defineProperty(viewport, 'setPointerCapture', { value: vi.fn() });
+    const point = { button: 0, clientX: 400, clientY: 300 };
+    fireEvent.pointerDown(viewport, point);
+    fireEvent.pointerUp(viewport, point);
+    fireEvent.change(screen.getByLabelText('尺寸显示文字'), { target: { value: '750' } });
+    fireEvent.click(screen.getByRole('button', { name: '应用到草稿预览' }));
+
+    const exit = () => fireEvent.click(screen.getByRole('button', { name: '退出编辑' }));
+    exit();
+    const confirmation = () => within(screen.getByRole('alertdialog', { name: '放弃当前 DWG 草稿？' }));
+    fireEvent.click(confirmation().getByRole('button', { name: '取消' }));
+    expect((screen.getByLabelText('尺寸显示文字') as HTMLInputElement).value).toBe('750');
+
+    exit();
+    fireEvent.click(confirmation().getByRole('button', { name: '放弃草稿' }));
+    expect(screen.queryByRole('complementary', { name: 'DWG 编辑属性' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '编辑草稿' }));
+    expect(screen.getByText('0 项修改')).toBeTruthy();
+  });
+
   it('opens the browser-only draft workspace without a writer service', async () => {
     mocks.parse.mockResolvedValueOnce({ ...drawing, version: 'AC1018' });
     render(<DwgViewerPage />);

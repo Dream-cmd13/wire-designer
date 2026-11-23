@@ -1274,7 +1274,7 @@ export default function App() {
           </div>
         )}
         <ErrorBoundary fallback={<ModuleLoadErrorState />}>
-          <Suspense fallback={<ModuleLoadingState />}>
+          <Suspense key={route.id} fallback={<ModuleLoadingState />}>
             {renderContent()}
           </Suspense>
         </ErrorBoundary>

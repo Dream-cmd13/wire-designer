@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Maximize2, Minus, Plus } from 'lucide-react';
 import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import type {
   TwoDImage,
   CanvasWireMaterial,
@@ -1182,63 +1183,9 @@ export function TwoDView() {
 
   // ── render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full flex-col bg-white">
-      {/* toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-2.5">
-        <span className="text-sm font-semibold text-slate-700">成品图</span>
-        <div className="flex items-center gap-3">
-          {/* zoom controls */}
-          {twoDImages.length > 0 && (
-            <div className="flex items-center gap-1.5 border-r border-slate-200 pr-3">
-              <button
-                type="button"
-                onClick={zoomOut}
-                disabled={zoom <= ZOOM_MIN}
-                className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                title="缩小"
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={fitToCanvas}
-                className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                title="居中适应整张图纸"
-              >
-                <Maximize2 className="h-3 w-3" />
-                <span>{Math.round(zoom * 100)}%</span>
-              </button>
-              <button
-                type="button"
-                onClick={zoomIn}
-                disabled={zoom >= ZOOM_MAX}
-                className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                title="放大"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-          {twoDImages.length > 0 && (
-            <span className="text-xs text-slate-400">{twoDImages.length} 张图片</span>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowCallouts((p) => !p)}
-            className={`flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-medium shadow-2xs transition-colors ${
-              showCallouts
-                ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-            }`}
-            title="显示/隐藏件号气泡引出标注"
-          >
-            <span
-              className={`inline-block h-2 w-2 rounded-full transition-colors ${
-                showCallouts ? 'bg-blue-600' : 'bg-slate-300'
-              }`}
-            />
-            件号标注
-          </button>
+    <div className="relative flex h-full flex-col bg-white">
+      <PageHeaderActions>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <button
             type="button"
             onClick={() => setIsEditDialogOpen(true)}
@@ -1289,7 +1236,7 @@ export function TwoDView() {
             )}
           </div>
         </div>
-      </div>
+      </PageHeaderActions>
 
       {/* canvas area */}
       <div
@@ -1630,6 +1577,27 @@ export function TwoDView() {
           </div>
         )}
       </div>
+
+      {twoDImages.length > 0 && (
+        <div role="group" aria-label="成品图画布工具" className="absolute right-2 bottom-2 z-30 flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm">
+          <button type="button" onClick={zoomOut} disabled={zoom <= ZOOM_MIN} aria-label="缩小" title="缩小"
+            className="flex h-7 w-7 items-center justify-center rounded text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" onClick={fitToCanvas} aria-label="居中适应整张图纸" title="居中适应整张图纸"
+            className="flex h-7 items-center gap-1 rounded px-1.5 text-xs font-medium tabular-nums text-slate-600 hover:bg-slate-100">
+            <Maximize2 className="h-3 w-3" />{Math.round(zoom * 100)}%
+          </button>
+          <button type="button" onClick={zoomIn} disabled={zoom >= ZOOM_MAX} aria-label="放大" title="放大"
+            className="flex h-7 w-7 items-center justify-center rounded text-slate-600 hover:bg-slate-100 disabled:opacity-40">
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button type="button" aria-pressed={showCallouts} onClick={() => setShowCallouts((value) => !value)}
+            className={`h-7 rounded px-2 text-xs font-medium ${showCallouts ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'text-slate-600 hover:bg-slate-100'}`}>
+            件号标注
+          </button>
+        </div>
+      )}
 
 
       {/* Drawing Frame Edit Dialog */}

@@ -8,12 +8,14 @@ import type { AutoQuoteEvaluation } from '@/lib/autoQuote';
 import { useUserStore } from '@/stores/userStore';
 import { canViewPricing } from '@/lib/permissions';
 import type { CatalogSnapshot } from '@/types/catalog';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 
 interface AutoQuotePriceCardProps {
   evaluation: AutoQuoteEvaluation;
   catalog: CatalogSnapshot | null;
   loading: boolean;
   exportScope?: 'unit' | 'order';
+  exportInHeader?: boolean;
   onRetry?: () => void;
 }
 
@@ -51,6 +53,7 @@ export function AutoQuotePriceCard({
   catalog,
   loading,
   exportScope = 'order',
+  exportInHeader = false,
   onRetry,
 }: AutoQuotePriceCardProps) {
   const [exporting, setExporting] = useState(false);
@@ -75,6 +78,21 @@ export function AutoQuotePriceCard({
       setExporting(false);
     }
   };
+
+  const exportButtons = <>
+    {internal && (
+      <button type="button" disabled={exporting} onClick={() => handleExportExcel('internal')}
+        className={exportInHeader ? 'h-8 cursor-pointer whitespace-nowrap rounded-md border border-slate-200 px-2.5 text-xs font-medium text-blue-700 hover:bg-slate-50 disabled:opacity-50' : 'text-sm text-blue-700 disabled:opacity-50'}>
+        导出内部成本分析表
+      </button>
+    )}
+    <button type="button" disabled={exporting} onClick={() => handleExportExcel()}
+      className={`flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 ${exportInHeader ? 'h-8 rounded-md px-2.5' : 'w-full rounded-lg px-4 py-2.5 shadow-xs'}`}>
+      {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+      {!exportInHeader && <FileSpreadsheet className="h-4 w-4" />}
+      导出报价 Excel
+    </button>
+  </>;
 
   return (
     <div className="space-y-4">
@@ -216,27 +234,12 @@ export function AutoQuotePriceCard({
             <AmountRow name="产品含税售价" amount={internal.sellingPrice} />
             <AmountRow name="运费" amount={internal.freight} />
           </div>
-          <button onClick={() => handleExportExcel('internal')} className="text-sm text-blue-700">导出内部成本分析表</button>
           </>}
 
-          {/* 导出按钮 */}
-          <button
-            type="button"
-            disabled={exporting}
-            onClick={() => handleExportExcel()}
-            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 px-4 text-xs font-semibold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {exporting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4" />
-            )}
-            <FileSpreadsheet className="h-4 w-4" />
-            <span>导出报价 Excel</span>
-          </button>
+          {exportInHeader ? <PageHeaderActions>{exportButtons}</PageHeaderActions> : exportButtons}
 
           {exportError && (
-            <p className="text-xs text-rose-600">{exportError}</p>
+            <p role="alert" className="text-xs text-rose-600">{exportError}</p>
           )}
         </div>
       )}

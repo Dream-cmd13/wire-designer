@@ -159,6 +159,34 @@ test('engineer keeps the same project when changing views, refreshing, visiting 
   await expect(nameInput).toHaveValue(projectName);
   await productView.click();
   await expect(page).toHaveURL(`/designer/product-image?projectId=${projectId}`);
+  const header = page.getByRole('banner');
+  await expect(header.getByRole('button', { name: '导出', exact: true })).toBeVisible();
+  await page.evaluate(async () => {
+    const storeUrl = performance.getEntriesByType('resource').find((entry) => new URL(entry.name).pathname === '/src/stores/harnessStore.ts')?.name;
+    if (!storeUrl) throw new Error('设计工作区尚未加载');
+    const { useHarnessStore } = await import(storeUrl) as typeof import('../../src/stores/harnessStore');
+    const { config } = useHarnessStore.getState();
+    useHarnessStore.setState({ config: { ...config, twoDImages: [{
+      id: 'fixture-wire', name: '验收样件', source: 'catalog',
+      dataUrl: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%2220%22%3E%3Crect width=%22100%22 height=%2220%22/%3E%3C/svg%3E',
+    }] } });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const canvasTools = page.getByRole('group', { name: '成品图画布工具' });
+  const callouts = canvasTools.getByRole('button', { name: '件号标注' });
+  await expect(callouts).toHaveAttribute('aria-pressed', 'true');
+  expect((await header.boundingBox())!.height).toBe(56);
+  await expect(header.getByRole('button', { name: '件号标注' })).toHaveCount(0);
+  const fit = canvasTools.getByRole('button', { name: '居中适应整张图纸' });
+  await fit.click();
+  const fitZoom = await fit.innerText();
+  await canvasTools.getByRole('button', { name: '放大', exact: true }).click();
+  await expect(fit).not.toHaveText(fitZoom);
+  await callouts.click();
+  await expect(callouts).toHaveAttribute('aria-pressed', 'false');
+  await header.getByRole('button', { name: '导出', exact: true }).click();
+  await expect(header.getByRole('button', { name: '导出为 PDF 文档' })).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.reload();
   await expect(productView).toHaveAttribute('aria-current', 'page');
   await expect(nameInput).toHaveValue(projectName);
@@ -184,6 +212,29 @@ test('engineer keeps the same project when changing views, refreshing, visiting 
   await expect(designView).toHaveCount(0);
   await expect(productView).toHaveCount(0);
   expect(requests).not.toContain('/rest/v1/rpc/save_project_document');
+});
+
+test('material actions stay in the header and reachable on narrow screens', async ({ page }) => {
+  await installFixture(page, 'admin');
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto('/materials');
+  const header = page.getByRole('banner');
+  const main = page.getByRole('main');
+  const settings = header.getByRole('button', { name: '定价参数与用户权限' });
+  const importPrices = header.getByRole('button', { name: '导入价格表' });
+  await expect(header.getByRole('heading', { name: '物料库' })).toBeVisible();
+  await expect(header.getByRole('button', { name: '导出价格表' })).toBeInViewport({ ratio: 1 });
+  await expect(importPrices).toBeInViewport({ ratio: 1 });
+  await expect(settings).toBeInViewport({ ratio: 1 });
+  await expect(main.getByRole('heading', { name: '物料库' })).toHaveCount(0);
+  expect(await header.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+
+  const fileChooser = page.waitForEvent('filechooser');
+  await importPrices.click();
+  await fileChooser;
+  await settings.click();
+  await expect(settings).toHaveAttribute('aria-expanded', 'true');
+  await expect(main.getByRole('region', { name: '定价设置' })).toBeVisible();
 });
 
 test('signing in switches the drawing workspace and keeps guest and engineer saves separate', async ({ page }) => {
@@ -223,14 +274,15 @@ test('failed guest drawing persistence blocks login and leaves the edited canvas
     };
   });
   const toolbar = page.getByRole('toolbar', { name: '绘图工具栏' });
+  const header = page.getByRole('banner');
   await toolbar.getByTitle('添加文字').click();
-  await expect(toolbar.getByTitle('重试保存')).toBeVisible();
+  await expect(header.getByTitle('重试保存')).toBeVisible();
   await submitFixtureLogin(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(toolbar).toBeVisible();
   expect(requests).not.toContain('/auth/v1/token');
   const downloadEvent = page.waitForEvent('download');
-  await toolbar.getByRole('button', { name: '下载图纸副本', exact: true }).click();
+  await header.getByRole('button', { name: '下载图纸副本', exact: true }).click();
   const download = await downloadEvent;
   const copy = JSON.parse(await readFile(await download.path(), 'utf8')) as { document: { objects: { kind: string }[] } };
   expect(copy.document.objects.filter(({ kind }) => kind === 'text')).toHaveLength(1);

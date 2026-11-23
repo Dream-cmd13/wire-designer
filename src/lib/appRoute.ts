@@ -19,7 +19,7 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
   'designer-projects': {
     id: 'designer-projects',
     path: '/designer',
-    title: '线束设计器',
+    title: '项目管理',
     section: 'projects',
   },
   'auto-quote': {

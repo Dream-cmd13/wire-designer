@@ -6,10 +6,10 @@ import { canViewPricing } from '@/lib/permissions';
 import { useUserStore } from '@/stores/userStore';
 import type { QuoteMaterial } from '@/lib/quoteMaterials';
 import { PricingManagement } from '@/components/materials/PricingManagement';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import {
   Cable,
   Check,
-  Database,
   Download,
   ExternalLink,
   FileSpreadsheet,
@@ -699,14 +699,7 @@ export function MaterialLibraryPage({
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-100 p-3 sm:p-4 gap-2.5 sm:gap-3">
-      <PricingManagement />
-      {/* 顶部标题与操作卡片 */}
-      <section className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 pt-3 pb-0 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <Database className="h-5 w-5 text-blue-600" />
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">物料库</h2>
+      <PageHeaderActions>
               {isRefreshing && (
                 <span
                   data-testid="material-syncing-badge"
@@ -725,13 +718,6 @@ export function MaterialLibraryPage({
                   <span>数据已同步</span>
                 </span>
               )}
-            </div>
-            <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">
-              标准元器件工程规格与采购价格总览，支持多品类规格检索与价格联动管理。
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
             <button
               type="button"
               data-testid="material-refresh-btn"
@@ -755,20 +741,14 @@ export function MaterialLibraryPage({
               <Download className="h-3.5 w-3.5 text-slate-500" />
               导出价格表
             </button>
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs hover:bg-blue-700 disabled:opacity-50">
+            <button type="button" disabled={readingFile || loading} onClick={() => fileInputRef.current?.click()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-xs hover:bg-blue-700 disabled:opacity-50">
               <Upload className="h-3.5 w-3.5" />
               <span>{readingFile ? '正在解析...' : '导入价格表'}</span>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx"
-                className="hidden"
-                disabled={readingFile || loading}
-                onChange={handleSelectFile}
-              />
-            </label>
-          </div>
-        </div>
+            </button>
+      </PageHeaderActions>
+      <input ref={fileInputRef} type="file" accept=".xlsx" hidden disabled={readingFile || loading} onChange={handleSelectFile} />
+      <PricingManagement />
+      <section className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 shadow-xs">
 
         {/* 价格数据加载失败时保持可见，避免用户误以为价格是最新的 */}
         {error && (
@@ -821,7 +801,7 @@ export function MaterialLibraryPage({
         )}
 
         {/* 分类 Tabs */}
-        <div className="mt-2 flex border-b border-slate-200 text-sm overflow-x-auto">
+        <div className="flex border-b border-slate-200 text-sm overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('connectors')}

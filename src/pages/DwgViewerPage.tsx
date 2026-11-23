@@ -1,7 +1,8 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Box, ChevronDown, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, Upload, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
 import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
 import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
@@ -45,6 +46,7 @@ function measureDwgText(text: string, height: number): number {
 type LoadPhase = DwgParsePhase | 'idle' | 'loading' | 'rendering' | 'ready' | 'error';
 type BackgroundMode = keyof typeof BACKGROUNDS;
 type SaveStatus = 'local' | 'saving' | 'saved' | 'error';
+type EditConfirmation = 'generate' | 'discard';
 const saveText: Record<SaveStatus, string> = { local: '仅本地预览', saving: '保存中…', saved: '已保存', error: '保存失败，可重试' };
 
 interface ViewerState {
@@ -93,14 +95,14 @@ const toolbarButtonClass =
   'flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
 const iconButtonClass =
   'flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
-function ToolbarDetails({ label, className, tone, children }: { label: string; className?: string; tone: string; children: ReactNode }) {
+function ToolbarDetails({ label, tone, children }: { label: string; tone: string; children: ReactNode }) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const details = detailsRef.current;
     const panel = panelRef.current;
-    const toolbar = details?.closest<HTMLElement>('[data-dwg-toolbar]');
+    const toolbar = details?.closest<HTMLElement>('[data-page-header], [data-dwg-toolbar]');
     if (!details || !panel || !toolbar) return;
 
     const placePanel = () => {
@@ -125,11 +127,11 @@ function ToolbarDetails({ label, className, tone, children }: { label: string; c
     };
   }, []);
 
-  return <details ref={detailsRef} name="dwg-header-details" className={className}>
+  return <details ref={detailsRef} name="dwg-header-details">
     <summary className={`flex cursor-pointer list-none items-center gap-1 rounded px-2 py-0.5 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 [&::-webkit-details-marker]:hidden ${tone}`}>
       {label} <ChevronDown className="h-3 w-3" />
     </summary>
-    <div ref={panelRef} className="absolute left-[var(--dwg-detail-x)] top-[var(--dwg-detail-y)] z-10 mt-1 w-80 max-w-[calc(100%-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg">
+    <div ref={panelRef} className="absolute left-[var(--dwg-detail-x)] top-[var(--dwg-detail-y)] z-50 mt-1 w-80 max-w-[calc(100%-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg">
       {children}
     </div>
   </details>;
@@ -137,6 +139,41 @@ function ToolbarDetails({ label, className, tone, children }: { label: string; c
 
 function ToolbarError({ id, message }: { id: string; message: string | null }) {
   return message && <span id={id} role="alert" className="min-w-0 max-w-44 break-words rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">{message}</span>;
+}
+
+function DwgEditConfirmation({ action, onCancel, onConfirm }: {
+  action: EditConfirmation;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const discard = action === 'discard';
+
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
+
+  return (
+    <dialog ref={dialogRef} role="alertdialog" aria-labelledby={titleId} aria-describedby={descriptionId}
+      onCancel={(event) => { event.preventDefault(); onCancel(); }}
+      className="fixed inset-0 m-auto w-[calc(100%-1.5rem)] max-w-sm rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-xl backdrop:bg-black/40">
+      <h2 id={titleId} className="text-base font-semibold">{discard ? '放弃当前 DWG 草稿？' : '确认生成 DWG？'}</h2>
+      <p id={descriptionId} className="mt-2 text-sm text-slate-600">
+        {discard ? '退出编辑会丢弃本次草稿和预览。' : '当前原图将发送到本系统的转换服务，文件仅用于本次处理。'}
+      </p>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className={toolbarButtonClass}>取消</button>
+        <button type="button" onClick={onConfirm}
+          className={`h-8 cursor-pointer rounded-md px-2.5 text-xs font-medium text-white ${discard ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
+          {discard ? '放弃草稿' : '确认生成'}
+        </button>
+      </div>
+    </dialog>
+  );
 }
 
 function zoomPercentOf(view: DwgView | null, drawing: DwgDrawing | null, width: number, height: number): number | null {
@@ -192,6 +229,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [editError, setEditError] = useState<string | null>(null);
   const [revision, setRevision] = useState<Revision | null>(null);
   const [revisionSaved, setRevisionSaved] = useState(false);
+  const [editConfirmation, setEditConfirmation] = useState<EditConfirmation | null>(null);
   const canEditDraft = state.drawing?.version === 'AC1018' && (!DWG_WRITEBACK_ENABLED || Boolean(editInput));
   const operations = history.at(-1) ?? NO_EDITS;
   const displayedDrawing = useMemo(() => state.drawing && (revision?.drawing ?? previewDwgOperations(state.drawing, operations, measureDwgText)),
@@ -227,6 +265,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     setEditError(null);
     setRevision(null);
     setRevisionSaved(false);
+    setEditConfirmation(null);
   }, []);
 
   const applyView = useCallback((next: DwgView) => {
@@ -466,7 +505,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
 
   async function generateRevision() {
     if (!DWG_WRITEBACK_ENABLED || !ownerId || !editInput || !operations.length || generationTask.current || saveTask.current) return;
-    if (!window.confirm('生成 DWG 会将当前原图发送到本系统的转换服务。文件仅用于本次处理。是否继续？')) return;
     const controller = new AbortController();
     generationTask.current = controller;
     const timeout = AbortSignal.timeout(60_000);
@@ -635,7 +673,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
 
   // 快捷键：+/- 缩放，0/F 适应窗口
   useEffect(() => {
-    if (harnessPreviewOpen) return;
+    if (harnessPreviewOpen || editConfirmation) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
@@ -653,7 +691,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [zoomBy, fitManually, harnessPreviewOpen]);
+  }, [zoomBy, fitManually, harnessPreviewOpen, editConfirmation]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 && event.button !== 1) return;
@@ -754,11 +792,11 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
 
   return (
     <div className="flex h-full flex-col bg-white">
-      <div data-dwg-toolbar className="relative z-20 flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
+      <div data-dwg-toolbar className="relative flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5 empty:hidden">
+        <PageHeaderActions>
         <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
           <div className="flex min-w-0 max-w-full items-center gap-2">
-            <span className="shrink-0 text-sm font-semibold text-slate-700">DWG 图纸</span>
-            {state.fileName && <span className="min-w-0 max-w-56 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
+            {state.fileName && <span className="min-w-0 max-w-36 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
               {state.fileName}
             </span>}
             {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
@@ -775,12 +813,11 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               加载中
             </span>
           )}
-          {isReady && <>
-            <span className="hidden text-xs text-slate-500 lg:inline">{statistics}</span>
-            <ToolbarDetails label="图纸信息" className="lg:hidden" tone="bg-slate-100 text-slate-600">
+          {isReady && (
+            <ToolbarDetails label="图纸信息" tone="bg-slate-100 text-slate-600">
               {statistics}
             </ToolbarDetails>
-          </>}
+          )}
           {isReady && externalImages.length > 0 && (
             <ToolbarDetails label={`外部图片缺失 ${externalImages.length} 张`} tone="bg-amber-50 text-amber-800">
               <p>浏览器无法加载图纸引用的外部图片，当前仅显示占位框。</p>
@@ -791,7 +828,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           )}
         </div>
 
-        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1 gap-y-2">
           <div className="flex items-center gap-1 border-r border-slate-200 pr-1.5">
             <button type="button" className={iconButtonClass} onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={!isReady} title="缩小 (-)">
               <Minus className="h-4 w-4" />
@@ -829,7 +865,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           {ownerId && <>
             <div className="flex max-w-full min-w-0 items-center gap-1">
               <select
-                className="h-8 w-28 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50 xl:w-48"
+                className="h-8 w-28 min-w-0 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
                 value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
                 onChange={(event) => {
                   const asset = cloudDrawings.find((item) => item.id === event.target.value);
@@ -889,7 +925,8 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           {ownerId && isReady && <button type="button" className={toolbarButtonClass} disabled={!canEditDraft || saving}
             title={state.drawing?.version === 'AC1018' ? undefined : '当前仅支持编辑 AC1018 图纸。'} onClick={() => {
               if (!editing) setEditing(true);
-              else if (!operations.length || revisionSaved || window.confirm('退出编辑会丢弃本次草稿和预览。是否继续？')) resetEditing();
+              else if (!operations.length || revisionSaved) resetEditing();
+              else setEditConfirmation('discard');
             }}>{editing ? '退出编辑' : DWG_WRITEBACK_ENABLED ? '编辑图纸' : '编辑草稿'}</button>}
           <div className="flex items-center gap-1">
             <button
@@ -920,7 +957,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               3D 示意
             </button>
           </div>
-        </div>
+        </PageHeaderActions>
       </div>
 
       <div
@@ -952,7 +989,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         {editing && <DwgEditPanel hits={hits} selection={hits.find((target) => target.key === selectedKey)} operations={operations}
           writebackEnabled={DWG_WRITEBACK_ENABLED} busy={generating} generated={Boolean(revision)} parent={Boolean(editInput?.parentId)} canSave={dwgRepository.configured}
           saving={saving} saved={revisionSaved} error={editError} onSelect={setSelectedKey} onApply={applyEdit} onUndo={undoEdit}
-          onGenerate={() => void generateRevision()} onCancel={() => generationTask.current?.abort()}
+          onGenerate={() => setEditConfirmation('generate')} onCancel={() => generationTask.current?.abort()}
           onDownload={() => { if (revision) downloadDwgRevision(revision.file); }}
           onSave={() => { if (revision) void saveDrawing(undefined, revision.file); }} />}
 
@@ -1032,6 +1069,14 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           </div>
         )}
       </div>
+
+      {editConfirmation && <DwgEditConfirmation action={editConfirmation} onCancel={() => setEditConfirmation(null)} onConfirm={() => {
+        if (editConfirmation === 'discard') resetEditing();
+        else {
+          setEditConfirmation(null);
+          void generateRevision();
+        }
+      }} />}
 
       {harnessPreviewOpen && displayedDrawing && (
         <ErrorBoundary fallback={

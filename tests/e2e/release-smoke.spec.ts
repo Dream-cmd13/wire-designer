@@ -39,6 +39,7 @@ test.describe('release smoke (anonymous)', () => {
   test('drawing workbench keeps tools reachable and reserves canvas space', async ({ page }) => {
     await page.goto('/drawing-workbench');
     const toolbar = page.getByRole('toolbar', { name: '绘图工具栏' });
+    const header = page.getByRole('banner');
     const canvas = page.locator('canvas').first();
     const inspector = page.getByRole('complementary', { name: '对象属性' });
     const viewport = page.getByRole('region', { name: '图纸画布' });
@@ -48,7 +49,8 @@ test.describe('release smoke (anonymous)', () => {
 
     for (const width of [1440, 1024, 390]) {
       await page.setViewportSize({ width, height: 900 });
-      await expect(toolbar.getByRole('button', { name: '导出 PDF', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(header.getByRole('button', { name: '导出 PDF', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect.poll(() => header.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
       await expect.poll(() => toolbar.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
       await expect(canvas).toBeInViewport({ ratio: 1 });
       await expect.poll(async () => {

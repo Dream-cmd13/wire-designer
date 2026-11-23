@@ -339,9 +339,6 @@ describe('AutoQuotePage', () => {
 
     const html = renderToStaticMarkup(<AutoQuotePage />);
 
-    // 标题与横幅
-    expect(html).toContain('线束自动报价系统');
-
     // 字段
     expect(html).toContain('A 端连接器料号');
     expect(html).toContain('B 端形式');

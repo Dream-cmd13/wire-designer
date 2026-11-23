@@ -5,7 +5,6 @@ import {
   Calculator,
   Database,
   Download,
-  FileSpreadsheet,
   Info,
   Layers,
   Loader2,
@@ -34,6 +33,7 @@ import { ConnectorPickerModal } from '@/components/autoQuote/ConnectorPickerModa
 import { WirePickerModal } from '@/components/autoQuote/WirePickerModal';
 import { AutoQuotePriceCard } from '@/components/autoQuote/AutoQuotePriceCard';
 import { QuoteProcessingFields } from '@/components/autoQuote/QuoteProcessingFields';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import type { CatalogWire } from '@/types/catalog';
 import type { Connector, OvermoldSpec } from '@/types/harness';
 
@@ -489,26 +489,19 @@ export function AutoQuotePage() {
 
   return (
     <div className="flex h-full flex-col bg-slate-100 overflow-hidden">
-      {/* 顶部简明横幅 */}
-      <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-2 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
-              <Calculator className="h-4 w-4" />
-            </span>
-            <div>
-              <h1 className="text-sm font-bold text-slate-900 leading-none">线束自动报价系统</h1>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                基于现有物料目录与工时基准的零配置在线核算
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <span className={`flex h-2 w-2 rounded-full ${status === 'ready' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-slate-400'}`} />
-            <span role="status">{statusLabels[status]}</span>
-          </div>
+      <PageHeaderActions>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <span className={`flex h-2 w-2 rounded-full ${status === 'ready' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-slate-400'}`} />
+          <span role="status">{statusLabels[status]}</span>
         </div>
-      </div>
+        {!canViewDetails && evaluation.price && (
+          <button type="button" disabled={exporting} onClick={handleExportPublicExcel}
+            className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-emerald-600 px-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            导出报价 Excel
+          </button>
+        )}
+      </PageHeaderActions>
 
       {/* 主工作区 */}
       {canViewDetails ? (
@@ -621,6 +614,7 @@ export function AutoQuotePage() {
                     catalog={catalog}
                     loading={status === 'loading'}
                     exportScope="unit"
+                    exportInHeader
                     onRetry={retry}
                   />
                 </div>
@@ -651,20 +645,6 @@ export function AutoQuotePage() {
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={exporting}
-                    onClick={handleExportPublicExcel}
-                    className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
-                  >
-                    {exporting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Download className="h-3.5 w-3.5" />
-                    )}
-                    <FileSpreadsheet className="h-3.5 w-3.5" />
-                    <span>导出报价 Excel</span>
-                  </button>
                   {exportError && <p role="alert" className="w-full text-xs text-red-700">{exportError}</p>}
                 </>
               ) : (

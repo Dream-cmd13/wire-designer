@@ -4,7 +4,6 @@ import {
   Download,
   Edit3,
   FolderOpen,
-  HardDrive,
   Plus,
   RefreshCw,
   Trash2,
@@ -15,6 +14,7 @@ import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import { notify } from '@/stores/noticeStore';
 import { DeleteConfirmToast } from '@/components/shared/DeleteConfirmToast';
 import { ImportProjectDialog } from '@/components/project/ImportProjectDialog';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
@@ -238,44 +238,26 @@ export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-5xl px-6 py-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800">项目管理</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {currentUser ? `欢迎，${currentUser.name}` : '请先登录'}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-            >
-              <Upload className="h-4 w-4" /> 导入设计
-            </button>
-            <button
-              type="button"
-              onClick={onNewProject}
-              className="flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" /> 新建项目
-            </button>
-          </div>
-        </div>
-
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
-          <div className="flex items-center gap-2">
-            <HardDrive className="h-4 w-4" />
-            <span className="text-sm font-medium">项目总数</span>
-          </div>
-          {isLoading ? (
-            <div className="h-8 w-8 animate-pulse rounded bg-blue-200" />
-          ) : (
-            <span className="text-2xl font-bold">{userProjects.length}</span>
-          )}
-        </div>
-
+      <PageHeaderActions>
+        <span className="whitespace-nowrap rounded bg-slate-100 px-2 py-1 text-xs text-slate-600">
+          {isLoading ? '正在加载项目' : `项目总数 ${userProjects.length}`}
+        </span>
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+        >
+          <Upload className="h-4 w-4" /> 导入设计
+        </button>
+        <button
+          type="button"
+          onClick={onNewProject}
+          className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+        >
+          <Plus className="h-4 w-4" /> 新建项目
+        </button>
+      </PageHeaderActions>
+      <div className="mx-auto max-w-5xl px-3 py-4 sm:px-6">
         {hasErrorWithData && (
           <div className="mb-4 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 shadow-sm">
             <div className="flex items-center gap-2">

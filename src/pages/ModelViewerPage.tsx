@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Box, Upload, CloudUpload, FileDown, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { ModelViewer } from '@/components/models/ModelViewer';
 import { ModelThreeViewDialog } from '@/components/models/ModelThreeViewDialog';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import { parseModel, validateModelFile } from '@/lib/models/modelParser';
 import { type ModelFormat, type ModelQuality, type ParsedModel, type ParsePhase, type StlUnit } from '@/lib/models/modelTypes';
 import { buildModelViewerRoutePath, getModelIdFromSearch } from '@/lib/appRoute';
@@ -190,8 +191,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
   const chooseButton = (primary = false) => <button type="button" className={primary ? primaryButtonClass : buttonClass} disabled={saving} onClick={() => fileInput.current?.click()}><Upload size={14} />选择文件</button>;
 
   return <div className="flex h-full flex-col gap-2 overflow-auto bg-slate-50 p-3">
-    <h2 className="sr-only">3D 模型</h2>
-    <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
+    <PageHeaderActions>
       {preview !== 'idle' && file && <div className="flex min-w-0 max-w-full items-center gap-2 text-xs sm:max-w-xs">
         <span className="min-w-0 truncate text-sm font-medium text-slate-900" title={file.name}>{file.name}</span>
         <span className="shrink-0 whitespace-nowrap text-slate-500">{format.toUpperCase()} · {(file.size / 1024).toFixed(1)} KiB</span>
@@ -199,7 +199,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
       {model && <span className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600" role="status">{saves[save]}</span>}
       {preview === 'ready' && <span className="sr-only" role="status">{phases.ready}</span>}
       <div className="flex min-w-0 max-w-full items-center gap-1" role="group" aria-label="本人云端模型" aria-busy={listLoading}>
-        <select className={`${selectClass} w-48 min-w-0 truncate disabled:opacity-50`} aria-label="云端模型"
+        <select className={`${selectClass} w-32 min-w-0 truncate disabled:opacity-50 sm:w-44`} aria-label="云端模型"
           aria-describedby={listError ? 'model-list-error' : undefined}
           title={selectedAsset?.original_name ?? '本人云端模型'} value={selectedAsset?.id ?? ''}
           disabled={saving || listLoading || !records.length} onChange={(event) => {
@@ -224,13 +224,13 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
       </div>
       {loading && <button type="button" className={buttonClass} onClick={cancel}>取消加载</button>}
       {preview === 'error' && file && <button type="button" className={buttonClass} onClick={() => void parse(file, unit, begin())}>重试解析</button>}
-      <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5 empty:hidden">
         {(model || loading) && chooseButton()}
         {(model || recovering) && <button type="button" className={save === 'saved' ? buttonClass : primaryButtonClass} disabled={saving || loading || qualityLoading || save === 'saved' || !modelRepository.configured} onClick={() => void saveCurrent(recovering ?? undefined)}>
           <CloudUpload size={14} />{recovering ? '恢复保存' : save === 'error' ? '重试保存' : '保存到云端'}</button>}
         {model && <button type="button" className={buttonClass} disabled={!exportReady} onClick={() => setExportSignal(task.current.controller.signal)}><FileDown size={14} />导出三视图 PDF</button>}
       </div>
-    </header>
+    </PageHeaderActions>
     {exportSignal && exportReady && <ModelThreeViewDialog model={model} sourceName={file.name} modelSignal={exportSignal} onClose={() => setExportSignal(null)} />}
     <input ref={fileInput} type="file" className="sr-only" aria-label="选择模型文件" accept=".step,.stp,.stl" disabled={saving} onChange={(event) => { if (event.target.files) choose(event.target.files); event.target.value = ''; }} />
     {!modelRepository.configured && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">云端尚未配置，可继续本地预览，暂时无法保存。</p>}
