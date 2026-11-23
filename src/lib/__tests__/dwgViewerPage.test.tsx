@@ -268,12 +268,24 @@ describe('DWG import and save', () => {
 });
 
 describe('DWG edit panel', () => {
+  it('opens the browser-only draft workspace without a writer service', async () => {
+    mocks.parse.mockResolvedValueOnce({ ...drawing, version: 'AC1018' });
+    render(<DwgViewerPage />);
+    pick(sample('local.dwg'));
+    fireEvent.click(await screen.findByRole('button', { name: '编辑草稿' }));
+    expect(screen.getByText('草稿仅在当前页面预览，可导出 PNG 或 PDF。')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '生成 DWG' })).toBeNull();
+    expect(screen.getByRole('button', { name: '导出 PNG' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button', { name: '导出 PDF' }).hasAttribute('disabled')).toBe(false);
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
   it('keeps draft actions when deselected and folds long originals per object', () => {
     const original = '技术要求\n保持端子接触区域清洁，不得沾染油污。';
     const first = { key: 'MTEXT:A1', handle: 'A1', kind: 'MTEXT' as const, expectedText: original, multiline: true };
     const second = { ...first, key: 'MTEXT:A2', handle: 'A2' };
     const props = {
-      hits: [], operations: [], busy: false, generated: false, parent: false,
+      hits: [], operations: [], writebackEnabled: true, busy: false, generated: false, parent: false,
       canSave: true, saving: false, saved: false, error: null,
       onSelect: vi.fn(), onApply: vi.fn(), onUndo: vi.fn(), onGenerate: vi.fn(), onCancel: vi.fn(), onDownload: vi.fn(), onSave: vi.fn(),
     };
@@ -283,6 +295,11 @@ describe('DWG edit panel', () => {
     rerender(<DwgEditPanel {...props} selection={undefined} operations={[{ handle: first.handle, kind: first.kind, expectedText: original, newText: '新版' }]} />);
     expect(screen.getByRole('button', { name: '生成 DWG' }).hasAttribute('disabled')).toBe(false);
     expect(screen.getByRole('button', { name: '撤回上次修改' }).hasAttribute('disabled')).toBe(false);
+    rerender(<DwgEditPanel {...props} writebackEnabled={false} selection={undefined}
+      operations={[{ handle: first.handle, kind: first.kind, expectedText: original, newText: '新版' }]} />);
+    expect(screen.queryByRole('button', { name: '生成 DWG' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '撤回上次修改' }));
+    expect(props.onUndo).toHaveBeenCalledOnce();
     rerender(<DwgEditPanel {...props} selection={first} />);
     const details = screen.getByText('查看原文字').closest('details')!;
     expect(details.open).toBe(false);

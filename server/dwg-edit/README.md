@@ -1,5 +1,7 @@
 # DWG 原图限定编辑
 
+前端默认提供浏览器内草稿预览、撤回及 PNG／PDF 导出。需要启用 DWG 生成和云端另存新版时，使用 `VITE_DWG_WRITEBACK_ENABLED=true` 启动或构建前端，并按本页配置写入服务与云端迁移。
+
 工程师或管理员可以在 DWG 页面编辑本地或本人云端的 AC1018 图纸。草稿在浏览器中预览。确认生成后，浏览器向同源写入服务发送原图与操作，下载和云端另存使用同一份修订字节。云端新版与原版分别保存在 `dwg-files` 私有桶中。
 
 ## 本地启动
@@ -33,7 +35,7 @@ npm test -- tests/dwgViewer.test.ts src/lib/__tests__/dwgEdit.test.ts src/lib/__
 npm run build
 ```
 
-浏览器测试使用本地夹具。将 API 的 `DwgEdit__SupabaseUrl` 和 Vite 的 `VITE_SUPABASE_URL` 都设为 `http://localhost:5199`，两端 key 都设为 `local-fixture`。使用 `npm run dev -- --host localhost --port 5197 --strictPort` 启动 Vite。测试自行启动 5199 上的身份校验夹具。首次运行需要安装 Playwright Chromium。
+浏览器测试使用本地夹具。将 API 的 `DwgEdit__SupabaseUrl` 和 Vite 的 `VITE_SUPABASE_URL` 都设为 `http://localhost:5199`，两端 key 都设为 `local-fixture`。设置 `VITE_DWG_WRITEBACK_ENABLED=true` 后，使用 `npm run dev -- --host localhost --port 5197 --strictPort` 启动 Vite。测试自行启动 5199 上的身份校验夹具。首次运行需要安装 Playwright Chromium。
 
 ```powershell
 $env:E2E_DWG_EDIT = '1'

@@ -16,6 +16,7 @@ import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 
 const WASM_BASE = `${import.meta.env.BASE_URL}libredwg`;
+const DWG_WRITEBACK_ENABLED = import.meta.env.VITE_DWG_WRITEBACK_ENABLED === 'true';
 const VIEW_PADDING = 32;
 const ZOOM_STEP = 1.2;
 const BACKGROUNDS = { light: '#ffffff', dark: '#111827' } as const;
@@ -191,6 +192,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [editError, setEditError] = useState<string | null>(null);
   const [revision, setRevision] = useState<Revision | null>(null);
   const [revisionSaved, setRevisionSaved] = useState(false);
+  const canEditDraft = state.drawing?.version === 'AC1018' && (!DWG_WRITEBACK_ENABLED || Boolean(editInput));
   const operations = history.at(-1) ?? NO_EDITS;
   const displayedDrawing = useMemo(() => state.drawing && (revision?.drawing ?? previewDwgOperations(state.drawing, operations, measureDwgText)),
     [state.drawing, operations, revision]);
@@ -319,7 +321,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       if (token !== loadTokenRef.current) return;
 
       showDrawing(drawing, fileName);
-      if (drawing.version === 'AC1018') {
+      if (DWG_WRITEBACK_ENABLED && drawing.version === 'AC1018') {
         const sha256 = asset?.sha256 ?? await dwgSha256(buffer).catch(() => null);
         if (sha256 && token === loadTokenRef.current) setEditInput({ file, sha256, parentId: asset?.id });
       }
@@ -410,7 +412,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   }, [ownerId, openCloud]);
 
   async function saveDrawing(recovery?: DwgAsset, revisedFile?: File) {
-    if (!ownerId || saveTask.current || !dwgRepository.configured) return;
+    if (!ownerId || saveTask.current || !dwgRepository.configured || (revisedFile && !DWG_WRITEBACK_ENABLED)) return;
     const file = revisedFile ?? (state.phase === 'ready' ? localFile ?? undefined : undefined);
     if (!recovery && (!file || (revisedFile ? revisionSaved : saveStatus === 'saved'))) return;
     const controller = new AbortController();
@@ -463,7 +465,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   }
 
   async function generateRevision() {
-    if (!ownerId || !editInput || !operations.length || generationTask.current || saveTask.current) return;
+    if (!DWG_WRITEBACK_ENABLED || !ownerId || !editInput || !operations.length || generationTask.current || saveTask.current) return;
     if (!window.confirm('生成 DWG 会将当前原图发送到本系统的转换服务。文件仅用于本次处理。是否继续？')) return;
     const controller = new AbortController();
     generationTask.current = controller;
@@ -884,11 +886,11 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               <ToolbarError id="dwg-save-error" message={originalSaveError} />
             </div>
           )}
-          {ownerId && isReady && <button type="button" className={toolbarButtonClass} disabled={!editInput || saving}
-            title={editInput ? undefined : '当前仅支持编辑 AC1018 图纸。'} onClick={() => {
+          {ownerId && isReady && <button type="button" className={toolbarButtonClass} disabled={!canEditDraft || saving}
+            title={state.drawing?.version === 'AC1018' ? undefined : '当前仅支持编辑 AC1018 图纸。'} onClick={() => {
               if (!editing) setEditing(true);
               else if (!operations.length || revisionSaved || window.confirm('退出编辑会丢弃本次草稿和预览。是否继续？')) resetEditing();
-            }}>{editing ? '退出编辑' : '编辑图纸'}</button>}
+            }}>{editing ? '退出编辑' : DWG_WRITEBACK_ENABLED ? '编辑图纸' : '编辑草稿'}</button>}
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -948,7 +950,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
         {editing && <DwgEditPanel hits={hits} selection={hits.find((target) => target.key === selectedKey)} operations={operations}
-          busy={generating} generated={Boolean(revision)} parent={Boolean(editInput?.parentId)} canSave={dwgRepository.configured}
+          writebackEnabled={DWG_WRITEBACK_ENABLED} busy={generating} generated={Boolean(revision)} parent={Boolean(editInput?.parentId)} canSave={dwgRepository.configured}
           saving={saving} saved={revisionSaved} error={editError} onSelect={setSelectedKey} onApply={applyEdit} onUndo={undoEdit}
           onGenerate={() => void generateRevision()} onCancel={() => generationTask.current?.abort()}
           onDownload={() => { if (revision) downloadDwgRevision(revision.file); }}

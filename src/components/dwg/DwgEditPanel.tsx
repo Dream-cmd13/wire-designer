@@ -9,6 +9,7 @@ interface Props {
   hits: DwgEditSource[];
   selection: DwgEditSource | undefined;
   operations: DwgEditOperation[];
+  writebackEnabled: boolean;
   busy: boolean;
   generated: boolean;
   parent: boolean;
@@ -40,7 +41,7 @@ function EditField({ target, value, onApply }: { target: DwgEditSource; value: s
 }
 
 export function DwgEditPanel(props: Props) {
-  const { selection, operations, hits, busy, generated } = props;
+  const { selection, operations, hits, writebackEnabled, busy, generated } = props;
   const compact = !selection && !generated && !busy && hits.length <= 1;
   const showActions = busy || generated || operations.length > 0;
   const original = selection?.expectedText ?? '';
@@ -49,7 +50,8 @@ export function DwgEditPanel(props: Props) {
   return <aside data-dwg-overlay aria-label="DWG 编辑属性" className={`absolute bottom-3 right-3 z-10 grid max-h-[calc(100%-1.5rem)] max-w-[calc(100%-1.5rem)] touch-pan-y overflow-auto rounded-lg border border-slate-200 bg-white text-xs text-slate-700 shadow-lg ${compact ? 'w-fit gap-1.5 px-2.5 py-1.5' : 'w-72 gap-2 p-3'}`}>
     {compact ? <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
       点击文字或尺寸线选择对象 <span className="whitespace-nowrap text-slate-500">{operations.length} 项修改</span>
-    </p> : <p className="font-semibold">{generated ? '生成文件预览' : '编辑图纸'} · {operations.length} 项修改</p>}
+    </p> : <p className="font-semibold">{generated ? '生成文件预览' : writebackEnabled ? '编辑图纸' : '编辑草稿'} · {operations.length} 项修改</p>}
+    {!writebackEnabled && <p className="text-slate-600">草稿仅在当前页面预览，可导出 PNG 或 PDF。</p>}
     {!generated && !busy && hits.length > 1 && <label className="grid gap-1">重叠对象
       <select className="w-full rounded border border-slate-300" value={selection?.key ?? ''} onChange={(event) => props.onSelect(event.target.value)}>
         <option value="" disabled>请选择一个对象</option>
@@ -69,12 +71,12 @@ export function DwgEditPanel(props: Props) {
     {showActions && <div className="flex flex-wrap gap-1.5">
       {busy ? <><span className="self-center" role="status">生成中…</span><button type="button" className={button} onClick={props.onCancel}>取消生成</button></> : <>
         <button type="button" className={button} onClick={props.onUndo} disabled={!operations.length || props.saving}>撤回上次修改</button>
-        {generated ? <>
+        {writebackEnabled && (generated ? <>
           <button type="button" className={button} onClick={props.onDownload}>下载修订 DWG</button>
           <button type="button" className={button} onClick={props.onSave} disabled={!props.canSave || props.saving || props.saved}>
             {props.saved ? '修订件已保存' : props.saving ? '保存中…' : props.parent ? '另存为新版' : '保存到云端'}
           </button>
-        </> : <button type="button" className={button} onClick={props.onGenerate} disabled={!operations.length || props.saving}>生成 DWG</button>}
+        </> : <button type="button" className={button} onClick={props.onGenerate} disabled={!operations.length || props.saving}>生成 DWG</button>)}
       </>}
     </div>}
   </aside>;
