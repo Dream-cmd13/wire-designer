@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { DocumentWriteError } from '@/lib/documentWriteError';
-import { getCachedProjects, setCachedProjects } from '@/lib/projectListCache';
+import { getCachedProjects, getProjectListDeletionToken, removeCachedProject, setCachedProjects } from '@/lib/projectListCache';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { DocumentVersion } from '@/types/document';
 import type { Project } from '@/types/user';
@@ -63,6 +63,11 @@ function isCurrentSession(userId: string, generation: number): boolean {
   return generation === projectSessionGeneration && isCurrentUser(userId);
 }
 
+function invalidateProjectListRequests(): void {
+  listRequestSequence += 1;
+  inFlightLoad = null;
+}
+
 export const useProjectStore = create<ProjectState>()((set, get) => ({
   projects: [],
   currentProject: null,
@@ -94,22 +99,25 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     }
 
     const loadPromise = (async () => {
-      try {
-        const remoteProjects = await projectRepository.listProjects(userId);
+      while (isCurrentRequest()) {
+        const deletionToken = getProjectListDeletionToken(userId);
+        const result = await projectRepository.listProjects(userId).then(
+          (projects) => ({ projects }),
+          (error: unknown) => ({ error }),
+        );
         if (!isCurrentRequest()) return;
-        setCachedProjects(userId, remoteProjects);
-        set({
-          projects: remoteProjects,
-          projectsStatus: 'success',
-          projectsError: null,
-        });
-      } catch (error) {
-        if (!isCurrentRequest()) return;
-        const message = getUserErrorMessage(error, '项目列表暂时无法加载，请检查网络后重试。');
-        set({
-          projectsStatus: 'error',
-          projectsError: message,
-        });
+        if ('projects' in result) setCachedProjects(userId, result.projects, deletionToken);
+        if (deletionToken !== getProjectListDeletionToken(userId)) {
+          set({ projects: getCachedProjects(userId) ?? [] });
+          continue;
+        }
+        if ('error' in result) {
+          const message = getUserErrorMessage(result.error, '项目列表暂时无法加载，请检查网络后重试。');
+          set({ projectsStatus: 'error', projectsError: message });
+          return;
+        }
+        set({ projects: result.projects, projectsStatus: 'success', projectsError: null });
+        return;
       }
     })();
 
@@ -137,14 +145,19 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     const configToSave = { ...initialConfig, id: projectId, name };
     const version = await projectRepository.createProject(newProject, configToSave);
     if (!isCurrentSession(userId, generation)) return null;
-    const updatedProjects = [...get().projects.filter((project) => project.userId === userId), newProject];
-    setCachedProjects(userId, updatedProjects);
-    set((state) => ({
-      projects: [...state.projects, newProject],
-      currentProject: options?.activate === false ? state.currentProject : newProject,
+    invalidateProjectListRequests();
+    const state = get();
+    const project = state.projects.find((entry) => entry.id === projectId && entry.userId === userId) ?? newProject;
+    const projects = project === newProject ? [...state.projects, project] : state.projects;
+    const cached = getCachedProjects(userId) ?? state.projects.filter((entry) => entry.userId === userId);
+    if (!cached.some((entry) => entry.id === projectId)) setCachedProjects(userId, [...cached, project]);
+    set({
+      projects,
+      currentProject: options?.activate === false ? state.currentProject : project,
       currentProjectVersion: options?.activate === false ? state.currentProjectVersion : version,
-    }));
-    return { project: newProject, version };
+    });
+    if (state.projectsStatus === 'loading') void get().loadProjects(userId);
+    return { project, version };
   },
 
   updateProject: async (id, updates) => {
@@ -195,12 +208,10 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
     }
     if (!isCurrentSession(userId, generation)) return false;
 
-    listRequestSequence += 1;
-    inFlightLoad = null;
+    invalidateProjectListRequests();
     const state = get();
     const projects = state.projects.filter((project) => project.id !== id || project.userId !== userId);
-    const cached = getCachedProjects(userId);
-    if (cached) setCachedProjects(userId, cached.filter((project) => project.id !== id));
+    removeCachedProject(userId, id);
     const closingProject = state.currentProject?.id === id && state.currentProject.userId === userId;
     set({
       projects,

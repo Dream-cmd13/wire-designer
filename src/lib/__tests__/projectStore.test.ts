@@ -147,6 +147,51 @@ describe('project store', () => {
     expect(useProjectStore.getState().currentProject?.id).toBe('p-current');
   });
 
+  it('keeps a newly created project when an earlier list snapshot arrives afterwards', async () => {
+    const userId = 'user-a';
+    setCurrentUser(userId);
+    const staleList = deferred<Project[]>();
+    const freshList = deferred<Project[]>();
+    mocks.listProjects.mockReturnValueOnce(staleList.promise).mockReturnValueOnce(freshList.promise);
+    const store = useProjectStore.getState();
+    const staleLoad = store.loadProjects(userId);
+    const created = await store.createProject(userId, 'new', '', createFallbackConfig());
+    if (!created) throw new Error('Expected a created project');
+
+    staleList.resolve([]);
+    await staleLoad;
+    expect(useProjectStore.getState().projects).toEqual([created.project]);
+    expect(getCachedProjects(userId)).toEqual([created.project]);
+
+    const refresh = store.loadProjects(userId);
+    expect(mocks.listProjects).toHaveBeenCalledTimes(2);
+    freshList.resolve([created.project]);
+    await refresh;
+    expect(useProjectStore.getState()).toMatchObject({ projects: [created.project], projectsStatus: 'success' });
+  });
+
+  it('keeps a single project ID when a list already includes the new row before creation returns', async () => {
+    const userId = 'user-a';
+    setCurrentUser(userId);
+    const pendingCreate = deferred<{ revision: number; updatedAt: string }>();
+    let remoteProject: Project | undefined;
+    mocks.createProject.mockImplementationOnce((project?: Project) => {
+      if (project) remoteProject = { ...project, createdAt: 100, updatedAt: 100 };
+      return pendingCreate.promise;
+    });
+    const store = useProjectStore.getState();
+    const creation = store.createProject(userId, 'new', '', createFallbackConfig(), { activate: false });
+    if (!remoteProject) throw new Error('Expected the server to receive the new project');
+    mocks.listProjects.mockResolvedValueOnce([remoteProject]);
+    await store.loadProjects(userId);
+    pendingCreate.resolve({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' });
+    await creation;
+
+    expect(useProjectStore.getState().projects).toEqual([remoteProject]);
+    expect(getCachedProjects(userId)).toEqual([remoteProject]);
+    expect(useProjectStore.getState().currentProject).toBeNull();
+  });
+
   it.each(['user-new', null])('discards creation after switching to %s', async (nextUser) => {
     setCurrentUser('user-old');
     let resolveCreate: () => void = () => {};

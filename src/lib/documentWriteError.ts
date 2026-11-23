@@ -1,4 +1,4 @@
-export type WriteFailureCode = 'conflict' | 'missing' | 'forbidden' | 'network';
+export type WriteFailureCode = 'conflict' | 'missing' | 'forbidden' | 'invalid' | 'network';
 
 /**
  * 文档写入失败分类：冲突不能按普通网络错误自动重试，必须保留本地内容并交由用户选择恢复方式。
@@ -42,6 +42,9 @@ export function toDocumentWriteError(
   }
   if (message.includes('Document not found')) {
     return new DocumentWriteError('missing', MISSING_MESSAGE);
+  }
+  if (code === '22023') {
+    return new DocumentWriteError('invalid', '提交内容无效，请检查输入后重试。');
   }
   return new DocumentWriteError('network', fallbackMessage);
 }

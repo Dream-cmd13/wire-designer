@@ -19,7 +19,8 @@ test.use({ baseURL: appOrigin });
 async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', empty = false, options?: {
   beforeSave?: () => Promise<boolean>;
   canLoad?: () => boolean;
-  beforeCreate?: (id: string) => Promise<boolean>;
+  beforeCreate?: (id: string) => Promise<boolean | 'invalid'>;
+  beforeList?: () => Promise<void>;
 }) {
   const projects = empty ? [] : [{ id: projectId, name: projectName, owner_id: ownerId, description: '', created_at: timestamp, updated_at: timestamp }];
   const documents = new Map([[projectId, design]]);
@@ -42,8 +43,10 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
     }
     if (url.pathname === '/rest/v1/rpc/save_project_document') {
       const payload = route.request().postDataJSON() as { project_id: string; project_payload: typeof design; expected_revision: number | null };
-      if (payload.expected_revision === null && options?.beforeCreate && !(await options.beforeCreate(payload.project_id))) {
-        return route.fulfill({ status: 403, json: { code: '42501', message: 'fixture create refused' } });
+      if (payload.expected_revision === null && options?.beforeCreate) {
+        const result = await options.beforeCreate(payload.project_id);
+        if (result === 'invalid') return route.fulfill({ status: 400, json: { code: '22023', message: 'Invalid project document' } });
+        if (!result) return route.fulfill({ status: 403, json: { code: '42501', message: 'fixture create refused' } });
       }
       if (options?.beforeSave && !(await options.beforeSave())) {
         return route.fulfill({ status: 503, json: { message: 'fixture save unavailable' } });
@@ -62,7 +65,10 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
       if (id && options?.canLoad && !options.canLoad()) {
         return route.fulfill({ status: 500, json: { message: 'fixture load unavailable' } });
       }
-      return route.fulfill({ json: id ? [{ config: documents.get(id), revision: revisions.get(id), updated_at: timestamp }] : projects });
+      if (id) return route.fulfill({ json: [{ config: documents.get(id), revision: revisions.get(id), updated_at: timestamp }] });
+      const snapshot = projects.map((project) => ({ ...project }));
+      await options?.beforeList?.();
+      return route.fulfill({ json: snapshot });
     }
     return route.fulfill({ json: [] });
   });
@@ -260,6 +266,71 @@ test('a definite create failure keeps the confirmation inputs and allows retry',
   await expect(submit).toBeEnabled();
   await submit.click();
   await expect(page.getByPlaceholder('未命名项目')).toHaveValue(name);
+  expect(attempts).toBe(2);
+});
+
+test('a list response held in a second tab cannot restore a deleted project to the shared cache', async ({ page, context }) => {
+  let listRequests = 0;
+  const allowStaleList = Promise.withResolvers<void>();
+  await installFixture(page, 'engineer', false, {
+    beforeList: async () => {
+      listRequests += 1;
+      if (listRequests === 2) await allowStaleList.promise;
+    },
+  });
+  const cacheIds = () => page.evaluate((userId) => {
+    const cached = localStorage.getItem(`wh_projects_v1_${userId}`);
+    return cached ? (JSON.parse(cached).projects as { id: string }[]).map(({ id }) => id) : null;
+  }, ownerId);
+  await page.goto('/designer');
+  await expect.poll(cacheIds).toEqual([projectId]);
+  const secondTab = await context.newPage();
+  await secondTab.goto('/designer');
+  try {
+    await expect.poll(() => listRequests).toBe(2);
+    await page.getByTestId(`project-card-${projectId}`).getByRole('button', { name: `删除项目 ${projectName}` }).click();
+    await page.getByRole('alertdialog').filter({ hasText: '确认删除' }).getByRole('button', { name: '删除', exact: true }).click();
+    await expect.poll(cacheIds).toEqual([]);
+  } finally {
+    allowStaleList.resolve();
+  }
+  await expect(secondTab.getByRole('heading', { name: '暂无项目' })).toBeVisible({ timeout: 5000 });
+  await expect(secondTab.getByTestId(`project-card-${projectId}`)).toHaveCount(0);
+  expect(listRequests).toBe(3);
+  expect(await cacheIds()).toEqual([]);
+});
+
+test('the wizard blocks names longer than the 200-character server limit', async ({ page }) => {
+  const requests = await installFixture(page, 'engineer', true);
+  await page.goto('/designer');
+  await page.getByRole('button', { name: '新建项目', exact: true }).click();
+  const nameField = page.getByPlaceholder('如：无人机电源线束');
+  const next = page.getByRole('button', { name: '下一步', exact: true });
+  await nameField.fill('😀'.repeat(201));
+  await expect(next).toBeDisabled();
+  await expect(page.getByText(/最多 200 个字符/)).toBeVisible();
+  await nameField.fill('😀'.repeat(200));
+  await expect(next).toBeEnabled();
+  expect(requests).not.toContain('/rest/v1/rpc/save_project_document');
+});
+
+test('a server input rejection lets the user go back and correct the project name', async ({ page }) => {
+  let attempts = 0;
+  await installFixture(page, 'engineer', true, { beforeCreate: async () => ++attempts === 1 ? 'invalid' : true });
+  await page.goto('/designer');
+  const firstName = '待修正项目名';
+  await (await reachCreateStep(page, firstName)).click();
+  const back = page.getByRole('button', { name: '上一步' });
+  await expect(back).toBeEnabled({ timeout: 3000 });
+  await expect(page.getByText(/创建失败.*检查输入/)).toBeVisible();
+  for (let step = 1; step <= 3; step += 1) await back.click();
+  const nameField = page.getByPlaceholder('如：无人机电源线束');
+  await expect(nameField).toHaveValue(firstName);
+  await nameField.fill('已修正项目名');
+  const next = page.getByRole('button', { name: '下一步', exact: true });
+  for (let step = 1; step <= 3; step += 1) await next.click();
+  await page.getByRole('button', { name: '创建项目', exact: true }).last().click();
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue('已修正项目名');
   expect(attempts).toBe(2);
 });
 

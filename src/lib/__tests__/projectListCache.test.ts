@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   clearCachedProjects,
   getCachedProjects,
+  getProjectListDeletionToken,
+  removeCachedProject,
   setCachedProjects,
 } from '@/lib/projectListCache';
 import type { Project } from '@/types/user';
@@ -60,6 +62,22 @@ describe('projectListCache', () => {
 
   it('returns null for non-existent cache', () => {
     expect(getCachedProjects('unknown-user')).toBeNull();
+  });
+
+  it('rejects writes taken before a delete without invalidating another account', () => {
+    const removed = makeProject('p1', 'user1', 'Same name');
+    const kept = makeProject('p2', 'user1', 'Same name');
+    const otherAccount = makeProject('p3', 'user2', 'Other project');
+    setCachedProjects('user1', [removed, kept]);
+    const staleToken = getProjectListDeletionToken('user1');
+    const otherToken = getProjectListDeletionToken('user2');
+
+    removeCachedProject('user1', removed.id);
+    setCachedProjects('user1', [removed, kept], staleToken);
+    setCachedProjects('user2', [otherAccount], otherToken);
+
+    expect(getCachedProjects('user1')).toEqual([kept]);
+    expect(getCachedProjects('user2')).toEqual([otherAccount]);
   });
 
   it('expires cache after specified TTL', () => {

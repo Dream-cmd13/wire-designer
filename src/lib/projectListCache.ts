@@ -2,6 +2,7 @@ import type { Project } from '@/types/user';
 
 const CACHE_VERSION = 1;
 const CACHE_PREFIX = `wh_projects_v${CACHE_VERSION}_`;
+const DELETION_PREFIX = 'wh_projects_deletion_';
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface CacheEnvelope {
@@ -9,6 +10,7 @@ interface CacheEnvelope {
   userId: string;
   projects: Project[];
   cachedAt: number;
+  deletionToken?: string | null;
 }
 
 function getStorage(): Storage | null {
@@ -23,6 +25,14 @@ function getStorage(): Storage | null {
     // Storage access might throw in certain browser/iframe security contexts
   }
   return null;
+}
+
+export function getProjectListDeletionToken(userId: string): string | null {
+  try {
+    return getStorage()?.getItem(`${DELETION_PREFIX}${userId}`) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function getCachedProjects(userId: string, ttlMs: number = DEFAULT_TTL_MS): Project[] | null {
@@ -50,18 +60,19 @@ export function getCachedProjects(userId: string, ttlMs: number = DEFAULT_TTL_MS
       return null;
     }
 
-    return envelope.projects;
+    return (envelope.deletionToken ?? null) === getProjectListDeletionToken(userId) ? envelope.projects : null;
   } catch {
     return null;
   }
 }
 
-export function setCachedProjects(userId: string, projects: Project[]): void {
+export function setCachedProjects(userId: string, projects: Project[], deletionToken = getProjectListDeletionToken(userId)): void {
   if (!userId) return;
   const storage = getStorage();
   if (!storage) return;
 
   try {
+    if (deletionToken !== getProjectListDeletionToken(userId)) return;
     const sanitizedProjects: Project[] = projects.map((project) => ({
       id: String(project.id),
       userId: String(project.userId),
@@ -76,12 +87,25 @@ export function setCachedProjects(userId: string, projects: Project[]): void {
       userId,
       projects: sanitizedProjects,
       cachedAt: Date.now(),
+      deletionToken,
     };
 
     storage.setItem(`${CACHE_PREFIX}${userId}`, JSON.stringify(envelope));
   } catch (error) {
     console.warn('Failed to save projects to local cache:', error);
   }
+}
+
+export function removeCachedProject(userId: string, projectId: string): void {
+  const cached = getCachedProjects(userId);
+  const deletionToken = `${Date.now()}-${Math.random()}`;
+  try {
+    getStorage()?.setItem(`${DELETION_PREFIX}${userId}`, deletionToken);
+  } catch {
+    if (cached) setCachedProjects(userId, cached.filter((project) => project.id !== projectId));
+    return;
+  }
+  if (cached) setCachedProjects(userId, cached.filter((project) => project.id !== projectId), deletionToken);
 }
 
 export function clearCachedProjects(userId?: string): void {
@@ -91,6 +115,7 @@ export function clearCachedProjects(userId?: string): void {
   try {
     if (userId) {
       storage.removeItem(`${CACHE_PREFIX}${userId}`);
+      storage.removeItem(`${DELETION_PREFIX}${userId}`);
     } else {
       const keysToRemove: string[] = [];
       for (let i = 0; i < storage.length; i++) {

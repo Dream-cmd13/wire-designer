@@ -35,6 +35,8 @@ interface ProjectWizardProps {
 
 type WizardStep = 1 | 2 | 3 | 4;
 
+const MAX_PROJECT_NAME_LENGTH = 200;
+
 const TEMPLATES = [
   {
     id: 'blank',
@@ -282,14 +284,17 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
     void useCatalogStore.getState().initialize().catch(() => {});
   }, []);
 
+  const name = projectName.trim();
+  const nameTooLong = [...name].length > MAX_PROJECT_NAME_LENGTH;
+  const nameIsValid = name.length > 0 && !nameTooLong;
   const canNext = step === 1
-    ? projectName.trim().length > 0
+    ? nameIsValid
     : step === 3 && selectedTemplate !== 'blank'
       ? Boolean(activeConnectorA && activeConnectorB && connectors.length > 0)
       : true;
 
   const handleComplete = async () => {
-    if (!currentUser || submitting.current || createError?.uncertain) return;
+    if (!currentUser || !nameIsValid || submitting.current || createError?.uncertain) return;
     submitting.current = true;
     setCreating(true);
     setCreateError(null);
@@ -297,15 +302,17 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
     let config: HarnessConfig | undefined;
     let created: Awaited<ReturnType<typeof createProject>>;
     try {
-      config = createConfigFromTemplate(selectedTemplate, projectName, activeConnectorA, activeConnectorB, pinCount);
-      created = await createProject(currentUser.id, projectName, projectDesc, config);
+      config = createConfigFromTemplate(selectedTemplate, name, activeConnectorA, activeConnectorB, pinCount);
+      created = await createProject(currentUser.id, name, projectDesc, config);
     } catch (error) {
       const uncertain = error instanceof DocumentWriteError && error.code === 'network';
       setCreateError({
         uncertain,
         message: uncertain
           ? '暂时无法确认创建结果。请先返回项目列表核对，再决定是否重新创建。'
-          : `创建失败。${getUserErrorMessage(error, '请检查项目信息后重试。')}`,
+          : `创建失败。${error instanceof DocumentWriteError && error.code === 'invalid'
+            ? error.message
+            : getUserErrorMessage(error, '请检查项目信息后重试。')}`,
       });
       created = null;
     }
@@ -378,8 +385,13 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                   value={projectName}
                   onChange={(e) => setProjectName(e.target.value)}
                   placeholder="如：无人机电源线束"
+                  aria-describedby="project-name-limit"
+                  aria-invalid={nameTooLong}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p id="project-name-limit" className={`mt-1 text-xs ${nameTooLong ? 'text-red-700' : 'text-slate-500'}`}>
+                  {nameTooLong ? '项目名称过长，' : ''}最多 {MAX_PROJECT_NAME_LENGTH} 个字符。
+                </p>
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">项目描述</label>
@@ -508,7 +520,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
               <div className="space-y-3 rounded-xl bg-slate-50 p-4">
                 <div className="flex justify-between">
                   <span className="text-sm text-slate-500">项目名称</span>
-                  <span className="text-sm font-medium text-slate-800">{projectName}</span>
+                  <span className="text-sm font-medium text-slate-800">{name}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-sm text-slate-500">项目描述</span>
