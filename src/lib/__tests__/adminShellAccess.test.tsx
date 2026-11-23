@@ -56,11 +56,13 @@ describe('AdminShell access menu', () => {
     expect(html).not.toContain('自动报价4');
     expect(html).not.toContain('自动报价5');
     expect(html).toContain('制作图纸');
+    expect(html).toContain('aria-label="收缩侧边栏"');
   });
   it('only shows auto quote to sales and unresolved roles', () => {
     for (const role of ['sales', undefined] as const) {
       const html = renderShell({ id: 'sales', name: '业务员', email: 'sales@test', createdAt: 1, role });
       expect(html).toContain('title="自动报价"');
+      expect(html).toContain('aria-label="展开侧边栏"');
       for (const title of ['首页','制作图纸','DWG 图纸','3D 模型','物料库','设计图','成品图']) {
         expect(html).not.toContain(`title="${title}"`);
       }

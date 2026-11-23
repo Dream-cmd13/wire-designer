@@ -441,6 +441,8 @@ describe('AutoQuotePage', () => {
 
     // 业务员可见内容：选配参数、最终单价、导出报价
     expect(html).toContain('选配参数与端部工艺');
+    expect(html).not.toContain('1. 选配参数与端部工艺');
+    expect(html).toContain('展开调整');
     expect(html).toContain('含税含运费单价');
     expect(html).toContain('¥58.50');
     expect(html).not.toContain('订单总价');

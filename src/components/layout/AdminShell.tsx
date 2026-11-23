@@ -230,7 +230,8 @@ export function AdminShell({
           : route.section === 'projects'
             ? '选择项目后可进入完整设计流程'
             : '工程规格检索与采购价格管理';
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarToggle, setSidebarToggle] = useState<boolean | null>(null);
+  const sidebarCollapsed = sidebarToggle ?? visibleSidebarItems.length <= 1;
   const [pageActionsTarget, setPageActionsTarget] = useState<HTMLDivElement | null>(null);
 
   return (
@@ -257,7 +258,7 @@ export function AdminShell({
           )}
           <button
             type="button"
-            onClick={() => setSidebarCollapsed((value) => !value)}
+            onClick={() => setSidebarToggle(!sidebarCollapsed)}
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-800 hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
             aria-label={sidebarCollapsed ? '展开侧边栏' : '收缩侧边栏'}
             title={sidebarCollapsed ? '展开侧边栏' : '收缩侧边栏'}

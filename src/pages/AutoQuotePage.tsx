@@ -225,13 +225,15 @@ function AutoQuoteConfigForm({
           <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/80 p-2.5">
             <div className="flex items-center gap-2.5 min-w-0">
               {selectedWire.image ? (
-                <img
-                  src={selectedWire.image}
-                  alt={selectedWire.name}
-                  className="h-9 w-9 shrink-0 rounded border border-slate-200 bg-white object-contain p-0.5"
-                />
+                <div className="flex h-9 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-100/90 p-1">
+                  <img
+                    src={selectedWire.image}
+                    alt={selectedWire.name}
+                    className="h-full w-full object-contain scale-125"
+                  />
+                </div>
               ) : (
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-slate-200 text-slate-700">
+                <div className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md bg-slate-200 text-slate-700">
                   <Cable className="h-5 w-5" />
                 </div>
               )}
@@ -493,7 +495,12 @@ export function AutoQuotePage() {
     : effectiveForm.endpointBType === 'cut'
       ? '单头切断'
       : '单头剥皮沾锡';
-  const configSummary = `${endpointSummary} · ${effectiveForm.lengthMm}mm`;
+  const moldSummary = effectiveForm.outerMoldSpecId
+    ? effectiveForm.innerMoldType === 'pe'
+      ? '含外模/PE内模'
+      : '含外模'
+    : null;
+  const configSummary = [endpointSummary, moldSummary, `${effectiveForm.lengthMm}mm`].filter(Boolean).join(' · ');
 
   return (
     <div className="flex h-full flex-col bg-slate-100 overflow-hidden">
@@ -511,8 +518,8 @@ export function AutoQuotePage() {
           {/* 左侧：业务配置表单 */}
           <div className="lg:w-[480px] xl:w-[500px] shrink-0 flex flex-col bg-white rounded-xl border border-slate-200 shadow-xs lg:overflow-hidden">
             <div className="border-b border-slate-200 px-4 py-3 bg-slate-50/70 shrink-0">
-              <h2 className="text-xs font-bold text-slate-800 tracking-wide uppercase">
-                1. 选配参数与端部工艺
+              <h2 className="text-xs font-bold text-slate-800 tracking-wide">
+                选配参数与端部工艺
               </h2>
             </div>
 
@@ -571,8 +578,8 @@ export function AutoQuotePage() {
               {/* 业务选配表单卡片 */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
                 <div className="border-b border-slate-200 px-4 py-3 bg-slate-50/70">
-                  <h2 className="text-xs font-bold text-slate-800 tracking-wide uppercase">
-                    1. 选配参数与端部工艺
+                  <h2 className="text-xs font-bold text-slate-800 tracking-wide">
+                    选配参数与端部工艺
                   </h2>
                 </div>
                 <div className="p-4 sm:p-5 space-y-4 text-xs">
