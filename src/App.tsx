@@ -114,21 +114,53 @@ function ProjectRestoringState() {
   );
 }
 
-function ProjectRequiredState({ onNavigateHome }: { onNavigateHome: () => void }) {
+function ProjectRequiredState({ ownerId, openError, onOpenProject, onNavigateHome }: {
+  ownerId: string | undefined;
+  openError: string | null;
+  onOpenProject: (project: Project) => void;
+  onNavigateHome: () => void;
+}) {
+  const { projects, projectsStatus, projectsError, loadProjects } = useProjectStore();
+  const [selectedId, setSelectedId] = useState('');
+  const ownedProjects = projects
+    .filter((project) => project.userId === ownerId)
+    .sort((left, right) => right.updatedAt - left.updatedAt);
+  const selected = ownedProjects.find((project) => project.id === selectedId);
+  const loading = projectsStatus === 'idle' || projectsStatus === 'loading';
+  const failed = projectsStatus === 'error';
+  const placeholder = loading ? '正在读取项目…' : failed ? '项目列表加载失败' : '暂无项目';
+
   return (
-    <div className="flex h-full items-center justify-center bg-slate-100 p-4">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <FolderOpen className="mx-auto h-10 w-10 text-slate-300" />
-        <h2 className="mt-4 text-base font-semibold text-slate-900">尚未打开项目</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          请先从首页打开项目，再进入线束设计器。
-        </p>
-        <button
-          type="button"
-          onClick={onNavigateHome}
-          className="mt-5 cursor-pointer rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-        >
-          返回首页
+    <div className="grid h-full place-items-center overflow-y-auto bg-slate-100 p-4">
+      <div className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg bg-blue-50 p-2 text-blue-700"><FolderOpen className="h-5 w-5" /></div>
+          <h2 className="text-base font-semibold text-slate-900">尚未打开项目</h2>
+        </div>
+        <form className="mt-4 flex flex-wrap gap-2" onSubmit={(event) => {
+          event.preventDefault();
+          if (selected) onOpenProject(selected);
+        }}>
+          <select aria-label="项目" className="h-9 min-w-0 flex-1 truncate rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 disabled:bg-slate-50"
+            value={selected?.id ?? ''} disabled={!ownedProjects.length} onChange={(event) => setSelectedId(event.target.value)}>
+            <option value="" disabled>{ownedProjects.length ? '选择项目…' : placeholder}</option>
+            {ownedProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+          <button type="submit" disabled={!selected} className="h-9 shrink-0 cursor-pointer rounded-md bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+            打开项目
+          </button>
+        </form>
+        {openError && <p role="alert" className="mt-3 break-words text-sm text-red-700">{openError}</p>}
+        {failed && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-amber-800">
+            <p role="alert" className="min-w-0 break-words">{projectsError || '项目列表暂时无法加载。'}</p>
+            <button type="button" className="shrink-0 font-medium text-blue-700 hover:underline" onClick={() => {
+              if (ownerId) void loadProjects(ownerId, { force: true });
+            }}>重试加载</button>
+          </div>
+        )}
+        <button type="button" onClick={onNavigateHome} className="mt-3 text-sm font-medium text-slate-600 hover:text-blue-700 hover:underline">
+          前往项目管理
         </button>
       </div>
     </div>
@@ -718,11 +750,11 @@ export default function App() {
     if (previousUserId === undefined || previousUserId === nextUserId) return;
 
     const keepRequestedRoute = previousUserId === null
-      && shouldKeepRouteAfterLogin(route, projectId);
+      && shouldKeepRouteAfterLogin(route);
     resetWorkspaceForUser(
       keepRequestedRoute ? route.path : appRoutes.home.path,
     );
-  }, [authReady, currentUser?.id, projectId, resetWorkspaceForUser, route]);
+  }, [authReady, currentUser?.id, resetWorkspaceForUser, route]);
 
   // 必须在账号重置（resetWorkspaceForUser 会清空目录/价格数据并使旧请求失效）之后执行，
   // 否则登录后刚发起的目录请求会被同一次提交中的重置丢弃。
@@ -892,6 +924,7 @@ export default function App() {
   const handleOpenProject = useCallback(async (
     project: Project,
     destinationPath = appRoutes['designer-design'].path,
+    { keepPickerOnError = false } = {},
   ) => {
     const requestUserId = useUserStore.getState().currentUser?.id ?? null;
     if (!requestUserId || project.userId !== requestUserId) {
@@ -974,7 +1007,7 @@ export default function App() {
       setRecoveryRaw(null);
       setSaveBlocked(false);
       useHistoryStore.getState().clear();
-      navigate(appRoutes.home.path);
+      if (!keepPickerOnError) navigate(appRoutes.home.path);
       return;
     } finally {
       if (isRequestCurrent()) {
@@ -1160,11 +1193,18 @@ export default function App() {
           : 'text-red-700 bg-red-50';
 
   const renderDesignerContent = () => {
-    if (!currentProject || (projectId && currentProject.id !== projectId) || isRestoringProject) {
+    if (isRestoringProject) return <ProjectRestoringState />;
+    if (!currentProject || (projectId && currentProject.id !== projectId)) {
       if (projectId && !restoreFailed) {
         return <ProjectRestoringState />;
       }
-      return <ProjectRequiredState onNavigateHome={() => navigate(appRoutes.home.path)} />;
+      return <ProjectRequiredState
+        key={currentUserId}
+        ownerId={currentUserId}
+        openError={loadError}
+        onOpenProject={(project) => void handleOpenProject(project, route.path, { keepPickerOnError: true })}
+        onNavigateHome={() => navigate(appRoutes.home.path)}
+      />;
     }
 
     const isProductImage = route.id === 'designer-product-image';

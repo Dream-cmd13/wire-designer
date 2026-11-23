@@ -24,13 +24,13 @@ describe('route auth requirements', () => {
   });
 
   it('keeps the current route after anonymous visitors log in', () => {
-    expect(shouldKeepRouteAfterLogin(appRoutes.materials, null)).toBe(true);
-    expect(shouldKeepRouteAfterLogin(appRoutes['drawing-workbench'], null)).toBe(true);
-    expect(shouldKeepRouteAfterLogin(appRoutes['dwg-viewer'], null)).toBe(true);
-    expect(shouldKeepRouteAfterLogin(appRoutes['model-viewer'], null)).toBe(true);
-    expect(shouldKeepRouteAfterLogin(appRoutes['auto-quote'], null)).toBe(true);
-    expect(shouldKeepRouteAfterLogin(appRoutes['designer-design'], 'project-1')).toBe(true);
-    expect(shouldKeepRouteAfterLogin(appRoutes['designer-design'], null)).toBe(false);
-    expect(shouldKeepRouteAfterLogin(appRoutes.home, null)).toBe(false);
+    expect(shouldKeepRouteAfterLogin(appRoutes.materials)).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes['drawing-workbench'])).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes['dwg-viewer'])).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes['model-viewer'])).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes['auto-quote'])).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes['designer-design'])).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes['designer-product-image'])).toBe(true);
+    expect(shouldKeepRouteAfterLogin(appRoutes.home)).toBe(false);
   });
 });

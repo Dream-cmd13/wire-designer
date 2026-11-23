@@ -73,11 +73,11 @@ export function requiresAuth(route: AppRoute): boolean {
 
 /**
  * 匿名用户登录成功后是否保留当前路由（而不是被送回首页）。
- * 设计器需要 projectId 才能恢复项目；物料库、自动报价与制作图纸直接保留。
+ * 设计器可以恢复指定项目，也可以在当前页面选择项目。
  */
-export function shouldKeepRouteAfterLogin(route: AppRoute, projectId: string | null): boolean {
-  if (route.section === 'designer') return Boolean(projectId);
-  return route.id === 'materials'
+export function shouldKeepRouteAfterLogin(route: AppRoute): boolean {
+  return route.section === 'designer'
+    || route.id === 'materials'
     || route.id === 'drawing-workbench'
     || route.id === 'dwg-viewer'
     || route.id === 'model-viewer'

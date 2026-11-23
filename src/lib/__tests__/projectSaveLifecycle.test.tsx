@@ -107,6 +107,63 @@ describe('project save lifecycle (real React + real stores)', () => {
     vi.restoreAllMocks();
   });
 
+  it.each(['/designer/design', '/designer/product-image'])('opens a selected project on %s', async (path) => {
+    window.history.replaceState(null, '', path);
+    useProjectStore.getState().setCurrentProject(null);
+    const load = deferred<Awaited<ReturnType<typeof projectRepository.load>>>();
+    const loadProject = vi.spyOn(projectRepository, 'load').mockReturnValue(load.promise);
+    render(<App />);
+
+    await screen.findByRole('option', { name: 'p1' });
+    const openButton = screen.getByRole('button', { name: '打开项目' });
+    expect(openButton).toHaveProperty('disabled', true);
+    fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p1' } });
+    fireEvent.click(openButton);
+    await screen.findByRole('heading', { name: '正在加载项目...' });
+    expect(loadProject).toHaveBeenCalledExactlyOnceWith('p1');
+    expect(window.location.pathname).toBe(path);
+
+    await act(async () => load.resolve({ status: 'ok', config: { ...createFallbackConfig(), id: 'p1', name: 'p1' }, version: { revision: 1, updatedAt: '2026-01-01' } }));
+    await waitFor(() => expect(window.location.search).toBe('?projectId=p1'));
+    expect(window.location.pathname).toBe(path);
+    expect(screen.queryByRole('heading', { name: '尚未打开项目' })).toBeNull();
+  });
+
+  it('keeps the project picker available if opening a project fails', async () => {
+    window.history.replaceState(null, '', '/designer/design');
+    useProjectStore.getState().setCurrentProject(null);
+    vi.spyOn(projectRepository, 'load')
+      .mockRejectedValueOnce(new Error('项目连接失败'))
+      .mockResolvedValueOnce({ status: 'ok', config: { ...createFallbackConfig(), id: 'p1', name: 'p1' }, version: { revision: 1, updatedAt: '2026-01-01' } });
+    render(<App />);
+
+    await screen.findByRole('option', { name: 'p1' });
+    fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p1' } });
+    fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+    await screen.findByText('项目加载失败，请重试。');
+    expect(window.location.pathname).toBe('/designer/design');
+    fireEvent.change(screen.getByRole('combobox', { name: '项目' }), { target: { value: 'p1' } });
+    fireEvent.click(screen.getByRole('button', { name: '打开项目' }));
+    await waitFor(() => expect(window.location.search).toBe('?projectId=p1'));
+  });
+
+  it('keeps the designer route after login and only offers projects for the current account', async () => {
+    window.history.replaceState(null, '', '/designer/design');
+    const user = useUserStore.getState().currentUser;
+    useUserStore.setState({ currentUser: null });
+    vi.mocked(projectRepository.listProjects).mockResolvedValue([
+      makeProject('p1'),
+      { ...makeProject('p2'), updatedAt: 2 },
+      { ...makeProject('other'), userId: 'user-b' },
+    ]);
+    render(<App />);
+    expect(screen.queryByRole('combobox', { name: '项目' })).toBeNull();
+    act(() => useUserStore.setState({ currentUser: user }));
+    await screen.findByRole('option', { name: 'p2' });
+    expect(screen.getAllByRole<HTMLOptionElement>('option').map((option) => option.value)).toEqual(['', 'p2', 'p1']);
+    expect(window.location.pathname).toBe('/designer/design');
+  });
+
   it('keeps selection and viewports when the document becomes dirty', async () => {
     render(<App />);
     await waitFor(() => expect(useCatalogStore.getState().status).toBe('ready'));

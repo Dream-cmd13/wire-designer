@@ -97,7 +97,8 @@ describe('Project restoration UI state', () => {
     const html = renderToStaticMarkup(<App />);
 
     expect(html).toContain('尚未打开项目');
-    expect(html).toContain('请先从首页打开项目，再进入线束设计器。');
+    expect(html).toContain('打开项目');
+    expect(html).not.toContain('返回首页');
     expect(html).not.toContain('正在加载项目...');
   });
 
