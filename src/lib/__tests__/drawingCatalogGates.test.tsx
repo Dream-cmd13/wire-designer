@@ -53,6 +53,6 @@ describe('workbench catalog gates', () => {
     );
 
     expect(signedIn).not.toContain('登录后可使用公共物料目录，选择连接器/模型。');
-    expect(signedIn).toContain('没有符合条件的公共资源。');
+    expect(signedIn).toContain('左连接器/模型');
   });
 });

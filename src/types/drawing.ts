@@ -214,7 +214,7 @@ export type DrawingConnectorResource = {
   series: string;
   rowCount: number;
   pitchMm?: number;
-  scope: 'public' | 'private';
+  scope: 'public' | 'private' | 'builtin';
 };
 
 export type DrawingWireDraft = {

@@ -31,6 +31,16 @@ type WizardMode = 'drawing' | 'template';
 
 const steps = ['连接器/模型', '属性与颜色', '预览'] as const;
 const fieldClass = 'mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-500';
+const defaultLengthMm = 320;
+const exampleConnector: DrawingConnectorResource = {
+  id: 'builtin:four-pin', name: '示例 4 针连接器', gender: 'receptacle', pinCount: 4,
+  category: '示例', series: '', rowCount: 1, scope: 'builtin',
+};
+const exampleCable: DrawingCatalogResource = {
+  id: 'builtin:four-core', resourceItemId: 'builtin:four-core', resourceType: 'wire',
+  name: '示例 4 芯护套线', model: '', resourceGroup: '示例', wireKind: 'jacketed',
+  coreColors: ['棕色', '白色', '蓝色', '黑色'],
+};
 
 function connectorFromResource(resource: DrawingCatalogResource): DrawingConnectorResource {
   return {
@@ -77,7 +87,9 @@ function resizeWires(draft: DrawingWizardDraft, wireColors: Array<{ hex: string 
 function withWireResource(draft: DrawingWizardDraft, wireResource: DrawingCatalogResource | undefined): DrawingWizardDraft {
   const coreColors = wireResource?.coreColors;
   return {
-    ...draft, wireResource, cableCutLengthMm: undefined, shieldTermination: undefined,
+    ...draft, wireResource,
+    cableCutLengthMm: wireResource === exampleCable ? defaultLengthMm : undefined,
+    shieldTermination: undefined,
     wires: coreColors?.length ? draft.wires.map((wire, index) => ({
       ...wire,
       color: coreColors[index] ? getDrawingWireColorName(coreColors[index]) : wire.color,
@@ -86,14 +98,18 @@ function withWireResource(draft: DrawingWizardDraft, wireResource: DrawingCatalo
 }
 
 function initialDraft(wireColors: Array<{ hex: string }>): DrawingWizardDraft {
-  return {
+  const draft = withWireResource({
     endpointForm: 'double-end',
+    singleConnector: exampleConnector,
+    leftConnector: exampleConnector,
+    rightConnector: exampleConnector,
     drawingNo: '',
-    totalLengthMm: 320,
+    totalLengthMm: defaultLengthMm,
     toleranceMm: 5,
     hasMold: false,
-    wires: [defaultWire(0, 320, wireColors)],
-  };
+    wires: [],
+  }, exampleCable);
+  return { ...draft, wires: resizeWires(draft, wireColors) };
 }
 
 function resourceSummary(resource: DrawingCatalogResource | undefined) {
@@ -102,29 +118,11 @@ function resourceSummary(resource: DrawingCatalogResource | undefined) {
   return [resource.name, resource.name.includes(resource.model) ? '' : resource.model, ...(specification ?? [])].filter(Boolean).join(' · ');
 }
 
-function stripCatalogSelections(draft: DrawingWizardDraft): DrawingWizardDraft {
-  if (
-    !draft.singleConnector
-    && !draft.leftConnector
-    && !draft.rightConnector
-    && !draft.modelResource
-    && !draft.wireResource
-    && !draft.protectiveSleeveResource
-  ) {
-    return draft;
-  }
-  return {
-    ...draft,
-    singleConnector: undefined,
-    leftConnector: undefined,
-    rightConnector: undefined,
-    modelResource: undefined,
-    wireResource: undefined,
-    protectiveSleeveResource: undefined,
-  };
+export function StandaloneDrawingWizard({ open, ...props }: StandaloneDrawingWizardProps) {
+  return open ? <DrawingWizardSession key={String(Boolean(props.canUseCatalog))} {...props} /> : null;
 }
 
-export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, onGenerate, onLoadTemplate }: StandaloneDrawingWizardProps) {
+function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLoadTemplate }: Omit<StandaloneDrawingWizardProps, 'open'>) {
   const wireColors = useCatalogStore((state) => getCatalogWireColors(state.snapshot));
   const [mode, setMode] = useState<WizardMode>('drawing');
   const [step, setStep] = useState(0);
@@ -132,17 +130,21 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
   const [resources, setResources] = useState<DrawingCatalogResource[]>([]);
   const [templates, setTemplates] = useState<DrawingTemplateSummary[]>([]);
   const [filters, setFilters] = useState<DrawingCatalogFilters>({ resourceType: 'connector' });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [catalogRequest, setCatalogRequest] = useState<{ sleeveId?: string }>({});
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
 
   const isSingle = draft.endpointForm === 'single-end';
+  const usingExampleConnectors = isSingle
+    ? draft.singleConnector === exampleConnector
+    : draft.leftConnector === exampleConnector || draft.rightConnector === exampleConnector;
   const filtered = useMemo(() => filterDrawingCatalogResources(resources, filters), [filters, resources]);
   const wireResources = resources.filter((resource) => resource.resourceType === 'wire');
   const protectiveSleeveResources = resources.filter((resource) => resource.resourceType === 'protective_sleeve');
   const validation = validateStandaloneDrawingWizard(draft);
-  const canPreview = open && mode === 'drawing' && step === 2 && !validation.errors.length;
+  const canPreview = mode === 'drawing' && step === 2 && !validation.errors.length;
   const preview = useMemo(() => {
     if (!canPreview) return null;
     const drawing = createDrawingFromWizard(draft);
@@ -151,65 +153,39 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
   const isJacketed = draft.wireResource?.wireKind === 'jacketed';
   const coreColorOptions = [...new Set(draft.wireResource?.coreColors?.map(getDrawingWireColorName))];
 
-  const loadResources = async () => {
-    const selectedProtectiveSleeveId = draft.protectiveSleeveResource?.resourceItemId;
+  const retryResources = () => {
     setLoading(true);
     setError('');
     setNotice('');
-    try {
-      const gallery = await drawingCatalogRepository.listTemplates();
-      setTemplates(gallery);
-      if (!canUseCatalog) {
-        setResources([]);
-        setDraft(stripCatalogSelections);
-        return;
-      }
-      const catalog = await drawingCatalogRepository.listResources({});
-      setResources(catalog);
-      setDraft((current) => {
-        const connectors = catalog.filter((resource) => resource.resourceType === 'connector');
-        const connector = connectors[0] ? connectorFromResource(connectors[0]) : undefined;
-        const wireResource = catalog.find((resource) => resource.resourceType === 'wire');
-        const protectiveSleeveResource = selectedProtectiveSleeveId
-          ? catalog.find((resource) => resource.resourceType === 'protective_sleeve' && resource.resourceItemId === selectedProtectiveSleeveId)
-          : current.protectiveSleeveResource;
-        const next = {
-          ...current,
-          singleConnector: current.singleConnector ?? connector,
-          leftConnector: current.leftConnector ?? connector,
-          rightConnector: current.rightConnector ?? connector,
-          protectiveSleeveResource,
-        };
-        const configured = current.wireResource ? next : withWireResource(next, wireResource);
-        return { ...configured, wires: resizeWires(configured, wireColors) };
-      });
-      if (selectedProtectiveSleeveId && !catalog.some((resource) => resource.resourceItemId === selectedProtectiveSleeveId && resource.resourceType === 'protective_sleeve')) {
-        setNotice('已选热缩套管已失效，请重新选择。');
-      }
-    } catch (reason) {
-      console.error('公共资源加载失败:', reason);
-      setError(getUserErrorMessage(reason, '公共资源加载失败，请重试。'));
-    } finally {
-      setLoading(false);
-    }
+    setCatalogRequest({ sleeveId: draft.protectiveSleeveResource?.resourceItemId });
   };
 
-  // Opening the wizard is the external event that starts its one-time catalog fetch.
   useEffect(() => {
-    if (!open) return;
-    if (!canUseCatalog) {
-      /* eslint-disable react-hooks/set-state-in-effect */
-      setResources([]);
-      setDraft(stripCatalogSelections);
-      /* eslint-enable react-hooks/set-state-in-effect */
-      if (templates.length === 0 && !loading) void loadResources();
-      return;
-    }
-    if (resources.length === 0 && !loading) void loadResources();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, canUseCatalog]);
+    let active = true;
+    const { sleeveId } = catalogRequest;
+    void drawingCatalogRepository.listTemplates().then(async (gallery) => {
+      if (!active) return;
+      setTemplates(gallery);
+      if (!canUseCatalog) return;
 
-  if (!open) return null;
+      const catalog = await drawingCatalogRepository.listResources({});
+      if (!active) return;
+      setResources(catalog);
+      if (sleeveId && !catalog.some((resource) => resource.resourceType === 'protective_sleeve' && resource.resourceItemId === sleeveId)) {
+        setDraft((current) => current.protectiveSleeveResource?.resourceItemId === sleeveId
+          ? { ...current, protectiveSleeveResource: undefined }
+          : current);
+        setNotice('已选热缩套管已失效，请重新选择。');
+      }
+    }).catch((reason: unknown) => {
+      if (!active) return;
+      console.error('公共资源加载失败:', reason);
+      setError(getUserErrorMessage(reason, '公共资源加载失败，请重试。'));
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [canUseCatalog, catalogRequest]);
 
   const selectEndpointForm = (endpointForm: DrawingEndpointForm) => setDraft((current) => {
     const next = { ...current, endpointForm };
@@ -226,7 +202,9 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
   });
 
   const selectWireResource = (resourceItemId: string) => {
-    const resource = wireResources.find((item) => item.resourceItemId === resourceItemId);
+    const resource = resourceItemId === exampleCable.resourceItemId
+      ? exampleCable
+      : wireResources.find((item) => item.resourceItemId === resourceItemId);
     setDraft((current) => {
       const next = withWireResource(current, resource);
       return { ...next, wires: resizeWires(next, wireColors) };
@@ -332,6 +310,7 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
               </button>)}
             </div>
           </section>
+          {usingExampleConnectors && <p className="text-sm text-slate-600">已预填示例配置，可直接下一步，也可从目录替换连接器。</p>}
           {!canUseCatalog
             ? <LoginRequiredHint message="登录后可使用公共物料目录，选择连接器/模型。" />
             : <>
@@ -344,7 +323,7 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
                 error={error}
                 onFiltersChange={setFilters}
                 onSelect={(resource) => selectConnector(isSingle ? 'singleConnector' : 'leftConnector', resource)}
-                onRetry={() => void loadResources()}
+                onRetry={retryResources}
               />
               {!isSingle && <DrawingResourceSelect
                 title="右连接器/模型"
@@ -355,14 +334,14 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
                 error={error}
                 onFiltersChange={setFilters}
                 onSelect={(resource) => selectConnector('rightConnector', resource)}
-                onRetry={() => void loadResources()}
+                onRetry={retryResources}
               />}
             </>}
         </div>}
 
         {mode === 'drawing' && step === 1 && <div className="space-y-4">
           {error && <div className="rounded bg-red-50 p-3 text-sm text-red-700">
-            {error}<button type="button" className="ml-2 underline" onClick={() => void loadResources()}>重试</button>
+            {error}<button type="button" className="ml-2 underline" onClick={retryResources}>重试</button>
           </div>}
           {notice && <p className="rounded bg-amber-50 p-3 text-sm text-amber-700">{notice}</p>}
           <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -378,7 +357,7 @@ export function StandaloneDrawingWizard({ open, canUseCatalog = false, onClose, 
             {canUseCatalog ? <>
               <label className="text-sm">线材规格
                 <select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => selectWireResource(event.target.value)}>
-                  <option value="">请选择</option>
+                  <option value={exampleCable.resourceItemId}>{exampleCable.name}</option>
                   {wireResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
                 </select>
               </label>
