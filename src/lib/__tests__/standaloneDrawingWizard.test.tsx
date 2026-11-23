@@ -14,7 +14,7 @@ describe('StandaloneDrawingWizard', () => {
 
   it('renders three drawing steps with endpoint form and a separate template command', () => {
     const html = renderToStaticMarkup(
-      <StandaloneDrawingWizard open onClose={vi.fn()} onGenerate={vi.fn()} />,
+      <StandaloneDrawingWizard open canUseCatalog onClose={vi.fn()} onGenerate={vi.fn()} />,
     );
 
     expect(html).toContain('1. 连接器/模型');
@@ -28,10 +28,31 @@ describe('StandaloneDrawingWizard', () => {
     expect(html).not.toContain('4. 预览');
   });
 
-  it('generates a complete local example without catalog access or manual input', async () => {
+  it('requires login for new drawings and keeps the built-in templates available', async () => {
     const listResources = vi.spyOn(drawingCatalogRepository, 'listResources');
+    const onGenerate = vi.fn();
+    const onLoadTemplate = vi.fn();
+    render(<StandaloneDrawingWizard open onClose={vi.fn()} onGenerate={onGenerate} onLoadTemplate={onLoadTemplate} />);
+
+    expect(screen.getByRole('button', { name: '登录' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '下一步' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '3. 预览' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '确认生成' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '从模板创建' }));
+    fireEvent.click(await screen.findByRole('button', { name: /双头四芯屏蔽线模板/ }));
+    fireEvent.click(screen.getByRole('button', { name: '载入模板' }));
+    await vi.waitFor(() => expect(onLoadTemplate).toHaveBeenCalledTimes(1));
+    expect(listResources).not.toHaveBeenCalled();
+    expect(onGenerate).not.toHaveBeenCalled();
+  });
+
+  it('generates a complete default drawing after login with no manual input', async () => {
+    vi.spyOn(drawingCatalogRepository, 'listResources').mockResolvedValue([]);
     const onGenerate = vi.fn<(drawing: DrawingDocument) => void>();
-    render(<StandaloneDrawingWizard open onClose={vi.fn()} onGenerate={onGenerate} />);
+    const props = { open: true, onClose: vi.fn(), onGenerate };
+    const { rerender } = render(<StandaloneDrawingWizard {...props} />);
+    rerender(<StandaloneDrawingWizard {...props} canUseCatalog />);
 
     const next = screen.getByRole<HTMLButtonElement>('button', { name: '下一步' });
     expect(next.disabled).toBe(false);
@@ -40,16 +61,15 @@ describe('StandaloneDrawingWizard', () => {
     expect(screen.getByRole('img', { name: '待生成的线束图纸' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '确认生成' }));
 
-    expect(listResources).not.toHaveBeenCalled();
     expect(onGenerate).toHaveBeenCalledTimes(1);
     const drawing = onGenerate.mock.calls[0][0];
     expect(drawing.objects.filter((object) => object.kind === 'connector')).toHaveLength(2);
     expect(drawing.wizardSource?.wires.map(({ pin, targetPin }) => [pin, targetPin])).toEqual([[1, 1], [2, 2], [3, 3], [4, 4]]);
     expect(drawing.objects.find((object) => object.kind === 'bom-table')?.rows).toContainEqual(expect.objectContaining({ 用量: '0.32', 单位: 'M', 物料编码: '' }));
 
-    fireEvent.click(screen.getByRole('button', { name: '从模板创建' }));
-    await screen.findByRole('button', { name: /双头四芯屏蔽线模板/ });
-    expect(listResources).not.toHaveBeenCalled();
+    rerender(<StandaloneDrawingWizard {...props} />);
+    expect(screen.queryByRole('button', { name: '确认生成' })).toBeNull();
+    await screen.findByRole('button', { name: '登录' });
   });
 
   it('keeps the example selected after the catalog loads and validates a manually chosen cable', async () => {

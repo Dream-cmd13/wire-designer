@@ -40,19 +40,19 @@ describe('workbench catalog gates', () => {
     expect(signedIn).not.toContain('登录后可查看公共物料目录。');
   });
 
-  it('shows a login hint instead of catalog selection in the wizard for anonymous users', () => {
+  it('shows a login hint instead of new drawing configuration for anonymous users', () => {
     const anonymous = renderToStaticMarkup(
       <StandaloneDrawingWizard open canUseCatalog={false} onClose={noop} onGenerate={noop} />,
     );
 
-    expect(anonymous).toContain('登录后可使用公共物料目录，选择连接器/模型。');
-    expect(anonymous).not.toContain('没有符合条件的公共资源。');
+    expect(anonymous).toContain('登录后可使用配置向导新建图纸。');
+    expect(anonymous).not.toContain('左连接器/模型');
 
     const signedIn = renderToStaticMarkup(
       <StandaloneDrawingWizard open canUseCatalog onClose={noop} onGenerate={noop} />,
     );
 
-    expect(signedIn).not.toContain('登录后可使用公共物料目录，选择连接器/模型。');
+    expect(signedIn).not.toContain('登录后可使用配置向导新建图纸。');
     expect(signedIn).toContain('左连接器/模型');
   });
 });

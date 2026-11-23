@@ -136,6 +136,7 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
   const [catalogRequest, setCatalogRequest] = useState<{ sleeveId?: string }>({});
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
 
+  const canConfigureDrawing = mode === 'drawing' && canUseCatalog;
   const isSingle = draft.endpointForm === 'single-end';
   const usingExampleConnectors = isSingle
     ? draft.singleConnector === exampleConnector
@@ -144,7 +145,7 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
   const wireResources = resources.filter((resource) => resource.resourceType === 'wire');
   const protectiveSleeveResources = resources.filter((resource) => resource.resourceType === 'protective_sleeve');
   const validation = validateStandaloneDrawingWizard(draft);
-  const canPreview = mode === 'drawing' && step === 2 && !validation.errors.length;
+  const canPreview = canConfigureDrawing && step === 2 && !validation.errors.length;
   const preview = useMemo(() => {
     if (!canPreview) return null;
     const drawing = createDrawingFromWizard(draft);
@@ -262,7 +263,7 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
         </button>
       </div>
 
-      {mode === 'drawing' && <nav className="flex gap-2 border-b px-5 py-3">
+      {canConfigureDrawing && <nav className="flex gap-2 border-b px-5 py-3">
         {steps.map((label, index) => <button
           type="button"
           key={label}
@@ -274,6 +275,7 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
       </nav>}
 
       <main className="min-h-0 flex-1 overflow-y-auto p-5">
+        {mode === 'drawing' && !canUseCatalog && <LoginRequiredHint message="登录后可使用配置向导新建图纸。" />}
         {mode === 'template' && <section className="space-y-3">
           <h3 className="font-semibold">图库模板</h3>
           {loading && <p className="text-sm text-slate-500">模板加载中…</p>}
@@ -292,7 +294,7 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
           </div>
         </section>}
 
-        {mode === 'drawing' && step === 0 && <div className="space-y-4">
+        {canConfigureDrawing && step === 0 && <div className="space-y-4">
           <section>
             <h3 className="mb-2 text-sm font-semibold text-slate-800">端头形式</h3>
             <div className="inline-flex rounded border border-slate-300 p-1" role="group" aria-label="端头形式">
@@ -311,35 +313,31 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
             </div>
           </section>
           {usingExampleConnectors && <p className="text-sm text-slate-600">已预填示例配置，可直接下一步，也可从目录替换连接器。</p>}
-          {!canUseCatalog
-            ? <LoginRequiredHint message="登录后可使用公共物料目录，选择连接器/模型。" />
-            : <>
-              <DrawingResourceSelect
-                title={isSingle ? '连接器/模型' : '左连接器/模型'}
-                resources={filtered}
-                filters={filters}
-                selectedId={(isSingle ? draft.singleConnector : draft.leftConnector)?.id}
-                loading={loading}
-                error={error}
-                onFiltersChange={setFilters}
-                onSelect={(resource) => selectConnector(isSingle ? 'singleConnector' : 'leftConnector', resource)}
-                onRetry={retryResources}
-              />
-              {!isSingle && <DrawingResourceSelect
-                title="右连接器/模型"
-                resources={filtered}
-                filters={filters}
-                selectedId={draft.rightConnector?.id}
-                loading={loading}
-                error={error}
-                onFiltersChange={setFilters}
-                onSelect={(resource) => selectConnector('rightConnector', resource)}
-                onRetry={retryResources}
-              />}
-            </>}
+          <DrawingResourceSelect
+            title={isSingle ? '连接器/模型' : '左连接器/模型'}
+            resources={filtered}
+            filters={filters}
+            selectedId={(isSingle ? draft.singleConnector : draft.leftConnector)?.id}
+            loading={loading}
+            error={error}
+            onFiltersChange={setFilters}
+            onSelect={(resource) => selectConnector(isSingle ? 'singleConnector' : 'leftConnector', resource)}
+            onRetry={retryResources}
+          />
+          {!isSingle && <DrawingResourceSelect
+            title="右连接器/模型"
+            resources={filtered}
+            filters={filters}
+            selectedId={draft.rightConnector?.id}
+            loading={loading}
+            error={error}
+            onFiltersChange={setFilters}
+            onSelect={(resource) => selectConnector('rightConnector', resource)}
+            onRetry={retryResources}
+          />}
         </div>}
 
-        {mode === 'drawing' && step === 1 && <div className="space-y-4">
+        {canConfigureDrawing && step === 1 && <div className="space-y-4">
           {error && <div className="rounded bg-red-50 p-3 text-sm text-red-700">
             {error}<button type="button" className="ml-2 underline" onClick={retryResources}>重试</button>
           </div>}
@@ -354,20 +352,18 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
             <label className="text-sm">公司名称
               <input className={fieldClass} value={draft.companyName ?? ''} onChange={(event) => setDraft({ ...draft, companyName: event.target.value })} />
             </label>
-            {canUseCatalog ? <>
-              <label className="text-sm">线材规格
-                <select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => selectWireResource(event.target.value)}>
-                  <option value={exampleCable.resourceItemId}>{exampleCable.name}</option>
-                  {wireResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
-                </select>
-              </label>
-              <label className="text-sm">热缩套管
-                <select className={fieldClass} value={draft.protectiveSleeveResource?.resourceItemId ?? ''} onChange={(event) => selectProtectiveSleeve(event.target.value)}>
-                  <option value="">不使用</option>
-                  {protectiveSleeveResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
-                </select>
-              </label>
-            </> : <div className="md:col-span-2"><LoginRequiredHint message="登录后可使用公共物料目录，选择线材与热缩套管。" /></div>}
+            <label className="text-sm">线材规格
+              <select className={fieldClass} value={draft.wireResource?.resourceItemId ?? ''} onChange={(event) => selectWireResource(event.target.value)}>
+                <option value={exampleCable.resourceItemId}>{exampleCable.name}</option>
+                {wireResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
+              </select>
+            </label>
+            <label className="text-sm">热缩套管
+              <select className={fieldClass} value={draft.protectiveSleeveResource?.resourceItemId ?? ''} onChange={(event) => selectProtectiveSleeve(event.target.value)}>
+                <option value="">不使用</option>
+                {protectiveSleeveResources.map((resource) => <option key={resource.resourceItemId} value={resource.resourceItemId}>{resourceSummary(resource)}</option>)}
+              </select>
+            </label>
             <label className="text-sm">成品总长 (mm)
               <input className={fieldClass} type="number" value={draft.totalLengthMm} onChange={(event) => setDraft({ ...draft, totalLengthMm: Number(event.target.value) })} />
             </label>
@@ -384,8 +380,8 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
               <input className={fieldClass} readOnly value={countDrawingMaterialKinds(draft)} />
             </label>
           </div>
-          {canUseCatalog && !loading && !error && protectiveSleeveResources.length === 0 && <p className="text-sm text-slate-500">暂无可用热缩套管。</p>}
-          {canUseCatalog && draft.protectiveSleeveResource && <p className="text-xs text-slate-500">已选：{resourceSummary(draft.protectiveSleeveResource)}</p>}
+          {!loading && !error && protectiveSleeveResources.length === 0 && <p className="text-sm text-slate-500">暂无可用热缩套管。</p>}
+          {draft.protectiveSleeveResource && <p className="text-xs text-slate-500">已选：{resourceSummary(draft.protectiveSleeveResource)}</p>}
           <label className="inline-flex items-center gap-2 text-sm">
             <input type="checkbox" checked={draft.hasMold} onChange={(event) => setDraft({ ...draft, hasMold: event.target.checked })} />
             使用模具
@@ -409,7 +405,7 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
           </div>
         </div>}
 
-        {mode === 'drawing' && step === 2 && <div className="space-y-3">
+        {canConfigureDrawing && step === 2 && <div className="space-y-3">
           <h3 className="font-semibold">生成预览</h3>
           <dl className="grid gap-x-6 gap-y-2 border-y border-slate-200 py-4 text-sm md:grid-cols-2">
             <div><dt className="text-slate-500">端头形式</dt><dd>{isSingle ? '单头' : '双头'}</dd></div>
@@ -428,20 +424,19 @@ function DrawingWizardSession({ canUseCatalog = false, onClose, onGenerate, onLo
         </div>}
       </main>
 
-      {mode === 'template'
-        ? <footer className="flex justify-end border-t px-5 py-3">
-          <button type="button" disabled={!selectedTemplateId} onClick={() => void loadTemplate()} className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-40">载入模板</button>
-        </footer>
-        : <footer className="flex justify-between border-t px-5 py-3">
-          <button type="button" disabled={step === 0} onClick={() => setStep((value) => value - 1)} className="flex items-center rounded border px-3 py-2 text-sm disabled:opacity-40">
-            <ChevronLeft className="h-4 w-4" />上一步
+      {mode === 'template' && <footer className="flex justify-end border-t px-5 py-3">
+        <button type="button" disabled={!selectedTemplateId} onClick={() => void loadTemplate()} className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-40">载入模板</button>
+      </footer>}
+      {canConfigureDrawing && <footer className="flex justify-between border-t px-5 py-3">
+        <button type="button" disabled={step === 0} onClick={() => setStep((value) => value - 1)} className="flex items-center rounded border px-3 py-2 text-sm disabled:opacity-40">
+          <ChevronLeft className="h-4 w-4" />上一步
+        </button>
+        {step < steps.length - 1
+          ? <button type="button" disabled={!canNext} onClick={() => setStep((value) => value + 1)} className="flex items-center rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40">
+            下一步<ChevronRight className="h-4 w-4" />
           </button>
-          {step < steps.length - 1
-            ? <button type="button" disabled={!canNext} onClick={() => setStep((value) => value + 1)} className="flex items-center rounded bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40">
-              下一步<ChevronRight className="h-4 w-4" />
-            </button>
-            : <button type="button" disabled={!preview} onClick={() => { if (preview) onGenerate(preview.drawing); }} className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-40">确认生成</button>}
-        </footer>}
+          : <button type="button" disabled={!preview} onClick={() => { if (preview) onGenerate(preview.drawing); }} className="rounded bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-40">确认生成</button>}
+      </footer>}
     </div>
   </div>;
 }
