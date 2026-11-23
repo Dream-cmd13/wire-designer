@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { DocumentWriteError } from '@/lib/documentWriteError';
 import { getCachedProjects, setCachedProjects } from '@/lib/projectListCache';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { DocumentVersion } from '@/types/document';
@@ -37,7 +38,7 @@ interface ProjectState {
     options?: { activate?: boolean }
   ) => Promise<{ project: Project; version: DocumentVersion } | null>;
   updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
-  deleteProject: (id: string) => Promise<void>;
+  deleteProject: (id: string) => Promise<boolean>;
   setCurrentProject: (project: Project | null) => void;
   setCurrentProjectVersion: (version: DocumentVersion | null) => void;
   resetProjects: () => void;
@@ -50,8 +51,9 @@ interface ProjectState {
   getUserProjects: (userId: string) => Project[];
 }
 
-const inFlightLoads = new Map<string, Promise<void>>();
+let inFlightLoad: { userId: string; promise: Promise<void> } | null = null;
 let projectSessionGeneration = 0;
+let listRequestSequence = 0;
 
 function isCurrentUser(userId: string): boolean {
   return useUserStore.getState().currentUser?.id === userId;
@@ -71,8 +73,11 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   loadProjects: async (userId, options) => {
     if (!userId) return;
     if (!isCurrentUser(userId)) return;
+    if (!options?.force && inFlightLoad?.userId === userId) return inFlightLoad.promise;
 
     const generation = projectSessionGeneration;
+    const request = ++listRequestSequence;
+    const isCurrentRequest = () => request === listRequestSequence && isCurrentSession(userId, generation);
     const currentProjects = get().projects;
     const hasCurrentProjectsForUser = currentProjects.length > 0
       && currentProjects.every((project) => project.userId === userId);
@@ -88,14 +93,10 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       set({ projectsStatus: 'loading', projectsError: null });
     }
 
-    if (!options?.force && inFlightLoads.has(userId)) {
-      return inFlightLoads.get(userId)!;
-    }
-
     const loadPromise = (async () => {
       try {
         const remoteProjects = await projectRepository.listProjects(userId);
-        if (!isCurrentSession(userId, generation)) return;
+        if (!isCurrentRequest()) return;
         setCachedProjects(userId, remoteProjects);
         set({
           projects: remoteProjects,
@@ -103,7 +104,7 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
           projectsError: null,
         });
       } catch (error) {
-        if (!isCurrentSession(userId, generation)) return;
+        if (!isCurrentRequest()) return;
         const message = getUserErrorMessage(error, '项目列表暂时无法加载，请检查网络后重试。');
         set({
           projectsStatus: 'error',
@@ -112,10 +113,10 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
       }
     })();
 
-    inFlightLoads.set(userId, loadPromise);
+    inFlightLoad = { userId, promise: loadPromise };
     void loadPromise.finally(() => {
-      if (inFlightLoads.get(userId) === loadPromise) {
-        inFlightLoads.delete(userId);
+      if (inFlightLoad?.promise === loadPromise) {
+        inFlightLoad = null;
       }
     });
     return loadPromise;
@@ -181,28 +182,37 @@ export const useProjectStore = create<ProjectState>()((set, get) => ({
   },
 
   deleteProject: async (id) => {
-    const loaded = await projectRepository.load(id);
-    if (loaded.status !== 'missing') {
-      await projectRepository.remove(id, loaded.version);
+    const userId = useUserStore.getState().currentUser?.id;
+    if (!userId) return false;
+    const generation = projectSessionGeneration;
+    try {
+      const loaded = await projectRepository.load(id);
+      if (!isCurrentSession(userId, generation)) return false;
+      if (loaded.status !== 'missing') await projectRepository.remove(id, loaded.version);
+    } catch (error) {
+      if (!isCurrentSession(userId, generation)) return false;
+      if (!(error instanceof DocumentWriteError && error.code === 'missing')) throw error;
     }
+    if (!isCurrentSession(userId, generation)) return false;
+
+    listRequestSequence += 1;
+    inFlightLoad = null;
     const state = get();
-    const target = state.projects.find((project) => project.id === id);
-    const updatedProjects = state.projects.filter((project) => project.id !== id);
-    if (target?.userId) {
-      setCachedProjects(
-        target.userId,
-        updatedProjects.filter((project) => project.userId === target.userId),
-      );
-    }
+    const projects = state.projects.filter((project) => project.id !== id || project.userId !== userId);
+    const cached = getCachedProjects(userId);
+    if (cached) setCachedProjects(userId, cached.filter((project) => project.id !== id));
+    const closingProject = state.currentProject?.id === id && state.currentProject.userId === userId;
     set({
-      projects: updatedProjects,
-      currentProject: state.currentProject?.id === id ? null : state.currentProject,
+      projects,
+      ...(closingProject ? { currentProject: null, currentProjectVersion: null } : {}),
     });
+    if (state.projectsStatus === 'loading') void get().loadProjects(userId);
+    return true;
   },
 
   resetProjects: () => {
     projectSessionGeneration += 1;
-    inFlightLoads.clear();
+    inFlightLoad = null;
     set({
       projects: [],
       currentProject: null,

@@ -19,6 +19,7 @@ test.use({ baseURL: appOrigin });
 async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', empty = false, options?: {
   beforeSave?: () => Promise<boolean>;
   canLoad?: () => boolean;
+  beforeCreate?: (id: string) => Promise<boolean>;
 }) {
   const projects = empty ? [] : [{ id: projectId, name: projectName, owner_id: ownerId, description: '', created_at: timestamp, updated_at: timestamp }];
   const documents = new Map([[projectId, design]]);
@@ -28,11 +29,25 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
     const url = new URL(route.request().url());
     requests.push(url.pathname);
     if (url.pathname === '/rest/v1/rpc/current_app_role') return route.fulfill({ json: role });
+    if (url.pathname === '/rest/v1/rpc/delete_project_document') {
+      const payload = route.request().postDataJSON() as { project_id: string; expected_revision: number };
+      const index = projects.findIndex((project) => project.id === payload.project_id);
+      if (index === -1 || revisions.get(payload.project_id) !== payload.expected_revision) {
+        return route.fulfill({ status: 409, json: { message: 'Version conflict' } });
+      }
+      projects.splice(index, 1);
+      documents.delete(payload.project_id);
+      revisions.delete(payload.project_id);
+      return route.fulfill({ status: 204 });
+    }
     if (url.pathname === '/rest/v1/rpc/save_project_document') {
+      const payload = route.request().postDataJSON() as { project_id: string; project_payload: typeof design; expected_revision: number | null };
+      if (payload.expected_revision === null && options?.beforeCreate && !(await options.beforeCreate(payload.project_id))) {
+        return route.fulfill({ status: 403, json: { code: '42501', message: 'fixture create refused' } });
+      }
       if (options?.beforeSave && !(await options.beforeSave())) {
         return route.fulfill({ status: 503, json: { message: 'fixture save unavailable' } });
       }
-      const payload = route.request().postDataJSON() as { project_id: string; project_payload: typeof design };
       const config = payload.project_payload;
       const existing = projects.find((project) => project.id === payload.project_id);
       if (existing) existing.name = config.name;
@@ -62,12 +77,16 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
   return requests;
 }
 
-async function createProject(page: Page, name: string) {
+async function reachCreateStep(page: Page, name: string) {
   await page.getByRole('button', { name: '新建项目', exact: true }).click();
   await page.getByPlaceholder('如：无人机电源线束').fill(name);
   const next = page.getByRole('button', { name: '下一步', exact: true });
   for (let step = 1; step <= 3; step += 1) await next.click();
-  await page.getByRole('button', { name: '创建项目', exact: true }).last().click();
+  return page.getByRole('button', { name: '创建项目', exact: true }).last();
+}
+
+async function createProject(page: Page, name: string) {
+  await (await reachCreateStep(page, name)).click();
   await expect(page.getByPlaceholder('未命名项目')).toHaveValue(name);
 }
 
@@ -156,6 +175,92 @@ test('the new project wizard cancels to the list and opens a completed project i
   await expect(page).toHaveURL('/designer');
   await createProject(page, '向导验收样件');
   await expect(page).toHaveURL(/\/designer\/design\?projectId=[\da-f-]+$/);
+});
+
+test('double-clicking the last wizard step sends only one create and leaves one card after reload', async ({ page }) => {
+  const allowCreate = Promise.withResolvers<boolean>();
+  const pendingIds: string[] = [];
+  await installFixture(page, 'engineer', true, {
+    beforeCreate: (id) => {
+      pendingIds.push(id);
+      return allowCreate.promise;
+    },
+  });
+  await page.goto('/designer');
+  const name = '慢响应创建样件';
+  const submit = await reachCreateStep(page, name);
+  try {
+    await submit.evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+    await expect.poll(() => pendingIds.length).toBe(1);
+    await expect(page.getByRole('button', { name: '创建中…' })).toBeDisabled({ timeout: 1500 });
+    await expect(page.getByRole('button', { name: '上一步' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '✕', exact: true })).toBeDisabled();
+  } finally {
+    allowCreate.resolve(true);
+  }
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue(name);
+  const [id] = pendingIds;
+  await expect(page).toHaveURL(`/designer/design?projectId=${id}`);
+  await page.getByRole('navigation').getByRole('button', { name: '线束设计器', exact: true }).click();
+  const cards = page.getByRole('article', { name, exact: true });
+  await expect(cards).toHaveCount(1);
+  await page.reload();
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAttribute('data-testid', `project-card-${id}`);
+  expect(pendingIds).toEqual([id]);
+});
+
+test('two independent wizards save same-name projects which can be deleted by ID', async ({ page }) => {
+  const createdIds: string[] = [];
+  await installFixture(page, 'engineer', true, {
+    beforeCreate: async (id) => {
+      createdIds.push(id);
+      return true;
+    },
+  });
+  await page.goto('/designer');
+  const name = '同名验收样件';
+  await createProject(page, name);
+  await page.getByRole('navigation').getByRole('button', { name: '线束设计器', exact: true }).click();
+  await createProject(page, name);
+  await page.getByRole('navigation').getByRole('button', { name: '线束设计器', exact: true }).click();
+  await page.reload();
+  const cards = page.getByRole('article', { name, exact: true });
+  await expect(cards).toHaveCount(2);
+  expect(createdIds).toHaveLength(2);
+  expect(new Set(createdIds).size).toBe(2);
+  const [firstId, secondId] = createdIds;
+  const firstCard = page.getByTestId(`project-card-${firstId}`);
+  const secondCard = page.getByTestId(`project-card-${secondId}`);
+  await expect(firstCard).toBeVisible();
+  await expect(secondCard).toBeVisible();
+  await firstCard.getByRole('button', { name: `删除项目 ${name}` }).click();
+  await page.getByRole('alertdialog').filter({ hasText: '确认删除' }).getByRole('button', { name: '删除', exact: true }).click();
+  await expect(firstCard).toHaveCount(0);
+  await expect(secondCard).toBeVisible();
+  await page.reload();
+  await expect(cards).toHaveCount(1);
+  await expect(secondCard).toBeVisible();
+  await expect(firstCard).toHaveCount(0);
+});
+
+test('a definite create failure keeps the confirmation inputs and allows retry', async ({ page }) => {
+  let attempts = 0;
+  await installFixture(page, 'engineer', true, { beforeCreate: async () => ++attempts > 1 });
+  await page.goto('/designer');
+  const name = '失败后重试样件';
+  const submit = await reachCreateStep(page, name);
+  await submit.click();
+  await expect(page.getByText(/创建失败/)).toBeVisible({ timeout: 3000 });
+  await expect(page.getByText(name, { exact: true })).toBeVisible();
+  await expect(page.getByText('空白项目', { exact: true })).toBeVisible();
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue(name);
+  expect(attempts).toBe(2);
 });
 
 test('a new project never exposes or deletes the previous project corrupt draft', async ({ page }) => {

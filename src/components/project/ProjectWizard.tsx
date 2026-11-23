@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   Cable,
@@ -18,6 +18,8 @@ import { getCatalogConnectors, requireCatalogSnapshot } from '@/lib/catalogRunti
 import { generateId } from '@/lib/commands';
 import { createDefaultWireEndTreatment, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
+import { DocumentWriteError } from '@/lib/documentWriteError';
+import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type {
   CanvasWireMaterial,
   Connector,
@@ -265,6 +267,9 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   const [connectorA, setConnectorA] = useState('');
   const [connectorB, setConnectorB] = useState('');
   const [pinCount, setPinCount] = useState(2);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<{ message: string; uncertain: boolean } | null>(null);
+  const submitting = useRef(false);
 
   const activeConnectorA = connectorA || connectors[0]?.id || '';
   const activeConnectorB = connectorB || (connectors[4]?.id ?? connectors[1]?.id ?? connectors[0]?.id ?? '');
@@ -284,12 +289,42 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
       : true;
 
   const handleComplete = async () => {
-    if (!currentUser) return;
-    const config = createConfigFromTemplate(selectedTemplate, projectName, activeConnectorA, activeConnectorB, pinCount);
-    const created = await createProject(currentUser.id, projectName, projectDesc, config);
-    if (!created || useUserStore.getState().currentUser?.id !== created.project.userId) return;
+    if (!currentUser || submitting.current || createError?.uncertain) return;
+    submitting.current = true;
+    setCreating(true);
+    setCreateError(null);
+
+    let config: HarnessConfig | undefined;
+    let created: Awaited<ReturnType<typeof createProject>>;
+    try {
+      config = createConfigFromTemplate(selectedTemplate, projectName, activeConnectorA, activeConnectorB, pinCount);
+      created = await createProject(currentUser.id, projectName, projectDesc, config);
+    } catch (error) {
+      const uncertain = error instanceof DocumentWriteError && error.code === 'network';
+      setCreateError({
+        uncertain,
+        message: uncertain
+          ? '暂时无法确认创建结果。请先返回项目列表核对，再决定是否重新创建。'
+          : `创建失败。${getUserErrorMessage(error, '请检查项目信息后重试。')}`,
+      });
+      created = null;
+    }
+
+    if (!config || !created || useUserStore.getState().currentUser?.id !== created.project.userId) {
+      submitting.current = false;
+      setCreating(false);
+      return;
+    }
     replaceDocument({ ...config, id: created.project.id, name: created.project.name }, { markSaved: true });
     onComplete();
+  };
+
+  const closeWizard = () => {
+    if (submitting.current) return;
+    if (createError?.uncertain && currentUser) {
+      void useProjectStore.getState().loadProjects(currentUser.id, { force: true });
+    }
+    onCancel();
   };
 
   const stepTitles = ['项目信息', '选择模板', '连接器配置', '确认创建'];
@@ -300,7 +335,7 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
         <div className="border-b border-slate-100 px-6 py-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-slate-800">新建项目向导</h2>
-            <button onClick={onCancel} className="cursor-pointer text-slate-400 hover:text-slate-600">
+            <button onClick={closeWizard} disabled={creating} className="cursor-pointer text-slate-400 hover:text-slate-600 disabled:opacity-50">
               ✕
             </button>
           </div>
@@ -507,14 +542,24 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                 )}
               </div>
               <p className="text-center text-xs text-slate-400">创建后可在设计器中进一步编辑</p>
+              {createError && (
+                <p role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {createError.message}
+                </p>
+              )}
             </div>
           )}
         </div>
 
         <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
           <button
-            onClick={step === 1 ? onCancel : () => setStep((s) => (s - 1) as WizardStep)}
-            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100"
+            onClick={step === 1 ? closeWizard : () => {
+              if (submitting.current || createError?.uncertain) return;
+              setCreateError(null);
+              setStep((s) => (s - 1) as WizardStep);
+            }}
+            disabled={creating || createError?.uncertain}
+            className="cursor-pointer rounded-lg px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50"
           >
             {step === 1 ? '取消' : (
               <span className="flex items-center gap-1"><ChevronLeft className="h-4 w-4" /> 上一步</span>
@@ -530,10 +575,12 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
             </button>
           ) : (
             <button
-              onClick={() => void handleComplete()}
-              className="flex cursor-pointer items-center gap-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+              onClick={createError?.uncertain ? closeWizard : () => void handleComplete()}
+              disabled={creating}
+              className="flex cursor-pointer items-center gap-1 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 disabled:bg-slate-400"
             >
-              <Check className="h-4 w-4" /> 创建项目
+              {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> 创建中…</>
+                : createError?.uncertain ? '返回项目列表' : <><Check className="h-4 w-4" /> 创建项目</>}
             </button>
           )}
         </div>

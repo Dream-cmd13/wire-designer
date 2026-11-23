@@ -1,45 +1,31 @@
-import { isValidElement, type ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectWizard } from '@/components/project/ProjectWizard';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useUserStore } from '@/stores/userStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useHarnessStore } from '@/stores/harnessStore';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { DocumentWriteError } from '@/lib/documentWriteError';
 
-vi.mock('@/stores/userStore', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/stores/userStore')>();
-  return { ...actual, useUserStore: Object.assign(() => actual.useUserStore.getState(), actual.useUserStore) };
-});
-vi.mock('@/stores/projectStore', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/stores/projectStore')>();
-  return { ...actual, useProjectStore: Object.assign(() => actual.useProjectStore.getState(), actual.useProjectStore) };
-});
-vi.mock('@/stores/harnessStore', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/stores/harnessStore')>();
-  return { ...actual, useHarnessStore: Object.assign(() => actual.useHarnessStore.getState(), actual.useHarnessStore) };
-});
-vi.mock('@/stores/catalogStore', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/stores/catalogStore')>();
-  return { ...actual, useCatalogStore: (selector: (state: ReturnType<typeof actual.useCatalogStore.getState>) => unknown) => selector(actual.useCatalogStore.getState()) };
-});
+const version = { revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' };
 
-// Exercise the actual event handler without a DOM; keep all stores real.
-vi.mock('react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react')>();
-  const hooks = {
-    useEffect: vi.fn(),
-    useState: (initial: unknown) => [initial === 1 ? 4 : initial, vi.fn()],
-  };
-  return { ...actual, ...hooks, default: { ...actual, ...hooks } };
-});
+function deferredCreate() {
+  let resolve!: (value: typeof version) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<typeof version>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
-function findButtons(node: ReactNode): Array<() => void> {
-  if (Array.isArray(node)) return node.flatMap(findButtons);
-  if (!isValidElement<{ children?: ReactNode; onClick?: () => void }>(node)) return [];
-  return [
-    ...(node.type === 'button' && node.props.onClick ? [node.props.onClick] : []),
-    ...findButtons(node.props.children),
-  ];
+function renderCreateStep(onComplete = vi.fn(), onCancel = vi.fn()) {
+  render(<ProjectWizard onComplete={onComplete} onCancel={onCancel} />);
+  fireEvent.change(screen.getByPlaceholderText('如：无人机电源线束'), { target: { value: '测试项目' } });
+  for (let step = 1; step <= 3; step += 1) fireEvent.click(screen.getByRole('button', { name: '下一步' }));
+  return screen.getByRole('button', { name: '创建项目' });
 }
 
 function signIn(id: string | null): void {
@@ -51,27 +37,28 @@ function signIn(id: string | null): void {
 
 describe('project wizard creation', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    vi.spyOn(useCatalogStore.getState(), 'initialize').mockResolvedValue(undefined);
     useProjectStore.getState().resetProjects();
     signIn('user-old');
   });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
-  it.each(['user-new', null])('does not replace the workspace after switching to %s', async (nextUser) => {
-    let resolveCreate!: () => void;
-    vi.spyOn(projectRepository, 'createProject').mockImplementation(() => new Promise((resolve) => {
-      resolveCreate = () => resolve({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' });
-    }));
+  it.each(['user-new', null, 'user-old'])('does not replace the workspace after resetting the session to %s', async (nextUser) => {
+    const pendingCreate = deferredCreate();
+    vi.spyOn(projectRepository, 'createProject').mockReturnValue(pendingCreate.promise);
     const replaceDocument = vi.spyOn(useHarnessStore.getState(), 'replaceDocument');
     const onComplete = vi.fn();
-    const tree = ProjectWizard({ onComplete, onCancel: vi.fn() });
-    findButtons(tree).at(-1)!();
+    fireEvent.click(renderCreateStep(onComplete));
     expect(projectRepository.createProject).toHaveBeenCalledOnce();
 
-    signIn(nextUser);
-    useProjectStore.getState().resetProjects();
-    resolveCreate();
-    // Flush the repository, store and event-handler continuations.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await act(async () => {
+      signIn(nextUser);
+      useProjectStore.getState().resetProjects();
+      pendingCreate.resolve(version);
+    });
 
     expect(replaceDocument).not.toHaveBeenCalled();
     expect(onComplete).not.toHaveBeenCalled();
@@ -79,15 +66,35 @@ describe('project wizard creation', () => {
   });
 
   it('opens the created document and completes while the account is unchanged', async () => {
-    vi.spyOn(projectRepository, 'createProject').mockResolvedValue({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' });
+    vi.spyOn(projectRepository, 'createProject').mockResolvedValue(version);
     const replaceDocument = vi.spyOn(useHarnessStore.getState(), 'replaceDocument').mockImplementation(() => {});
     const onComplete = vi.fn();
-    const tree = ProjectWizard({ onComplete, onCancel: vi.fn() });
-    findButtons(tree).at(-1)!();
-    await vi.waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+    fireEvent.click(renderCreateStep(onComplete));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+    expect(replaceDocument).toHaveBeenCalledOnce();
     expect(replaceDocument).toHaveBeenCalledWith(
       expect.objectContaining({ id: useProjectStore.getState().currentProject?.id }),
       { markSaved: true },
     );
+  });
+
+  it('offers to refresh the project list when the creation outcome is unknown', async () => {
+    const create = vi.spyOn(projectRepository, 'createProject');
+    const pendingCreate = deferredCreate();
+    create.mockReturnValue(pendingCreate.promise);
+    const listProjects = vi.spyOn(projectRepository, 'listProjects').mockResolvedValue([]);
+    const onCancel = vi.fn();
+    fireEvent.click(renderCreateStep(vi.fn(), onCancel));
+    const failure = new DocumentWriteError('network', 'Network disconnected');
+    await act(async () => {
+      pendingCreate.reject(failure);
+    });
+
+    expect(await screen.findByText(/请先返回项目列表/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '创建项目' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '返回项目列表' }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(listProjects).toHaveBeenCalledExactlyOnceWith('user-old');
+    expect(create).toHaveBeenCalledOnce();
   });
 });

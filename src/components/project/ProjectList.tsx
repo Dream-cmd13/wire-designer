@@ -92,9 +92,10 @@ export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject
 
   const handleDelete = async (project: Project) => {
     setDeleteToast(null);
+    if (useUserStore.getState().currentUser?.id !== project.userId) return;
     setDeletingProjectId(project.id);
     try {
-      await deleteProject(project.id);
+      if (!(await deleteProject(project.id))) return;
       notify({
         tone: 'success',
         message: `已删除项目“${project.name}”。`,

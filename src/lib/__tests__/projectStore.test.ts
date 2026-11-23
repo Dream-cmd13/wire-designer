@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearCachedProjects, setCachedProjects } from '@/lib/projectListCache';
+import { clearCachedProjects, getCachedProjects, setCachedProjects } from '@/lib/projectListCache';
+import { DocumentWriteError } from '@/lib/documentWriteError';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
+import type { ProjectLoadResult } from '@/repositories/projectRepository';
 import type { Project } from '@/types/user';
 
 const mocks = vi.hoisted(() => ({
   createProject: vi.fn(async () => ({ revision: 1, updatedAt: '2026-01-01T00:00:00.000Z' })),
   listProjects: vi.fn(async () => [] as Project[]),
   updateProject: vi.fn(async () => ({ revision: 2, updatedAt: '2026-01-01T00:00:00.000Z' })),
-  remove: vi.fn(async () => undefined),
+  remove: vi.fn(async (): Promise<void> => undefined),
   save: vi.fn(async () => ({ revision: 2, updatedAt: '2026-01-01T00:00:00.000Z' })),
-  load: vi.fn(async () => ({ status: 'missing' })),
+  load: vi.fn(async (): Promise<ProjectLoadResult> => ({ status: 'missing' })),
 }));
 
 vi.mock('@/repositories/projectRepository', () => ({
@@ -53,6 +55,31 @@ function createMockStorage(): Storage {
   };
 }
 
+const deleteVersion = { revision: 3, updatedAt: '2026-01-01T00:00:00.000Z' };
+
+function deferred<Value>() {
+  let resolve!: (value: Value) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<Value>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function installDeleteFixture() {
+  const first: Project = { id: 'project-a', userId: 'user-a', name: 'new', description: '', createdAt: 1, updatedAt: 2 };
+  const second = { ...first, id: 'project-b' };
+  const projects = [first, second];
+  setCurrentUser(first.userId);
+  setCachedProjects(first.userId, projects);
+  useProjectStore.setState({ projects, projectsStatus: 'success' });
+  useProjectStore.getState().setCurrentProject(first);
+  useProjectStore.getState().setCurrentProjectVersion(deleteVersion);
+  mocks.load.mockResolvedValue({ status: 'ok', config: { ...createFallbackConfig(), id: first.id }, version: deleteVersion });
+  return { first, second, projects };
+}
+
 describe('project store', () => {
   beforeEach(() => {
     const mock = createMockStorage();
@@ -62,9 +89,10 @@ describe('project store', () => {
       configurable: true,
     });
     mocks.createProject.mockReset();
-    mocks.listProjects.mockClear();
+    mocks.listProjects.mockReset();
     mocks.updateProject.mockClear();
-    mocks.remove.mockClear();
+    mocks.remove.mockReset();
+    mocks.load.mockReset();
     clearCachedProjects();
     setCurrentUser(null);
     useProjectStore.getState().resetProjects();
@@ -313,6 +341,116 @@ describe('project store', () => {
 
     await Promise.all([p1, p2]);
     expect(callCount).toBe(1);
+  });
+
+  it.each(['success', 'error'])('discards an invalidated list %s after deletion and lets the current refresh settle', async (lateResult) => {
+    const { first, second, projects } = installDeleteFixture();
+    const staleList = deferred<Project[]>();
+    const freshList = deferred<Project[]>();
+    mocks.listProjects.mockReturnValueOnce(staleList.promise).mockReturnValueOnce(freshList.promise);
+    const store = useProjectStore.getState();
+    const staleLoad = store.loadProjects(first.userId);
+
+    await store.deleteProject(first.id);
+    expect(mocks.remove).toHaveBeenCalledExactlyOnceWith(first.id, deleteVersion);
+    expect(useProjectStore.getState().currentProject).toBeNull();
+    expect(useProjectStore.getState().projects.map((project) => project.id)).toEqual([second.id]);
+    expect(getCachedProjects(first.userId)?.map((project) => project.id)).toEqual([second.id]);
+
+    if (lateResult === 'success') staleList.resolve(projects);
+    else staleList.reject(new Error('Network offline'));
+    await staleLoad;
+    expect(useProjectStore.getState()).toMatchObject({ projects: [second], projectsStatus: 'loading', projectsError: null });
+    expect(getCachedProjects(first.userId)).toEqual([second]);
+    expect(useProjectStore.getState().currentProjectVersion).toBeNull();
+
+    const joinedRefresh = store.loadProjects(first.userId);
+    expect(mocks.listProjects).toHaveBeenCalledTimes(2);
+    freshList.resolve([second]);
+    await joinedRefresh;
+    expect(useProjectStore.getState()).toMatchObject({ projects: [second], projectsStatus: 'success', projectsError: null });
+    expect(getCachedProjects(first.userId)).toEqual([second]);
+  });
+
+  it('keeps the latest forced refresh when the older request arrives last', async () => {
+    const { first, second, projects } = installDeleteFixture();
+    const staleList = deferred<Project[]>();
+    mocks.listProjects.mockReturnValueOnce(staleList.promise).mockResolvedValueOnce([second]);
+    const store = useProjectStore.getState();
+    const staleLoad = store.loadProjects(first.userId);
+    await store.loadProjects(first.userId, { force: true });
+    staleList.resolve(projects);
+    await staleLoad;
+
+    expect(useProjectStore.getState().projects).toEqual([second]);
+    expect(getCachedProjects(first.userId)).toEqual([second]);
+  });
+
+  it('keeps the filtered cache if reconciliation fails and starts a new normal refresh', async () => {
+    const { first, second, projects } = installDeleteFixture();
+    const staleList = deferred<Project[]>();
+    const reconcileList = deferred<Project[]>();
+    mocks.listProjects.mockReturnValueOnce(staleList.promise).mockReturnValueOnce(reconcileList.promise).mockResolvedValueOnce([second]);
+    const store = useProjectStore.getState();
+    const staleLoad = store.loadProjects(first.userId);
+    await store.deleteProject(first.id);
+    const reconciliation = store.loadProjects(first.userId);
+    reconcileList.reject(new Error('Network offline'));
+    await reconciliation;
+    expect(useProjectStore.getState()).toMatchObject({ projects: [second], projectsStatus: 'error' });
+    expect(getCachedProjects(first.userId)).toEqual([second]);
+
+    await store.loadProjects(first.userId);
+    staleList.resolve(projects);
+    await staleLoad;
+    expect(mocks.listProjects).toHaveBeenCalledTimes(3);
+    expect(useProjectStore.getState()).toMatchObject({ projects: [second], projectsStatus: 'success', projectsError: null });
+    expect(getCachedProjects(first.userId)).toEqual([second]);
+  });
+
+  it('retains the list and cache on delete failure and lets the pending list finish', async () => {
+    const { first, projects } = installDeleteFixture();
+    const pendingList = deferred<Project[]>();
+    mocks.listProjects.mockReturnValueOnce(pendingList.promise);
+    mocks.remove.mockRejectedValueOnce(new DocumentWriteError('conflict', 'Version conflict'));
+    const store = useProjectStore.getState();
+    const loading = store.loadProjects(first.userId);
+    await expect(store.deleteProject(first.id)).rejects.toThrow('Version conflict');
+    expect(getCachedProjects(first.userId)).toEqual(projects);
+    expect(useProjectStore.getState()).toMatchObject({ projects, projectsStatus: 'loading', currentProject: first });
+    pendingList.resolve(projects);
+    await loading;
+    expect(useProjectStore.getState()).toMatchObject({ projects, projectsStatus: 'success' });
+    expect(mocks.listProjects).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['load', 'remove'])('removes only the missing project when %s finds it already gone', async (operation) => {
+    const { first, second } = installDeleteFixture();
+    if (operation === 'load') mocks.load.mockResolvedValueOnce({ status: 'missing' });
+    else mocks.remove.mockRejectedValueOnce(new DocumentWriteError('missing', 'Document not found'));
+    await useProjectStore.getState().deleteProject(first.id);
+    expect(useProjectStore.getState().projects).toEqual([second]);
+    expect(getCachedProjects(first.userId)).toEqual([second]);
+  });
+
+  it.each(['user-b', 'user-a'])('ignores a delete response after the session changes to %s', async (nextUser) => {
+    const { first, projects } = installDeleteFixture();
+    const pendingDelete = deferred<void>();
+    mocks.remove.mockReturnValueOnce(pendingDelete.promise);
+    const deletion = useProjectStore.getState().deleteProject(first.id);
+    await vi.waitFor(() => expect(mocks.remove).toHaveBeenCalledOnce());
+
+    setCurrentUser(nextUser);
+    useProjectStore.getState().resetProjects();
+    const visibleProjects = nextUser === first.userId ? projects : [{ ...first, id: 'other-project', userId: nextUser }];
+    mocks.listProjects.mockResolvedValueOnce(visibleProjects);
+    await useProjectStore.getState().loadProjects(nextUser);
+    pendingDelete.resolve();
+    await deletion;
+
+    expect(useProjectStore.getState()).toMatchObject({ projects: visibleProjects, projectsStatus: 'success' });
+    expect(getCachedProjects(nextUser)).toEqual(visibleProjects);
+    expect(getCachedProjects(first.userId)).toEqual(projects);
   });
 
   it('does not save a config that belongs to another project', async () => {
