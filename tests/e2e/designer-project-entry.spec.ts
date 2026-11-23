@@ -16,16 +16,20 @@ const design = {
 
 test.use({ baseURL: appOrigin });
 
-async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', empty = false, beforeSave?: () => Promise<boolean>) {
+async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', empty = false, options?: {
+  beforeSave?: () => Promise<boolean>;
+  canLoad?: () => boolean;
+}) {
   const projects = empty ? [] : [{ id: projectId, name: projectName, owner_id: ownerId, description: '', created_at: timestamp, updated_at: timestamp }];
   const documents = new Map([[projectId, design]]);
+  const revisions = new Map([[projectId, 1]]);
   const requests: string[] = [];
-  await page.route(`${fixtureOrigin}/**`, async (route) => {
+  await page.context().route(`${fixtureOrigin}/**`, async (route) => {
     const url = new URL(route.request().url());
     requests.push(url.pathname);
     if (url.pathname === '/rest/v1/rpc/current_app_role') return route.fulfill({ json: role });
     if (url.pathname === '/rest/v1/rpc/save_project_document') {
-      if (beforeSave && !(await beforeSave())) {
+      if (options?.beforeSave && !(await options.beforeSave())) {
         return route.fulfill({ status: 503, json: { message: 'fixture save unavailable' } });
       }
       const payload = route.request().postDataJSON() as { project_id: string; project_payload: typeof design };
@@ -34,15 +38,20 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
       if (existing) existing.name = config.name;
       else projects.push({ id: payload.project_id, name: config.name, owner_id: ownerId, description: '', created_at: timestamp, updated_at: timestamp });
       documents.set(payload.project_id, config);
-      return route.fulfill({ json: [{ revision: 2, updated_at: timestamp }] });
+      const revision = (revisions.get(payload.project_id) ?? 0) + 1;
+      revisions.set(payload.project_id, revision);
+      return route.fulfill({ json: [{ revision, updated_at: timestamp }] });
     }
     if (url.pathname === '/rest/v1/projects') {
       const id = url.searchParams.get('id')?.slice(3);
-      return route.fulfill({ json: id ? [{ config: documents.get(id), revision: 1, updated_at: timestamp }] : projects });
+      if (id && options?.canLoad && !options.canLoad()) {
+        return route.fulfill({ status: 500, json: { message: 'fixture load unavailable' } });
+      }
+      return route.fulfill({ json: id ? [{ config: documents.get(id), revision: revisions.get(id), updated_at: timestamp }] : projects });
     }
     return route.fulfill({ json: [] });
   });
-  await page.addInitScript(({ origin, id, createdAt }) => {
+  await page.context().addInitScript(({ origin, id, createdAt }) => {
     if (location.origin !== origin || localStorage.getItem('sb-localhost-auth-token')) return;
     localStorage.setItem('sb-localhost-auth-token', JSON.stringify({
       access_token: 'local-project-entry-fixture', refresh_token: 'local-project-entry-fixture',
@@ -171,10 +180,10 @@ test('a new project never exposes or deletes the previous project corrupt draft'
 test('export waits for the active project save and downloads the latest design and name', async ({ page }) => {
   const saveStarted = Promise.withResolvers<void>();
   const allowSave = Promise.withResolvers<boolean>();
-  await installFixture(page, 'engineer', false, () => {
+  await installFixture(page, 'engineer', false, { beforeSave: () => {
     saveStarted.resolve();
     return allowSave.promise;
-  });
+  } });
   await page.goto('/designer');
   const latestName = '刚修改的导出项目';
   await renameAndReturnToList(page, latestName);
@@ -195,7 +204,7 @@ test('export waits for the active project save and downloads the latest design a
 });
 
 test('export does not emit a stale file when the active project cannot save', async ({ page }) => {
-  await installFixture(page, 'engineer', false, async () => false);
+  await installFixture(page, 'engineer', false, { beforeSave: async () => false });
   const downloads: string[] = [];
   page.on('download', (download) => downloads.push(download.suggestedFilename()));
   await page.goto('/designer');
@@ -205,6 +214,68 @@ test('export does not emit a stale file when the active project cannot save', as
   expect(downloads).toEqual([]);
   await page.getByRole('navigation').getByRole('button', { name: '设计图', exact: true }).click();
   await expect(page.getByPlaceholder('未命名项目')).toHaveValue('保存失败的改名');
+});
+
+test('an earlier window exports the design saved by a second window', async ({ page, context }) => {
+  await installFixture(page, 'engineer');
+  await page.goto('/designer');
+  await openFixtureProject(page);
+  await page.getByRole('navigation').getByRole('button', { name: '线束设计器', exact: true }).click();
+
+  const secondWindow = await context.newPage();
+  await secondWindow.goto('/designer');
+  await openFixtureProject(secondWindow);
+  const latestName = '第二个窗口保存的名称';
+  const nameField = secondWindow.getByPlaceholder('未命名项目');
+  await nameField.fill(latestName);
+  await nameField.press('Enter');
+  await expect(secondWindow.getByText('未保存', { exact: true })).toBeVisible();
+  await expect(secondWindow.getByText('已保存', { exact: true })).toBeVisible();
+
+  const freshWindow = await context.newPage();
+  await freshWindow.goto('/designer');
+  for (const [window, cardName] of [[page, projectName], [freshWindow, latestName]] as const) {
+    const [file] = await Promise.all([
+      window.waitForEvent('download'),
+      window.getByRole('button', { name: `导出项目 ${cardName}` }).click(),
+    ]);
+    expect(file.suggestedFilename()).toBe(`${latestName}.wire-harness.json`);
+    const exported = JSON.parse(await readFile((await file.path())!, 'utf8'));
+    expect(exported.project.name).toBe(latestName);
+    expect(exported.document.name).toBe(latestName);
+  }
+});
+
+test('retrying an earlier export loads and saves the project opened since the failure', async ({ page }) => {
+  let canLoad = false;
+  const allowSave = Promise.withResolvers<boolean>();
+  await installFixture(page, 'engineer', false, {
+    canLoad: () => canLoad,
+    beforeSave: () => allowSave.promise,
+  });
+  await page.goto('/designer');
+  await page.getByRole('button', { name: `导出项目 ${projectName}` }).click();
+  const retry = page.getByRole('button', { name: '重试导出' });
+  await expect(retry).toBeVisible();
+
+  canLoad = true;
+  const latestName = '服务恢复后修改的名称';
+  await renameAndReturnToList(page, latestName);
+  const download = page.waitForEvent('download', { timeout: 6000 });
+  try {
+    await retry.click();
+    allowSave.resolve(true);
+    const result = await Promise.race([
+      download,
+      page.getByText('最新修改未能保存，请检查保存状态后重试导出。').waitFor({ timeout: 6000 }).then(() => null),
+    ]);
+    expect(result, '重试应下载文件').not.toBeNull();
+    expect(result!.suggestedFilename()).toBe(`${latestName}.wire-harness.json`);
+    const exported = JSON.parse(await readFile((await result!.path())!, 'utf8'));
+    expect(exported.document.name).toBe(latestName);
+  } finally {
+    allowSave.resolve(true);
+  }
 });
 
 test('sales deep links only see automatic quoting', async ({ page }) => {

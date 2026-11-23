@@ -29,7 +29,7 @@
     "user:create": "node scripts/create-user.mjs",
     "test": "vitest run --exclude \".worktrees/**\" --exclude \".tmp/**\" --exclude \"tmp/**\" --exclude \"tests/e2e/**\"",
     "test:watch": "vitest --exclude \".worktrees/**\" --exclude \".tmp/**\" --exclude \"tmp/**\" --exclude \"tests/e2e/**\"",
-    "test:e2e": "playwright test",
+    "test:e2e": "node scripts/test-e2e.mjs",
     "test:e2e:designer": "playwright test --config playwright.designer.config.ts"
   },
   "dependencies": {

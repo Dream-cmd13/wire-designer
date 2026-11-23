@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { LoginRequiredPanel } from '@/components/auth/LoginRequiredPanel';
@@ -1080,7 +1080,7 @@ export default function App() {
     return saveBeforeLeavingWorkspace();
   };
 
-  const prepareActiveProjectExport = async (project: Project) => {
+  const saveActiveProjectBeforeExport = useCallback(async (project: Project) => {
     const session = workspaceSessionRef.current;
     const isActiveProject = () => {
       const user = useUserStore.getState().currentUser;
@@ -1103,8 +1103,11 @@ export default function App() {
     if (harness.saveState.status !== 'saved') {
       throw new UserFacingError('最新修改未能保存，请检查保存状态后重试导出。');
     }
-    return harness.config;
-  };
+  }, [doSave, saveBlocked, saveConflict, writeProjectDraft]);
+  const saveActiveProjectBeforeExportRef = useRef(saveActiveProjectBeforeExport);
+  useLayoutEffect(() => {
+    saveActiveProjectBeforeExportRef.current = saveActiveProjectBeforeExport;
+  }, [saveActiveProjectBeforeExport]);
 
   const saveStatusLabel =
     saveState.status === 'saved'
@@ -1182,7 +1185,7 @@ export default function App() {
           onNewProject={handleNewProject}
           onOpenProject={(project) => void handleOpenProject(project)}
           onRenameActiveProject={handleRenameActiveProject}
-          onPrepareActiveProjectExport={prepareActiveProjectExport}
+          onSaveActiveProjectBeforeExport={(project) => saveActiveProjectBeforeExportRef.current(project)}
         />
       );
     }

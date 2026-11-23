@@ -17,6 +17,7 @@ vi.mock('react', async (importOriginal) => {
     useEffect: (fn: () => void | (() => void)) => {
       reactState.effects.push(fn);
     },
+    useLayoutEffect: (fn: () => void) => fn(),
     useRef: (initial: unknown) => ({ current: initial }),
     useCallback: (fn: unknown) => fn,
   };

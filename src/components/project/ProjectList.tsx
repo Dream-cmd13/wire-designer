@@ -18,14 +18,13 @@ import { ImportProjectDialog } from '@/components/project/ImportProjectDialog';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
-import type { HarnessConfig } from '@/types/harness';
 import type { Project } from '@/types/user';
 
 interface ProjectListProps {
   onNewProject: () => void;
   onOpenProject: (project: Project) => void;
   onRenameActiveProject: (projectId: string, name: string) => Promise<boolean>;
-  onPrepareActiveProjectExport: (project: Project) => Promise<HarnessConfig>;
+  onSaveActiveProjectBeforeExport: (project: Project) => Promise<void>;
 }
 
 function getTimestamp() {
@@ -56,7 +55,7 @@ function ProjectCardSkeleton() {
   );
 }
 
-export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject, onPrepareActiveProjectExport }: ProjectListProps) {
+export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject, onSaveActiveProjectBeforeExport }: ProjectListProps) {
   const { currentUser, authReady } = useUserStore();
   const {
     projects,
@@ -166,10 +165,11 @@ export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject
     if (!canExport()) return;
 
     try {
-      const isActive = useProjectStore.getState().currentProject?.id === project.id;
-      const result = isActive
-        ? { status: 'ok' as const, config: await onPrepareActiveProjectExport(project) }
-        : await projectRepository.load(project.id);
+      if (useProjectStore.getState().currentProject?.id === project.id) {
+        await onSaveActiveProjectBeforeExport(project);
+        if (!canExport()) return;
+      }
+      const result = await projectRepository.load(project.id);
       if (!canExport()) return;
       if (result.status !== 'ok') {
         notify({
@@ -182,8 +182,8 @@ export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject
         });
         return;
       }
-      const name = isActive ? result.config.name || project.name : project.name;
-      const file = createDesignFile({ ...project, name }, result.config);
+      const name = result.config.name || project.name;
+      const file = createDesignFile({ ...project, name }, { ...result.config, name });
       downloadTextFile(
         JSON.stringify(file, null, 2),
         `${safeFilename(name)}.wire-harness.json`,
