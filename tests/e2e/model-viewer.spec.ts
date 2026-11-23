@@ -293,7 +293,7 @@ test('real CAD face picking, visible yellow fill, occlusion, gestures and bounde
   await page.mouse.click(center.x,center.y); await expect(page.getByTestId('model-selection')).toHaveText('网格：STL');
   const stats = await page.evaluate(() => ({...Reflect.get(window,'__modelResources')}));
   console.log(JSON.stringify({selectionResourceBaseline:baseline,selectionResourceLive50:live,after:stats}));
-  await page.getByRole('button',{name:'首页',exact:true}).click();
+  await page.getByRole('button',{name:'线束设计器',exact:true}).click();
   expect(await page.evaluate(() => ({live:Reflect.get(window,'__modelResources').live,raf:Reflect.get(window,'__modelResources').raf,workers:Reflect.get(window,'__modelResources').workers}))).toEqual({live:0,raf:0,workers:0});
 });
 
@@ -434,7 +434,7 @@ test('free rotation remains effective after crossing poles', async ({ page }, te
   }
   expect(accumulated).toBeGreaterThan(6); expect(Math.min(...z)).toBeLessThan(-0.2); expect(Math.max(...z)).toBeGreaterThan(0.2);
   expect(await page.evaluate(() => Reflect.get(window,'__modelResources').raf)).toBe(1);
-  await page.getByRole('button',{ name:'首页',exact:true }).click();
+  await page.getByRole('button',{ name:'线束设计器',exact:true }).click();
   expect(await page.evaluate(() => Reflect.get(window,'__modelResources').raf)).toBe(0);
   expect(errors).toEqual([]);
 });
@@ -487,7 +487,7 @@ test('scrolled and fullscreen canvas remains interactive', async ({ page },testI
   const recreated=await cameraMatrix(page); await dragCanvas(page,120,0); expect(rotationChange(recreated,await cameraMatrix(page))).toBeGreaterThan(0.01);
   for(let i=0;i<5;i++) { await uploadLocal(page,`replacement-${i}.stl`,asciiStl()); await dragCanvas(page,60,0); }
   expect(await page.evaluate(() => Reflect.get(window,'__modelResources').raf)).toBe(1);
-  await page.getByRole('button',{name:'首页',exact:true}).click();
+  await page.getByRole('button',{name:'线束设计器',exact:true}).click();
   const stats=await page.evaluate(() => ({...Reflect.get(window,'__modelResources')}));
   expect(stats.raf).toBe(0); expect(stats.live).toBe(0); expect(stats.workers).toBe(0); expect(errors).toEqual([]);
 });
@@ -559,7 +559,7 @@ test('real STL, units, controls, resize, malformed input and replacement cleanup
   await expect(page.getByRole('alert')).toContainText('解析失败');
   await uploadLocal(page,'recovered.stl',asciiStl());
   await expect(page.getByText('仅本地预览', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '首页', exact: true }).click();
+  await page.getByRole('button', { name: '线束设计器', exact: true }).click();
   await expect(page.locator('[aria-label="三维模型画布"] canvas')).toHaveCount(0);
   expect(await page.evaluate(() => Reflect.get(window, '__modelGpu').live)).toBe(0);
   expect(errors).toEqual([]);
@@ -900,7 +900,7 @@ test('private real STEP fixture parses in Worker with approximate dimensions and
     await page.getByRole('button', { name: view, exact: true }).click();
     await page.screenshot({ path: testInfo.outputPath(`male-5-${view}.png`) });
   }
-  await page.getByRole('button', { name: '首页', exact: true }).click();
+  await page.getByRole('button', { name: '线束设计器', exact: true }).click();
   await expect(canvas).toHaveCount(0);
   expect(await page.evaluate(() => Reflect.get(window, '__modelResources').live)).toBe(0);
   expect(await page.evaluate(() => Reflect.get(window, '__modelResources').workers)).toBe(0);

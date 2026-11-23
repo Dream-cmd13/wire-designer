@@ -14,7 +14,7 @@ import { appRoutes, defaultRoute, getRouteByPath, requiresAuth, shouldKeepRouteA
 import { downloadTextFile, safeFilename } from '@/lib/designFile';
 import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
 import { supabase } from '@/lib/supabaseClient';
-import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import { getUserErrorMessage, UserFacingError } from '@/lib/userErrorMessage';
 import {
   canApplyWorkspaceDraft,
   corruptWorkspaceDraftsToJson,
@@ -220,6 +220,11 @@ export default function App() {
     : requestedRoute;
   const isEditingCurrentProject = route.section === 'designer'
     && Boolean(currentProject && (!projectId || currentProject.id === projectId));
+  const activeDraftRecovery = draftRecovery?.ownerId === currentUserId
+    && draftRecovery?.projectId === currentProject?.id ? draftRecovery : null;
+  const activeCorruptDrafts = corruptDrafts.filter((draft) =>
+    draft.ownerId === currentUserId && draft.documentId === currentProject?.id && draft.kind === 'project',
+  );
   const { config, markSaveError, markSaved, markSaving, replaceDocument, saveState } = useHarnessStore();
   const catalogSnapshot = useCatalogStore((state) => state.snapshot);
   const refreshCatalogReferences = useHarnessStore((state) => state.refreshCatalogReferences);
@@ -543,6 +548,9 @@ export default function App() {
       setCurrentProject(created.project);
       setCurrentProjectVersion(created.version);
       replaceDocument({ ...localConfig, id: created.project.id, name: newName }, { markSaved: true });
+      setDraftRecovery(null);
+      setCorruptDrafts([]);
+      setDraftBackupError(null);
       setSaveConflict(null);
       setConflictReadConfirmOpen(false);
       notify({ tone: 'success', message: `已另存为新项目“${newName}”。` });
@@ -991,6 +999,11 @@ export default function App() {
   ]);
 
   const handleWizardComplete = () => {
+    setDraftRecovery(null);
+    setCorruptDrafts([]);
+    setDraftBackupError(null);
+    setSaveConflict(null);
+    setConflictReadConfirmOpen(false);
     setLoadError(null);
     setRecoveryRaw(null);
     setSaveBlocked(false);
@@ -1065,6 +1078,32 @@ export default function App() {
     }
     handleUpdateProjectName(name);
     return saveBeforeLeavingWorkspace();
+  };
+
+  const prepareActiveProjectExport = async (project: Project) => {
+    const session = workspaceSessionRef.current;
+    const isActiveProject = () => {
+      const user = useUserStore.getState().currentUser;
+      return workspaceSessionRef.current === session && user?.id === project.userId
+        && (user.role === 'engineer' || user.role === 'admin') && !user.mustChangePassword
+        && useProjectStore.getState().currentProject?.id === project.id;
+    };
+    if (!isActiveProject()) throw new UserFacingError('活动项目已切换，请从列表重新导出。');
+    if (saveBlocked) throw new UserFacingError('当前设计无法保存，请回到编辑页处理恢复提示后重试。');
+    if (saveConflict) throw new UserFacingError('当前设计存在保存冲突，请回到编辑页处理后重试。');
+
+    if (useHarnessStore.getState().saveState.status !== 'saved') {
+      writeProjectDraft();
+      await doSave({ retry: true });
+    }
+    const harness = useHarnessStore.getState();
+    if (!isActiveProject() || harness.config.id !== project.id) {
+      throw new UserFacingError('活动项目已切换，请从列表重新导出。');
+    }
+    if (harness.saveState.status !== 'saved') {
+      throw new UserFacingError('最新修改未能保存，请检查保存状态后重试导出。');
+    }
+    return harness.config;
   };
 
   const saveStatusLabel =
@@ -1143,6 +1182,7 @@ export default function App() {
           onNewProject={handleNewProject}
           onOpenProject={(project) => void handleOpenProject(project)}
           onRenameActiveProject={handleRenameActiveProject}
+          onPrepareActiveProjectExport={prepareActiveProjectExport}
         />
       );
     }
@@ -1208,7 +1248,7 @@ export default function App() {
         />
       )}
 
-      {isEditingCurrentProject && draftRecovery && draftRecovery.ownerId === currentUserId && (
+      {isEditingCurrentProject && activeDraftRecovery && (
         <ActionToast
           role="alertdialog"
           title="发现本地草稿"
@@ -1218,10 +1258,10 @@ export default function App() {
             onClick: () => {
               const ownerId = useUserStore.getState().currentUser?.id ?? null;
               const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
-              if (canApplyWorkspaceDraft(draftRecovery.draft, { ownerId, documentId: currentProjectId })) {
-                removeWorkspaceDraft(draftRecovery.ownerId, 'project', draftRecovery.projectId, draftRecovery.draft.draftId);
-              }
-              advanceDraftRecovery(draftRecovery.ownerId, draftRecovery.projectId, draftRecovery.draft.draftId);
+              const { draft, ownerId: draftOwner, projectId: draftProject } = activeDraftRecovery;
+              if (!canApplyWorkspaceDraft(draft, { ownerId, documentId: currentProjectId })) return;
+              removeWorkspaceDraft(draftOwner, 'project', draftProject, draft.draftId);
+              advanceDraftRecovery(draftOwner, draftProject, draft.draftId);
             },
           }}
           primaryAction={{
@@ -1229,18 +1269,18 @@ export default function App() {
             onClick: () => {
               const ownerId = useUserStore.getState().currentUser?.id ?? null;
               const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
-              if (!canApplyWorkspaceDraft(draftRecovery.draft, { ownerId, documentId: currentProjectId })) {
+              if (!canApplyWorkspaceDraft(activeDraftRecovery.draft, { ownerId, documentId: currentProjectId })) {
                 setDraftRecovery(null);
                 return;
               }
-              const draft = draftRecovery.draft;
+              const { draft, ownerId: draftOwner, projectId: draftProject } = activeDraftRecovery;
               replaceDocument(draft.document as HarnessConfig, { markSaved: false });
               const currentVersion = useProjectStore.getState().currentProjectVersion;
               if (draft.baseServerRevision === null) {
                 // 旧格式草稿没有可确认的云端基线：不能套用云端最新版本，
                 // 否则会用最新 revision 提交旧内容。直接进入人工冲突处理。
                 useProjectStore.getState().setCurrentProjectVersion(null);
-                setSaveConflict({ projectId: draftRecovery.projectId, kind: 'conflict' });
+                setSaveConflict({ projectId: draftProject, kind: 'conflict' });
                 useHarnessStore.getState().markSaveError('恢复的草稿缺少云端基线，请选择“读取云端版本”或“另存为新文档”。');
                 setDraftRecovery(null);
                 return;
@@ -1251,8 +1291,8 @@ export default function App() {
                 revision: draft.baseServerRevision,
                 updatedAt: currentVersion?.updatedAt ?? '',
               });
-              removeWorkspaceDraft(draftRecovery.ownerId, 'project', draftRecovery.projectId, draft.draftId);
-              advanceDraftRecovery(draftRecovery.ownerId, draftRecovery.projectId, draft.draftId);
+              removeWorkspaceDraft(draftOwner, 'project', draftProject, draft.draftId);
+              advanceDraftRecovery(draftOwner, draftProject, draft.draftId);
             },
           }}
           onClose={() => setDraftRecovery(null)}
@@ -1305,31 +1345,30 @@ export default function App() {
         />
       )}
 
-      {isEditingCurrentProject && corruptDrafts.length > 0 && !draftRecovery && (
+      {isEditingCurrentProject && activeCorruptDrafts.length > 0 && !activeDraftRecovery && (
         <ActionToast
           role="alertdialog"
           tone="danger"
           title="发现损坏的本地项目草稿"
-          message={`本地保存的未同步修改无法解析（共 ${corruptDrafts.length} 份），原始内容仍保留在本地。${corruptDrafts.some((entry) => !entry.isolated) ? '部分内容因本地存储空间不足未能转入隔离区，请先下载备份。' : '建议先下载备份，再决定是否丢弃。'}`}
+          message={`本地保存的未同步修改无法解析（共 ${activeCorruptDrafts.length} 份），原始内容仍保留在本地。${activeCorruptDrafts.some((entry) => !entry.isolated) ? '部分内容因本地存储空间不足未能转入隔离区，请先下载备份。' : '建议先下载备份，再决定是否丢弃。'}`}
           secondaryAction={{
             label: '丢弃草稿',
             destructive: true,
             onClick: () => {
-              corruptDrafts.forEach((entry) => removeCorruptWorkspaceDraft(entry));
-              const ownerId = useUserStore.getState().currentUser?.id ?? null;
-              const activeProjectId = useProjectStore.getState().currentProject?.id ?? null;
-              setCorruptDrafts(
-                ownerId && activeProjectId
-                  ? listCorruptWorkspaceDrafts(ownerId, 'project')
-                    .filter((entry) => entry.documentId === activeProjectId)
-                  : [],
-              );
+              const owner = useUserStore.getState().currentUser;
+              const project = useProjectStore.getState().currentProject;
+              if (!owner || (owner.role !== 'engineer' && owner.role !== 'admin') || owner.mustChangePassword
+                || !project || project.userId !== owner.id) return;
+              const drafts = activeCorruptDrafts.filter((entry) => entry.ownerId === owner.id && entry.documentId === project.id);
+              if (!drafts.length) return;
+              drafts.forEach((entry) => removeCorruptWorkspaceDraft(entry));
+              setCorruptDrafts(listCorruptWorkspaceDrafts(owner.id, 'project').filter((entry) => entry.documentId === project.id));
             },
           }}
           primaryAction={{
             label: '下载原始内容',
             onClick: () => downloadTextFile(
-              corruptWorkspaceDraftsToJson(corruptDrafts),
+              corruptWorkspaceDraftsToJson(activeCorruptDrafts),
               `${safeFilename('损坏项目草稿')}-${Date.now()}.json`,
             ),
           }}

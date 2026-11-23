@@ -18,12 +18,14 @@ import { ImportProjectDialog } from '@/components/project/ImportProjectDialog';
 import { projectRepository } from '@/repositories/projectRepository';
 import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
+import type { HarnessConfig } from '@/types/harness';
 import type { Project } from '@/types/user';
 
 interface ProjectListProps {
   onNewProject: () => void;
   onOpenProject: (project: Project) => void;
   onRenameActiveProject: (projectId: string, name: string) => Promise<boolean>;
+  onPrepareActiveProjectExport: (project: Project) => Promise<HarnessConfig>;
 }
 
 function getTimestamp() {
@@ -54,7 +56,7 @@ function ProjectCardSkeleton() {
   );
 }
 
-export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject }: ProjectListProps) {
+export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject, onPrepareActiveProjectExport }: ProjectListProps) {
   const { currentUser, authReady } = useUserStore();
   const {
     projects,
@@ -157,8 +159,18 @@ export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject
   };
 
   const handleExport = async (project: Project) => {
+    const canExport = () => {
+      const user = useUserStore.getState().currentUser;
+      return user?.id === project.userId && (user.role === 'engineer' || user.role === 'admin') && !user.mustChangePassword;
+    };
+    if (!canExport()) return;
+
     try {
-      const result = await projectRepository.load(project.id);
+      const isActive = useProjectStore.getState().currentProject?.id === project.id;
+      const result = isActive
+        ? { status: 'ok' as const, config: await onPrepareActiveProjectExport(project) }
+        : await projectRepository.load(project.id);
+      if (!canExport()) return;
       if (result.status !== 'ok') {
         notify({
           tone: 'danger',
@@ -170,17 +182,19 @@ export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject
         });
         return;
       }
-      const file = createDesignFile(project, result.config);
+      const name = isActive ? result.config.name || project.name : project.name;
+      const file = createDesignFile({ ...project, name }, result.config);
       downloadTextFile(
         JSON.stringify(file, null, 2),
-        `${safeFilename(project.name)}.wire-harness.json`,
+        `${safeFilename(name)}.wire-harness.json`,
       );
       notify({
         tone: 'success',
-        message: `已导出项目“${project.name}”。`,
+        message: `已导出项目“${name}”。`,
         dedupeKey: `project-export-result:${project.id}`,
       });
     } catch (error) {
+      if (!canExport()) return;
       console.error('项目导出失败:', error);
       notify({
         tone: 'danger',

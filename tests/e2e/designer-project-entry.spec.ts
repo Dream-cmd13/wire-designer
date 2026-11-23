@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import { designerAppOrigin as appOrigin, designerFixtureOrigin as fixtureOrigin } from '../../playwright.designer.config';
 
-const appOrigin = 'http://localhost:4193';
-const fixtureOrigin = 'http://localhost:4194';
 const projectId = '00000000-0000-4000-8000-000000000101';
 const ownerId = '00000000-0000-4000-8000-000000000201';
 const timestamp = '2026-11-23T00:00:00.000Z';
@@ -14,9 +14,9 @@ const design = {
   quantity: 1, leadTime: 'standard', twoDImages: [],
 };
 
-test.skip(process.env.E2E_BASE_URL !== appOrigin, '该用例需要端口 4193 的本地应用及端口 4194 的模拟 Supabase 配置');
+test.use({ baseURL: appOrigin });
 
-async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', empty = false) {
+async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', empty = false, beforeSave?: () => Promise<boolean>) {
   const projects = empty ? [] : [{ id: projectId, name: projectName, owner_id: ownerId, description: '', created_at: timestamp, updated_at: timestamp }];
   const documents = new Map([[projectId, design]]);
   const requests: string[] = [];
@@ -25,6 +25,9 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
     requests.push(url.pathname);
     if (url.pathname === '/rest/v1/rpc/current_app_role') return route.fulfill({ json: role });
     if (url.pathname === '/rest/v1/rpc/save_project_document') {
+      if (beforeSave && !(await beforeSave())) {
+        return route.fulfill({ status: 503, json: { message: 'fixture save unavailable' } });
+      }
       const payload = route.request().postDataJSON() as { project_id: string; project_payload: typeof design };
       const config = payload.project_payload;
       const existing = projects.find((project) => project.id === payload.project_id);
@@ -48,6 +51,29 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
     }));
   }, { origin: appOrigin, id: ownerId, createdAt: timestamp });
   return requests;
+}
+
+async function createProject(page: Page, name: string) {
+  await page.getByRole('button', { name: '新建项目', exact: true }).click();
+  await page.getByPlaceholder('如：无人机电源线束').fill(name);
+  const next = page.getByRole('button', { name: '下一步', exact: true });
+  for (let step = 1; step <= 3; step += 1) await next.click();
+  await page.getByRole('button', { name: '创建项目', exact: true }).last().click();
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue(name);
+}
+
+async function openFixtureProject(page: Page) {
+  await page.getByTestId(`project-card-${projectId}`).getByRole('button', { name: '打开', exact: true }).click();
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue(projectName);
+}
+
+async function renameAndReturnToList(page: Page, name: string) {
+  await openFixtureProject(page);
+  const field = page.getByPlaceholder('未命名项目');
+  await field.fill(name);
+  await field.press('Enter');
+  await page.getByRole('navigation').getByRole('button', { name: '线束设计器', exact: true }).click();
+  await expect(page).toHaveURL('/designer');
 }
 
 test('engineer keeps the same project when changing views, refreshing, visiting the list and closing', async ({ page }) => {
@@ -119,13 +145,66 @@ test('the new project wizard cancels to the list and opens a completed project i
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await expect(page.getByRole('heading', { name: '暂无项目' })).toBeVisible();
   await expect(page).toHaveURL('/designer');
-  await newProject.click();
-  await page.getByPlaceholder('如：无人机电源线束').fill('向导验收样件');
-  const next = page.getByRole('button', { name: '下一步', exact: true });
-  for (let step = 1; step <= 3; step += 1) await next.click();
-  await page.getByRole('button', { name: '创建项目', exact: true }).last().click();
+  await createProject(page, '向导验收样件');
   await expect(page).toHaveURL(/\/designer\/design\?projectId=[\da-f-]+$/);
-  await expect(page.getByPlaceholder('未命名项目')).toHaveValue('向导验收样件');
+});
+
+test('a new project never exposes or deletes the previous project corrupt draft', async ({ page }) => {
+  await installFixture(page, 'engineer');
+  await page.addInitScript(({ key }) => {
+    localStorage.setItem(key, '{"broken":');
+  }, { key: `wh_draft_v2:${ownerId}:project:${projectId}:broken-fixture` });
+  await page.goto('/designer');
+  await openFixtureProject(page);
+  const discard = page.getByRole('button', { name: '丢弃草稿' });
+  await expect(discard).toBeVisible();
+  await page.goBack();
+  await createProject(page, '另一个项目');
+  await expect(discard).toHaveCount(0);
+  await page.getByRole('navigation').getByRole('button', { name: '线束设计器', exact: true }).click();
+  await openFixtureProject(page);
+  await expect(discard).toBeVisible();
+  await discard.click();
+  await expect(discard).toHaveCount(0);
+});
+
+test('export waits for the active project save and downloads the latest design and name', async ({ page }) => {
+  const saveStarted = Promise.withResolvers<void>();
+  const allowSave = Promise.withResolvers<boolean>();
+  await installFixture(page, 'engineer', false, () => {
+    saveStarted.resolve();
+    return allowSave.promise;
+  });
+  await page.goto('/designer');
+  const latestName = '刚修改的导出项目';
+  await renameAndReturnToList(page, latestName);
+  const download = page.waitForEvent('download');
+  try {
+    await page.getByRole('button', { name: `导出项目 ${projectName}` }).click();
+    const first = await Promise.race([saveStarted.promise.then(() => 'save'), download.then(() => 'download')]);
+    expect(first).toBe('save');
+  } finally {
+    allowSave.resolve(true);
+    await download.catch(() => undefined);
+  }
+  const file = await download;
+  expect(file.suggestedFilename()).toBe(`${latestName}.wire-harness.json`);
+  const exported = JSON.parse(await readFile((await file.path())!, 'utf8'));
+  expect(exported.project.name).toBe(latestName);
+  expect(exported.document.name).toBe(latestName);
+});
+
+test('export does not emit a stale file when the active project cannot save', async ({ page }) => {
+  await installFixture(page, 'engineer', false, async () => false);
+  const downloads: string[] = [];
+  page.on('download', (download) => downloads.push(download.suggestedFilename()));
+  await page.goto('/designer');
+  await renameAndReturnToList(page, '保存失败的改名');
+  await page.getByRole('button', { name: `导出项目 ${projectName}` }).click();
+  await expect(page.getByText('项目导出失败', { exact: true })).toBeVisible({ timeout: 4000 });
+  expect(downloads).toEqual([]);
+  await page.getByRole('navigation').getByRole('button', { name: '设计图', exact: true }).click();
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue('保存失败的改名');
 });
 
 test('sales deep links only see automatic quoting', async ({ page }) => {

@@ -25,6 +25,8 @@
 
 ## 三、真实浏览器回归（匿名流程）
 
+`npm run test:e2e:designer` 可单独运行线束设计器项目入口回归。Playwright 自动启动 `http://localhost:4193` 的隔离前端，并在浏览器内模拟账号、项目和保存接口。默认 `npm run test:e2e` 也会运行这组用例。
+
 `tests/e2e/release-smoke.spec.ts` + `tests/e2e/release-performance.spec.ts`（Playwright，本地生产构建预览）：
 
 - 首页外壳加载，无 uncaught 错误，登录引导可见。
