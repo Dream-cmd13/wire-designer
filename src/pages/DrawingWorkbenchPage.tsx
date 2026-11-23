@@ -29,7 +29,7 @@ import {
   removeCorruptWorkspaceDraft,
   type CorruptWorkspaceDraft,
 } from '@/lib/workspaceDraftCache';
-import { hydrateDrawingStore, useDrawingStore } from '@/stores/drawingStore';
+import { canEditDrawing, hydrateDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
@@ -195,7 +195,7 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
   const remember = () => { if (!drawing) return; setPast((items) => [...items.slice(-49), clone(drawing)]); setFuture([]); };
   const isCurrentDrawing = () => {
     const state = useDrawingStore.getState();
-    return sessionActiveRef.current && (useUserStore.getState().currentUser?.id ?? null) === drawingOwnerId
+    return canEditDrawing() && sessionActiveRef.current && (useUserStore.getState().currentUser?.id ?? null) === drawingOwnerId
       && state.ownerId === drawingOwnerId && Boolean(drawing && state.activeDocumentId === drawing.id);
   };
   const apply = (next: DrawingDocument) => {
@@ -459,7 +459,7 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
   useEffect(() => {
     if (iconLibraryOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!drawing || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
+      if (!canEditDrawing() || !drawing || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || (event.target instanceof HTMLElement && event.target.isContentEditable)) return;
       const key = event.key.toLowerCase();
       if (event.key === 'Delete') { event.preventDefault(); breakDrawingPath(); removeSelected(); }
       if (event.key === 'Escape') { setDrawingAction((current) => ({ id: current.id + 1, type: 'finish' })); setToolMode('select'); setSelectedObjectIds([]); }

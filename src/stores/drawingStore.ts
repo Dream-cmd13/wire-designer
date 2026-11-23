@@ -10,6 +10,15 @@ export type DrawingHydrationResult = 'hydrated' | 'recovered' | 'failed';
 const AUTO_SAVE_DELAY_MS = 500;
 const ANONYMOUS_DRAWING_OWNER = 'anonymous';
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let drawingEditsPaused = false;
+
+export function setDrawingEditsPaused(paused: boolean): void {
+  drawingEditsPaused = paused;
+}
+
+export function canEditDrawing(): boolean {
+  return !drawingEditsPaused;
+}
 
 interface DocumentSaveEntry {
   revision: number;
@@ -146,6 +155,7 @@ export const useDrawingStore = create<DrawingStore>((set, get) => ({
   },
 
   updateDocument: (document) => {
+    if (!canEditDrawing()) return;
     markDocumentEdited(document.id);
     set((state) => ({ documents: { ...state.documents, [document.id]: document }, activeDocumentId: document.id }));
     syncSaveState();

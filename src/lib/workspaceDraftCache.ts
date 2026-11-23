@@ -18,6 +18,7 @@ export interface WorkspaceDraft {
   localRevision: number;
   /** 草稿基于的云端 revision；null 表示没有可确认的云端基线（本地新建或旧版草稿）。 */
   baseServerRevision: number | null;
+  recoverySourceDraftIds?: string[];
   savedAt: number;
   document: HarnessConfig | DrawingDocument;
 }
@@ -28,6 +29,7 @@ export interface DraftWriteInput {
   documentId: string;
   localRevision: number;
   baseServerRevision: number | null;
+  recoverySourceDraftIds?: string[];
   document: HarnessConfig | DrawingDocument;
 }
 
@@ -117,6 +119,9 @@ function parseDraftV2(raw: string, ownerId: string, kind: WorkspaceDraftKind, do
     || typeof parsed.instanceId !== 'string'
     || typeof parsed.localRevision !== 'number'
     || !(parsed.baseServerRevision === null || typeof parsed.baseServerRevision === 'number')
+    || (parsed.recoverySourceDraftIds !== undefined
+      && (!Array.isArray(parsed.recoverySourceDraftIds)
+        || !parsed.recoverySourceDraftIds.every((id) => typeof id === 'string' && id && id !== parsed.draftId)))
     || typeof parsed.savedAt !== 'number'
     || !isValidDraftDocument(kind, parsed.document)
   ) {
@@ -276,6 +281,19 @@ export function readWorkspaceDraft(
   return listWorkspaceDrafts(ownerId, kind, documentId)[0] ?? null;
 }
 
+export function nextProjectRecoveryDraft(ownerId: string, projectId: string): WorkspaceDraft | null {
+  const drafts = listWorkspaceDrafts(ownerId, 'project', projectId);
+  const sources = new Set(drafts.flatMap((draft) => draft.recoverySourceDraftIds ?? []));
+  return drafts.find((draft) => !sources.has(draft.draftId)) ?? null;
+}
+
+export function removeProjectRecoveryDraft(draft: WorkspaceDraft): void {
+  const { ownerId, documentId, draftId, recoverySourceDraftIds = [] } = draft;
+  for (const sourceId of new Set([...recoverySourceDraftIds, draftId])) {
+    removeWorkspaceDraft(ownerId, 'project', documentId, sourceId);
+  }
+}
+
 export function listCorruptWorkspaceDrafts(
   ownerId: string,
   kind: WorkspaceDraftKind,
@@ -391,6 +409,7 @@ export function writeWorkspaceDraft(input: DraftWriteInput, instanceId = current
     instanceId,
     localRevision: input.localRevision,
     baseServerRevision: input.baseServerRevision,
+    recoverySourceDraftIds: input.recoverySourceDraftIds,
     savedAt: Date.now(),
     document: input.document,
   };

@@ -24,6 +24,7 @@ interface ProjectListProps {
   onNewProject: () => void;
   onOpenProject: (project: Project) => void;
   onRenameActiveProject: (projectId: string, name: string) => Promise<boolean>;
+  onProjectDeleted: (project: Project) => void;
   onSaveActiveProjectBeforeExport: (project: Project) => Promise<void>;
 }
 
@@ -55,7 +56,7 @@ function ProjectCardSkeleton() {
   );
 }
 
-export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject, onSaveActiveProjectBeforeExport }: ProjectListProps) {
+export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject, onProjectDeleted, onSaveActiveProjectBeforeExport }: ProjectListProps) {
   const { currentUser, authReady } = useUserStore();
   const {
     projects,
@@ -96,6 +97,7 @@ export function ProjectList({ onNewProject, onOpenProject, onRenameActiveProject
     setDeletingProjectId(project.id);
     try {
       if (!(await deleteProject(project.id))) return;
+      onProjectDeleted(project);
       notify({
         tone: 'success',
         message: `已删除项目“${project.name}”。`,

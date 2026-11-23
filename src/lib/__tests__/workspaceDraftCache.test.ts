@@ -108,6 +108,29 @@ describe('workspace draft cache v2', () => {
     expect(remaining.map((draft) => draft.localRevision)).toEqual([5]);
   });
 
+  it('cleans only the selected recovery lineage after reload and keeps sibling edits', async () => {
+    const cache = await import('@/lib/workspaceDraftCache');
+    const document = { ...createFallbackConfig(), id: 'project-1' };
+    const input = {
+      ownerId: 'user-a', kind: 'project' as const, documentId: document.id,
+      localRevision: 1, baseServerRevision: 1, document,
+    };
+    cache.writeWorkspaceDraft(input, 'original');
+    const sourceId = cache.readWorkspaceDraft(input.ownerId, input.kind, input.documentId)!.draftId;
+    cache.writeWorkspaceDraft({ ...input, recoverySourceDraftIds: [sourceId] }, 'sibling');
+    cache.writeWorkspaceDraft({ ...input, recoverySourceDraftIds: [sourceId] }, 'restored');
+    cache.writeWorkspaceDraft({ ...input, ownerId: 'user-b' }, 'other-account');
+    await useInstance('reloaded');
+    const reloaded = await import('@/lib/workspaceDraftCache');
+    const drafts = reloaded.listWorkspaceDrafts(input.ownerId, input.kind, input.documentId);
+    expect(drafts).toHaveLength(3);
+    expect(reloaded.nextProjectRecoveryDraft(input.ownerId, input.documentId)?.draftId).not.toBe(sourceId);
+    const restored = drafts.find((draft) => draft.instanceId === 'restored')!;
+    reloaded.removeProjectRecoveryDraft(restored);
+    expect(reloaded.listWorkspaceDrafts(input.ownerId, input.kind, input.documentId).map(({ instanceId }) => instanceId)).toEqual(['sibling']);
+    expect(reloaded.nextProjectRecoveryDraft('user-b', input.documentId)?.instanceId).toBe('other-account');
+  });
+
   it('isolates cloned sessionStorage and keeps the other page draft on save and reload', async () => {
     const parent = await import('@/lib/workspaceDraftCache');
     const parentId = parent.currentDraftInstanceId();

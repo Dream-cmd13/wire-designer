@@ -20,9 +20,9 @@ import {
   corruptWorkspaceDraftsToJson,
   currentDraftInstanceId,
   listCorruptWorkspaceDrafts,
-  listWorkspaceDrafts,
+  nextProjectRecoveryDraft,
   removeCorruptWorkspaceDraft,
-  removeWorkspaceDraft,
+  removeProjectRecoveryDraft,
   removeWorkspaceDraftForInstance,
   writeWorkspaceDraft,
   type CorruptWorkspaceDraft,
@@ -331,19 +331,18 @@ export default function App() {
     applyHistoryDocument(next);
   }, [applyHistoryDocument]);
 
-  const advanceDraftRecovery = useCallback((ownerId: string, projectId: string, handledDraftId: string) => {
-    const remaining = listWorkspaceDrafts(ownerId, 'project', projectId)
-      .filter((candidate) => candidate.draftId !== handledDraftId);
-    setDraftRecovery(remaining.length > 0 ? { ownerId, projectId, draft: remaining[0] } : null);
+  const advanceDraftRecovery = useCallback((ownerId: string, projectId: string) => {
+    const draft = nextProjectRecoveryDraft(ownerId, projectId);
+    setDraftRecovery(draft ? { ownerId, projectId, draft } : null);
   }, []);
 
   const finishRestoredDraft = useCallback((ownerId: string, projectId: string, localRevision: number) => {
     const restored = restoredDraftRef.current;
     if (!restored || restored.draft.ownerId !== ownerId || restored.draft.documentId !== projectId) return false;
     removeWorkspaceDraftForInstance(ownerId, 'project', projectId, restored.backupInstanceId, localRevision);
-    removeWorkspaceDraft(ownerId, 'project', projectId, restored.draft.draftId);
+    removeProjectRecoveryDraft(restored.draft);
     restoredDraftRef.current = null;
-    advanceDraftRecovery(ownerId, projectId, restored.draft.draftId);
+    advanceDraftRecovery(ownerId, projectId);
     return true;
   }, [advanceDraftRecovery]);
 
@@ -354,9 +353,8 @@ export default function App() {
     const harness = useHarnessStore.getState();
     if (!project || !ownerId || project.userId !== ownerId || harness.saveState.status === 'saved') return;
     if (harness.config.id !== project.id) return;
-    const restored = restoredDraftRef.current;
-    const backupInstanceId = restored?.draft.ownerId === ownerId && restored.draft.documentId === project.id
-      ? restored.backupInstanceId : undefined;
+    const recovery = restoredDraftRef.current;
+    const restored = recovery?.draft.ownerId === ownerId && recovery.draft.documentId === project.id ? recovery : null;
     const baseVersion = useProjectStore.getState().currentProjectVersion;
     const result = writeWorkspaceDraft({
       ownerId,
@@ -364,8 +362,9 @@ export default function App() {
       documentId: project.id,
       localRevision: harness.localRevision,
       baseServerRevision: baseVersion?.revision ?? null,
+      recoverySourceDraftIds: restored ? [...(restored.draft.recoverySourceDraftIds ?? []), restored.draft.draftId] : undefined,
       document: harness.config,
-    }, backupInstanceId);
+    }, restored?.backupInstanceId);
     setDraftBackupError(
       result.ok
         ? null
@@ -936,11 +935,12 @@ export default function App() {
         }
       }
 
-      const drafts = result.status === 'ok' ? listWorkspaceDrafts(owner.id, 'project', project.id) : [];
+      const draft = result.status === 'ok' ? nextProjectRecoveryDraft(owner.id, project.id) : null;
       const damagedDrafts = result.status === 'ok'
         ? listCorruptWorkspaceDrafts(owner.id, 'project').filter((entry) => entry.documentId === project.id)
         : [];
-      setDraftRecovery(drafts[0] ? { ownerId: owner.id, projectId: project.id, draft: drafts[0] } : null);
+      restoredDraftRef.current = null;
+      setDraftRecovery(draft ? { ownerId: owner.id, projectId: project.id, draft } : null);
       setCorruptDrafts(damagedDrafts);
       setDraftBackupError(null);
       setSaveConflict(null);
@@ -1110,6 +1110,16 @@ export default function App() {
     return saveBeforeLeavingWorkspace();
   };
 
+  const handleProjectDeleted = (project: Project) => {
+    if (useUserStore.getState().currentUser?.id !== project.userId) return;
+    const restored = restoredDraftRef.current;
+    if (restored?.draft.ownerId === project.userId && restored.draft.documentId === project.id) {
+      restoredDraftRef.current = null;
+    }
+    setDraftRecovery((state) => state?.ownerId === project.userId && state.projectId === project.id ? null : state);
+    setSaveConflict((state) => state?.projectId === project.id ? null : state);
+  };
+
   const saveActiveProjectBeforeExport = useCallback(async (project: Project) => {
     const session = workspaceSessionRef.current;
     const isActiveProject = () => {
@@ -1215,6 +1225,7 @@ export default function App() {
           onNewProject={handleNewProject}
           onOpenProject={(project) => void handleOpenProject(project)}
           onRenameActiveProject={handleRenameActiveProject}
+          onProjectDeleted={handleProjectDeleted}
           onSaveActiveProjectBeforeExport={(project) => saveActiveProjectBeforeExportRef.current(project)}
         />
       );
@@ -1285,7 +1296,7 @@ export default function App() {
         <ActionToast
           role="alertdialog"
           title="发现本地草稿"
-          message="本地保存了未同步到云端的项目修改。请先保存当前修改，再恢复草稿。恢复后须先处理这一份，才能恢复下一份。使用云端版本只会丢弃这一份草稿。"
+          message="本地保存了未同步到云端的项目修改。请先保存当前修改，再恢复草稿。使用云端版本会丢弃当前草稿及其恢复备份，其他独立草稿仍会保留。"
           secondaryAction={{
             label: '使用云端版本',
             onClick: () => {
@@ -1293,17 +1304,19 @@ export default function App() {
               const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
               const { draft, ownerId: draftOwner, projectId: draftProject } = activeDraftRecovery;
               if (!canApplyWorkspaceDraft(draft, { ownerId, documentId: currentProjectId })) return;
-              removeWorkspaceDraft(draftOwner, 'project', draftProject, draft.draftId);
-              advanceDraftRecovery(draftOwner, draftProject, draft.draftId);
+              removeProjectRecoveryDraft(draft);
+              advanceDraftRecovery(draftOwner, draftProject);
             },
           }}
           primaryAction={{
             label: '恢复本地草稿',
             disabled: saveState.status !== 'saved' || Boolean(saveConflict),
             onClick: () => {
-              if (restoredDraftRef.current || useHarnessStore.getState().saveState.status !== 'saved' || saveConflict) return;
               const ownerId = useUserStore.getState().currentUser?.id ?? null;
               const currentProjectId = useProjectStore.getState().currentProject?.id ?? null;
+              const restored = restoredDraftRef.current;
+              if ((restored?.draft.ownerId === ownerId && restored.draft.documentId === currentProjectId)
+                || useHarnessStore.getState().saveState.status !== 'saved' || saveConflict) return;
               if (!canApplyWorkspaceDraft(activeDraftRecovery.draft, { ownerId, documentId: currentProjectId })) {
                 setDraftRecovery(null);
                 return;

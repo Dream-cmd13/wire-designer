@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { LogIn, LogOut, X } from 'lucide-react';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import { flushDrawingDrafts, setDrawingEditsPaused } from '@/stores/drawingStore';
+import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
 import { PasswordForm } from './PasswordForm';
 import { ResetPasswordForm } from './ResetPasswordForm';
@@ -23,8 +25,15 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting) return;
     setError('');
+    if (!flushDrawingDrafts().ok) {
+      onClose();
+      notify({ tone: 'danger', title: '未能保存当前图纸', message: '已取消登录。请先下载图纸副本，或在浏览器存储恢复后重试登录。' });
+      return;
+    }
     setSubmitting(true);
+    setDrawingEditsPaused(true);
 
     try {
       await signIn(email.trim(), password);
@@ -33,6 +42,7 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
       console.error('登录失败:', authError);
       setError(getUserErrorMessage(authError, '登录失败，请稍后重试。'));
     } finally {
+      setDrawingEditsPaused(false);
       setSubmitting(false);
     }
   };
@@ -68,6 +78,7 @@ export function AuthModal({ isOpen, onClose, onBeforeSignOut }: AuthModalProps) 
           <button
             type="button"
             onClick={onClose}
+            disabled={submitting}
             className="rounded p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
             aria-label="关闭"
           >

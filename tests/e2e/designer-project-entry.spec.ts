@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Dialog, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { designerAppOrigin as appOrigin, designerFixtureOrigin as fixtureOrigin } from '../../playwright.designer.config';
 
@@ -55,8 +55,11 @@ async function installFixture(page: Page, role: 'engineer' | 'admin' | 'sales', 
         if (result === 'invalid') return route.fulfill({ status: 400, json: { code: '22023', message: 'Invalid project document' } });
         if (!result) return route.fulfill({ status: 403, json: { code: '42501', message: 'fixture create refused' } });
       }
-      if (options?.beforeSave && !(await options.beforeSave())) {
+      if (payload.expected_revision !== null && options?.beforeSave && !(await options.beforeSave())) {
         return route.fulfill({ status: 503, json: { message: 'fixture save unavailable' } });
+      }
+      if (payload.expected_revision !== null && revisions.get(payload.project_id) !== payload.expected_revision) {
+        return route.fulfill({ status: 409, json: { code: '40001', message: 'Version conflict' } });
       }
       const config = payload.project_payload;
       const existing = projects.find((project) => project.id === payload.project_id);
@@ -108,6 +111,25 @@ async function createProject(page: Page, name: string) {
 async function openFixtureProject(page: Page) {
   await page.getByTestId(`project-card-${projectId}`).getByRole('button', { name: '打开', exact: true }).click();
   await expect(page.getByPlaceholder('未命名项目')).toHaveValue(projectName);
+}
+
+async function submitFixtureLogin(page: Page) {
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  const login = page.getByRole('dialog', { name: '登录' });
+  await login.getByLabel('账号').fill('designer-fixture@example.invalid');
+  await login.getByLabel('密码').fill('local-fixture-only');
+  await login.getByRole('button', { name: '登录' }).click();
+}
+
+async function putProjectDraft(page: Page, id: string, name: string, baseServerRevision: number | null, savedAt = 20) {
+  return page.evaluate(({ id, name, baseServerRevision, savedAt, ownerId, design }) => {
+    const key = `wh_draft_v2:${ownerId}:project:${id}:fixture-${savedAt}`;
+    localStorage.setItem(key, JSON.stringify({
+      version: 2, ownerId, kind: 'project', documentId: id, draftId: `draft-${savedAt}`, instanceId: `fixture-${savedAt}`,
+      localRevision: 1, baseServerRevision, savedAt, document: { ...design, id, name },
+    }));
+    return key;
+  }, { id, name, baseServerRevision, savedAt, ownerId, design });
 }
 
 async function renameAndReturnToList(page: Page, name: string) {
@@ -173,11 +195,7 @@ test('signing in switches the drawing workspace and keeps guest and engineer sav
     .map((key) => JSON.parse(localStorage.getItem(key)!).document as { id: string; objects: { kind: string }[] }), owner);
 
   await toolbar.getByTitle('添加文字').click();
-  await page.getByRole('button', { name: '登录', exact: true }).click();
-  const login = page.getByRole('dialog', { name: '登录' });
-  await login.getByLabel('账号').fill('designer-fixture@example.invalid');
-  await login.getByLabel('密码').fill('local-fixture-only');
-  await login.getByRole('button', { name: '登录' }).click();
+  await submitFixtureLogin(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page).toHaveURL('/drawing-workbench');
   await toolbar.getByTitle('添加文字').click();
@@ -192,6 +210,78 @@ test('signing in switches the drawing workspace and keeps guest and engineer sav
   await toolbar.getByTitle('保存', { exact: true }).click();
   expect(await drawingDrafts(ownerId)).toEqual([engineer]);
   expect(await drawingDrafts('anonymous')).toEqual([guest]);
+});
+
+test('failed guest drawing persistence blocks login and leaves the edited canvas downloadable', async ({ page }) => {
+  const requests = await installFixture(page, 'engineer', false, { startAnonymous: true });
+  await page.goto('/drawing-workbench');
+  await page.evaluate(() => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith('wh_draft_v2:anonymous:drawing:')) throw new DOMException('full', 'QuotaExceededError');
+      setItem.call(this, key, value);
+    };
+  });
+  const toolbar = page.getByRole('toolbar', { name: '绘图工具栏' });
+  await toolbar.getByTitle('添加文字').click();
+  await expect(toolbar.getByTitle('重试保存')).toBeVisible();
+  await submitFixtureLogin(page);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(toolbar).toBeVisible();
+  expect(requests).not.toContain('/auth/v1/token');
+  const downloadEvent = page.waitForEvent('download');
+  await toolbar.getByRole('button', { name: '下载图纸副本', exact: true }).click();
+  const download = await downloadEvent;
+  const copy = JSON.parse(await readFile(await download.path(), 'utf8')) as { document: { objects: { kind: string }[] } };
+  expect(copy.document.objects.filter(({ kind }) => kind === 'text')).toHaveLength(1);
+});
+
+test('saving a backed-up recovery after reload clears its source but keeps an independent draft', async ({ page }) => {
+  let shouldSave = false;
+  await installFixture(page, 'engineer', false, { beforeSave: async () => shouldSave });
+  await page.goto('/designer');
+  const source = await putProjectDraft(page, projectId, '草稿恢复后刷新', 1);
+  const independent = await putProjectDraft(page, projectId, '独立草稿', 1, 10);
+  await openFixtureProject(page);
+  const recover = page.getByRole('button', { name: '恢复本地草稿' });
+  await recover.click();
+  await expect(page.getByText(/保存失败:/)).toBeVisible();
+  shouldSave = true;
+  const dialog = (dialog: Dialog) => void dialog.accept();
+  page.on('dialog', dialog);
+  await page.reload();
+  page.off('dialog', dialog);
+  await recover.click();
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue('草稿恢复后刷新');
+  await expect(recover).toBeVisible();
+  expect(await page.evaluate(({ source, independent }) => [localStorage.getItem(source), localStorage.getItem(independent) !== null], { source, independent }))
+    .toEqual([null, true]);
+  await page.getByRole('button', { name: '使用云端版本' }).click();
+  await expect(recover).toHaveCount(0);
+});
+
+test('deleting a project with a pending recovery does not block recovery in another project', async ({ page }) => {
+  await installFixture(page, 'engineer');
+  await page.goto('/designer');
+  await createProject(page, '第二项目');
+  const secondId = new URL(page.url()).searchParams.get('projectId')!;
+  const designer = page.getByRole('navigation').getByRole('button', { name: '线束设计器', exact: true });
+  await designer.click();
+  await putProjectDraft(page, projectId, '待删项目的草稿', null);
+  await putProjectDraft(page, secondId, '第二项目的草稿', 1);
+  await openFixtureProject(page);
+  const recover = page.getByRole('button', { name: '恢复本地草稿' });
+  await recover.click();
+  await expect(page.getByText('保存冲突', { exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL('/designer');
+  const first = page.getByTestId(`project-card-${projectId}`);
+  await first.getByRole('button', { name: `删除项目 ${projectName}` }).click();
+  await page.getByRole('alertdialog').filter({ hasText: '确认删除' }).getByRole('button', { name: '删除', exact: true }).click();
+  await expect(first).toHaveCount(0);
+  await page.getByTestId(`project-card-${secondId}`).getByRole('button', { name: '打开', exact: true }).click();
+  await recover.click();
+  await expect(page.getByPlaceholder('未命名项目')).toHaveValue('第二项目的草稿');
 });
 
 test('the next project draft waits for the current recovery to be saved', async ({ page }) => {
