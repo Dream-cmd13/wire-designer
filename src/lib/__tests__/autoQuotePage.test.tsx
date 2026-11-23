@@ -29,13 +29,26 @@ vi.mock('react', async (importOriginal) => {
 });
 vi.mock('xlsx', async (importOriginal) => ({ ...await importOriginal<typeof import('xlsx')>(), writeFile: vi.fn() }));
 
-function findStickyExport(node: ReactNode): (() => void) | undefined {
+function extractText(node: ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join('');
+  if (isValidElement<{ children?: ReactNode }>(node)) return extractText(node.props.children);
+  return '';
+}
+
+function findExportButtonHandler(node: ReactNode): (() => void) | undefined {
   if (Array.isArray(node)) {
-    for (const child of node) { const found = findStickyExport(child); if (found) return found; }
+    for (const child of node) { const found = findExportButtonHandler(child); if (found) return found; }
   } else if (isValidElement<{ children?: ReactNode; onClick?: () => void }>(node)) {
-    if (node.type === 'button' && node.props.onClick?.name === 'handleExportPublicExcel') return node.props.onClick;
-    return findStickyExport(node.props.children);
+    if (node.type === 'button' && extractText(node.props.children).includes('导出报价 Excel')) return node.props.onClick;
+    return findExportButtonHandler(node.props.children);
   }
+}
+
+function renderStickyCard(pageTree: ReactNode): ReactNode {
+  const card = findPriceCard(pageTree);
+  if (!isValidElement<Parameters<typeof AutoQuotePriceCard>[0]>(card)) return null;
+  return AutoQuotePriceCard(card.props);
 }
 
 function findPriceCard(node: ReactNode): ReactNode {
@@ -257,19 +270,20 @@ describe('AutoQuotePage', () => {
     vi.mocked(XLSX.writeFile).mockImplementationOnce(() => { throw new Error('write failed'); });
     hookHarness.active = true;
     try {
-      const exportQuote = findStickyExport(AutoQuotePage());
+      const cardTree = renderStickyCard(AutoQuotePage());
+      const exportQuote = findExportButtonHandler(cardTree);
       expect(exportQuote).toBeTypeOf('function');
       exportQuote!();
       hookHarness.index = 0;
-      const failedTree = AutoQuotePage();
+      const failedCard = renderStickyCard(AutoQuotePage());
       hookHarness.active = false;
-      expect(renderToStaticMarkup(failedTree)).toContain('导出报价失败，请重试。');
+      expect(renderToStaticMarkup(failedCard)).toContain('导出报价失败，请重试。');
       hookHarness.active = true;
-      findStickyExport(failedTree)!();
+      findExportButtonHandler(failedCard)!();
       hookHarness.index = 0;
-      const retriedTree = AutoQuotePage();
+      const retriedCard = renderStickyCard(AutoQuotePage());
       hookHarness.active = false;
-      expect(renderToStaticMarkup(retriedTree)).not.toContain('导出报价失败，请重试。');
+      expect(renderToStaticMarkup(retriedCard)).not.toContain('导出报价失败，请重试。');
     } finally {
       hookHarness.active = false;
       log.mockRestore();
@@ -281,7 +295,7 @@ describe('AutoQuotePage', () => {
     vi.mocked(XLSX.writeFile).mockClear();
     hookHarness.active = true;
     try {
-      findStickyExport(AutoQuotePage())!();
+      findExportButtonHandler(renderStickyCard(AutoQuotePage()))!();
       const book = vi.mocked(XLSX.writeFile).mock.calls[0][0];
       const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]]);
       expect(rows).toMatchObject([{
@@ -439,6 +453,73 @@ describe('AutoQuotePage', () => {
     expect(html).not.toContain('加工费工序明细');
     expect(html).not.toContain('成本与损耗分析');
     expect(html).not.toContain('导出内部成本分析表');
+
+    // 业务员页面只渲染一次导出按钮和一次单价，且文案统一为「含税含运费单价」
+    expect(html.match(/导出报价 Excel/g)?.length).toBe(1);
+    expect(html.match(/¥58\.50/g)?.length).toBe(1);
+    expect(html).not.toContain('>含税单价<');
+  });
+
+  it('renders disabled styling for PE inner mold when no outer mold is selected', () => {
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    expect(html).toContain('需先选择外模');
+    expect(html).toContain('cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400');
+  });
+
+  it('places engineer/admin export buttons in page header and collapses zero-cost labor lines', () => {
+    useUserStore.setState({
+      currentUser: {
+        id: 'u-admin',
+        name: 'Admin User',
+        email: 'admin@example.com',
+        role: 'admin',
+        createdAt: 0,
+      },
+    });
+    vi.mocked(useServerQuote).mockReturnValue({
+      result: {
+        status: 'ready',
+        price: {
+          unitPrice: '14.48',
+          totalPrice: '14480.00',
+          breakdown: {
+            materials: [{ name: 'M12 公头', points: 2, unitPrice: '2.152', amount: '4.30' }],
+            labor: [
+              { name: '裁线', points: 2, unitPrice: '0.05', amount: '0.10' },
+              { name: '成型', points: 0, unitPrice: '0.20', amount: '0.00' },
+              { name: '沾锡', points: 0, unitPrice: '0.05', amount: '0.00' },
+            ],
+            materialLoss: '0.24',
+            processingLoss: '0.15',
+            cost: '11.25',
+            sellingPrice: '14.06',
+            freight: '0.42',
+            materialSubtotal: '4.30',
+            laborSubtotal: '0.10',
+            unitPrice: '14.48',
+            totalPrice: '14480.00',
+          },
+        },
+        settingsVersion: 1,
+        calculatedAt: '2026-11-23T09:00:00Z',
+      },
+      loading: false,
+      error: undefined,
+      retry: vi.fn(),
+    });
+
+    hookHarness.active = true;
+    try {
+      const card = findPriceCard(AutoQuotePage());
+      expect(isValidElement<{ exportInHeader?: boolean }>(card) && card.props.exportInHeader).toBe(true);
+    } finally {
+      hookHarness.active = false;
+    }
+
+    const html = renderToStaticMarkup(<AutoQuotePage />);
+    expect(html.match(/导出报价 Excel/g)?.length).toBe(1);
+    expect(html.match(/导出内部成本分析表/g)?.length).toBe(1);
+    expect(html).toContain('另有 2 项未发生工序（¥0.00）');
   });
 
   it('renders dual-column layout with internal breakdown for engineer or admin', () => {

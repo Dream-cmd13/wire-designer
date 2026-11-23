@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle,
   Cable,
   Calculator,
   Database,
-  Download,
   Info,
   Layers,
-  Loader2,
   Ruler,
   Scissors,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useUserStore } from '@/stores/userStore';
 import { useServerQuote } from '@/lib/useServerQuote';
 import { canViewPricing } from '@/lib/permissions';
-import { formatQuoteMoney } from '@/lib/pricing';
-import { createQuoteWorkbook } from '@/lib/quoteExport';
-import { safeFilename } from '@/lib/designFile';
 import {
   DEFAULT_AUTO_QUOTE_FORM,
   buildAutoQuoteConfig,
@@ -62,6 +55,9 @@ function AutoQuoteConfigForm({
   onEndpointBChange,
   onOpenPicker,
 }: AutoQuoteConfigFormProps) {
+  const [lengthDraft, setLengthDraft] = useState<string | null>(null);
+  const lengthInputValue = lengthDraft ?? String(form.lengthMm);
+
   return (
     <>
       {/* A 端连接器 */}
@@ -305,23 +301,32 @@ function AutoQuoteConfigForm({
         {/* 内模单选 */}
         <div className="space-y-1.5">
           <p className="text-xs text-slate-500">外模和附属内模均可不选；选择外模时按连接器端数配置。</p>
-          <span className="text-slate-600 font-medium">内模材质（可选）</span>
+          <div className="flex items-center justify-between">
+            <span className="text-slate-600 font-medium">内模材质（可选）</span>
+            {!effectiveForm.outerMoldSpecId && (
+              <span className="text-[11px] text-slate-400">需先选择外模</span>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {[
               { key: 'none' as const, label: '无内模' },
               { key: 'pe' as const, label: 'PE 内模' },
             ].map((item) => {
               const active = form.innerMoldType === item.key;
+              const disabled = item.key === 'pe' && !effectiveForm.outerMoldSpecId;
               return (
                 <button
                   type="button"
                   key={item.key}
                   onClick={() => onUpdate('innerMoldType', item.key as AutoQuoteInnerMoldType)}
-                  disabled={item.key === 'pe' && !effectiveForm.outerMoldSpecId}
-                  className={`rounded-lg border p-2 text-center transition cursor-pointer ${
-                    active
-                      ? 'border-blue-600 bg-blue-50/70 text-blue-700 font-semibold'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  disabled={disabled}
+                  title={disabled ? '请先选择外模规格后再配置 PE 内模' : undefined}
+                  className={`rounded-lg border p-2 text-center transition ${
+                    disabled
+                      ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                      : active
+                        ? 'cursor-pointer border-blue-600 bg-blue-50/70 text-blue-700 font-semibold'
+                        : 'cursor-pointer border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
                   }`}
                 >
                   {item.label}
@@ -347,13 +352,25 @@ function AutoQuoteConfigForm({
               min={1}
               max={100000}
               step={100}
-              value={form.lengthMm}
+              value={lengthInputValue}
               onChange={(e) => {
-                const val = Number(e.target.value);
-                if (Number.isSafeInteger(val) && val > 0) {
+                const raw = e.target.value;
+                if (raw === '') {
+                  setLengthDraft('');
+                  return;
+                }
+                if (!/^\d+$/.test(raw)) return;
+                const val = Number(raw);
+                if (val === 0) {
+                  setLengthDraft(raw);
+                  return;
+                }
+                if (Number.isSafeInteger(val) && val > 0 && val <= 100000) {
+                  setLengthDraft(raw);
                   onUpdate('lengthMm', val);
                 }
               }}
+              onBlur={() => setLengthDraft(null)}
               className="w-full rounded-lg border border-slate-300 p-2 text-xs font-semibold focus:border-blue-500 outline-none"
             />
             {form.lengthMm > 5000 && (
@@ -371,7 +388,10 @@ function AutoQuoteConfigForm({
             <button
               key={lengthMm}
               type="button"
-              onClick={() => onUpdate('lengthMm', lengthMm)}
+              onClick={() => {
+                setLengthDraft(null);
+                onUpdate('lengthMm', lengthMm);
+              }}
               className={`rounded px-1.5 py-0.5 border cursor-pointer ${
                 form.lengthMm === lengthMm
                   ? 'bg-blue-600 text-white border-blue-600'
@@ -398,8 +418,6 @@ export function AutoQuotePage() {
 
   const [form, setForm] = useState<AutoQuoteFormState>(DEFAULT_AUTO_QUOTE_FORM);
   const [pickerModal, setPickerModal] = useState<'connA' | 'connB' | 'wire' | null>(null);
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
 
   // 初始化目录与价格
   useEffect(() => {
@@ -456,7 +474,6 @@ export function AutoQuotePage() {
   );
 
   const handleUpdate = <K extends keyof AutoQuoteFormState>(field: K, value: AutoQuoteFormState[K]) => {
-    setExportError(null);
     const nextForm = { ...effectiveForm, [field]: value };
     if (field === 'outerMoldSpecId' && !value) nextForm.innerMoldType = 'none';
     if (['connectorAId', 'connectorBId', 'wireResourceId', 'endpointBType'].includes(field)) {
@@ -471,21 +488,12 @@ export function AutoQuotePage() {
     handleUpdate('endpointBType', type);
   };
 
-  const handleExportPublicExcel = () => {
-    if (!built.config || !evaluation.price) return;
-    try {
-      setExporting(true);
-      setExportError(null);
-      const workbook = createQuoteWorkbook(built.config, evaluation.price, 'public', role, 'unit', { catalog, calculatedAt: evaluation.calculatedAt, settingsVersion: evaluation.settingsVersion });
-      const filename = safeFilename(`${built.config.name}_报价单.xlsx`);
-      XLSX.writeFile(workbook, filename);
-    } catch (err) {
-      console.error('导出 Excel 失败:', err);
-      setExportError('导出报价失败，请重试。');
-    } finally {
-      setExporting(false);
-    }
-  };
+  const endpointSummary = effectiveForm.endpointBType === 'connector'
+    ? '双头连接器'
+    : effectiveForm.endpointBType === 'cut'
+      ? '单头切断'
+      : '单头剥皮沾锡';
+  const configSummary = `${endpointSummary} · ${effectiveForm.lengthMm}mm`;
 
   return (
     <div className="flex h-full flex-col bg-slate-100 overflow-hidden">
@@ -494,13 +502,6 @@ export function AutoQuotePage() {
           <span className={`flex h-2 w-2 rounded-full ${status === 'ready' ? 'bg-emerald-500' : status === 'error' ? 'bg-red-500' : 'bg-slate-400'}`} />
           <span role="status">{statusLabels[status]}</span>
         </div>
-        {!canViewDetails && evaluation.price && (
-          <button type="button" disabled={exporting} onClick={handleExportPublicExcel}
-            className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-emerald-600 px-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
-            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            导出报价 Excel
-          </button>
-        )}
       </PageHeaderActions>
 
       {/* 主工作区 */}
@@ -542,9 +543,7 @@ export function AutoQuotePage() {
 
               <div className="text-[11px] text-slate-500 hidden sm:flex items-center gap-1">
                 <span>当前配置:</span>
-                <span className="font-semibold text-slate-700">
-                  {effectiveForm.endpointBType === 'connector' ? '双头连接器' : '单头加工'} · {effectiveForm.lengthMm}mm
-                </span>
+                <span className="font-semibold text-slate-700">{configSummary}</span>
               </div>
             </div>
 
@@ -556,6 +555,7 @@ export function AutoQuotePage() {
                   catalog={catalog}
                   loading={status === 'loading'}
                   exportScope="unit"
+                  exportInHeader
                   onRetry={retry}
                 />
               </div>
@@ -563,12 +563,12 @@ export function AutoQuotePage() {
           </div>
         </div>
       ) : (
-        /* 业务员：单列布局，统一滚动，上方表单，下方紧凑报价，底部吸附简洁报价栏 */
+        /* 业务员：单列选配表单 + 底部常驻完整报价操作栏（避免重复展示价格） */
         <div data-testid="auto-quote-single-column" className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* 统一滚动区域 */}
           <div className="flex-1 overflow-y-auto p-3 sm:p-6">
-            <div className="max-w-3xl mx-auto space-y-4">
-              {/* 上方：业务选配表单卡片 */}
+            <div className="max-w-3xl mx-auto">
+              {/* 业务选配表单卡片 */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
                 <div className="border-b border-slate-200 px-4 py-3 bg-slate-50/70">
                   <h2 className="text-xs font-bold text-slate-800 tracking-wide uppercase">
@@ -591,82 +591,21 @@ export function AutoQuotePage() {
                   <QuoteProcessingFields config={built.config} onChange={counts => setForm({ ...effectiveForm, ...counts })} />
                 </div>
               </div>
-
-              {/* 下方：报价结果紧凑展示，不再保留整块空白面板 */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="border-b border-slate-200 px-4 py-2.5 bg-slate-50 flex items-center justify-between">
-                  <h2 className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
-                    <Calculator className="h-4 w-4 text-blue-600" />
-                    实时报价
-                  </h2>
-
-                  <div className="text-[11px] text-slate-500 hidden sm:flex items-center gap-1">
-                    <span>当前配置:</span>
-                    <span className="font-semibold text-slate-700">
-                      {effectiveForm.endpointBType === 'connector' ? '双头连接器' : '单头加工'} · {effectiveForm.lengthMm}mm
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 sm:p-5">
-                  <AutoQuotePriceCard
-                    evaluation={evaluation}
-                    catalog={catalog}
-                    loading={status === 'loading'}
-                    exportScope="unit"
-                    exportInHeader
-                    onRetry={retry}
-                  />
-                </div>
-              </div>
             </div>
           </div>
 
-          {/* 底部吸附简洁报价栏：调整参数时仍能看到金额 */}
-          <div data-testid="auto-quote-sticky-bar" className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur-xs px-4 py-2.5 sm:px-6 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] z-20">
-            <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-between gap-3">
-              {status === 'error' ? (
-                <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-red-700 py-1">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{evaluation.issues.join('；')}</span>
-                  <button type="button" onClick={retry} className="text-blue-600 underline cursor-pointer">重试</button>
-                </div>
-              ) : status === 'loading' || status === 'catalog-loading' ? (
-                <div className="flex items-center gap-2 text-xs text-blue-600 py-1">
-                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                  <span>{statusLabels[status]}...</span>
-                </div>
-              ) : evaluation.status === 'ready' && evaluation.price ? (
-                <>
-                  <div className="min-w-0">
-                    <span className="text-[10px] text-slate-500 block leading-tight">含税单价</span>
-                    <span className="text-base sm:text-lg font-bold text-blue-600 tabular-nums leading-none">
-                      ¥{formatQuoteMoney(evaluation.price.unitPrice)}
-                    </span>
-                  </div>
-
-                  {exportError && <p role="alert" className="w-full text-xs text-red-700">{exportError}</p>}
-                </>
-              ) : (
-                <div className="flex items-center gap-2 text-xs text-slate-500 py-1">
-                  {evaluation.status === 'manual' ? (
-                    <>
-                      <Info className="h-4 w-4 text-blue-500 shrink-0" />
-                      <span>线长超过 5000mm 需转人工核价</span>
-                    </>
-                  ) : evaluation.status === 'blocked' ? (
-                    <>
-                      <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
-                      <span>缺少物料价格或配置不合规</span>
-                    </>
-                  ) : (
-                    <>
-                      <Info className="h-4 w-4 text-slate-400 shrink-0" />
-                      <span>{statusLabels[status]}</span>
-                    </>
-                  )}
-                </div>
-              )}
+          {/* 底部常驻实时报价栏：汇总单价、核价时间、重新核价与导出 */}
+          <div data-testid="auto-quote-sticky-bar" className="shrink-0 border-t border-slate-200 bg-white/95 backdrop-blur-xs px-4 py-3 sm:px-6 shadow-[0_-4px_12px_rgba(0,0,0,0.05)] z-20">
+            <div className="max-w-3xl mx-auto">
+              <AutoQuotePriceCard
+                evaluation={evaluation}
+                catalog={catalog}
+                loading={status === 'loading'}
+                exportScope="unit"
+                layout="sticky"
+                configSummary={configSummary}
+                onRetry={retry}
+              />
             </div>
           </div>
         </div>
