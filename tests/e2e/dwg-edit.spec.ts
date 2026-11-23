@@ -168,8 +168,10 @@ async function inspectRevision(bytes: Buffer) {
 
 test('keeps file status inline and wraps DWG output actions together', async ({ page }) => {
   await logIn(page);
-  await page.locator('input[type=file]').setInputFiles(name);
-  const open = page.getByRole('button', { name: '打开 DWG 文件' });
+  const open = page.getByRole('button', { name: '选择文件' });
+  const fileChooser = page.waitForEvent('filechooser');
+  await page.getByTestId('dwg-drop-zone').getByRole('button', { name: '选择文件' }).click();
+  await (await fileChooser).setFiles(name);
   const png = page.getByRole('button', { name: '导出 PNG' });
   const pdf = page.getByRole('button', { name: '导出 PDF' });
   const preview = page.getByRole('button', { name: '生成 3D 示意' });

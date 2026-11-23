@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DwgViewerPage } from '@/pages/DwgViewerPage';
 import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
@@ -151,16 +151,22 @@ describe('DWG 3D preview', () => {
 describe('DWG import and save', () => {
   it('uses the same validation for picker and canvas and does not auto-upload', async () => {
     render(<DwgViewerPage />);
+    const dropZone = screen.getByTestId('dwg-drop-zone');
+    const choose = () => screen.getByRole('button', { name: '选择文件' });
+    expect(dropZone.contains(choose())).toBe(true);
+    expect(screen.queryByRole('button', { name: '打开 DWG 文件' })).toBeNull();
+    expect(within(dropZone).getByText('也可拖入 DWG 文件（最大 20 MiB）')).toBeTruthy();
     pick(sample('wrong.dxf'));
     expect(screen.getByRole('alert').textContent).toContain('.dwg');
-    const drop = (files: File[]) => fireEvent.drop(screen.getByTestId('dwg-drop-zone'), { dataTransfer: { files, types: ['Files'] } });
+    const drop = (files: File[]) => fireEvent.drop(dropZone, { dataTransfer: { files, types: ['Files'] } });
     drop([sample('a.dwg'), sample('b.dwg')]);
     expect(screen.getByRole('alert').textContent).toContain('一个');
-    expectControlError('打开 DWG 文件', '一次只能打开一个 DWG 文件。');
+    expectControlError('选择文件', '一次只能打开一个 DWG 文件。');
     expect(mocks.parse).not.toHaveBeenCalled();
     drop([sample('part.DWG')]);
     await waitFor(() => expect(saveButton().disabled).toBe(false));
     expect(screen.getByText('仅本地预览')).toBeTruthy();
+    expect(dropZone.contains(choose())).toBe(false);
     expect(mocks.save).not.toHaveBeenCalled();
     expect(useNoticeStore.getState().notices).toHaveLength(0);
   });

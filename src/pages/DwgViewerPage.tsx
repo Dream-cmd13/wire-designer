@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Box, ChevronDown, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, X } from 'lucide-react';
+import { Box, ChevronDown, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, Upload, X } from 'lucide-react';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
@@ -169,7 +169,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const [hiddenLayers, setHiddenLayers] = useState<ReadonlySet<string>>(() => new Set<string>());
   const [layersOpen, setLayersOpen] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'png' | null>(null);
   const [harnessPreviewOpen, setHarnessPreviewOpen] = useState(false);
   const harnessPreviewButton = useRef<HTMLButtonElement>(null);
@@ -726,6 +725,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   }, [displayedDrawing, exporting, background, hiddenLayers]);
 
   const isReady = state.phase === 'ready' && state.drawing !== null;
+  const showCanvasPicker = state.phase === 'idle' || state.phase === 'error';
   const selectedCloudDrawing = cloudDrawings.find((asset) => asset.id === cloudId);
   const cloudPlaceholder = !dwgRepository.configured ? '云端尚未配置'
     : listLoading ? '正在读取云端图纸…' : listError ? '云端图纸读取失败'
@@ -737,6 +737,18 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const statistics = state.drawing && `${state.drawing.stats.rendered} 个图元 · ${state.drawing.stats.text} 处文字 · ${state.drawing.layers.length} 个图层${skippedCount > 0 ? ` · 跳过 ${skippedCount}` : ''}`;
   const recoveryError = recoveryFailure?.id === cloudId ? recoveryFailure.message : null;
   const zoomPercent = zoomPercentOf(view, state.drawing, viewport.width, viewport.height);
+  const chooseFileButton = (primary = false) => (
+    <button
+      type="button"
+      className={primary ? `${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700` : toolbarButtonClass}
+      disabled={saving}
+      aria-describedby={fileError ? 'dwg-file-error' : undefined}
+      onClick={() => fileInputRef.current?.click()}
+    >
+      <Upload className="h-3.5 w-3.5" />
+      选择文件
+    </button>
+  );
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -854,14 +866,12 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               </div>
             )}
           </>}
-          <div className="flex max-w-full min-w-0 items-center gap-1">
-            <button type="button" className={toolbarButtonClass} disabled={saving} aria-label="打开 DWG 文件" title="也可将单个 DWG 文件拖入画布（最大 20 MiB）" onClick={() => fileInputRef.current?.click()}
-              aria-describedby={fileError ? 'dwg-file-error' : undefined}>
-              <FileUp className="h-3.5 w-3.5" />
-              打开 DWG
-            </button>
-            <ToolbarError id="dwg-file-error" message={fileError} />
-          </div>
+          {(!showCanvasPicker || fileError) && (
+            <div className="flex max-w-full min-w-0 items-center gap-1">
+              {!showCanvasPicker && chooseFileButton()}
+              <ToolbarError id="dwg-file-error" message={fileError} />
+            </div>
+          )}
           {ownerId && !editing && (
             <div className="flex max-w-full min-w-0 items-center gap-1">
               <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
@@ -929,14 +939,9 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           if (!event.dataTransfer.types.includes('Files')) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = saveTask.current ? 'none' : 'copy';
-          if (!saveTask.current) setIsDragging(true);
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false);
         }}
         onDrop={(event) => {
           event.preventDefault();
-          setIsDragging(false);
           void loadFile(event.dataTransfer.files);
         }}
       >
@@ -1006,20 +1011,13 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
 
         {!isReady && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-100/90 px-6 text-slate-600">
-            {state.phase === 'error' || state.phase === 'idle' ? (
-              <>
-                {state.error && <p className="max-w-md text-center text-sm">{state.error}</p>}
-                <button
-                  type="button"
-                  className="flex cursor-pointer items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-                  disabled={saving}
-                   aria-describedby={fileError ? 'dwg-file-error' : undefined}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <FileUp className="h-4 w-4" />
-                  打开 DWG 文件
-                </button>
-              </>
+            {showCanvasPicker ? (
+              <div className="flex flex-col items-center gap-2 text-center text-sm">
+                {state.error && <p className="max-w-md">{state.error}</p>}
+                <FileUp size={28} className="mb-1 text-slate-400" />
+                {chooseFileButton(true)}
+                <p className="text-slate-500">也可拖入 DWG 文件（最大 20 MiB）</p>
+              </div>
             ) : (
               <>
                 <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
@@ -1029,12 +1027,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
                 )}
               </>
             )}
-          </div>
-        )}
-
-        {isDragging && (
-          <div className="pointer-events-none absolute inset-4 flex items-center justify-center rounded-lg border-2 border-dashed border-blue-400 bg-blue-50/70 text-sm font-medium text-blue-600">
-            松开以打开 DWG 文件
           </div>
         )}
       </div>
