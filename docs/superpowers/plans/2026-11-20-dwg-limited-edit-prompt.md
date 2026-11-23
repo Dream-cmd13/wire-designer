@@ -1,6 +1,6 @@
 # 给实施 AI 的提示词：DWG 原图限定编辑
 
-在能读取 `D:\wire-harness-designer` 的新会话中，复制下方整段。另一台机器上的实施者需要同一仓库、样图及[实施计划](2026-11-20-dwg-limited-edit.md)。
+> **历史归档 · 永久搁置。** 下方是当时的实施提示词，仅供查阅，请勿作为新任务执行。DWG 写回、.NET 服务部署、增量 SQL 迁移及目标 CAD 验收均已移出发布范围。[历史实施计划](2026-11-20-dwg-limited-edit.md)
 
 ```text
 请在 D:\wire-harness-designer 实现「DWG 原图限定编辑（方案 B）」。先读根目录 AGENTS.md 和 docs/superpowers/plans/2026-11-20-dwg-limited-edit.md，检查当前分支、改动和暂存区，保留其他任务的工作。请直接实施、测试并交付代码。文档列出的源码位置和试验结果用于起步，按当前工作区复核。

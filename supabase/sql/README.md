@@ -2,6 +2,8 @@
 
 现有库执行 [`supabase/updates/20261118_dwg_preview.sql`](../updates/20261118_dwg_preview.sql)；全新库完成下方基础脚本后执行同一文件。它只创建 `dwg_assets`、私有 `dwg-files` 桶（上限 20 MiB）和本人权限，不修改内置图纸桶 `dwg-drawings`。
 
+云端另存 DWG 新版已永久搁置。`20261120_dwg_asset_parent.sql` 仅作历史保留，请从全新环境和现有库的迁移清单中排除。[写回方案归档](../../server/dwg-edit/README.md)
+
 ### 合并旧内置 DWG 到管理员私有图纸
 
 新版前端只从 `dwg_assets`/`dwg-files` 读取当前账号的云端图纸。发布前，在确认目标项目并备份图纸记录、源清单和 Storage 原件后，先做只读预览：

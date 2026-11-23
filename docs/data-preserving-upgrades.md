@@ -79,12 +79,14 @@
 
 1. 在维护窗口前从目标提交运行 `npm run deploy:check`，保留发布 ID，并按本次变更完成生产依赖审计。
 2. 在隔离环境演练保留数据迁移、函数部署与新前端，验证旧客户端被安全拒绝。
-3. 经授权在目标库执行未安装的迁移，逐项核对数据与权限。
+3. 经授权在目标库执行本次发布所需的未安装迁移，逐项核对数据与权限。
 4. `npm run quote:build` 后按变更范围部署 `quote`、`account-password` 等云函数；未变更的函数不无故重发。
 5. 通过 `npm run deploy:publish -- <发布ID>` 发布预检产物，提示旧页面刷新，验证登录、一次保存、一次冲突与报价。
 6. 成本同步等维护脚本在单独授权后运行：先预览（完整校验 + 来源哈希 + 计划新增/更新清单），再 `--commit` 单事务写入。导入脚本只在来源对象已确认存在时更新 `source_excel_path/url`；需要刷新种子引用时使用 `--export-sql --verify-storage`，未确认的对象保持既有定位。
 
 ## 迁移预览与执行记录
+
+`20261120_dwg_asset_parent.sql` 随 DWG 写回方案永久搁置，保留为历史实现。全新环境和现有库的迁移清单均须排除该文件。现有 DWG 私有图库使用基础迁移 `20261118_dwg_preview.sql`。[DWG 私有保存说明](../supabase/sql/README.md)
 
 在当前 PowerShell 进程中设置 `SUPABASE_DB_HOST`、`SUPABASE_DB_PORT`、`SUPABASE_DB_USER`、`SUPABASE_DB_NAME` 和 `SUPABASE_DB_PASSWORD`。端口默认 `5432`，选择直连或支持事务的会话连接。远程连接校验 TLS 证书，可通过 `SUPABASE_DB_CA_CERT` 提供 CA 文件路径。
 
