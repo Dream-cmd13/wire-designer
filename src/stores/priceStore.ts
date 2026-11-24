@@ -6,6 +6,7 @@ import { useUserStore } from './userStore';
 
 interface PriceState {
   book: PriceBook | null;
+  hasLoaded: boolean;
   loading: boolean;
   refreshing: boolean;
   error: string | null;
@@ -19,6 +20,7 @@ let loadEpoch = 0;
 
 export const usePriceStore = create<PriceState>((set, get) => ({
   book: null,
+  hasLoaded: false,
   loading: false,
   refreshing: false,
   error: null,
@@ -36,7 +38,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     try {
       const book = await priceRepository.load();
       if (epoch !== loadEpoch) return;
-      set({ book, error: null });
+      set({ book, hasLoaded: true, error: null });
     } catch (error) {
       if (epoch !== loadEpoch) return;
       console.error('读取共享价格失败:', error);
@@ -58,7 +60,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     try {
       const book = await priceRepository.merge(prices, source);
       if (epoch !== loadEpoch) return;
-      set({ book, error: null });
+      set({ book, hasLoaded: true, error: null });
     } catch (error) {
       if (epoch !== loadEpoch) return;
       console.error('保存共享价格失败:', error);
@@ -79,7 +81,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     try {
       const book = await priceRepository.saveEdits(prices);
       if (epoch !== loadEpoch) throw new Error('价格会话已变化，请刷新。');
-      set({ book, error: null });
+      set({ book, hasLoaded: true, error: null });
     } finally {
       if (epoch === loadEpoch) set({ loading: false });
     }
@@ -87,6 +89,6 @@ export const usePriceStore = create<PriceState>((set, get) => ({
 
   reset: () => {
     loadEpoch += 1;
-    set({ book: null, loading: false, refreshing: false, error: null });
+    set({ book: null, hasLoaded: false, loading: false, refreshing: false, error: null });
   },
 }));

@@ -5,6 +5,7 @@ import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
 
 interface FinishedHarnessState {
   items: FinishedHarnessMaterial[];
+  hasLoaded: boolean;
   loading: boolean;
   refreshing: boolean;
   error: string | null;
@@ -18,6 +19,7 @@ let loadEpoch = 0;
 
 export const useFinishedHarnessStore = create<FinishedHarnessState>((set, get) => ({
   items: [],
+  hasLoaded: false,
   loading: false,
   refreshing: false,
   error: null,
@@ -38,7 +40,7 @@ export const useFinishedHarnessStore = create<FinishedHarnessState>((set, get) =
     try {
       const items = await finishedHarnessMaterialRepository.list();
       if (epoch !== loadEpoch) return;
-      set({ items, error: null });
+      set({ items, hasLoaded: true, error: null });
     } catch (cause) {
       if (epoch !== loadEpoch) return;
       console.error('加载成品线束物料失败:', cause);
@@ -65,6 +67,6 @@ export const useFinishedHarnessStore = create<FinishedHarnessState>((set, get) =
 
   reset: () => {
     loadEpoch += 1;
-    set({ items: [], loading: false, refreshing: false, error: null });
+    set({ items: [], hasLoaded: false, loading: false, refreshing: false, error: null });
   },
 }));

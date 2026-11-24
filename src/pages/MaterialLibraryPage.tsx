@@ -11,14 +11,14 @@ import {
   Upload,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { ConnectorsTab, type ConnectorsTabState } from '@/components/materials/ConnectorsTab';
+import { ConnectorsTab } from '@/components/materials/ConnectorsTab';
 import { ExcelPreviewModal } from '@/components/materials/ExcelPreviewModal';
 import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
-import { FinishedHarnessesTab, type FinishedHarnessesTabState } from '@/components/materials/FinishedHarnessesTab';
+import { FinishedHarnessesTab } from '@/components/materials/FinishedHarnessesTab';
 import { MaterialPriceEditDialog } from '@/components/materials/MaterialPriceEditDialog';
-import { MoldsTab, type MoldsTabState } from '@/components/materials/MoldsTab';
+import { MoldsTab } from '@/components/materials/MoldsTab';
 import { PricingManagement } from '@/components/materials/PricingManagement';
-import { WiresTab, type WiresTabState } from '@/components/materials/WiresTab';
+import { WiresTab } from '@/components/materials/WiresTab';
 import { buildMaterialPriceIndex } from '@/components/materials/materialPriceLookup';
 import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import {
@@ -77,6 +77,7 @@ export function MaterialLibraryPage({
   const currentCatalogState = useCatalogStore.getState();
   const catalogStatus = rawCatalogStatus !== 'idle' ? rawCatalogStatus : currentCatalogState.status;
   const catalogRefreshing = rawCatalogRefreshing || currentCatalogState.refreshing;
+  const catalogReady = catalogStatus === 'ready' && !catalogRefreshing;
   const snapshot = storeSnapshot ?? currentCatalogState.snapshot ?? getCatalogSnapshot();
 
   const connectors = useMemo(() => getCatalogConnectors(snapshot), [snapshot]);
@@ -85,6 +86,7 @@ export function MaterialLibraryPage({
 
   const {
     book: storeBook,
+    hasLoaded: pricesLoaded,
     loading: rawLoading,
     refreshing: rawPriceRefreshing,
     error,
@@ -95,6 +97,7 @@ export function MaterialLibraryPage({
   const book = storeBook ?? currentPriceState.book;
   const loading = rawLoading || currentPriceState.loading;
   const priceRefreshing = rawPriceRefreshing || currentPriceState.refreshing;
+  const pricesReady = pricesLoaded && !loading && !priceRefreshing && !error;
   const prices = useMemo(() => book?.prices ?? [], [book]);
 
   const priceCandidates = useMemo(() => getCatalogPriceCandidates(snapshot), [snapshot]);
@@ -119,6 +122,7 @@ export function MaterialLibraryPage({
   const currentFinishedState = useFinishedHarnessStore.getState();
   const finishedHarnesses =
     storeFinishedItems.length > 0 ? storeFinishedItems : currentFinishedState.items;
+  const finishedLoaded = useFinishedHarnessStore((state) => state.hasLoaded);
   const finishedLoading =
     useFinishedHarnessStore((state) => state.loading) || currentFinishedState.loading;
   const finishedRefreshing =
@@ -127,39 +131,6 @@ export function MaterialLibraryPage({
   const loadFinishedHarnesses = useFinishedHarnessStore((state) => state.load);
 
   const [activeTab, setActiveTab] = useState<MaterialTab>(initialTab);
-  const [connState, setConnState] = useState<ConnectorsTabState>(() => ({
-    query: '',
-    supplierNo: 'all',
-    series: 'all',
-    shielded: 'all',
-    type: 'all',
-    pinCount: 'all',
-    priceStatus: initialConnPriceStatus,
-    page: initialConnPage,
-    pageSize: 20,
-  }));
-  const [wireState, setWireState] = useState<WiresTabState>(() => ({
-    query: '',
-    kind: 'all',
-    awg: 'all',
-    shielded: 'all',
-    priceStatus: initialWirePriceStatus,
-    page: initialWirePage,
-    pageSize: 20,
-  }));
-  const [moldState, setMoldState] = useState<MoldsTabState>(() => ({
-    query: '',
-    page: initialAccPage,
-    pageSize: 20,
-  }));
-  const [finishedState, setFinishedState] = useState<FinishedHarnessesTabState>(() => ({
-    query: '',
-    supplierNo: 'all',
-    drawingStatus: 'all',
-    costStatus: 'all',
-    page: initialFinishedPage,
-    pageSize: 20,
-  }));
   const [selectedFinishedHarness, setSelectedFinishedHarness] = useState<FinishedHarnessMaterial | null>(null);
   const [directPreviewExcel, setDirectPreviewExcel] = useState<{
     fileName: string;
@@ -573,56 +544,57 @@ export function MaterialLibraryPage({
         </div>
       </section>
 
-      {activeTab === 'connectors' && (
-        <ConnectorsTab
-          connectors={connectors}
-          priceIndex={priceIndex}
-          catalogStatus={catalogStatus}
-          isRefreshing={isRefreshing}
-          state={connState}
-          onStateChange={setConnState}
-          renderEditPriceButton={editPriceButton}
-        />
-      )}
+      {/* 页签保留各自的筛选和页码，只有当前页签渲染表格。 */}
+      <ConnectorsTab
+        connectors={connectors}
+        priceIndex={priceIndex}
+        catalogStatus={catalogStatus}
+        catalogReady={catalogReady}
+        isRefreshing={isRefreshing}
+        active={activeTab === 'connectors'}
+        initialPage={initialConnPage}
+        initialPriceStatus={initialConnPriceStatus}
+        pricesReady={pricesReady}
+        renderEditPriceButton={editPriceButton}
+      />
 
-      {activeTab === 'wires' && (
-        <WiresTab
-          wires={wires}
-          priceIndex={priceIndex}
-          catalogStatus={catalogStatus}
-          isRefreshing={isRefreshing}
-          state={wireState}
-          onStateChange={setWireState}
-          renderEditPriceButton={editPriceButton}
-        />
-      )}
+      <WiresTab
+        wires={wires}
+        priceIndex={priceIndex}
+        catalogStatus={catalogStatus}
+        catalogReady={catalogReady}
+        isRefreshing={isRefreshing}
+        active={activeTab === 'wires'}
+        initialPage={initialWirePage}
+        initialPriceStatus={initialWirePriceStatus}
+        pricesReady={pricesReady}
+        renderEditPriceButton={editPriceButton}
+      />
 
-      {activeTab === 'accessories' && (
-        <MoldsTab
-          overmolds={overmolds}
-          moldRows={moldRows}
-          priceIndex={priceIndex}
-          catalogStatus={catalogStatus}
-          isRefreshing={isRefreshing}
-          state={moldState}
-          onStateChange={setMoldState}
-          renderEditPriceButton={editPriceButton}
-        />
-      )}
+      <MoldsTab
+        overmolds={overmolds}
+        moldRows={moldRows}
+        priceIndex={priceIndex}
+        catalogStatus={catalogStatus}
+        catalogReady={catalogReady}
+        isRefreshing={isRefreshing}
+        active={activeTab === 'accessories'}
+        initialPage={initialAccPage}
+        renderEditPriceButton={editPriceButton}
+      />
 
-      {activeTab === 'finished-harnesses' && (
-        <FinishedHarnessesTab
-          finishedHarnesses={finishedHarnesses}
-          finishedLoading={finishedLoading}
-          finishedError={finishedError}
-          isRefreshing={isRefreshing}
-          state={finishedState}
-          onStateChange={setFinishedState}
-          onReload={() => void loadFinishedHarnesses(true)}
-          onSelectHarness={setSelectedFinishedHarness}
-          onPreviewExcel={setDirectPreviewExcel}
-        />
-      )}
+      <FinishedHarnessesTab
+        finishedHarnesses={finishedHarnesses}
+        finishedLoading={finishedLoading}
+        finishedError={finishedError}
+        isRefreshing={isRefreshing}
+        active={activeTab === 'finished-harnesses'}
+        initialPage={initialFinishedPage}
+        finishedReady={finishedLoaded && !finishedLoading && !finishedRefreshing && !finishedError}
+        onReload={() => void loadFinishedHarnesses(true)}
+        onSelectHarness={setSelectedFinishedHarness}
+        onPreviewExcel={setDirectPreviewExcel}
+      />
 
       {priceEditor && canEditPrices && <MaterialPriceEditDialog
         candidates={priceEditor.candidates} prices={priceEditor.prices} onClose={() => setPriceEditor(null)} />}

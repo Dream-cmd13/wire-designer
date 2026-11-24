@@ -54,7 +54,7 @@ npm run deploy:publish -- $releaseId
 | 默认私钥 | `%USERPROFILE%\.ssh\designer_deploy` |
 | ED25519 主机指纹 | `SHA256:06BI4UJaX4VD2exZ+ebvSyJR00iw1OOeke+eOSHmQMU` |
 
-> 说明：上述生产目标主机（`host`）与站点根目录（`base`）当前直接固定写在 [`scripts/deploy.mjs`](../scripts/deploy.mjs) 中（未使用环境变量读取）；如需切换生产服务器或部署路径，须同步更新该脚本并通过 [`tests/deploy.test.ts`](../tests/deploy.test.ts) 验证。认证私钥路径支持通过下方的 `$env:DEPLOY_SSH_KEY` 覆盖。
+迁移服务器或站点目录时，更新 [`scripts/deploy.mjs`](../scripts/deploy.mjs) 中的 `host` 和 `base`。如果域名也发生变化，同步更新 [`scripts/deploy-remote.sh`](../scripts/deploy-remote.sh) 健康检查中的 `--resolve` 主机名和 HTTPS 请求地址。运行 `npx vitest run tests/deploy.test.ts` 检查发布与回滚流程；该测试模拟 HTTP 响应，切换站点前还需在目标服务器核对新域名的证书和首页响应。私钥路径可用 `$env:DEPLOY_SSH_KEY` 覆盖。
 
 宝塔面板端口 9527 不参与部署。脚本要求本机具有 Node/npm、OpenSSH（ssh/scp）、tar；部署回归测试在 Windows 使用 `C:/Program Files/Git/bin/bash.exe`，需安装 Git for Windows。服务器使用 Bash、tar、sha256sum、flock、curl、cmp 及现有 www 用户。
 

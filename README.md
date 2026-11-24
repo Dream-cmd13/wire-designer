@@ -4,9 +4,10 @@
 
 ## 当前架构
 
-- 前端：React 19、TypeScript、Vite、Tailwind CSS、React Flow、Zustand、Three.js + `occt-import-js`（Web Worker 内解析 STEP/STL）、`@mlightcad/libredwg-web`（LibreDWG WASM 浏览器端解析 DWG）。
+- 前端：React 19、TypeScript、Vite、Tailwind CSS、React Flow、Zustand、Three.js、`occt-import-js`（STEP/STP）与 `STLLoader`（STL）、`@mlightcad/libredwg-web`（LibreDWG WASM 浏览器端解析 DWG）。
 - 云端：Supabase Auth、PostgreSQL（RLS、带 `revision` 乐观锁的版本校验 RPC 与审计触发器）、Private Storage（全部私有桶，登录后按策略签发短期签名 URL）与 Deno Edge Functions（`quote`、`account-password`）。
-- 账号与草稿机制：项目（`projects`）与制作图纸（`drawings`）按账号隔离并采用 `revision` 乐观锁持久化，可跨浏览器或电脑继续编辑；编辑中的项目和图纸会在本机按账号保留恢复副本，切换账号前提示并等待保存，关闭页面前提示未保存内容，版本冲突或异常退出后支持恢复本地草稿、读取云端版本、另存新文档或下载本地副本。
+- 线束项目按账号保存到云端，支持跨设备继续编辑。项目用 `revision` 检查并发修改，在本机保留未同步的草稿。遇到版本冲突可读取云端版本、另存项目或下载本地副本。
+- 独立制作图纸按访客或登录账号保存在当前浏览器。换浏览器或设备前，请先从工作台导出图纸 JSON 副本。
 - 共享数据与权限隔离：物料目录、供应商、材料价格、定价参数与成品方案成本分析为登录用户共享，并按账号角色控制访问边界。
 - 暂不提供多人实时协作或数据库历史版本回滚。未配置 Supabase 环境变量时，应用可启动，「制作图纸」支持匿名本地使用，其余受保护功能与云端持久化不可用。
 
@@ -16,7 +17,7 @@
 
 - `sales`（业务员，默认角色）：仅显示并可访问「自动报价」（`/auto-quote`）；无法访问物料底价、成本分析、定价参数及成本 Excel，服务端报价仅返回单价与总价（超 5 米提示需工程师人工核价）。
 - `engineer`（工程师）：开放全部六个功能模块，可管理本人项目、制作图纸、DWG 与 3D 模型资产，查看完整报价成本明细，并编辑共享物料单价与定价参数。
-- `admin`（管理员）：具备工程师全部权限，可在物料库「定价参数与用户权限」抽屉中分配其他账号角色、查看价格与角色变更审计日志（`pricing_audit`），并重置其他账号密码。
+- `admin`（管理员）具备工程师权限，可在物料库的「定价参数与用户权限」抽屉分配角色，在右上角「账户」弹窗重置其他账号的密码。价格、定价参数及角色变更记录在数据库 `pricing_audit` 表中，管理员具有读取权限。
 - 首次登录改密门禁：通过 `npm run user:create` 创建的新账号初始密码为 `888888`，首次登录或被管理员重置后必须修改为 8–128 位的新密码方可使用业务功能（前端门禁、数据库 `current_app_role()` 与 Edge Function 联防校验）。
 
 ## 快速开始
@@ -47,14 +48,14 @@ npm run build
 
 - 云端私有图库：登录后通过 `dwg_assets` 与私有桶 `dwg-files` 管理并加载当前账号的云端 DWG 原图（支持通过「选择文件」或拖入打开本地 `.dwg` 文件并保存到云端，单文件上限 20 MiB，保存与读取均校验大小及 SHA-256）；支持 `/dwg-viewer?file=<资产ID>` 直达本人云端图纸。
 - 草稿编辑边界：受支持的 AC1018 图纸可在浏览器内编辑草稿、撤回并导出 PNG/PDF。原图写回与云端另存新版已永久搁置，日常使用与发布保持 `VITE_DWG_WRITEBACK_ENABLED=false`。[写回方案归档](server/dwg-edit/README.md)
-- 历史内置桶迁移：旧版内置图纸桶 `dwg-drawings`（上传命令 `node scripts/upload-dwg-drawings.mjs`）合并到管理员私有图库的迁移步骤见 [SQL 执行说明](supabase/sql/README.md)。
+- 历史内置桶迁移：旧版内置图纸桶 `dwg-drawings`（`node scripts/upload-dwg-drawings.mjs` 默认预览，追加 `--apply` 才上传）合并到管理员私有图库的迁移步骤见 [SQL 执行说明](supabase/sql/README.md)。
 - 运行时资源：`npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-dwg-viewer-assets.mjs`，将 `node_modules/@mlightcad/libredwg-web/wasm/libredwg-web.wasm` 复制到 `public/libredwg/`（该目录已加入 `.gitignore`）。首次进入页面需下载约 9 MB 解析引擎（按需懒加载，之后由浏览器缓存）；解析在浏览器内完成，本地预览不会上传到服务端。
 
 ## 3D 模型页（`/model-viewer`）
 
-「3D 模型」页面需工程师或管理员登录后使用，支持打开本地 STEP / STP / STL 模型文件（单文件上限 20 MiB；STL 支持 `mm` / `cm` / `m` / `inch` 单位切换），在独立 Web Worker 中通过 `occt-import-js` 解析并以 Three.js 渲染。
+「3D 模型」页面需工程师或管理员登录后使用，支持打开本地 STEP / STP / STL 模型文件（单文件上限 20 MiB；STL 支持 `mm` / `cm` / `m` / `inch` 单位切换），在独立 Web Worker 中解析并以 Three.js 渲染。STEP/STP 使用 `occt-import-js`，STL 使用 Three.js 的 `STLLoader`。
 
-- 支持标准 / 精细画质切换、自由旋转/预设视角观察、正交三视图（前视/右视/顶视）PDF 导出，以及保存原文件到私有桶 `model-files` 和数据库 `model_assets`（两阶段上传并校验大小与 SHA-256），支持 `/model-viewer?modelId=<UUID>` 直达本人云端模型。
+- STEP/STP 支持标准 / 精细画质切换。两类格式都支持自由旋转/预设视角观察、正交三视图（前视/右视/顶视）PDF 导出，以及保存原文件到私有桶 `model-files` 和数据库 `model_assets`（两阶段上传并校验大小与 SHA-256），支持 `/model-viewer?modelId=<UUID>` 直达本人云端模型。
 - `npm run dev` 与 `npm run build` 前会自动执行 `scripts/prepare-model-viewer-assets.mjs`，将 OCCT 运行时 JS/WASM 及许可证复制至 `public/model-engine/`（已加入 `.gitignore`）。
 
 ## 图纸字体约定
@@ -76,7 +77,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_REPLACE_ME
 
 数据库包含以下核心业务、权限与资产表：
 
-- `projects`、`drawings`：按账号保存的项目元数据与完整 `HarnessConfig` JSON、独立制作图纸 JSON；仅本人可读，写入和删除只允许通过带 `revision` 乐观锁校验的 RPC，已删除的文档不会被旧窗口保存复活。
+- `projects` 保存本人项目的元数据和完整 `HarnessConfig`，前端通过带 `revision` 校验的 RPC 保存和删除项目。数据库另有 `drawings` 表。当前独立制作图纸工作台使用浏览器本地存储。
 - `catalog_items`：七类物料（连接器、线材、保护套、外模、模型、辅材、包装）的公共字段、`spec` JSON 与图片引用。
 - `material_prices`：连接器、线材、外模与内模的共享价格档位（仅工程师和管理员可读写，带更新人信息与价格校验触发器）。
 - `suppliers`：供应商编号与名称。
@@ -103,9 +104,9 @@ Supabase Edge Functions 位于 `supabase/functions/`：
 
 ## 初始化与升级 Supabase
 
-现有账号、项目、图纸、价格、成本分析与来源文件全部保留，禁止清库重建。现有库升级按 [SQL 执行说明](supabase/sql/README.md) 逐个执行 `supabase/updates/` 中未安装的迁移；全新环境按同一说明依次执行 schema、storage、security 与 seed，不包含任何 reset 脚本。迁移影响、备份要求、校验与回退边界见 [数据保留升级说明](docs/data-preserving-upgrades.md)。
+现有库升级时先备份数据库与 Storage 原件，再按 [SQL 执行说明](supabase/sql/README.md) 的适用清单执行缺少的迁移。全新环境先安装基础 schema、storage、security、seed，再执行清单中的补充迁移。其中 [`20261118_dwg_preview.sql`](supabase/updates/20261118_dwg_preview.sql) 创建 DWG 私有图库的 `dwg_assets` 表和 `dwg-files` 桶。新库与现有库都跳过已归档的 `20261120_dwg_asset_parent.sql`。迁移校验与恢复步骤见 [数据保留升级说明](docs/data-preserving-upgrades.md)。
 
-数据库部署后，可在受信任环境幂等确保 `catalog-assets` 私有目录桶存在（完整建库脚本会创建全部存储桶）：
+完成数据库迁移后，可在受信任环境运行以下命令检查并补齐 `catalog-assets` 和 `model-files` 两个私有桶。DWG 私有图库由上述 SQL 迁移创建。
 
 ```powershell
 npm run supabase:bootstrap-storage
@@ -127,7 +128,7 @@ npm run user:create -- username "显示名"
 - 项目管理与线束设计器：新建、编辑、保存、导入导出线束项目，连接器、线材、保护套和外模的可视化编辑，PIN 接线、短接、标签和号码管配置，BOM、报价弹窗、设计校验与 2D 成品图（含图框编辑、件号标注、接线表、BOM 表及 PNG/PDF 导出）。
 - 自动报价（`/auto-quote`）：M12 单头/双头护套线快速配置、加工点数推算与服务端权威报价（超 5000 mm 转人工核价，业务员隐藏成本明细）。
 - 物料库与成本分析（`/materials`）：连接器、线材、模具与现有成品线束方案浏览筛选，单价在线编辑与 Excel 批量导入导出，43+ 成品方案成本推导公式与来源 Excel 在线预览，以及定价参数与角色权限管理。
-- 独立制作图纸工作台（`/drawing-workbench`）：支持匿名本地使用的矢量制图画布（登录后同步云端及目录物料），支持图元、表格、常用语、图标库与 PDF 导出。
+- 独立制作图纸工作台（`/drawing-workbench`）支持匿名本地制图，登录后可使用目录物料。图纸自动保存在当前浏览器，访客和各登录账号分别保存。要换设备继续编辑，先导出图纸 JSON 副本，到另一设备导入。交付成图时可单独导出 PDF。
 - DWG 图纸查看（`/dwg-viewer`）：浏览器内解析与黑白矢量渲染、图层控制、AC1018 草稿编辑/撤回、PNG/PDF 导出、M12 单段线缆 3D 示意预览及私有云端保存。
 - 3D 模型预览（`/model-viewer`）：STEP/STP/STL 浏览器端 Worker 解析与 Three.js 渲染、画质切换、正交三视图 PDF 导出及私有云端保存。
 

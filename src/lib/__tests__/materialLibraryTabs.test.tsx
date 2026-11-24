@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCatalogSnapshot, setCatalogSnapshot } from '@/lib/catalogRuntime';
 import { MaterialLibraryPage } from '@/pages/MaterialLibraryPage';
@@ -213,6 +213,7 @@ describe('MaterialLibraryPage 标签页切换状态保留', () => {
     });
     usePriceStore.setState({
       book: emptyPriceBook,
+      hasLoaded: true,
       loading: false,
       refreshing: false,
       error: null,
@@ -220,6 +221,7 @@ describe('MaterialLibraryPage 标签页切换状态保留', () => {
     });
     useFinishedHarnessStore.setState({
       items: finishedHarnesses,
+      hasLoaded: true,
       loading: false,
       refreshing: false,
       error: null,
@@ -306,6 +308,66 @@ describe('MaterialLibraryPage 标签页切换状态保留', () => {
     expect(getSelectByDefaultOption('全部成本状态').value).toBe('has');
     expect(screen.getByText('2 / 2')).toBeTruthy();
     expect(screen.getByText('FH-A-21')).toBeTruthy();
+  });
+
+  it.each([
+    ['connectors', /^连接器/],
+    ['wires', /^线材/],
+    ['accessories', /^模具/],
+    ['finished-harnesses', /^现有成品线束方案/],
+  ] as const)('%s 在刷新完成后记住校正页码，临时数据缩减不影响原页码', (tab, tabButton) => {
+    const snapshot = buildSnapshot();
+    const finished = buildFinishedHarnesses();
+    function updateResults(limit: number, refreshing: boolean) {
+      act(() => {
+        const next = {
+          ...snapshot,
+          connectors: snapshot.connectors.slice(0, limit),
+          wires: snapshot.wires.slice(0, limit),
+          overmolds: snapshot.overmolds.slice(0, limit),
+        };
+        setCatalogSnapshot(next);
+        useCatalogStore.setState({ snapshot: next, refreshing });
+        useFinishedHarnessStore.setState({ items: finished.slice(0, limit), refreshing });
+      });
+    }
+
+    render(<MaterialLibraryPage initialTab={tab} />);
+    fireEvent.click(screen.getByRole('button', { name: '下一页' }));
+    updateResults(8, true);
+    updateResults(30, false);
+    expect(screen.getByText('2 / 2')).toBeTruthy();
+
+    updateResults(12, false);
+    expect(screen.getByText('1 / 1')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: tab === 'wires' ? /^模具/ : /^线材/ }));
+    updateResults(30, false);
+    fireEvent.click(screen.getByRole('button', { name: tabButton }));
+    expect(screen.getByText('1 / 2')).toBeTruthy();
+  });
+
+  it('价格筛选等待首次加载，成功返回空价格表时校正隐藏页签的页码', () => {
+    const snapshot = buildSnapshot();
+    const prices = snapshot.connectors.map<PriceBook['prices'][number]>((c) => ({
+      kind: 'connector',
+      resourceId: c.resourceItemId ?? c.id,
+      name: c.name,
+      specification: JSON.stringify([c.model, c.series, c.pinCount, c.type]),
+      lengthMm: 0,
+      unit: '元/个',
+      taxIncludedPrice: '5.00',
+    }));
+    const pricedBook = { ...emptyPriceBook, prices };
+    usePriceStore.setState({ book: null, hasLoaded: false });
+    render(<MaterialLibraryPage initialConnPage={2} initialConnPriceStatus="priced" />);
+    act(() => usePriceStore.setState({ book: pricedBook, hasLoaded: true }));
+    expect(screen.getByText('2 / 2')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^模具/ }));
+    act(() => usePriceStore.setState({ book: null }));
+    act(() => usePriceStore.setState({ book: pricedBook }));
+    fireEvent.click(screen.getByRole('button', { name: /^连接器/ }));
+    expect(screen.getByText('1 / 2')).toBeTruthy();
   });
 
   it('点击“重置筛选”后恢复默认筛选条件并回到第 1 页', () => {

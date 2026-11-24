@@ -1,5 +1,6 @@
-import { useMemo, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
+import { useMaterialTabPage } from './useMaterialTabPage';
 import { MaterialPagination } from '@/components/materials/MaterialPagination';
 import { PriceUpdateInfo } from '@/components/materials/PriceUpdateInfo';
 import {
@@ -10,7 +11,7 @@ import { formatMaterialPrice } from '@/lib/materialPriceEdit';
 import type { QuoteMaterial } from '@/lib/quoteMaterials';
 import type { Connector } from '@/types/harness';
 
-export interface ConnectorsTabState {
+interface ConnectorsTabState {
   query: string;
   supplierNo: string;
   series: string;
@@ -26,9 +27,12 @@ interface ConnectorsTabProps {
   connectors: Connector[];
   priceIndex: MaterialPriceIndex;
   catalogStatus: string;
+  catalogReady: boolean;
   isRefreshing: boolean;
-  state: ConnectorsTabState;
-  onStateChange: Dispatch<SetStateAction<ConnectorsTabState>>;
+  active: boolean;
+  initialPage: number;
+  initialPriceStatus: ConnectorsTabState['priceStatus'];
+  pricesReady: boolean;
   renderEditPriceButton: (resourceId: string, kind: QuoteMaterial['kind']) => ReactNode;
 }
 
@@ -36,11 +40,25 @@ export function ConnectorsTab({
   connectors,
   priceIndex,
   catalogStatus,
+  catalogReady,
   isRefreshing,
-  state,
-  onStateChange,
+  active,
+  initialPage,
+  initialPriceStatus,
+  pricesReady,
   renderEditPriceButton,
 }: ConnectorsTabProps) {
+  const [state, setState] = useState<ConnectorsTabState>(() => ({
+    query: '',
+    supplierNo: 'all',
+    series: 'all',
+    shielded: 'all',
+    type: 'all',
+    pinCount: 'all',
+    priceStatus: initialPriceStatus,
+    page: initialPage,
+    pageSize: 20,
+  }));
   const {
     query: connQuery,
     supplierNo: connSupplierNo,
@@ -49,7 +67,6 @@ export function ConnectorsTab({
     type: connType,
     pinCount: connPinCount,
     priceStatus: connPriceStatus,
-    page: connPage,
     pageSize: connPageSize,
   } = state;
   const connTableRef = useRef<HTMLDivElement>(null);
@@ -91,13 +108,10 @@ export function ConnectorsTab({
       const matchT = connType === 'all' || c.type === connType;
       const matchP = connPinCount === 'all' || c.pinCount === Number(connPinCount);
 
+      if (!(matchQ && matchM && matchS && matchSh && matchT && matchP)) return false;
+      if (connPriceStatus === 'all') return true;
       const hasPrice = Boolean(getConnectorPriceFromIndex(priceIndex, c));
-      const matchPr =
-        connPriceStatus === 'all' ||
-        (connPriceStatus === 'priced' && hasPrice) ||
-        (connPriceStatus === 'unpriced' && !hasPrice);
-
-      return matchQ && matchM && matchS && matchSh && matchT && matchP && matchPr;
+      return connPriceStatus === 'priced' ? hasPrice : !hasPrice;
     });
   }, [
     connectors,
@@ -111,14 +125,12 @@ export function ConnectorsTab({
     priceIndex,
   ]);
 
-  const totalConnPages = Math.max(1, Math.ceil(filteredConnectors.length / connPageSize));
-  const safeConnPage = Math.min(Math.max(1, connPage), totalConnPages);
+  const { page: safeConnPage, rows: paginatedConnectors } = useMaterialTabPage(
+    filteredConnectors, state, setState,
+    catalogReady && (connPriceStatus === 'all' || pricesReady),
+  );
 
-  const paginatedConnectors = useMemo(() => {
-    const start = (safeConnPage - 1) * connPageSize;
-    return filteredConnectors.slice(start, start + connPageSize);
-  }, [filteredConnectors, safeConnPage, connPageSize]);
-
+  if (!active) return null;
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
       <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
@@ -129,7 +141,7 @@ export function ConnectorsTab({
               type="search"
               value={connQuery}
               onChange={(e) => {
-                onStateChange((prev) => ({ ...prev, query: e.target.value, page: 1 }));
+                setState((prev) => ({ ...prev, query: e.target.value, page: 1 }));
               }}
               placeholder="搜索连接器名称、型号、供应商、ID"
               className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -139,7 +151,7 @@ export function ConnectorsTab({
           <select
             value={connSupplierNo}
             onChange={(e) => {
-              onStateChange((prev) => ({ ...prev, supplierNo: e.target.value, page: 1 }));
+              setState((prev) => ({ ...prev, supplierNo: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -154,7 +166,7 @@ export function ConnectorsTab({
           <select
             value={connSeries}
             onChange={(e) => {
-              onStateChange((prev) => ({ ...prev, series: e.target.value, page: 1 }));
+              setState((prev) => ({ ...prev, series: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[96px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -169,7 +181,7 @@ export function ConnectorsTab({
           <select
             value={connShielded}
             onChange={(e) => {
-              onStateChange((prev) => ({ ...prev, shielded: e.target.value, page: 1 }));
+              setState((prev) => ({ ...prev, shielded: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -181,7 +193,7 @@ export function ConnectorsTab({
           <select
             value={connType}
             onChange={(e) => {
-              onStateChange((prev) => ({ ...prev, type: e.target.value, page: 1 }));
+              setState((prev) => ({ ...prev, type: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[92px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -194,7 +206,7 @@ export function ConnectorsTab({
           <select
             value={connPinCount}
             onChange={(e) => {
-              onStateChange((prev) => ({ ...prev, pinCount: e.target.value, page: 1 }));
+              setState((prev) => ({ ...prev, pinCount: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[96px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -209,7 +221,7 @@ export function ConnectorsTab({
           <select
             value={connPriceStatus}
             onChange={(e) => {
-              onStateChange((prev) => ({
+              setState((prev) => ({
                 ...prev,
                 priceStatus: e.target.value as 'all' | 'priced' | 'unpriced',
                 page: 1,
@@ -226,7 +238,7 @@ export function ConnectorsTab({
             <button
               type="button"
               onClick={() => {
-                onStateChange((prev) => ({
+                setState((prev) => ({
                   ...prev,
                   query: '',
                   supplierNo: 'all',
@@ -377,8 +389,8 @@ export function ConnectorsTab({
           currentPage={safeConnPage}
           pageSize={connPageSize}
           totalCount={filteredConnectors.length}
-          onPageChange={(page) => onStateChange((prev) => ({ ...prev, page }))}
-          onPageSizeChange={(pageSize) => onStateChange((prev) => ({ ...prev, pageSize, page: 1 }))}
+          onPageChange={(page) => setState((prev) => ({ ...prev, page }))}
+          onPageSizeChange={(pageSize) => setState((prev) => ({ ...prev, pageSize, page: 1 }))}
           scrollContainerRef={connTableRef}
         />
       </section>

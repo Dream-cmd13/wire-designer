@@ -1,9 +1,10 @@
-import { useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ExternalLink, FileSpreadsheet, Search } from 'lucide-react';
+import { useMaterialTabPage } from './useMaterialTabPage';
 import { MaterialPagination } from '@/components/materials/MaterialPagination';
 import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
 
-export interface FinishedHarnessesTabState {
+interface FinishedHarnessesTabState {
   query: string;
   supplierNo: string;
   drawingStatus: 'all' | 'has' | 'none';
@@ -17,8 +18,9 @@ interface FinishedHarnessesTabProps {
   finishedLoading: boolean;
   finishedError: string | null;
   isRefreshing: boolean;
-  state: FinishedHarnessesTabState;
-  onStateChange: Dispatch<SetStateAction<FinishedHarnessesTabState>>;
+  active: boolean;
+  initialPage: number;
+  finishedReady: boolean;
   onReload: () => void;
   onSelectHarness: (harness: FinishedHarnessMaterial) => void;
   onPreviewExcel: (preview: { fileName: string; fileUrl: string | null; filePath?: string | null }) => void;
@@ -29,18 +31,26 @@ export function FinishedHarnessesTab({
   finishedLoading,
   finishedError,
   isRefreshing,
-  state,
-  onStateChange,
+  active,
+  initialPage,
+  finishedReady,
   onReload,
   onSelectHarness,
   onPreviewExcel,
 }: FinishedHarnessesTabProps) {
+  const [state, setState] = useState<FinishedHarnessesTabState>(() => ({
+    query: '',
+    supplierNo: 'all',
+    drawingStatus: 'all',
+    costStatus: 'all',
+    page: initialPage,
+    pageSize: 20,
+  }));
   const {
     query: finishedQuery,
     supplierNo: finishedSupplierNo,
     drawingStatus: finishedDrawingStatus,
     costStatus: finishedCostStatus,
-    page: finishedPage,
     pageSize: finishedPageSize,
   } = state;
   const finishedTableRef = useRef<HTMLDivElement>(null);
@@ -83,17 +93,12 @@ export function FinishedHarnessesTab({
     });
   }, [finishedHarnesses, finishedQuery, finishedSupplierNo, finishedDrawingStatus, finishedCostStatus]);
 
-  const totalFinishedPages = Math.max(
-    1,
-    Math.ceil(filteredFinishedHarnesses.length / finishedPageSize),
+  const { page: safeFinishedPage, rows: paginatedFinishedHarnesses } = useMaterialTabPage(
+    filteredFinishedHarnesses, state, setState,
+    finishedReady,
   );
-  const safeFinishedPage = Math.min(Math.max(1, finishedPage), totalFinishedPages);
 
-  const paginatedFinishedHarnesses = useMemo(() => {
-    const start = (safeFinishedPage - 1) * finishedPageSize;
-    return filteredFinishedHarnesses.slice(start, start + finishedPageSize);
-  }, [filteredFinishedHarnesses, safeFinishedPage, finishedPageSize]);
-
+  if (!active) return null;
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
       <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
@@ -104,7 +109,7 @@ export function FinishedHarnessesTab({
               type="search"
               value={finishedQuery}
               onChange={(e) => {
-                onStateChange((prev) => ({ ...prev, query: e.target.value, page: 1 }));
+                setState((prev) => ({ ...prev, query: e.target.value, page: 1 }));
               }}
               placeholder="搜索成品料号、物料名称"
               className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -114,7 +119,7 @@ export function FinishedHarnessesTab({
           <select
             value={finishedSupplierNo}
             onChange={(e) => {
-              onStateChange((prev) => ({ ...prev, supplierNo: e.target.value, page: 1 }));
+              setState((prev) => ({ ...prev, supplierNo: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -129,7 +134,7 @@ export function FinishedHarnessesTab({
           <select
             value={finishedDrawingStatus}
             onChange={(e) => {
-              onStateChange((prev) => ({
+              setState((prev) => ({
                 ...prev,
                 drawingStatus: e.target.value as 'all' | 'has' | 'none',
                 page: 1,
@@ -145,7 +150,7 @@ export function FinishedHarnessesTab({
           <select
             value={finishedCostStatus}
             onChange={(e) => {
-              onStateChange((prev) => ({
+              setState((prev) => ({
                 ...prev,
                 costStatus: e.target.value as 'all' | 'has' | 'none',
                 page: 1,
@@ -162,7 +167,7 @@ export function FinishedHarnessesTab({
             <button
               type="button"
               onClick={() => {
-                onStateChange((prev) => ({
+                setState((prev) => ({
                   ...prev,
                   query: '',
                   supplierNo: 'all',
@@ -347,8 +352,8 @@ export function FinishedHarnessesTab({
             currentPage={safeFinishedPage}
             pageSize={finishedPageSize}
             totalCount={filteredFinishedHarnesses.length}
-            onPageChange={(page) => onStateChange((prev) => ({ ...prev, page }))}
-            onPageSizeChange={(pageSize) => onStateChange((prev) => ({ ...prev, pageSize, page: 1 }))}
+            onPageChange={(page) => setState((prev) => ({ ...prev, page }))}
+            onPageSizeChange={(pageSize) => setState((prev) => ({ ...prev, pageSize, page: 1 }))}
             scrollContainerRef={finishedTableRef}
           />
         )}

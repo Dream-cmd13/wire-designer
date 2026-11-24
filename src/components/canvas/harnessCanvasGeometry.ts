@@ -17,6 +17,7 @@ import type {
   ConnectorSide,
   HarnessConfig,
   MaterialEndpoint,
+  OvermoldSelection,
 } from '@/types/harness';
 
 export function isValidCanvasViewport(
@@ -490,7 +491,7 @@ export function materialDescriptionForOption(material: CanvasWireMaterial): stri
 export function createNextModelFromSelection(
   config: HarnessConfig,
   modelDialogPosition: { x: number; y: number },
-  selection: Parameters<typeof import('../shared/OvermoldPickerDialog').OvermoldPickerDialog>[0]['onSelect'] extends (sel: infer S) => void ? S : never,
+  selection: OvermoldSelection,
 ): CanvasModel {
   const placementPos = findModelPlacement(config, modelDialogPosition);
 

@@ -1,5 +1,6 @@
-import { useMemo, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
+import { useMaterialTabPage } from './useMaterialTabPage';
 import { MaterialPagination } from '@/components/materials/MaterialPagination';
 import { PriceUpdateInfo } from '@/components/materials/PriceUpdateInfo';
 import type { MaterialPriceIndex, MoldRow } from '@/components/materials/materialPriceLookup';
@@ -7,7 +8,7 @@ import { formatMaterialPrice } from '@/lib/materialPriceEdit';
 import { materialPriceTierKey, type QuoteMaterial } from '@/lib/quoteMaterials';
 import type { OvermoldSpec } from '@/types/harness';
 
-export interface MoldsTabState {
+interface MoldsTabState {
   query: string;
   page: number;
   pageSize: number;
@@ -18,9 +19,10 @@ interface MoldsTabProps {
   moldRows: MoldRow[];
   priceIndex: MaterialPriceIndex;
   catalogStatus: string;
+  catalogReady: boolean;
   isRefreshing: boolean;
-  state: MoldsTabState;
-  onStateChange: Dispatch<SetStateAction<MoldsTabState>>;
+  active: boolean;
+  initialPage: number;
   renderEditPriceButton: (resourceId: string, kind: QuoteMaterial['kind']) => ReactNode;
 }
 
@@ -29,12 +31,18 @@ export function MoldsTab({
   moldRows,
   priceIndex,
   catalogStatus,
+  catalogReady,
   isRefreshing,
-  state,
-  onStateChange,
+  active,
+  initialPage,
   renderEditPriceButton,
 }: MoldsTabProps) {
-  const { query: accQuery, page: accPage, pageSize: accPageSize } = state;
+  const [state, setState] = useState<MoldsTabState>(() => ({
+    query: '',
+    page: initialPage,
+    pageSize: 20,
+  }));
+  const { query: accQuery, pageSize: accPageSize } = state;
   const accTableRef = useRef<HTMLDivElement>(null);
 
   const filteredOvermolds = useMemo(() => {
@@ -44,14 +52,12 @@ export function MoldsTab({
         candidate.kind === 'inner-mold' ? '内模' : '外模'].some(value => value.toLowerCase().includes(q)));
   }, [moldRows, accQuery]);
 
-  const totalAccPages = Math.max(1, Math.ceil(filteredOvermolds.length / accPageSize));
-  const safeAccPage = Math.min(Math.max(1, accPage), totalAccPages);
+  const { page: safeAccPage, rows: paginatedOvermolds } = useMaterialTabPage(
+    filteredOvermolds, state, setState,
+    catalogReady,
+  );
 
-  const paginatedOvermolds = useMemo(() => {
-    const start = (safeAccPage - 1) * accPageSize;
-    return filteredOvermolds.slice(start, start + accPageSize);
-  }, [filteredOvermolds, safeAccPage, accPageSize]);
-
+  if (!active) return null;
   return (
     <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
       <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
@@ -61,7 +67,7 @@ export function MoldsTab({
             type="search"
             value={accQuery}
             onChange={(e) => {
-              onStateChange((prev) => ({ ...prev, query: e.target.value, page: 1 }));
+              setState((prev) => ({ ...prev, query: e.target.value, page: 1 }));
             }}
             placeholder="搜索模具名称、代号、材质"
             className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -142,8 +148,8 @@ export function MoldsTab({
           currentPage={safeAccPage}
           pageSize={accPageSize}
           totalCount={filteredOvermolds.length}
-          onPageChange={(page) => onStateChange((prev) => ({ ...prev, page }))}
-          onPageSizeChange={(pageSize) => onStateChange((prev) => ({ ...prev, pageSize, page: 1 }))}
+          onPageChange={(page) => setState((prev) => ({ ...prev, page }))}
+          onPageSizeChange={(pageSize) => setState((prev) => ({ ...prev, pageSize, page: 1 }))}
           scrollContainerRef={accTableRef}
         />
       </section>
