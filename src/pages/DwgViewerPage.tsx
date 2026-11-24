@@ -807,7 +807,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
       <PageHeaderActions>
         <div className="flex min-w-0 max-w-full items-center gap-1.5">
           {state.fileName && (
-            <span className="min-w-0 max-w-28 xl:max-w-36 truncate rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700" title={state.fileName}>
+            <span className="min-w-0 max-w-44 sm:max-w-52 xl:max-w-64 truncate rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700" title={state.fileName}>
               {state.fileName}
             </span>
           )}
@@ -821,7 +821,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         {ownerId && (
           <div className="flex max-w-full min-w-0 items-center gap-1">
             <select
-              className="h-8 w-32 sm:w-40 min-w-0 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-8 w-36 sm:w-52 xl:w-56 min-w-0 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
               value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
               onChange={(event) => {
                 const asset = cloudDrawings.find((item) => item.id === event.target.value);
