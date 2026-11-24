@@ -1,53 +1,39 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Download, Edit3, FileImage, FileText, Loader2, Maximize2, Minus, Plus } from 'lucide-react';
-import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
-import { useHarnessStore } from '@/stores/harnessStore';
 import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
-import type {
-  TwoDImage,
-  CanvasWireMaterial,
-  ConnectorInstance,
-} from '@/types/harness';
+import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
+import { DEFAULT_TECHNICAL_REQUIREMENTS, ensureDrawingFrame } from '@/lib/drawingFrameDefaults';
 import {
-  getProductDrawingFilename,
-  exportProductDrawingPng,
   exportProductDrawingPdf,
+  exportProductDrawingPng,
+  getProductDrawingFilename,
 } from '@/lib/productImageExport';
-import { TwoDImageCard } from './TwoDImageCard';
-import { WireDimensionAnnotation } from './WireDimensionAnnotation';
-import { ProductionDrawingFrameSvg } from './ProductionDrawingFrameSvg';
-import { DrawingFrameEditDialog } from './DrawingFrameEditDialog';
-import { ensureDrawingFrame, DEFAULT_TECHNICAL_REQUIREMENTS } from '@/lib/drawingFrameDefaults';
-import { useUserStore } from '@/stores/userStore';
-import { getCatalogSnapshot } from '@/lib/catalogRuntime';
-import { useCatalogStore } from '@/stores/catalogStore';
-import { getMoldLinkage } from '@/lib/canvasMaterials';
+import { buildProductionBomRows } from '@/lib/productionBomRows';
 import {
   calculateAssemblyUnscaledBounds,
   calculateUniformAssemblyScale,
   getScaledDisplayDimensions,
-  type ImageDimensions,
   type AssemblyUnscaledBounds,
+  type ImageDimensions,
 } from '@/lib/productionDrawingImageScale';
 import {
-  calculateProductionDrawingLayout,
   calculateCenteredGroupX,
   calculateEstimatedWireOffset,
-  type ProductionDrawingLayout,
+  calculateProductionDrawingLayout,
 } from '@/lib/productionDrawingLayout';
-import { getWiringConnectorLabels } from '@/lib/connectorDesignation';
-import {
-  formatPinNetworkString,
-  getWiringDiagramColumns,
-  calculateWiringDiagramWidth,
-} from '@/lib/wiringDiagramLayout';
-import { buildProductionBomRows, type ProductionBomRow } from '@/lib/productionBomRows';
+import { buildTwoDImageGroups, getElementX } from '@/lib/twoDImageGroups';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { useHarnessStore } from '@/stores/harnessStore';
 import { notify } from '@/stores/noticeStore';
+import { useUserStore } from '@/stores/userStore';
+import type { TwoDImage } from '@/types/harness';
+import { AssemblyGroupRow } from './AssemblyGroupRow';
+import { DrawingFrameEditDialog } from './DrawingFrameEditDialog';
 import { ItemCalloutLayer } from './ItemCalloutLayer';
-import { DRAWING_FONT_FAMILY } from '@/lib/drawingFont';
+import { BOMTable } from './ProductionBomTable';
+import { ProductionDrawingFrameSvg } from './ProductionDrawingFrameSvg';
 
-// ── constants ──────────────────────────────────────────────────────────────────
 /** Stable empty array — prevents useSyncExternalStore from seeing a new ref each render */
 const EMPTY_IMAGES: TwoDImage[] = [];
 
@@ -55,367 +41,6 @@ const ZOOM_MIN = 0.2;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.15;
 
-// ── helpers ────────────────────────────────────────────────────────────────────
-function resolveChineseColorName(value: string): string {
-  const byId = getCatalogSnapshot()?.wireColors.find((c) => c.id === value);
-  if (byId) return byId.name;
-  return value || '灰';
-}
-
-function WiringDiagram({
-  materials,
-  connectors,
-  layout,
-}: {
-  materials: CanvasWireMaterial[];
-  connectors: ConnectorInstance[];
-  layout: ProductionDrawingLayout['wiringDiagram'];
-}) {
-  const mat = materials[0];
-  if (!mat) return null;
-
-  const circuits = mat.circuits || [];
-  if (circuits.length === 0) return null;
-
-  const { orderedConnectors } = getWiringConnectorLabels(connectors, materials);
-  const numCols = Math.max(2, orderedConnectors.length);
-
-  const rows = circuits.map((c) => {
-    let name = resolveChineseColorName(c.color);
-    if (name.endsWith('色')) {
-      name = name.slice(0, -1);
-    }
-
-    const startConnId = c.start?.connectorId;
-    const endConnId = c.end?.connectorId;
-
-    const startIdx = startConnId ? orderedConnectors.findIndex((x) => x.id === startConnId) : -1;
-    const endIdx = endConnId ? orderedConnectors.findIndex((x) => x.id === endConnId) : -1;
-
-    // Pin strings for each column
-    const pins: string[] = [];
-    for (let i = 0; i < numCols; i++) {
-      const connInfo = orderedConnectors[i];
-      if (!connInfo) {
-        pins.push('');
-        continue;
-      }
-      if (startIdx === i && c.start) {
-        pins.push(formatPinNetworkString(connInfo.connector, c.start.connectorSide, c.start.pin));
-      } else if (endIdx === i && c.end) {
-        pins.push(formatPinNetworkString(connInfo.connector, c.end.connectorSide, c.end.pin));
-      } else {
-        pins.push('');
-      }
-    }
-
-    // Active segments between adjacent connector columns (total numCols - 1 segments)
-    let minIdx = -1;
-    let maxIdx = -1;
-    if (startIdx !== -1 && endIdx !== -1) {
-      minIdx = Math.min(startIdx, endIdx);
-      maxIdx = Math.max(startIdx, endIdx);
-    } else if (startIdx !== -1) {
-      minIdx = startIdx;
-      maxIdx = Math.min(numCols - 1, startIdx + 1);
-    } else if (endIdx !== -1) {
-      maxIdx = endIdx;
-      minIdx = Math.max(0, endIdx - 1);
-    }
-
-    const segments: boolean[] = [];
-    for (let k = 0; k < numCols - 1; k++) {
-      segments.push(minIdx !== -1 && maxIdx !== -1 && k >= minIdx && k < maxIdx);
-    }
-
-    return {
-      pins,
-      segments,
-      color: name,
-      isCutStart: !c.start,
-      isCutEnd: !c.end,
-    };
-  });
-
-  const allLeftCut = rows.every((r) => r.isCutStart);
-  const allRightCut = rows.every((r) => r.isCutEnd);
-
-  const columns = getWiringDiagramColumns({
-    numCols,
-    orderedConnectors,
-    allLeftCut,
-    allRightCut,
-  });
-
-  const { diagramWidth } = calculateWiringDiagramWidth({
-    numCols,
-    allLeftCut,
-    allRightCut,
-    baseWidth: layout.width,
-  });
-
-  const bodyHeight = layout.height - layout.headerHeight;
-  const rowHeight = Math.max(22, Math.floor((bodyHeight - 38) / Math.max(1, rows.length)));
-
-  return (
-    <div 
-      className="border border-black bg-white flex flex-col font-serif text-black select-none shadow-sm rounded overflow-hidden"
-      style={{
-        fontFamily: DRAWING_FONT_FAMILY,
-        width: diagramWidth,
-        height: layout.height,
-        boxSizing: 'border-box',
-      }}
-      onMouseDown={(e) => e.stopPropagation()} // prevent drag trigger on inside click
-    >
-      {/* Title Header */}
-      <div
-        className="shrink-0 border-b border-black flex items-center justify-center font-bold text-xs tracking-[0.25em]"
-        style={{ height: layout.headerHeight, backgroundColor: 'rgba(248, 250, 252, 0.5)' }}
-      >
-        接线图
-      </div>
-      
-      {/* Body Area */}
-      <div className="flex-1 flex flex-col p-2 relative justify-between overflow-hidden">
-        {/* P1, P2, P3... Headers aligned exactly with Pin columns below */}
-        <div className="flex flex-row items-center text-[10px] leading-tight font-bold mb-1">
-          <div className="flex-1 flex flex-row items-center">
-            {columns.map((col, idx) => (
-              <React.Fragment key={idx}>
-                <span
-                  style={{ width: col.width }}
-                  className={`shrink-0 ${col.alignClass} truncate`}
-                  title={col.label}
-                >
-                  {col.label}
-                </span>
-                {idx < numCols - 1 && <div className="flex-1 min-w-[20px]" />}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        {/* Content Rows */}
-        <div className="flex-1 flex flex-row items-center">
-          {/* Left Status (if all cut) */}
-          {allLeftCut && (
-            <div style={{ width: 70 }} className="flex flex-row h-full shrink-0">
-              <div
-                style={{ width: 35 }}
-                className="flex flex-col items-center justify-center text-xs font-bold text-black border-r border-black h-full pr-1 shrink-0"
-              >
-                <span className="leading-tight">切</span>
-                <span className="leading-tight">断</span>
-              </div>
-              <div style={{ width: 35 }} className="shrink-0" />
-            </div>
-          )}
-
-          {/* Center Lines + Pins */}
-          <div className="flex-1 flex flex-col justify-between h-full py-1">
-            {rows.map((row, rowIdx) => (
-              <div key={rowIdx} className="flex flex-row items-center" style={{ height: rowHeight }}>
-                {/* Column 0 Pin (only if not left cut) */}
-                {!allLeftCut && (
-                  <span
-                    style={{ width: 70 }}
-                    className="shrink-0 text-xs font-bold text-black text-center whitespace-nowrap"
-                  >
-                    {row.pins[0] || ''}
-                  </span>
-                )}
-
-                {/* Segments and subsequent columns */}
-                {Array.from({ length: numCols - 1 }).map((_, segIdx) => {
-                  const targetColIdx = segIdx + 1;
-                  const isLastCol = targetColIdx === numCols - 1;
-                  const showPin = !(isLastCol && allRightCut);
-                  const targetCol = columns[targetColIdx];
-
-                  return (
-                    <React.Fragment key={segIdx}>
-                      {/* Segment Column (between segIdx and segIdx + 1) */}
-                      <div className="flex-1 flex flex-col justify-end h-full relative pb-1 min-w-[20px] px-0">
-                        {row.segments[segIdx] ? (
-                          <>
-                            <span className="text-center text-[11px] font-bold text-black mb-0.5 whitespace-nowrap">
-                              {row.color}
-                            </span>
-                            <div className="w-full border-b border-black" />
-                          </>
-                        ) : (
-                          <div className="w-full h-[1px]" />
-                        )}
-                      </div>
-
-                      {/* Pin Column (if not right cut) */}
-                      {showPin && (
-                        <span
-                          style={{ width: targetCol?.width ?? 70 }}
-                          className={`shrink-0 text-xs font-bold text-black ${targetCol?.alignClass ?? 'text-center px-1'} whitespace-nowrap`}
-                        >
-                          {row.pins[targetColIdx] || ''}
-                        </span>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-
-          {/* Right Status (if all cut) */}
-          {allRightCut && (
-            <div style={{ width: 70 }} className="flex flex-row h-full shrink-0">
-              <div style={{ width: 35 }} className="shrink-0" />
-              <div
-                style={{ width: 35 }}
-                className="flex flex-col items-center justify-center text-xs font-bold text-black border-l border-black h-full pl-1 shrink-0"
-              >
-                <span className="leading-tight">切</span>
-                <span className="leading-tight">断</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SlashHeaderCell({
-  topText,
-  bottomText,
-  width,
-}: {
-  topText: string;
-  bottomText: string;
-  width: string;
-}) {
-  return (
-    <div 
-      className="relative h-[36px] flex items-center justify-center border-r border-black select-none shrink-0"
-      style={{ width }}
-    >
-      <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-        <line x1="0" y1="100%" x2="100%" y2="0" stroke="black" strokeWidth="1" />
-      </svg>
-      <span className="absolute top-[2px] left-[4px] text-[9px] font-bold leading-none scale-90 origin-top-left">
-        {topText}
-      </span>
-      <span className="absolute bottom-[2px] right-[4px] text-[8px] font-bold leading-none scale-90 origin-bottom-right">
-        {bottomText}
-      </span>
-    </div>
-  );
-}
-
-function BOMTable({
-  rows,
-  layout,
-  highlightedRowKey,
-  onHoverRowKey,
-  onClickRowKey,
-  twoDImages,
-}: {
-  rows: ProductionBomRow[];
-  layout: ProductionDrawingLayout;
-  highlightedRowKey?: string | null;
-  onHoverRowKey?: (key: string | null) => void;
-  onClickRowKey?: (key: string | null) => void;
-  twoDImages?: TwoDImage[];
-}) {
-  const circledNums = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
-
-  // Table rows rendered in reverse order (bottom-to-top)
-  const sortedRows = [...rows].sort((a, b) => b.itemNo - a.itemNo);
-
-  return (
-    <div 
-      className="absolute bg-white border border-black text-black select-none shadow-sm font-serif z-20"
-      style={{
-        bottom: layout.bom.bottom,
-        right: layout.bom.right,
-        width: layout.bom.width,
-        fontFamily: DRAWING_FONT_FAMILY,
-        boxSizing: 'border-box',
-      }}
-      onMouseDown={(e) => e.stopPropagation()} // prevent viewport drag
-    >
-      {/* Items (stacked upwards) */}
-      <div className="flex flex-col">
-        {sortedRows.map((row) => {
-          const isHighlighted = highlightedRowKey === row.key;
-          const hasImage = !twoDImages || twoDImages.length === 0 || row.targets.some((t) =>
-            twoDImages.some((img) => img.elementKind === t.kind && img.elementId === t.id),
-          );
-
-          return (
-            <div
-              key={row.key}
-              className={`flex flex-row border-b border-black items-stretch text-[10px] font-semibold min-h-[34px] cursor-pointer transition-colors ${
-                isHighlighted ? 'bg-blue-50/90' : 'hover:bg-slate-50'
-              }`}
-              onMouseEnter={() => onHoverRowKey?.(row.key)}
-              onMouseLeave={() => onHoverRowKey?.(null)}
-              onClick={() => onClickRowKey?.(isHighlighted ? null : row.key)}
-            >
-              {/* ITEM No */}
-              <div className={`w-[45px] border-r border-black flex items-center justify-center text-xs font-bold shrink-0 self-stretch ${isHighlighted ? 'text-blue-700 font-extrabold' : ''}`}>
-                {circledNums[row.itemNo - 1] || row.itemNo}
-              </div>
-              {/* NAME */}
-              <div className="w-[65px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
-                {row.name}
-              </div>
-              {/* SPECIFICATION */}
-              <div className="flex-1 border-r border-black flex items-center justify-between px-3 py-1.5 whitespace-pre-line leading-[14px] text-[10px] break-words self-stretch">
-                <span>{row.specification}</span>
-                {!hasImage && (
-                  <span
-                    className="ml-1.5 px-1 py-0.5 text-[9px] text-amber-700 bg-amber-50 border border-amber-200 rounded shrink-0 select-none"
-                    title="该物料在画布上暂无2D对应图片"
-                  >
-                    无2D图
-                  </span>
-                )}
-              </div>
-              {/* UNIT */}
-              <div className="w-[45px] border-r border-black flex items-center justify-center text-[11px] shrink-0 self-stretch">
-                {row.unit}
-              </div>
-              {/* QTY */}
-              <div className="w-[45px] flex items-center justify-center text-xs font-bold shrink-0 self-stretch">
-                {row.quantity}
-              </div>
-            </div>
-          );
-        })}
-        
-        {/* Table Header (at the bottom) */}
-        <div
-          className="flex flex-row text-[10px] font-bold"
-          style={{ height: layout.bom.headerHeight, backgroundColor: 'rgba(248, 250, 252, 0.5)' }}
-        >
-          <SlashHeaderCell topText="序号" bottomText="ITEM" width="45px" />
-          <SlashHeaderCell topText="名称" bottomText="NAME" width="65px" />
-          
-          {/* SPECIFICATION Header */}
-          <div className="flex-1 border-r border-black h-full flex items-center justify-center tracking-wider text-xs">
-            规格/NAME&DESCRIPTION
-          </div>
-          
-          <SlashHeaderCell topText="单位" bottomText="UNIT" width="45px" />
-          <SlashHeaderCell topText="用量" bottomText="DSE" width="45px" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-// ── main view ──────────────────────────────────────────────────────────────────
 export function TwoDView() {
   const reloadCatalog = useCatalogStore((state) => state.reload);
   const catalogOvermolds = useCatalogStore((state) => state.snapshot?.overmolds);
@@ -446,7 +71,6 @@ export function TwoDView() {
   const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
-  // ── drag group position state ─────────────────────────────────────────────
   const [activeDragGroupIdx, setActiveDragGroupIdx] = useState<number | null>(null);
   const [dragStartPos, setDragStartPos] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -457,7 +81,6 @@ export function TwoDView() {
   const topRowRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const wireContainerRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
-  // ── image natural sizes & uniform scale state ──────────────────────────────
   const [naturalSizes, setNaturalSizes] = useState<Record<string, ImageDimensions>>({});
   const twoDImagesRef = useRef(twoDImages);
   useEffect(() => {
@@ -528,7 +151,6 @@ export function TwoDView() {
     };
   }, [twoDImages, handleNaturalSizeChange]);
 
-  // ── zoom & pan ───────────────────────────────────────────────────────────────
   const savedTwoDViewport = useHarnessStore.getState().twoDViewport;
   const [zoom, setZoom] = useState(savedTwoDViewport?.zoom ?? 1);
   const [pan, setPan] = useState(savedTwoDViewport?.pan ?? { x: 0, y: 0 });
@@ -556,7 +178,6 @@ export function TwoDView() {
     zoomRef.current = zoom;
   }, [zoom]);
 
-  // ── flatten groups into sorted display order ──────────────────────────────
   const groups = useMemo(
     () => buildTwoDImageGroups(twoDImages, connectors, materials, sleeves, models),
     [twoDImages, connectors, materials, sleeves, models],
@@ -575,7 +196,6 @@ export function TwoDView() {
     [bomRowCount, hasWiringDiagram],
   );
 
-  // ── measure exact DOM dimensions and wire offset (in local unscaled layout coordinates) ──
   const measureGroupDimensions = useCallback(() => {
     for (let idx = 0; idx < groups.length; idx++) {
       const groupEl = groupRefs.current[idx];
@@ -638,7 +258,6 @@ export function TwoDView() {
     };
   }, [groups, measureGroupDimensions]);
 
-  // ── Card and Group size helpers (Uniform Scale) ──────────────────────────────
   const maxCardHeight = productionLayout.maxImageHeight;
 
   const groupScalesAndDims = useMemo(() => {
@@ -742,8 +361,6 @@ export function TwoDView() {
   const defaultGroupPositions = useMemo(() => {
     const positions: Record<number, { x: number; y: number }> = {};
     const groupSpacing = 32;
-
-    // Check if there is a primary group with wire materials
     const primaryWireGroupIdx = groups.findIndex((g) =>
       g.images.some((img) => img.elementKind === 'material'),
     );
@@ -757,8 +374,6 @@ export function TwoDView() {
         ? (wireOffsets[targetGroupIdx] ?? getEstimatedWireOffset(targetGroup))
         : 0;
 
-      // Position group such that its wire & wiring diagram center (targetWidth / 2 + offset)
-      // aligns with the canvas center (canvasCenterX = 600)
       const targetX = calculateCenteredGroupX({
         canvasWidth: 1200,
         groupWidth: targetWidth,
@@ -770,7 +385,6 @@ export function TwoDView() {
         y: productionLayout.assemblyTop,
       };
 
-      // If other groups exist, position them relative to the target group
       let leftX = targetX;
       for (let i = targetGroupIdx - 1; i >= 0; i--) {
         const w = getGroupWidth(i, groups[i]);
@@ -854,7 +468,6 @@ export function TwoDView() {
       const groupHeight = getGroupHeight(groupIdx, group);
       const exactOffset = wireOffsets[groupIdx] ?? getEstimatedWireOffset(group);
 
-      // Calculate relative horizontal bounds of the group (including top row and shifted wiring diagram)
       const hasWiring = group.images.some((img) => img.elementKind === 'material');
       const diagramWidth = hasWiring ? productionLayout.wiringDiagram.width : 0;
       const minRelX = hasWiring
@@ -864,20 +477,11 @@ export function TwoDView() {
         ? Math.max(rawGroupWidth, (rawGroupWidth + diagramWidth) / 2 + exactOffset)
         : rawGroupWidth;
 
-      // Horizontal boundaries (inside drawing border x: 22..1176)
-      // Visual left: position.x + minRelX >= 26 => position.x >= 26 - minRelX
-      // Visual right: position.x + maxRelX <= 1174 => position.x <= 1174 - maxRelX
       const minX = Math.max(26, 26 - minRelX);
       const maxX = Math.max(minX, 1174 - maxRelX);
       const clampedX = Math.max(minX, Math.min(position.x, maxX));
 
-      // Vertical boundaries:
-      // Top boundary (below top border / compliance note box at y: 22..46)
       const minY = 56;
-
-      // Bottom obstacle detection:
-      // - Technical requirements (bottom-left): x: ~26..560
-      // - BOM table (bottom-right): x: ~536..1176
       const safeGap = 12;
       const bomTop = productionLayout.bomRect.top;
       const visualLeft = clampedX + minRelX;
@@ -932,10 +536,8 @@ export function TwoDView() {
     [clampGroupPosition, groups, defaultGroupPositions, productionLayout.assemblyTop],
   );
 
-  // ── global mouse handlers ─────────────────────────────────────────────────────
   useEffect(() => {
     function onMove(e: MouseEvent) {
-      // canvas pan
       const p = panningRef.current;
       if (p) {
         setPan({
@@ -945,7 +547,6 @@ export function TwoDView() {
         return;
       }
 
-      // drag group
       const gIdx = activeDragGroupIdxRef.current;
       if (gIdx !== null && dragStartPos) {
         const dx = (e.clientX - dragStartPos.x) / zoomRef.current;
@@ -963,7 +564,6 @@ export function TwoDView() {
           const newY = basePos.y + dragOffset.y;
           const nextPos = clampGroupPosition({ x: newX, y: newY }, group, gIdx);
 
-          // Update all images in this group with their new absolute pos, maintaining relative horizontal offset
           const nextImages = twoDImages.map((img) => {
             const imgInGroupIdx = group.images.findIndex((gImg) => gImg.id === img.id);
             if (imgInGroupIdx !== -1) {
@@ -995,7 +595,6 @@ export function TwoDView() {
     };
   }, [dragStartPos, dragOffset, groups, twoDImages, getGroupPosition, getCardWidth, patchDocument, clampGroupPosition]);
 
-  // ── close context menu on click ───────────────────────────────────────────────
   useEffect(() => {
     if (!contextMenu) return;
     const handleClick = () => setContextMenu(null);
@@ -1003,7 +602,6 @@ export function TwoDView() {
     return () => window.removeEventListener('click', handleClick);
   }, [contextMenu]);
 
-  // ── close export menu on click outside ────────────────────────────────────────
   useEffect(() => {
     if (!isExportMenuOpen) return;
     const handleClickOutside = (e: MouseEvent) => {
@@ -1042,7 +640,6 @@ export function TwoDView() {
     }
   };
 
-  // ── zoom helpers ──────────────────────────────────────────────────────────────
   const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
   const zoomIn = useCallback(() => {
@@ -1080,7 +677,6 @@ export function TwoDView() {
     setIsFitted(true);
   }, []);
 
-  // ── Auto-fit when viewport size is established or restored from hidden ────────
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp) return;
@@ -1099,7 +695,6 @@ export function TwoDView() {
     return () => observer.disconnect();
   }, [fitToCanvas]);
 
-  // ── fit content to canvas when images first appear or project changes ──────────
   useEffect(() => {
     if (twoDImages.length === 0) {
       hasCenteredRef.current = false;
@@ -1119,20 +714,17 @@ export function TwoDView() {
     return () => clearTimeout(timer);
   }, [twoDImages.length, fitToCanvas]);
 
-  /** Wheel: zoom centered on cursor position inside viewport */
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     const vp = viewportRef.current;
     if (!vp) return;
     const rect = vp.getBoundingClientRect();
-    // cursor in viewport coords
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
 
     setZoom((prevZoom) => {
       const delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
       const nextZoom = clampZoom(parseFloat((prevZoom + delta).toFixed(2)));
-      // adjust pan so the world point under cursor stays fixed
       setPan((prevPan) => ({
         x: cx - (cx - prevPan.x) * (nextZoom / prevZoom),
         y: cy - (cy - prevPan.y) * (nextZoom / prevZoom),
@@ -1141,7 +733,6 @@ export function TwoDView() {
     });
   }, []);
 
-  /** Left or middle mouse button starts canvas panning on the viewport background */
   const handleViewportMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.button !== 1) return;
     e.preventDefault();
@@ -1158,7 +749,6 @@ export function TwoDView() {
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
-  // ── drag group mousedown ──────────────────────────────────────────────────────
   function handleGroupMouseDown(e: React.MouseEvent, groupIdx: number) {
     if (e.button !== 0) return;
     const target = e.target as HTMLElement | null;
@@ -1166,7 +756,7 @@ export function TwoDView() {
       return;
     }
     e.preventDefault();
-    e.stopPropagation(); // prevent viewport pan when dragging group
+    e.stopPropagation();
     setActiveDragGroupIdx(groupIdx);
     setDragStartPos({ x: e.clientX, y: e.clientY });
     setDragOffset({ x: 0, y: 0 });
@@ -1175,13 +765,18 @@ export function TwoDView() {
   function handleImageMouseDown(e: React.MouseEvent, groupIdx: number) {
     if (e.button !== 0) return;
     e.preventDefault();
-    e.stopPropagation(); // prevent viewport pan when dragging images
+    e.stopPropagation();
     setActiveDragGroupIdx(groupIdx);
     setDragStartPos({ x: e.clientX, y: e.clientY });
     setDragOffset({ x: 0, y: 0 });
   }
 
-  // ── render ────────────────────────────────────────────────────────────────────
+  const handleImageError = useCallback((imageId: string) => {
+    if (retryingImagesRef.current.has(imageId)) return;
+    retryingImagesRef.current.add(imageId);
+    void reloadCatalog();
+  }, [reloadCatalog]);
+
   return (
     <div className="relative flex h-full flex-col bg-white">
       <PageHeaderActions>
@@ -1196,7 +791,6 @@ export function TwoDView() {
             编辑图框
           </button>
 
-          {/* Export dropdown button */}
           <div className="relative" ref={exportMenuRef}>
             <button
               type="button"
@@ -1238,7 +832,6 @@ export function TwoDView() {
         </div>
       </PageHeaderActions>
 
-      {/* canvas area */}
       <div
         ref={viewportRef}
         className="relative flex-1 overflow-hidden"
@@ -1270,7 +863,6 @@ export function TwoDView() {
             </p>
           </div>
         ) : (
-          /* world layer: flex row, zoom+pan via transform */
           <div
             ref={worldRef}
             data-drawing-world="true"
@@ -1288,7 +880,6 @@ export function TwoDView() {
               transition: 'opacity 0.15s ease-in-out',
             }}
           >
-            {/* SVG Vector Drawing Frame */}
             <ProductionDrawingFrameSvg
               frame={drawingFrame}
               onEdit={(field) => {
@@ -1296,263 +887,47 @@ export function TwoDView() {
                 setIsEditDialogOpen(true);
               }}
             />
-            {(() => {
-              return groups.map((group, groupIdx) => {
-                const isDraggingThis = activeDragGroupIdx === groupIdx;
-                const basePos = getGroupPosition(groupIdx);
-                const rawPos = {
-                  x: basePos.x + (isDraggingThis ? dragOffset.x : 0),
-                  y: basePos.y + (isDraggingThis ? dragOffset.y : 0),
-                };
-                const { x, y } = isDraggingThis
-                  ? clampGroupPosition(rawPos, group, groupIdx)
-                  : rawPos;
+            {groups.map((group, groupIdx) => {
+              const isDraggingThis = activeDragGroupIdx === groupIdx;
+              const basePos = getGroupPosition(groupIdx);
+              const rawPos = {
+                x: basePos.x + (isDraggingThis ? dragOffset.x : 0),
+                y: basePos.y + (isDraggingThis ? dragOffset.y : 0),
+              };
+              const { x, y } = isDraggingThis
+                ? clampGroupPosition(rawPos, group, groupIdx)
+                : rawPos;
+              const exactOffset = wireOffsets[groupIdx] ?? getEstimatedWireOffset(group);
 
-                return (
-                  <div
-                    key={groupIdx}
-                    data-callout-group={groupIdx}
-                    ref={(el) => {
-                      groupRefs.current[groupIdx] = el;
-                    }}
-                    onMouseDown={(e) => handleGroupMouseDown(e, groupIdx)}
-                    style={{
-                      position: 'absolute',
-                      left: x,
-                      top: y,
-                      opacity: isDraggingThis ? 0.75 : 1,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: showCallouts
-                        ? productionLayout.calloutBand.height + productionLayout.calloutBand.gap
-                        : productionLayout.assemblyGap,
-                      border: '1px dashed transparent',
-                      borderRadius: '8px',
-                      padding: '4px',
-                      cursor: isDraggingThis ? 'grabbing' : 'grab',
-                    }}
-                    className="group/assembly hover:border-[#e2e8f0] hover:bg-[#f8fafc]/30 transition-colors"
-                  >
-                    {/* Top Row: image cards with straight horizontal / bent bottom-attachment layout */}
-                    {(() => {
-                      const wireImgs = group.images.filter((img) => img.elementKind === 'material' || img.elementKind === 'sleeve');
-                      const wireMaterial = wireImgs.find((img) => img.elementKind === 'material');
-                      const matEntity = wireMaterial ? materials.find((m) => m.id === wireMaterial.elementId) : undefined;
-                      const matCenterX = matEntity ? matEntity.position.x + matEntity.width / 2 : 0;
-
-                      // Split non-wire images into left and right by relative x-position to wire
-                      const nonWireImgs = group.images.filter((img) => img.elementKind !== 'material' && img.elementKind !== 'sleeve');
-                      const leftImgs: TwoDImage[] = [];
-                      const rightImgs: TwoDImage[] = [];
-
-                      if (wireImgs.length > 0) {
-                        for (const img of nonWireImgs) {
-                          const elX = getElementX(img.elementKind, img.elementId, connectors, materials, sleeves, models);
-                          if (elX < matCenterX) {
-                            leftImgs.push(img);
-                          } else {
-                            rightImgs.push(img);
-                          }
-                        }
-                      } else {
-                        leftImgs.push(...nonWireImgs);
-                      }
-
-                      const renderCard = (img: TwoDImage) => {
-                        const cardWidth = getCardWidth(img);
-                        const cardHeight = getCardHeight(img);
-                        const wireMat =
-                          img.elementKind === 'material'
-                            ? materials.find((m) => m.id === img.elementId)
-                            : undefined;
-
-                        return (
-                          <div
-                            key={img.id}
-                            data-callout-kind={img.elementKind}
-                            data-callout-id={img.elementId}
-                            data-callout-role={img.imageRole}
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              position: 'relative',
-                            }}
-                          >
-                            {wireMat && (
-                              <WireDimensionAnnotation
-                                material={wireMat}
-                                width={cardWidth}
-                                onUpdate={updateMaterial}
-                              />
-                            )}
-                            <TwoDImageCard
-                              image={img}
-                              onMouseDown={(e) => handleImageMouseDown(e, groupIdx)}
-                              onImageError={() => {
-                                if (retryingImagesRef.current.has(img.id)) return;
-                                retryingImagesRef.current.add(img.id);
-                                void reloadCatalog();
-                              }}
-                              maxWidth={cardWidth}
-                              maxHeight={cardHeight}
-                              exactWidth={cardWidth}
-                              exactHeight={cardHeight}
-                              onNaturalSizeChange={handleNaturalSizeChange}
-                            />
-                          </div>
-                        );
-                      };
-
-                      const renderEnd = (endImgs: TwoDImage[], side: 'left' | 'right') => {
-                        if (endImgs.length === 0) return null;
-
-                        const connectorIds = Array.from(
-                          new Set(
-                            endImgs
-                              .filter((img) => img.elementKind === 'connector' && img.elementId)
-                              .map((img) => img.elementId!),
-                          ),
-                        );
-
-                        const renderedImageIds = new Set<string>();
-
-                        const connectorUnits = connectorIds.map((cId) => {
-                          const connImg = endImgs.find(
-                            (img) => img.elementKind === 'connector' && img.elementId === cId && img.imageRole !== 'connector-pin-map',
-                          );
-                          const pinMapImg = endImgs.find(
-                            (img) => img.elementKind === 'connector' && img.elementId === cId && img.imageRole === 'connector-pin-map',
-                          );
-                          const modelImg = endImgs.find((img) => {
-                            if (img.elementKind !== 'model' || !img.elementId) return false;
-                            const modelEntity = models.find((m) => m.id === img.elementId);
-                            if (!modelEntity) return false;
-                            const linkage = getMoldLinkage(modelEntity, config);
-                            return linkage?.connector.id === cId;
-                          });
-
-                          if (connImg) renderedImageIds.add(connImg.id);
-                          if (pinMapImg) renderedImageIds.add(pinMapImg.id);
-                          if (modelImg) renderedImageIds.add(modelImg.id);
-
-                          return {
-                            cId,
-                            connImg,
-                            pinMapImg,
-                            modelImg,
-                            isBent: connImg?.orientation === 'bottom' || connImg?.rotation === -90,
-                          };
-                        });
-
-                        const unassignedImgs = endImgs.filter((img) => !renderedImageIds.has(img.id));
-
-                        return (
-                          <div key={`end-${side}`} className="flex flex-row items-center gap-0">
-                            {side === 'left' && unassignedImgs.map(renderCard)}
-
-                            {connectorUnits.map((unit) => {
-                              const physicalItems = side === 'left'
-                                ? [unit.connImg, unit.modelImg].filter((item): item is TwoDImage => Boolean(item))
-                                : [unit.modelImg, unit.connImg].filter((item): item is TwoDImage => Boolean(item));
-
-                              if (unit.isBent) {
-                                return (
-                                  <div key={`unit-${unit.cId}`} className="flex flex-row items-center">
-                                    {side === 'left' && unit.pinMapImg && (
-                                      <div className="mr-4">
-                                        {renderCard(unit.pinMapImg)}
-                                      </div>
-                                    )}
-                                    {(unit.modelImg || unit.connImg) && (
-                                      <div className="flex flex-col items-center gap-0">
-                                        {unit.modelImg && renderCard(unit.modelImg)}
-                                        {unit.connImg && renderCard(unit.connImg)}
-                                      </div>
-                                    )}
-                                    {side === 'right' && unit.pinMapImg && (
-                                      <div className="ml-4">
-                                        {renderCard(unit.pinMapImg)}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <div key={`unit-${unit.cId}`} className="flex flex-row items-center">
-                                  {side === 'left' && unit.pinMapImg && (
-                                    <div className="mr-4">
-                                      {renderCard(unit.pinMapImg)}
-                                    </div>
-                                  )}
-                                  {physicalItems.length > 0 && (
-                                    <div className="flex flex-row items-center gap-0">
-                                      {physicalItems.map(renderCard)}
-                                    </div>
-                                  )}
-                                  {side === 'right' && unit.pinMapImg && (
-                                    <div className="ml-4">
-                                      {renderCard(unit.pinMapImg)}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-
-                            {side === 'right' && unassignedImgs.map(renderCard)}
-                          </div>
-                        );
-                      };
-
-                      return (
-                        <>
-                          <div
-                            ref={(el) => {
-                              topRowRefs.current[groupIdx] = el;
-                            }}
-                            className="relative flex flex-row items-center gap-0"
-                          >
-                            {renderEnd(leftImgs, 'left')}
-                            <div
-                              ref={(el) => {
-                                wireContainerRefs.current[groupIdx] = el;
-                              }}
-                              className="flex flex-row items-center gap-0"
-                            >
-                              {wireImgs.map(renderCard)}
-                            </div>
-                            {renderEnd(rightImgs, 'right')}
-                          </div>
-
-                          {/* Bottom Row: Wiring Diagram (pixel-perfect centered with wire materials) */}
-                          {(() => {
-                            const groupMaterials = materials.filter(m => group.images.some(img => img.elementKind === 'material' && img.elementId === m.id));
-                            const groupConnectors = connectors.filter(c => group.images.some(img => img.elementKind === 'connector' && img.elementId === c.id));
-                            const exactOffset = wireOffsets[groupIdx] ?? getEstimatedWireOffset(group);
-                            return groupMaterials.length > 0 ? (
-                              <div
-                                style={{
-                                  transform: exactOffset !== 0 ? `translateX(${exactOffset}px)` : undefined,
-                                }}
-                              >
-                                <WiringDiagram
-                                  materials={groupMaterials}
-                                  connectors={groupConnectors}
-                                  layout={productionLayout.wiringDiagram}
-                                />
-                              </div>
-                            ) : null;
-                          })()}
-                        </>
-                      );
-                    })()}
-                  </div>
-                );
-              });
-            })()}
-            {/* Item Callout Layer (BOM balloon callouts & leader lines) */}
+              return (
+                <AssemblyGroupRow
+                  key={groupIdx}
+                  group={group}
+                  groupIdx={groupIdx}
+                  x={x}
+                  y={y}
+                  isDraggingThis={isDraggingThis}
+                  showCallouts={showCallouts}
+                  productionLayout={productionLayout}
+                  config={config}
+                  connectors={connectors}
+                  materials={materials}
+                  sleeves={sleeves}
+                  models={models}
+                  exactOffset={exactOffset}
+                  getCardWidth={getCardWidth}
+                  getCardHeight={getCardHeight}
+                  onGroupMouseDown={handleGroupMouseDown}
+                  onImageMouseDown={handleImageMouseDown}
+                  onImageError={handleImageError}
+                  onNaturalSizeChange={handleNaturalSizeChange}
+                  onUpdateMaterial={updateMaterial}
+                  setGroupRef={(el) => { groupRefs.current[groupIdx] = el; }}
+                  setTopRowRef={(el) => { topRowRefs.current[groupIdx] = el; }}
+                  setWireContainerRef={(el) => { wireContainerRefs.current[groupIdx] = el; }}
+                />
+              );
+            })}
             <ItemCalloutLayer
               bomRows={bomRows}
               worldRef={worldRef}
@@ -1565,7 +940,6 @@ export function TwoDView() {
               recalculateToken={`${activeDragGroupIdx ?? -1}_${dragOffset.x}_${dragOffset.y}_${twoDImages.length}_${bomRows.length}`}
             />
 
-            {/* BOM Table */}
             <BOMTable
               rows={bomRows}
               layout={productionLayout}
@@ -1599,8 +973,6 @@ export function TwoDView() {
         </div>
       )}
 
-
-      {/* Drawing Frame Edit Dialog */}
       {isEditDialogOpen && (
         <DrawingFrameEditDialog
           isOpen={isEditDialogOpen}
@@ -1614,7 +986,6 @@ export function TwoDView() {
         />
       )}
 
-      {/* right-click context menu */}
       {contextMenu && (
         <div
           className="fixed z-50 min-w-[140px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg"

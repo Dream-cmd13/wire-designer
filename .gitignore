@@ -53,3 +53,9 @@ catalog-source/
 
 # Generated OCCT runtime assets
 public/model-engine/
+
+# Local AI / editor tool directories (keep .agents/ for project rules)
+.workbuddy/
+.claude/
+.codex/
+.mimocode/

@@ -1,77 +1,49 @@
-import { PriceUpdateInfo } from '@/components/materials/PriceUpdateInfo';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MaterialPriceEditDialog } from '@/components/materials/MaterialPriceEditDialog';
-import { formatMaterialPrice } from '@/lib/materialPriceEdit';
-import { canViewPricing } from '@/lib/permissions';
-import { useUserStore } from '@/stores/userStore';
-import type { QuoteMaterial } from '@/lib/quoteMaterials';
-import { PricingManagement } from '@/components/materials/PricingManagement';
-import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import {
   Cable,
   Check,
   Download,
-  ExternalLink,
   FileSpreadsheet,
   Layers,
   Package,
   Plug,
   RefreshCw,
-  Search,
   Upload,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { useCatalogStore } from '@/stores/catalogStore';
-import { dismissNotice, notify } from '@/stores/noticeStore';
-import { usePriceStore } from '@/stores/priceStore';
-import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
-import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
+import { ConnectorsTab } from '@/components/materials/ConnectorsTab';
 import { ExcelPreviewModal } from '@/components/materials/ExcelPreviewModal';
-import { MaterialPagination } from '@/components/materials/MaterialPagination';
+import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
+import { FinishedHarnessesTab } from '@/components/materials/FinishedHarnessesTab';
+import { MaterialPriceEditDialog } from '@/components/materials/MaterialPriceEditDialog';
+import { MoldsTab } from '@/components/materials/MoldsTab';
+import { PricingManagement } from '@/components/materials/PricingManagement';
+import { WiresTab } from '@/components/materials/WiresTab';
+import { buildMaterialPriceIndex } from '@/components/materials/materialPriceLookup';
+import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import {
   getCatalogConnectors,
-  getCatalogWires,
   getCatalogOvermolds,
   getCatalogSnapshot,
+  getCatalogWires,
 } from '@/lib/catalogRuntime';
+import { canViewPricing } from '@/lib/permissions';
 import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
 import {
-  getCatalogPriceCandidates,
   buildCatalogPriceTemplateRows,
-  materialPriceTierKey,
+  getCatalogPriceCandidates,
+  type QuoteMaterial,
 } from '@/lib/quoteMaterials';
-import { applyCatalogWireSpec } from '@/lib/wireCatalog';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
 import type { MaterialPrice } from '@/repositories/priceRepository';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
+import { dismissNotice, notify } from '@/stores/noticeStore';
+import { usePriceStore } from '@/stores/priceStore';
+import { useUserStore } from '@/stores/userStore';
 import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
-import type { Connector } from '@/types/harness';
-import type { CatalogWire } from '@/types/catalog';
 
 type MaterialTab = 'connectors' | 'wires' | 'accessories' | 'finished-harnesses';
-
-const BASE_WIRE_SPEC = {
-  kind: 'electronic' as const,
-  awg: 24,
-  color: '黑色',
-  ulNumber: '1007' as const,
-  lengthMm: 1000,
-  endTreatment: {
-    start: { stripped: false, termination: 'none' as const },
-    end: { stripped: false, termination: 'none' as const },
-  },
-};
-
-function formatWireTierLength(lengthMm: number): string {
-  if (!Number.isFinite(lengthMm) || lengthMm <= 0) return '-';
-  if (lengthMm >= 1000) {
-    const m = lengthMm / 1000;
-    return `${Number(m.toFixed(2))}m`;
-  }
-  if (lengthMm % 100 === 0) {
-    return `${Number((lengthMm / 1000).toFixed(2))}m`;
-  }
-  return `${lengthMm}mm`;
-}
 
 // 离开浏览器一段时间判定阈值（30秒）
 const STALE_LEAVE_THRESHOLD_MS = 30 * 1000;
@@ -155,43 +127,6 @@ export function MaterialLibraryPage({
   const loadFinishedHarnesses = useFinishedHarnessStore((state) => state.load);
 
   const [activeTab, setActiveTab] = useState<MaterialTab>(initialTab);
-
-  // 连接器筛选与分页
-  const [connQuery, setConnQuery] = useState('');
-  const [connSupplierNo, setConnSupplierNo] = useState('all');
-  const [connSeries, setConnSeries] = useState('all');
-  const [connShielded, setConnShielded] = useState('all');
-  const [connType, setConnType] = useState('all');
-  const [connPinCount, setConnPinCount] = useState('all');
-  const [connPriceStatus, setConnPriceStatus] = useState<'all' | 'priced' | 'unpriced'>(
-    initialConnPriceStatus,
-  );
-  const [connPage, setConnPage] = useState(initialConnPage);
-  const [connPageSize, setConnPageSize] = useState(20);
-
-  // 线缆筛选与分页
-  const [wireQuery, setWireQuery] = useState('');
-  const [wireKind, setWireKind] = useState('all');
-  const [wireAwg, setWireAwg] = useState('all');
-  const [wireShielded, setWireShielded] = useState('all');
-  const [wirePriceStatus, setWirePriceStatus] = useState<'all' | 'priced' | 'unpriced'>(
-    initialWirePriceStatus,
-  );
-  const [wirePage, setWirePage] = useState(initialWirePage);
-  const [wirePageSize, setWirePageSize] = useState(20);
-
-  // 模具筛选与分页
-  const [accQuery, setAccQuery] = useState('');
-  const [accPage, setAccPage] = useState(initialAccPage);
-  const [accPageSize, setAccPageSize] = useState(20);
-
-  // 现有成品线束方案筛选与分页
-  const [finishedQuery, setFinishedQuery] = useState('');
-  const [finishedSupplierNo, setFinishedSupplierNo] = useState('all');
-  const [finishedDrawingStatus, setFinishedDrawingStatus] = useState<'all' | 'has' | 'none'>('all');
-  const [finishedCostStatus, setFinishedCostStatus] = useState<'all' | 'has' | 'none'>('all');
-  const [finishedPage, setFinishedPage] = useState(initialFinishedPage);
-  const [finishedPageSize, setFinishedPageSize] = useState(20);
   const [selectedFinishedHarness, setSelectedFinishedHarness] = useState<FinishedHarnessMaterial | null>(null);
   const [directPreviewExcel, setDirectPreviewExcel] = useState<{
     fileName: string;
@@ -209,10 +144,6 @@ export function MaterialLibraryPage({
   const importMergeInFlightRef = useRef(false);
   const [readingFile, setReadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const connTableRef = useRef<HTMLDivElement>(null);
-  const wireTableRef = useRef<HTMLDivElement>(null);
-  const accTableRef = useRef<HTMLDivElement>(null);
-  const finishedTableRef = useRef<HTMLDivElement>(null);
 
   // 离开浏览器一段时间判定与刷新反馈状态
   const leaveTimeRef = useRef<number | null>(null);
@@ -296,201 +227,7 @@ export function MaterialLibraryPage({
     };
   }, [handleRefreshAll]);
 
-  // 精准价格索引映射
-  const priceIndex = useMemo(() => {
-    const connMap = new Map<string, MaterialPrice>();
-    const moldMap = new Map<string, MaterialPrice>();
-    const wireTiersMap = new Map<string, MaterialPrice[]>();
-
-    for (const p of prices) {
-      const tierKey = materialPriceTierKey(p);
-      if (p.kind === 'connector') {
-        connMap.set(tierKey, p);
-      } else if (p.kind === 'outer-mold' || p.kind === 'inner-mold') {
-        moldMap.set(tierKey, p);
-      } else if (p.kind === 'wire') {
-        const list = wireTiersMap.get(tierKey) ?? [];
-        list.push(p);
-        wireTiersMap.set(tierKey, list);
-      }
-    }
-
-    for (const list of wireTiersMap.values()) {
-      list.sort((a, b) => a.lengthMm - b.lengthMm);
-    }
-
-    return { connMap, moldMap, wireTiersMap };
-  }, [prices]);
-
-  // 获取连接器价格（严格精确匹配）
-  const getConnectorPrice = useCallback(
-    (c: Connector): MaterialPrice | undefined => {
-      const resId = c.resourceItemId || c.id;
-      const spec = JSON.stringify([c.model || '', c.series || '', c.pinCount, c.type]);
-      const tierKey = JSON.stringify(['connector', resId, spec, '元/个']);
-      return priceIndex.connMap.get(tierKey);
-    },
-    [priceIndex.connMap],
-  );
-
-  // 获取线缆全部长度价格档位（严格精确匹配）
-  const getWirePrices = useCallback(
-    (w: CatalogWire): MaterialPrice[] => {
-      const resId = w.resourceItemId || w.id;
-      const s = applyCatalogWireSpec(BASE_WIRE_SPEC, w.spec);
-      const specification =
-        s.kind === 'jacketed'
-          ? [
-              s.kind,
-              s.awg ?? null,
-              s.coreCount,
-              s.shielded,
-              s.jacketMaterial,
-              s.jacketColor,
-              s.odMm,
-              s.ulNumber || '',
-              s.coreColors,
-              ...(s.conductorAreaMm2 === undefined ? [] : [s.conductorAreaMm2]),
-            ]
-          : [s.kind, s.awg, s.color, s.ulNumber];
-      const tierKey = JSON.stringify(['wire', resId, JSON.stringify(specification), '元/条']);
-      return priceIndex.wireTiersMap.get(tierKey) ?? [];
-    },
-    [priceIndex.wireTiersMap],
-  );
-
-  // 连接器筛选选项
-  const connSupplierNos = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          connectors.map((c) => c.supplierNo || '未配置供应商'),
-        ),
-      )
-        .filter(Boolean)
-        .sort(),
-    [connectors],
-  );
-  const connAllSeries = useMemo(
-    () => Array.from(new Set(connectors.map((c) => c.series).filter(Boolean))).sort() as string[],
-    [connectors],
-  );
-  const connPinCounts = useMemo(
-    () => Array.from(new Set(connectors.map((c) => c.pinCount))).sort((a, b) => a - b),
-    [connectors],
-  );
-
-  // 过滤后的连接器
-  const filteredConnectors = useMemo(() => {
-    const q = connQuery.trim().toLowerCase();
-    return connectors.filter((c) => {
-      const supplierDisplay = c.supplierNo || '未配置供应商';
-      const matchQ =
-        !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q) ||
-        c.model?.toLowerCase().includes(q) ||
-        c.series?.toLowerCase().includes(q) ||
-        (c.supplierNo ? c.supplierNo.toLowerCase().includes(q) : false);
-
-      const matchM = connSupplierNo === 'all' || supplierDisplay === connSupplierNo;
-      const matchS = connSeries === 'all' || c.series === connSeries;
-      const matchSh =
-        connShielded === 'all' ||
-        (connShielded === 'shielded' && c.shielded === true) ||
-        (connShielded === 'unshielded' && c.shielded === false);
-      const matchT = connType === 'all' || c.type === connType;
-      const matchP = connPinCount === 'all' || c.pinCount === Number(connPinCount);
-
-      const hasPrice = Boolean(getConnectorPrice(c));
-      const matchPr =
-        connPriceStatus === 'all' ||
-        (connPriceStatus === 'priced' && hasPrice) ||
-        (connPriceStatus === 'unpriced' && !hasPrice);
-
-      return matchQ && matchM && matchS && matchSh && matchT && matchP && matchPr;
-    });
-  }, [
-    connectors,
-    connQuery,
-    connSupplierNo,
-    connSeries,
-    connShielded,
-    connType,
-    connPinCount,
-    connPriceStatus,
-    getConnectorPrice,
-  ]);
-
-  const totalConnPages = Math.max(1, Math.ceil(filteredConnectors.length / connPageSize));
-  const safeConnPage = Math.min(Math.max(1, connPage), totalConnPages);
-  if (connPage > totalConnPages) {
-    setConnPage(totalConnPages);
-  }
-
-  const paginatedConnectors = useMemo(() => {
-    const start = (safeConnPage - 1) * connPageSize;
-    return filteredConnectors.slice(start, start + connPageSize);
-  }, [filteredConnectors, safeConnPage, connPageSize]);
-
-  // 线缆筛选选项
-  const wireAwgs = useMemo(() => {
-    const set = new Set<number>();
-    for (const w of wires) {
-      if (w.spec.awg != null) set.add(w.spec.awg);
-    }
-    return Array.from(set).sort((a, b) => a - b);
-  }, [wires]);
-
-  // 过滤后的线缆
-  const filteredWires = useMemo(() => {
-    const q = wireQuery.trim().toLowerCase();
-    return wires.filter((w) => {
-      const matchQ =
-        !q ||
-        w.name.toLowerCase().includes(q) ||
-        w.id.toLowerCase().includes(q) ||
-        w.model?.toLowerCase().includes(q) ||
-        (w.supplierNo ? w.supplierNo.toLowerCase().includes(q) : false) ||
-        (w.spec.ulNumber ? String(w.spec.ulNumber).toLowerCase().includes(q) : false) ||
-        (w.spec.awg != null &&
-          (String(w.spec.awg).includes(q) ||
-            `${w.spec.awg}awg`.includes(q) ||
-            `${w.spec.awg} awg`.includes(q)));
-
-      const matchK =
-        wireKind === 'all' ||
-        (wireKind === 'electronic' && w.spec.kind === 'electronic') ||
-        (wireKind === 'jacketed' && w.spec.kind === 'jacketed');
-
-      const matchA = wireAwg === 'all' || w.spec.awg === Number(wireAwg);
-
-      const isShielded = w.spec.kind === 'jacketed' && Boolean(w.spec.shielded);
-      const matchSh =
-        wireShielded === 'all' ||
-        (wireShielded === 'shielded' && isShielded) ||
-        (wireShielded === 'unshielded' && !isShielded);
-
-      const hasPrice = getWirePrices(w).length > 0;
-      const matchPr =
-        wirePriceStatus === 'all' ||
-        (wirePriceStatus === 'priced' && hasPrice) ||
-        (wirePriceStatus === 'unpriced' && !hasPrice);
-
-      return matchQ && matchK && matchA && matchSh && matchPr;
-    });
-  }, [wires, wireQuery, wireKind, wireAwg, wireShielded, wirePriceStatus, getWirePrices]);
-
-  const totalWirePages = Math.max(1, Math.ceil(filteredWires.length / wirePageSize));
-  const safeWirePage = Math.min(Math.max(1, wirePage), totalWirePages);
-  if (wirePage > totalWirePages) {
-    setWirePage(totalWirePages);
-  }
-
-  const paginatedWires = useMemo(() => {
-    const start = (safeWirePage - 1) * wirePageSize;
-    return filteredWires.slice(start, start + wirePageSize);
-  }, [filteredWires, safeWirePage, wirePageSize]);
+  const priceIndex = useMemo(() => buildMaterialPriceIndex(prices), [prices]);
 
   const moldRows = useMemo(() => priceCandidates
     .filter(candidate => candidate.kind === 'outer-mold' || candidate.kind === 'inner-mold')
@@ -498,77 +235,6 @@ export function MaterialLibraryPage({
       const parent = overmolds.find(mold => (mold.resourceItemId || mold.id) === candidate.resourceId);
       return parent ? [{ candidate, parent }] : [];
     }), [priceCandidates, overmolds]);
-  const filteredOvermolds = useMemo(() => {
-    const q = accQuery.trim().toLowerCase();
-    return moldRows.filter(({ candidate, parent }) => !q ||
-      [candidate.name, parent.name, parent.id, candidate.specification,
-        candidate.kind === 'inner-mold' ? '内模' : '外模'].some(value => value.toLowerCase().includes(q)));
-  }, [moldRows, accQuery]);
-
-  const totalAccPages = Math.max(1, Math.ceil(filteredOvermolds.length / accPageSize));
-  const safeAccPage = Math.min(Math.max(1, accPage), totalAccPages);
-  if (accPage > totalAccPages) {
-    setAccPage(totalAccPages);
-  }
-
-  const paginatedOvermolds = useMemo(() => {
-    const start = (safeAccPage - 1) * accPageSize;
-    return filteredOvermolds.slice(start, start + accPageSize);
-  }, [filteredOvermolds, safeAccPage, accPageSize]);
-
-  // 现有成品线束供应商选项
-  const finishedSupplierNos = useMemo(() => {
-    return Array.from(
-      new Set(
-        finishedHarnesses
-          .map((h) => h.supplier?.supplier_no || h.supplierNo)
-          .filter(Boolean),
-      ),
-    ).sort() as string[];
-  }, [finishedHarnesses]);
-
-  // 过滤后的成品线束物料
-  const filteredFinishedHarnesses = useMemo(() => {
-    const q = finishedQuery.trim().toLowerCase();
-    return finishedHarnesses.filter((h) => {
-      const displayName = h.sonName || '未命名';
-      const supplierDisplay = h.supplier?.supplier_no || h.supplierNo || '';
-      const matchQ =
-        !q ||
-        h.platformNo.toLowerCase().includes(q) ||
-        displayName.toLowerCase().includes(q) ||
-        supplierDisplay.toLowerCase().includes(q);
-
-      const matchS = finishedSupplierNo === 'all' || supplierDisplay === finishedSupplierNo;
-
-      const hasDrawing = Boolean(h.file2d);
-      const matchD =
-        finishedDrawingStatus === 'all' ||
-        (finishedDrawingStatus === 'has' && hasDrawing) ||
-        (finishedDrawingStatus === 'none' && !hasDrawing);
-
-      const matchC =
-        finishedCostStatus === 'all' ||
-        (finishedCostStatus === 'has' && h.hasCostAnalysis) ||
-        (finishedCostStatus === 'none' && !h.hasCostAnalysis);
-
-      return matchQ && matchS && matchD && matchC;
-    });
-  }, [finishedHarnesses, finishedQuery, finishedSupplierNo, finishedDrawingStatus, finishedCostStatus]);
-
-  const totalFinishedPages = Math.max(
-    1,
-    Math.ceil(filteredFinishedHarnesses.length / finishedPageSize),
-  );
-  const safeFinishedPage = Math.min(Math.max(1, finishedPage), totalFinishedPages);
-  if (finishedPage > totalFinishedPages) {
-    setFinishedPage(totalFinishedPages);
-  }
-
-  const paginatedFinishedHarnesses = useMemo(() => {
-    const start = (safeFinishedPage - 1) * finishedPageSize;
-    return filteredFinishedHarnesses.slice(start, start + finishedPageSize);
-  }, [filteredFinishedHarnesses, safeFinishedPage, finishedPageSize]);
 
   // 导入任务切换（取消、换文件、成功）时同步撤销旧的导入失败通知，避免重试提交已废弃的价格数据
   const clearImportFailureNotice = () => {
@@ -707,56 +373,55 @@ export function MaterialLibraryPage({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-slate-100 p-3 sm:p-4 gap-2.5 sm:gap-3">
       <PageHeaderActions>
-              {isRefreshing && (
-                <span
-                  data-testid="material-syncing-badge"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 animate-pulse"
-                >
-                  <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
-                  <span>正在同步最新物料与价格...</span>
-                </span>
-              )}
-              {!isRefreshing && syncStatus === 'synced' && (
-                <span
-                  data-testid="material-synced-badge"
-                  className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700"
-                >
-                  <Check className="h-3 w-3 text-emerald-600" />
-                  <span>数据已同步</span>
-                </span>
-              )}
-            <button
-              type="button"
-              data-testid="material-refresh-btn"
-              disabled={isRefreshing || loading || readingFile}
-              onClick={() => void handleRefreshAll()}
-              className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-50"
-              title="刷新物料、价格与成品线束数据"
-            >
-              <RefreshCw
-                className={`h-3.5 w-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`}
-              />
-              <span>{isRefreshing ? '同步中...' : '刷新'}</span>
-            </button>
-            <button
-              type="button"
-              disabled={loading || readingFile}
-              onClick={handleExportPrices}
-              className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-50"
-              title="导出包含全量物料及已有价格的 Excel 模板"
-            >
-              <Download className="h-3.5 w-3.5 text-slate-500" />
-              导出价格表
-            </button>
-            <button type="button" disabled={readingFile || loading} onClick={() => fileInputRef.current?.click()} className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-blue-600 px-3 text-xs font-medium text-white shadow-xs transition hover:bg-blue-700 disabled:opacity-50">
-              <Upload className="h-3.5 w-3.5" />
-              <span>{readingFile ? '正在解析...' : '导入价格表'}</span>
-            </button>
+        {isRefreshing && (
+          <span
+            data-testid="material-syncing-badge"
+            className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 animate-pulse"
+          >
+            <RefreshCw className="h-3 w-3 animate-spin text-blue-600" />
+            <span>正在同步最新物料与价格...</span>
+          </span>
+        )}
+        {!isRefreshing && syncStatus === 'synced' && (
+          <span
+            data-testid="material-synced-badge"
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700"
+          >
+            <Check className="h-3 w-3 text-emerald-600" />
+            <span>数据已同步</span>
+          </span>
+        )}
+        <button
+          type="button"
+          data-testid="material-refresh-btn"
+          disabled={isRefreshing || loading || readingFile}
+          onClick={() => void handleRefreshAll()}
+          className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-50"
+          title="刷新物料、价格与成品线束数据"
+        >
+          <RefreshCw
+            className={`h-3.5 w-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`}
+          />
+          <span>{isRefreshing ? '同步中...' : '刷新'}</span>
+        </button>
+        <button
+          type="button"
+          disabled={loading || readingFile}
+          onClick={handleExportPrices}
+          className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-50"
+          title="导出包含全量物料及已有价格的 Excel 模板"
+        >
+          <Download className="h-3.5 w-3.5 text-slate-500" />
+          导出价格表
+        </button>
+        <button type="button" disabled={readingFile || loading} onClick={() => fileInputRef.current?.click()} className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-blue-600 px-3 text-xs font-medium text-white shadow-xs transition hover:bg-blue-700 disabled:opacity-50">
+          <Upload className="h-3.5 w-3.5" />
+          <span>{readingFile ? '正在解析...' : '导入价格表'}</span>
+        </button>
       </PageHeaderActions>
       <input ref={fileInputRef} type="file" accept=".xlsx" hidden disabled={readingFile || loading} onChange={handleSelectFile} />
       <PricingManagement />
       <section className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 shadow-xs">
-
         {/* 价格数据加载失败时保持可见，避免用户误以为价格是最新的 */}
         {error && (
           <div
@@ -875,907 +540,54 @@ export function MaterialLibraryPage({
         </div>
       </section>
 
-        {/* Tab 1: 连接器 */}
-        {activeTab === 'connectors' && (
-          <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
-            <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="relative block min-w-[200px] flex-[2_1_220px]">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={connQuery}
-                    onChange={(e) => {
-                      setConnQuery(e.target.value);
-                      setConnPage(1);
-                    }}
-                    placeholder="搜索连接器名称、型号、供应商、ID"
-                    className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
+      {activeTab === 'connectors' && (
+        <ConnectorsTab
+          connectors={connectors}
+          priceIndex={priceIndex}
+          catalogStatus={catalogStatus}
+          isRefreshing={isRefreshing}
+          initialPage={initialConnPage}
+          initialPriceStatus={initialConnPriceStatus}
+          renderEditPriceButton={editPriceButton}
+        />
+      )}
 
-                <select
-                  value={connSupplierNo}
-                  onChange={(e) => {
-                    setConnSupplierNo(e.target.value);
-                    setConnPage(1);
-                  }}
-                  className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部供应商</option>
-                  {connSupplierNos.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+      {activeTab === 'wires' && (
+        <WiresTab
+          wires={wires}
+          priceIndex={priceIndex}
+          catalogStatus={catalogStatus}
+          isRefreshing={isRefreshing}
+          initialPage={initialWirePage}
+          initialPriceStatus={initialWirePriceStatus}
+          renderEditPriceButton={editPriceButton}
+        />
+      )}
 
-                <select
-                  value={connSeries}
-                  onChange={(e) => {
-                    setConnSeries(e.target.value);
-                    setConnPage(1);
-                  }}
-                  className="h-8.5 min-w-[96px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部系列</option>
-                  {connAllSeries.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+      {activeTab === 'accessories' && (
+        <MoldsTab
+          overmolds={overmolds}
+          moldRows={moldRows}
+          priceIndex={priceIndex}
+          catalogStatus={catalogStatus}
+          isRefreshing={isRefreshing}
+          initialPage={initialAccPage}
+          renderEditPriceButton={editPriceButton}
+        />
+      )}
 
-                <select
-                  value={connShielded}
-                  onChange={(e) => {
-                    setConnShielded(e.target.value);
-                    setConnPage(1);
-                  }}
-                  className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部屏蔽状态</option>
-                  <option value="shielded">已屏蔽</option>
-                  <option value="unshielded">未屏蔽</option>
-                </select>
-
-                <select
-                  value={connType}
-                  onChange={(e) => {
-                    setConnType(e.target.value);
-                    setConnPage(1);
-                  }}
-                  className="h-8.5 min-w-[92px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部类型</option>
-                  <option value="male">公头 (male)</option>
-                  <option value="female">母头 (female)</option>
-                  <option value="receptacle">插座 (receptacle)</option>
-                </select>
-
-                <select
-                  value={connPinCount}
-                  onChange={(e) => {
-                    setConnPinCount(e.target.value);
-                    setConnPage(1);
-                  }}
-                  className="h-8.5 min-w-[96px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部 PIN 数</option>
-                  {connPinCounts.map((pin) => (
-                    <option key={pin} value={pin}>
-                      {pin}P
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={connPriceStatus}
-                  onChange={(e) => {
-                    setConnPriceStatus(e.target.value as 'all' | 'priced' | 'unpriced');
-                    setConnPage(1);
-                  }}
-                  className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部价格状态</option>
-                  <option value="priced">已定价</option>
-                  <option value="unpriced">待定价</option>
-                </select>
-
-                {(connQuery || connSupplierNo !== 'all' || connSeries !== 'all' || connShielded !== 'all' || connType !== 'all' || connPinCount !== 'all' || connPriceStatus !== 'all') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setConnQuery('');
-                      setConnSupplierNo('all');
-                      setConnSeries('all');
-                      setConnShielded('all');
-                      setConnType('all');
-                      setConnPinCount('all');
-                      setConnPriceStatus('all');
-                      setConnPage(1);
-                    }}
-                    className="h-8.5 shrink-0 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                  >
-                    重置筛选
-                  </button>
-                )}
-              </div>
-            </section>
-
-            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
-              {isRefreshing && (
-                <div
-                  data-testid="conn-syncing-progress"
-                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
-                >
-                  <div className="h-full w-full bg-blue-600 animate-pulse" />
-                </div>
-              )}
-              <div ref={connTableRef} className="flex-1 min-h-0 overflow-auto">
-                <table className="min-w-[1020px] w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
-                    <tr>
-                      <th className="min-w-[190px] px-4 py-2.5 font-semibold">连接器与型号</th>
-                      <th className="w-[125px] min-w-[105px] px-4 py-2.5 font-semibold">供应商与系列</th>
-                      <th className="w-[105px] min-w-[95px] px-4 py-2.5 font-semibold">类型 / 屏蔽</th>
-                      <th className="w-[95px] min-w-[85px] px-4 py-2.5 font-semibold">PIN / 间距</th>
-                      <th className="min-w-[170px] px-4 py-2.5 font-semibold">电气与防护规格</th>
-                      <th className="w-[120px] min-w-[110px] px-4 py-2.5 font-semibold text-right">含税单价</th>
-                      <th className="w-[80px] min-w-[80px] px-4 py-2.5 font-semibold text-center">计价单位</th>
-                      <th className="min-w-[160px] px-4 py-2.5 font-semibold">价格更新时间</th>
-                      <th className="min-w-[105px] px-4 py-2.5 font-semibold">价格更新人</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedConnectors.map((c) => {
-                      const price = getConnectorPrice(c);
-                      const protectionTags = [
-                        c.ingressProtection,
-                        c.flammabilityRating,
-                        c.temperatureRangeC
-                          ? `${c.temperatureRangeC.min ?? ''}~${c.temperatureRangeC.max ?? ''}℃`
-                          : '',
-                      ].filter(Boolean);
-                      return (
-                        <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-2.5">
-                            <p className="font-semibold text-slate-900">{c.name}</p>
-                            <p className="mt-0.5 font-mono text-[11px] text-blue-600">
-                              {c.model || c.id}
-                            </p>
-                          </td>
-                          <td className="px-4 py-2.5 text-slate-600">
-                            <p className="text-slate-800 font-medium">
-                              {c.supplierNo || '未配置供应商'}
-                            </p>
-                            {c.series && <p className="text-[11px] text-slate-400">{c.series}</p>}
-                          </td>
-                          <td className="px-4 py-2.5 text-slate-600">
-                            <p>
-                              {c.type === 'male'
-                                ? '公头'
-                                : c.type === 'female'
-                                  ? '母头'
-                                  : c.type === 'receptacle'
-                                    ? '插座'
-                                    : c.type}
-                            </p>
-                            <p className="text-[11px] text-slate-400">
-                              {c.shielded !== undefined ? (c.shielded ? '已屏蔽' : '未屏蔽') : '-'}
-                            </p>
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                              {c.pinCount}P
-                            </span>
-                            {c.pitch ? (
-                              <p className="mt-1 text-[11px] text-slate-500">{c.pitch}mm</p>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-2.5 text-slate-600">
-                            {(c.ratedVoltageV || c.ratedCurrentA) && (
-                              <p className="font-medium text-slate-700">
-                                {c.ratedVoltageV ? `${c.ratedVoltageV}V` : ''}
-                                {c.ratedVoltageV && c.ratedCurrentA ? ' · ' : ''}
-                                {c.ratedCurrentA ? `${c.ratedCurrentA}A` : ''}
-                              </p>
-                            )}
-                            {protectionTags.length > 0 ? (
-                              <div className="mt-1 flex flex-wrap items-center gap-1">
-                                {protectionTags.map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className="whitespace-nowrap rounded bg-slate-100/90 px-1.5 py-0.5 text-[10px] text-slate-500"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              !c.ratedVoltageV && !c.ratedCurrentA && <span className="text-slate-400">-</span>
-                            )}
-                          </td>
-                          <td className="w-[120px] min-w-[110px] px-4 py-2.5 text-right">
-                            {price ? (
-                              <span className="inline-block whitespace-nowrap rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-0.5 text-xs font-bold tabular-nums text-emerald-700 shadow-2xs">
-                                ¥ {formatMaterialPrice(price.taxIncludedPrice)}
-                              </span>
-                            ) : (
-                              <span className="inline-block px-2 py-0.5 text-xs text-slate-400">待定价</span>
-                            )}
-                            {editPriceButton(c.resourceItemId || c.id, 'connector')}
-                          </td>
-                          <td className="w-[80px] min-w-[80px] px-4 py-2.5 text-center text-slate-500 whitespace-nowrap">
-                            {price?.unit ?? '元/个'}
-                          </td>
-                          <td className="px-4 py-2.5 whitespace-nowrap"><PriceUpdateInfo price={price} field="time" /></td>
-                          <td className="px-4 py-2.5"><PriceUpdateInfo price={price} field="user" /></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {catalogStatus === 'loading' && connectors.length === 0 && (
-                  <div className="py-14 text-center text-sm text-slate-500">
-                    正在加载连接器物料...
-                  </div>
-                )}
-
-                {filteredConnectors.length === 0 && (catalogStatus !== 'loading' || connectors.length > 0) && (
-                  <div className="py-14 text-center text-sm text-slate-500">
-                    未找到匹配的连接器。
-                  </div>
-                )}
-              </div>
-
-              <MaterialPagination
-                currentPage={safeConnPage}
-                pageSize={connPageSize}
-                totalCount={filteredConnectors.length}
-                onPageChange={setConnPage}
-                onPageSizeChange={(size) => {
-                  setConnPageSize(size);
-                  setConnPage(1);
-                }}
-                scrollContainerRef={connTableRef}
-              />
-            </section>
-          </div>
-        )}
-
-        {/* Tab 2: 线材 */}
-        {activeTab === 'wires' && (
-          <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
-            <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="relative block min-w-[200px] flex-[2_1_220px]">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={wireQuery}
-                    onChange={(e) => {
-                      setWireQuery(e.target.value);
-                      setWirePage(1);
-                    }}
-                    placeholder="搜索线缆名称、型号、UL标号、AWG"
-                    className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
-
-                <select
-                  value={wireKind}
-                  onChange={(e) => {
-                    setWireKind(e.target.value);
-                    setWirePage(1);
-                  }}
-                  className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部线种类型</option>
-                  <option value="electronic">电子线 (单芯)</option>
-                  <option value="jacketed">护套线 (多芯/屏蔽)</option>
-                </select>
-
-                <select
-                  value={wireAwg}
-                  onChange={(e) => {
-                    setWireAwg(e.target.value);
-                    setWirePage(1);
-                  }}
-                  className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部 AWG 规格</option>
-                  {wireAwgs.map((awg) => (
-                    <option key={awg} value={awg}>
-                      {awg} AWG
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={wireShielded}
-                  onChange={(e) => {
-                    setWireShielded(e.target.value);
-                    setWirePage(1);
-                  }}
-                  className="h-8.5 min-w-[108px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部屏蔽状态</option>
-                  <option value="shielded">已屏蔽</option>
-                  <option value="unshielded">非屏蔽</option>
-                </select>
-
-                <select
-                  value={wirePriceStatus}
-                  onChange={(e) => {
-                    setWirePriceStatus(e.target.value as 'all' | 'priced' | 'unpriced');
-                    setWirePage(1);
-                  }}
-                  className="h-8.5 min-w-[108px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部价格状态</option>
-                  <option value="priced">已定价</option>
-                  <option value="unpriced">待定价</option>
-                </select>
-
-                {(wireQuery || wireKind !== 'all' || wireAwg !== 'all' || wireShielded !== 'all' || wirePriceStatus !== 'all') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWireQuery('');
-                      setWireKind('all');
-                      setWireAwg('all');
-                      setWireShielded('all');
-                      setWirePriceStatus('all');
-                      setWirePage(1);
-                    }}
-                    className="h-8.5 shrink-0 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                  >
-                    重置筛选
-                  </button>
-                )}
-              </div>
-            </section>
-
-            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
-              {isRefreshing && (
-                <div
-                  data-testid="wire-syncing-progress"
-                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
-                >
-                  <div className="h-full w-full bg-blue-600 animate-pulse" />
-                </div>
-              )}
-              <div ref={wireTableRef} className="flex-1 min-h-0 overflow-auto">
-                <table className="min-w-[1060px] w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
-                    <tr>
-                      <th className="min-w-[180px] px-4 py-3 font-semibold">线缆名称与型号</th>
-                      <th className="w-[100px] min-w-[90px] px-4 py-3 font-semibold">线种 / UL标号</th>
-                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">线规 / 导体</th>
-                      <th className="w-[90px] min-w-[80px] px-4 py-3 font-semibold">芯数 / 屏蔽</th>
-                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">绝缘与外径 OD</th>
-                      <th className="w-[110px] min-w-[100px] px-4 py-3 font-semibold">耐温与电气</th>
-                      <th className="w-[240px] min-w-[230px] px-3.5 py-3 font-semibold text-right">参考单价与档位</th>
-                      <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedWires.map((w) => {
-                      const wireTiers = getWirePrices(w);
-                      const s = w.spec;
-                      return (
-                        <tr key={w.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-slate-900">{w.name}</p>
-                            <p className="mt-0.5 font-mono text-[11px] text-blue-600">
-                              {w.model || w.id}
-                            </p>
-                            {w.supplierNo && (
-                              <p className="text-[11px] text-slate-400">
-                                {w.supplierNo}
-                              </p>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <p className="font-medium text-slate-800">
-                              {s.kind === 'electronic' ? '电子线' : '护套线'}
-                            </p>
-                            <p className="text-[11px] text-slate-400">
-                              {s.ulNumber ? `UL${s.ulNumber}` : '-'}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                              {s.awg != null ? `${s.awg} AWG` : '-'}
-                            </span>
-                            {s.kind === 'jacketed' && s.conductorAreaMm2 && (
-                              <span className="ml-1 text-[11px] text-slate-500">
-                                {s.conductorAreaMm2} mm²
-                              </span>
-                            )}
-                            {s.conductorMaterial && (
-                              <p className="mt-1 text-[11px] text-slate-400">{s.conductorMaterial}</p>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <p className="font-medium">
-                              {s.kind === 'jacketed' ? `${s.coreCount} 芯` : '单芯'}
-                            </p>
-                            <p className="text-[11px] text-slate-400">
-                              {s.kind === 'jacketed' ? (s.shielded ? '屏蔽' : '非屏蔽') : '无屏蔽'}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <p className="font-medium">
-                              {s.outerDiameterMm != null
-                                ? `OD ${s.outerDiameterMm}mm`
-                                : s.insulationDiameterMm != null
-                                   ? `OD ${s.insulationDiameterMm}mm`
-                                   : '-'}
-                            </p>
-                            <p className="text-[11px] text-slate-400">
-                              {s.kind === 'jacketed'
-                                ? s.jacketMaterial || '-'
-                                : s.insulationMaterial || '-'}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <p>
-                              {s.ratedVoltageV ? `${s.ratedVoltageV}V` : ''}
-                              {s.temperatureRangeC
-                                ? ` · ${s.temperatureRangeC.min ?? ''}~${s.temperatureRangeC.max ?? ''}℃`
-                                : ''}
-                            </p>
-                            <p className="text-[11px] text-slate-400">
-                              {s.flameTest || s.ingressProtection || '-'}
-                            </p>
-                          </td>
-                          <td className="w-[240px] min-w-[230px] px-3.5 py-3 text-right">
-                            {wireTiers.length > 0 ? (
-                              <div className="flex flex-col items-end">
-                                {wireTiers.length === 1 ? (
-                                  <div
-                                    className="inline-flex flex-wrap items-center gap-1.5 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2.5 py-1 text-xs whitespace-nowrap shadow-2xs"
-                                    title={`线长档位 ≤ ${formatWireTierLength(wireTiers[0].lengthMm)} (${wireTiers[0].lengthMm}mm): 含税单价 ¥${formatMaterialPrice(wireTiers[0].taxIncludedPrice)} / 条`}
-                                  >
-                                    <span className="font-mono text-xs font-semibold text-emerald-700">
-                                      {formatWireTierLength(wireTiers[0].lengthMm)}:
-                                    </span>
-                                    <span className="tabular-nums font-bold text-emerald-800">
-                                      ¥ {formatMaterialPrice(wireTiers[0].taxIncludedPrice)}
-                                    </span>
-                                    <div className="w-full"><PriceUpdateInfo price={wireTiers[0]} /></div>
-                                  </div>
-                                ) : (
-                                  <div className="grid grid-cols-1 gap-1.5 w-full min-w-[230px]">
-                                    {wireTiers.map((tier) => {
-                                      const lenStr = formatWireTierLength(tier.lengthMm);
-                                      return (
-                                        <div
-                                          key={tier.lengthMm}
-                                          className="flex flex-wrap items-center justify-between gap-1 rounded-md border border-emerald-200/90 bg-emerald-50/90 px-2 py-1 text-xs whitespace-nowrap shadow-2xs"
-                                          title={`线长档位 ≤ ${lenStr} (${tier.lengthMm}mm): 含税单价 ¥${formatMaterialPrice(tier.taxIncludedPrice)} / 条`}
-                                        >
-                                          <span className="font-mono text-xs font-semibold text-emerald-700">
-                                            {lenStr}:
-                                          </span>
-                                          <span className="tabular-nums font-bold text-emerald-800">
-                                            ¥ {formatMaterialPrice(tier.taxIncludedPrice)}
-                                          </span>
-                                    <div className="w-full"><PriceUpdateInfo price={tier} /></div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="inline-block px-2 py-1 text-xs text-slate-400">
-                                待定价
-                              </span>
-                            )}
-                            {editPriceButton(w.resourceItemId || w.id, 'wire')}
-                          </td>
-                          <td className="w-[80px] min-w-[80px] px-4 py-3 text-center text-slate-500 whitespace-nowrap">
-                            元/条
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {catalogStatus === 'loading' && wires.length === 0 && (
-                  <div className="py-14 text-center text-sm text-slate-500">
-                    正在加载线缆物料...
-                  </div>
-                )}
-
-                {filteredWires.length === 0 && (catalogStatus !== 'loading' || wires.length > 0) && (
-                  <div className="py-14 text-center text-sm text-slate-500">
-                    未找到匹配的线缆规格。
-                  </div>
-                )}
-              </div>
-
-              <MaterialPagination
-                currentPage={safeWirePage}
-                pageSize={wirePageSize}
-                totalCount={filteredWires.length}
-                onPageChange={setWirePage}
-                onPageSizeChange={(size) => {
-                  setWirePageSize(size);
-                  setWirePage(1);
-                }}
-                scrollContainerRef={wireTableRef}
-              />
-            </section>
-          </div>
-        )}
-
-        {/* Tab 3: 模具 */}
-        {activeTab === 'accessories' && (
-          <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
-            <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
-              <label className="relative block max-w-md">
-                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="search"
-                  value={accQuery}
-                  onChange={(e) => {
-                    setAccQuery(e.target.value);
-                    setAccPage(1);
-                  }}
-                  placeholder="搜索模具名称、代号、材质"
-                  className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-            </section>
-
-            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
-              {isRefreshing && (
-                <div
-                  data-testid="acc-syncing-progress"
-                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
-                >
-                  <div className="h-full w-full bg-blue-600 animate-pulse" />
-                </div>
-              )}
-              <div ref={accTableRef} className="flex-1 min-h-0 overflow-auto">
-                <table className="min-w-[1150px] w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
-                    <tr>
-                      <th className="min-w-[180px] px-4 py-3 font-semibold">物料名称与代号</th>
-                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">类型</th>
-                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">规格与工程特征</th>
-                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold">材质与硬度</th>
-                      <th className="w-[120px] min-w-[110px] px-4 py-3 font-semibold text-right">含税单价</th>
-                      <th className="w-[80px] min-w-[80px] px-4 py-3 font-semibold text-center">计价单位</th>
-                      <th className="min-w-[170px] px-4 py-3 font-semibold">价格更新时间</th>
-                      <th className="min-w-[110px] px-4 py-3 font-semibold">价格更新人</th>
-                      <th className="min-w-[90px] px-4 py-3 font-semibold">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedOvermolds.map(({ candidate, parent }) => {
-                      const price = priceIndex.moldMap.get(materialPriceTierKey(candidate));
-                      const inner = candidate.kind === 'inner-mold';
-                      return (
-                        <tr key={materialPriceTierKey(candidate)} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3">
-                            <p className="font-semibold text-slate-900">{candidate.name}</p>
-                            <p className="mt-0.5 font-mono text-[11px] text-blue-600">{parent.id}</p>
-                            {inner && <p className="mt-1 text-[11px] text-slate-500">所属外模：{parent.name}</p>}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">{inner ? '内模' : '外模'}</td>
-                          <td className="px-4 py-3 text-slate-600">{parent.outerForm === 'bent' ? '90°弯头成型' : '直头成型'}</td>
-                          <td className="px-4 py-3 text-slate-600">
-                            <p>{inner ? parent.innerMaterial : parent.outerMaterial}</p>
-                            {!inner && parent.outerHardness && <p className="text-[11px] text-slate-400">硬度：{parent.outerHardness}</p>}
-                          </td>
-                          <td className="px-4 py-3 text-right whitespace-nowrap">
-                            {price ? <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-bold text-emerald-700">¥ {formatMaterialPrice(price.taxIncludedPrice)}</span>
-                              : <span className="text-slate-400">待定价</span>}
-                          </td>
-                          <td className="px-4 py-3 text-center whitespace-nowrap">元/个</td>
-                          <td className="px-4 py-3 whitespace-nowrap"><PriceUpdateInfo price={price} field="time" /></td>
-                          <td className="px-4 py-3"><PriceUpdateInfo price={price} field="user" /></td>
-                          <td className="px-4 py-3 whitespace-nowrap">{editPriceButton(candidate.resourceId, candidate.kind)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {catalogStatus === 'loading' && overmolds.length === 0 && (
-                  <div className="py-14 text-center text-sm text-slate-500">
-                    正在加载模具物料...
-                  </div>
-                )}
-
-                {filteredOvermolds.length === 0 &&
-                  (catalogStatus !== 'loading' || overmolds.length > 0) && (
-                    <div className="py-14 text-center text-sm text-slate-500">
-                      未找到匹配的模具。
-                    </div>
-                  )}
-              </div>
-
-              <MaterialPagination
-                currentPage={safeAccPage}
-                pageSize={accPageSize}
-                totalCount={filteredOvermolds.length}
-                onPageChange={setAccPage}
-                onPageSizeChange={(size) => {
-                  setAccPageSize(size);
-                  setAccPage(1);
-                }}
-                scrollContainerRef={accTableRef}
-              />
-            </section>
-          </div>
-        )}
-
-        {/* Tab 4: 现有成品线束方案 */}
-        {activeTab === 'finished-harnesses' && (
-          <div className="flex-1 min-h-0 flex flex-col gap-2.5 sm:gap-3">
-            <section className="shrink-0 rounded-lg border border-slate-200 bg-white p-2.5 sm:p-3 shadow-xs">
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="relative block min-w-[200px] flex-[2_1_220px]">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={finishedQuery}
-                    onChange={(e) => {
-                      setFinishedQuery(e.target.value);
-                      setFinishedPage(1);
-                    }}
-                    placeholder="搜索成品料号、物料名称"
-                    className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
-
-                <select
-                  value={finishedSupplierNo}
-                  onChange={(e) => {
-                    setFinishedSupplierNo(e.target.value);
-                    setFinishedPage(1);
-                  }}
-                  className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部供应商</option>
-                  {finishedSupplierNos.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={finishedDrawingStatus}
-                  onChange={(e) => {
-                    setFinishedDrawingStatus(e.target.value as 'all' | 'has' | 'none');
-                    setFinishedPage(1);
-                  }}
-                  className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部图纸状态</option>
-                  <option value="has">包含图纸</option>
-                  <option value="none">暂无图纸</option>
-                </select>
-
-                <select
-                  value={finishedCostStatus}
-                  onChange={(e) => {
-                    setFinishedCostStatus(e.target.value as 'all' | 'has' | 'none');
-                    setFinishedPage(1);
-                  }}
-                  className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
-                >
-                  <option value="all">全部成本状态</option>
-                  <option value="has">已核算成本</option>
-                  <option value="none">未核算成本</option>
-                </select>
-
-                {(finishedQuery || finishedSupplierNo !== 'all' || finishedDrawingStatus !== 'all' || finishedCostStatus !== 'all') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFinishedQuery('');
-                      setFinishedSupplierNo('all');
-                      setFinishedDrawingStatus('all');
-                      setFinishedCostStatus('all');
-                      setFinishedPage(1);
-                    }}
-                    className="h-8.5 shrink-0 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                  >
-                    重置筛选
-                  </button>
-                )}
-              </div>
-            </section>
-
-            {finishedError && (
-              <div className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 flex items-center justify-between">
-                <span>{finishedError}</span>
-                <button
-                  type="button"
-                  onClick={() => void loadFinishedHarnesses(true)}
-                  className="cursor-pointer rounded bg-red-600 px-2.5 py-1 text-white hover:bg-red-700"
-                >
-                  重试
-                </button>
-              </div>
-            )}
-
-            <section className="relative flex-1 min-h-0 flex flex-col rounded-lg border border-slate-200 bg-white shadow-xs overflow-hidden">
-              {isRefreshing && (
-                <div
-                  data-testid="finished-syncing-progress"
-                  className="absolute top-0 left-0 right-0 z-20 h-0.5 bg-blue-100 overflow-hidden"
-                >
-                  <div className="h-full w-full bg-blue-600 animate-pulse" />
-                </div>
-              )}
-              <div ref={finishedTableRef} className="flex-1 min-h-0 overflow-auto">
-                <table className="min-w-[900px] w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10 bg-slate-50 uppercase text-slate-500 shadow-2xs">
-                    <tr>
-                      <th className="w-[160px] min-w-[140px] px-4 py-3 font-semibold">料号</th>
-                      <th className="min-w-[240px] px-4 py-3 font-semibold">物料名称</th>
-                      <th className="w-[130px] min-w-[110px] px-4 py-3 font-semibold">供应商</th>
-                      <th className="w-[140px] min-w-[120px] px-4 py-3 font-semibold">图纸/附件</th>
-                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold text-center">成本分析</th>
-                      <th className="w-[120px] min-w-[100px] px-4 py-3 font-semibold" title="CRM 平台 son_price_low">最低售价</th>
-                      <th className="w-[150px] min-w-[130px] px-4 py-3 font-semibold">价格/报价</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedFinishedHarnesses.map((h) => {
-                      const supplierNo = h.supplier?.supplier_no || h.supplierNo;
-                      return (
-                        <tr key={h.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3 font-mono">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedFinishedHarness(h)}
-                              className="cursor-pointer font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-                              title="查看成品线束详情"
-                            >
-                              {h.platformNo}
-                            </button>
-                          </td>
-                          <td className="px-4 py-3">
-                            {h.sonName ? (
-                              <span className="font-medium text-slate-800">{h.sonName}</span>
-                            ) : (
-                              <span className="text-slate-400 italic">未命名</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-slate-600">
-                            {supplierNo || '暂无编号'}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              {h.file2d ? (
-                                <a
-                                  href={h.file2d}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[11px] text-blue-600 hover:bg-blue-100 transition"
-                                  title="在新窗口中打开2D图纸"
-                                >
-                                  <ExternalLink className="h-3 w-3" />
-                                  <span>打开图纸</span>
-                                </a>
-                              ) : null}
-                              {h.hasCostAnalysis ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setDirectPreviewExcel({
-                                      fileName: `${h.platformNo} 成本分析.xlsx`,
-                                      fileUrl: h.sourceExcelUrl || null,
-                                    })
-                                  }
-                                  className="inline-flex cursor-pointer items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition"
-                                  title="直接在线预览来源 Excel"
-                                >
-                                  <FileSpreadsheet className="h-3 w-3 text-emerald-600" />
-                                  <span>预览Excel</span>
-                                </button>
-                              ) : null}
-                              {!h.file2d && !h.hasCostAnalysis && (
-                                <span className="text-slate-400">暂无</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {h.hasCostAnalysis && h.totalCost != null ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedFinishedHarness(h)}
-                                className="inline-flex cursor-pointer items-center gap-1 rounded bg-emerald-50 px-2 py-0.5 font-mono text-xs font-semibold text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition"
-                                title="查看价格计算公式与明细"
-                              >
-                                ¥ {h.totalCost.toFixed(2)}
-                              </button>
-                            ) : (
-                              <span className="text-slate-400">未核算</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {h.sonPriceLow != null ? (
-                              <span className="font-mono text-slate-700">¥ {h.sonPriceLow.toFixed(2)}</span>
-                            ) : (
-                              <span className="text-slate-400">暂无</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {h.salesPrice != null || h.samplePrice != null || h.quotePrice != null ? (
-                              <div className="flex flex-col gap-0.5">
-                                {h.salesPrice != null && (
-                                <div className="flex items-center gap-1 font-mono">
-                                  <span className="text-[10px] text-slate-400">售价:</span>
-                                  <span className="font-semibold text-slate-900">
-                                    ¥ {h.salesPrice.toFixed(2)}
-                                  </span>
-                                </div>
-                                )}
-                                {h.samplePrice != null && (
-                                  <div className="flex items-center gap-1 font-mono text-[11px] text-amber-700">
-                                    <span className="text-[10px] text-slate-400">样品:</span>
-                                    <span>¥ {h.samplePrice.toFixed(2)}</span>
-                                  </div>
-                                )}
-                                {h.quotePrice != null && (
-                                  <div className="flex items-center gap-1 font-mono text-[11px] text-indigo-700">
-                                    <span className="text-[10px] text-slate-400">报价:</span>
-                                    <span className="font-medium">¥ {h.quotePrice.toFixed(2)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-400">暂无</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {finishedLoading && (
-                  <div className="py-14 text-center text-sm text-slate-500">
-                    正在加载成品线束物料...
-                  </div>
-                )}
-
-                {!finishedLoading && filteredFinishedHarnesses.length === 0 && (
-                  <div className="py-14 text-center text-sm text-slate-500">
-                    未找到匹配的成品线束方案。
-                  </div>
-                )}
-              </div>
-
-              {!finishedLoading && (
-                <MaterialPagination
-                  currentPage={safeFinishedPage}
-                  pageSize={finishedPageSize}
-                  totalCount={filteredFinishedHarnesses.length}
-                  onPageChange={setFinishedPage}
-                  onPageSizeChange={(size) => {
-                    setFinishedPageSize(size);
-                    setFinishedPage(1);
-                  }}
-                  scrollContainerRef={finishedTableRef}
-                />
-              )}
-            </section>
-          </div>
-        )}
+      {activeTab === 'finished-harnesses' && (
+        <FinishedHarnessesTab
+          finishedHarnesses={finishedHarnesses}
+          finishedLoading={finishedLoading}
+          finishedError={finishedError}
+          isRefreshing={isRefreshing}
+          initialPage={initialFinishedPage}
+          onReload={() => void loadFinishedHarnesses(true)}
+          onSelectHarness={setSelectedFinishedHarness}
+          onPreviewExcel={setDirectPreviewExcel}
+        />
+      )}
 
       {priceEditor && canEditPrices && <MaterialPriceEditDialog
         candidates={priceEditor.candidates} prices={priceEditor.prices} onClose={() => setPriceEditor(null)} />}

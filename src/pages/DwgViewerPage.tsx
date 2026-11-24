@@ -1,17 +1,24 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Box, ChevronDown, CloudUpload, Download, Eye, EyeOff, FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, RefreshCw, Sun, Upload, X } from 'lucide-react';
-import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FileUp, Layers, Loader2, Maximize2, Minus, Moon, Plus, Sun, Upload } from 'lucide-react';
 import { DwgEditPanel } from '@/components/dwg/DwgEditPanel';
-import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
+import { DwgHeaderActions, type DwgSaveStatus } from '@/components/dwg/DwgHeaderActions';
+import { DwgLayerPanel } from '@/components/dwg/DwgLayerPanel';
+import {
+  DwgEditConfirmation,
+  ToolbarDetails,
+  toolbarButtonClass,
+  type EditConfirmation,
+} from '@/components/dwg/DwgToolbarParts';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { buildDwgViewerRoutePath, getDwgFileFromSearch } from '@/lib/appRoute';
-import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
-import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
-import { parseDwg, previewDwgOperations, type DwgParsePhase, type TextMeasure } from '@/lib/dwg/parseDwg';
 import { hitDwgEditSources, updateDwgOperations, type DwgEditOperation } from '@/lib/dwg/dwgEdit';
 import { downloadDwgRevision, generateDwgRevision } from '@/lib/dwg/dwgEditClient';
+import { exportDwgPdf, exportDwgPng } from '@/lib/dwg/dwgExport';
+import type { DwgDrawing, DwgEditSource } from '@/lib/dwg/dwgTypes';
+import { fitView, panView, zoomLimitsFor, zoomViewAt, type DwgView } from '@/lib/dwg/dwgView';
+import { parseDwg, previewDwgOperations, type DwgParsePhase, type TextMeasure } from '@/lib/dwg/parseDwg';
 import { DEFAULT_FONT_FAMILY, renderDwgToCanvas } from '@/lib/dwg/renderDwg';
 import { TEXT_SIZE_RATIO, textWidthOf } from '@/lib/dwg/textMetrics';
-import type { DwgDrawing, DwgEditSource } from '@/lib/dwg/dwgTypes';
 import { createDwgSaveSession, DWG_PAGE_SIZE, dwgRepository, dwgSha256, validateDwgFile, type DwgAsset } from '@/repositories/dwgRepository';
 import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
@@ -45,9 +52,6 @@ function measureDwgText(text: string, height: number): number {
 
 type LoadPhase = DwgParsePhase | 'idle' | 'loading' | 'rendering' | 'ready' | 'error';
 type BackgroundMode = keyof typeof BACKGROUNDS;
-type SaveStatus = 'local' | 'saving' | 'saved' | 'error';
-type EditConfirmation = 'generate' | 'discard';
-const saveText: Record<SaveStatus, string> = { local: '仅本地预览', saving: '保存中…', saved: '已保存', error: '保存失败，可重试' };
 
 interface ViewerState {
   phase: LoadPhase;
@@ -91,89 +95,6 @@ const INITIAL_STATE: ViewerState = {
   error: null,
 };
 
-const toolbarButtonClass =
-  'flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
-function ToolbarDetails({ label, tone, children }: { label: string; tone: string; children: ReactNode }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const details = detailsRef.current;
-    const panel = panelRef.current;
-    const toolbar = details?.closest<HTMLElement>('[data-page-header], [data-dwg-toolbar]');
-    if (!details || !panel || !toolbar) return;
-
-    const placePanel = () => {
-      if (!details.open || !details.getClientRects().length) return;
-      const trigger = details.getBoundingClientRect();
-      const boundary = toolbar.getBoundingClientRect();
-      const gutter = parseFloat(getComputedStyle(toolbar).paddingLeft);
-      const maxLeft = boundary.width - panel.getBoundingClientRect().width - gutter;
-      const left = Math.max(gutter, Math.min(trigger.left - boundary.left, maxLeft));
-      panel.style.setProperty('--dwg-detail-x', `${left}px`);
-      panel.style.setProperty('--dwg-detail-y', `${trigger.bottom - boundary.top}px`);
-    };
-
-    details.addEventListener('toggle', placePanel);
-    const observer = new ResizeObserver(placePanel);
-    observer.observe(toolbar);
-    observer.observe(details);
-    if (details.parentElement) observer.observe(details.parentElement);
-    return () => {
-      observer.disconnect();
-      details.removeEventListener('toggle', placePanel);
-    };
-  }, []);
-
-  return <details ref={detailsRef} name="dwg-header-details">
-    <summary className={`flex cursor-pointer list-none items-center gap-1 rounded px-2 py-0.5 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 [&::-webkit-details-marker]:hidden ${tone}`}>
-      {label} <ChevronDown className="h-3 w-3" />
-    </summary>
-    <div ref={panelRef} className="absolute left-[var(--dwg-detail-x)] top-[var(--dwg-detail-y)] z-50 mt-1 w-80 max-w-[calc(100%-2rem)] rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-lg">
-      {children}
-    </div>
-  </details>;
-}
-
-function ToolbarError({ id, message }: { id: string; message: string | null }) {
-  return message && <span id={id} role="alert" className="min-w-0 max-w-44 break-words rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-700">{message}</span>;
-}
-
-function DwgEditConfirmation({ action, onCancel, onConfirm }: {
-  action: EditConfirmation;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
-  const descriptionId = useId();
-  const discard = action === 'discard';
-
-  useLayoutEffect(() => {
-    const dialog = dialogRef.current;
-    dialog?.showModal();
-    return () => dialog?.close();
-  }, []);
-
-  return (
-    <dialog ref={dialogRef} role="alertdialog" aria-labelledby={titleId} aria-describedby={descriptionId}
-      onCancel={(event) => { event.preventDefault(); onCancel(); }}
-      className="fixed inset-0 m-auto w-[calc(100%-1.5rem)] max-w-sm rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-xl backdrop:bg-black/40">
-      <h2 id={titleId} className="text-base font-semibold">{discard ? '放弃当前 DWG 草稿？' : '确认生成 DWG？'}</h2>
-      <p id={descriptionId} className="mt-2 text-sm text-slate-600">
-        {discard ? '退出编辑会丢弃本次草稿和预览。' : '当前原图将发送到本系统的转换服务，文件仅用于本次处理。'}
-      </p>
-      <div className="mt-4 flex justify-end gap-2">
-        <button type="button" onClick={onCancel} className={toolbarButtonClass}>取消</button>
-        <button type="button" onClick={onConfirm}
-          className={`h-8 cursor-pointer rounded-md px-2.5 text-xs font-medium text-white ${discard ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-          {discard ? '放弃草稿' : '确认生成'}
-        </button>
-      </div>
-    </dialog>
-  );
-}
-
 function zoomPercentOf(view: DwgView | null, drawing: DwgDrawing | null, width: number, height: number): number | null {
   if (!view || !drawing || width <= 0 || height <= 0) return null;
   const fitScale = fitView(drawing.bounds, { width, height }, VIEW_PADDING).scale;
@@ -210,7 +131,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const harnessPreviewButton = useRef<HTMLButtonElement>(null);
   const [cloudId, setCloudId] = useState('');
   const [localFile, setLocalFile] = useState<File | null>(null);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('local');
+  const [saveStatus, setSaveStatus] = useState<DwgSaveStatus>('local');
   const [saving, setSaving] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [originalSaveError, setOriginalSaveError] = useState<string | null>(null);
@@ -697,8 +618,15 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     if (isInteractiveTarget(event.target)) return;
     autoFitRef.current = false;
     event.preventDefault();
-    panRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
-      lastX: event.clientX, lastY: event.clientY, moved: false, select: event.button === 0 };
+    panRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      moved: false,
+      select: event.button === 0,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
     setIsPanning(true);
   };
@@ -775,157 +703,50 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
   const statistics = state.drawing && `${state.drawing.stats.rendered} 个图元 · ${state.drawing.stats.text} 处文字 · ${state.drawing.layers.length} 个图层${skippedCount > 0 ? ` · 跳过 ${skippedCount}` : ''}`;
   const recoveryError = recoveryFailure?.id === cloudId ? recoveryFailure.message : null;
   const zoomPercent = zoomPercentOf(view, state.drawing, viewport.width, viewport.height);
-  const chooseFileButton = (primary = false) => (
-    <button
-      type="button"
-      className={primary ? `${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700` : toolbarButtonClass}
-      disabled={saving}
-      aria-describedby={fileError ? 'dwg-file-error' : undefined}
-      onClick={() => fileInputRef.current?.click()}
-    >
-      <Upload className="h-3.5 w-3.5" />
-      选择文件
-    </button>
-  );
-
-  const saveStatusBadgeClass = saving
-    ? 'border-blue-200 bg-blue-50 text-blue-700'
-    : saveStatus === 'saved'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-      : saveStatus === 'error'
-        ? 'border-rose-200 bg-rose-50 text-rose-700'
-        : 'border-slate-200 bg-slate-100 text-slate-600';
 
   const subBarIconButtonClass =
     'flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-transparent text-slate-600 transition-colors hover:border-slate-200 hover:bg-white hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
-  const headerIconButtonClass =
-    'flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
   const showCanvasSubBar = isReady || state.phase !== 'idle';
 
   return (
     <div className="flex h-full flex-col bg-white">
-      <PageHeaderActions>
-        <div className="flex min-w-0 max-w-full items-center gap-1.5">
-          {state.fileName && (
-            <span className="min-w-0 max-w-44 sm:max-w-52 xl:max-w-64 truncate rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700" title={state.fileName}>
-              {state.fileName}
-            </span>
-          )}
-          {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
-            <span className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium ${saveStatusBadgeClass}`} role="status">
-              {saving ? saveText.saving : saveText[saveStatus]}
-            </span>
-          )}
-        </div>
-
-        {ownerId && (
-          <div className="flex max-w-full min-w-0 items-center gap-1">
-            <select
-              className="h-8 w-36 sm:w-52 xl:w-56 min-w-0 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
-              value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
-              onChange={(event) => {
-                const asset = cloudDrawings.find((item) => item.id === event.target.value);
-                if (asset?.status === 'ready') void openCloud(asset);
-                else setCloudId(asset?.id ?? '');
-              }}
-              disabled={saving || cloudDrawings.length === 0}
-              aria-label="云端图纸"
-              title={selectedCloudDrawing?.original_name ?? '我的云端图纸'}
-            >
-              <option value="" disabled>{cloudPlaceholder}</option>
-              {cloudDrawings.map((asset) => (
-                <option key={asset.id} value={asset.id}>
-                  {asset.original_name}{asset.parent_asset_id ? '（修订版）' : ''}{asset.status === 'uploading' ? '（保存未完成）' : ''}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className={headerIconButtonClass}
-              aria-label="刷新云端图纸"
-              title="刷新云端图纸"
-              aria-describedby={listError ? 'dwg-list-error' : undefined}
-              disabled={saving || listLoading || !dwgRepository.configured}
-              onClick={() => {
-                setListLoading(true);
-                void refreshList();
-              }}
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${listLoading ? 'animate-spin text-blue-600' : ''}`} />
-            </button>
-            <ToolbarError id="dwg-list-error" message={listError} />
-            {selectedCloudDrawing?.status === 'uploading' && (
-              <div className="flex max-w-full min-w-0 items-center gap-1">
-                <button
-                  type="button"
-                  className={toolbarButtonClass}
-                  disabled={saving}
-                  onClick={() => void saveDrawing(selectedCloudDrawing)}
-                  aria-describedby={recoveryError ? 'dwg-recovery-error' : undefined}
-                >
-                  <CloudUpload className="h-3.5 w-3.5" />
-                  恢复保存
-                </button>
-                <ToolbarError id="dwg-recovery-error" message={recoveryError} />
-              </div>
-            )}
-          </div>
-        )}
-
-        {(!showCanvasPicker || fileError) && (
-          <div className="flex max-w-full min-w-0 items-center gap-1">
-            {!showCanvasPicker && chooseFileButton()}
-            <ToolbarError id="dwg-file-error" message={fileError} />
-          </div>
-        )}
-
-        {ownerId && !editing && (
-          <div className="flex max-w-full min-w-0 items-center gap-1">
-            <button
-              type="button"
-              className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-blue-600 bg-blue-600 px-2 text-xs font-medium text-white shadow-2xs transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
-              disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
-              aria-describedby={originalSaveError ? 'dwg-save-error' : undefined}
-              title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'}
-              onClick={() => void saveDrawing()}
-            >
-              <CloudUpload className="h-3.5 w-3.5" />
-              {saveStatus === 'error' ? '重试保存' : '保存到云端'}
-            </button>
-            <ToolbarError id="dwg-save-error" message={originalSaveError} />
-          </div>
-        )}
-
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            className={toolbarButtonClass}
-            onClick={() => void handleExport('png')}
-            disabled={!isReady || exporting !== null}
-            aria-label="导出 PNG"
-            title="导出 PNG（适应图纸范围，含背景与图层显示）"
-          >
-            {exporting === 'png' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            PNG
-          </button>
-          <button
-            type="button"
-            className={toolbarButtonClass}
-            onClick={() => void handleExport('pdf')}
-            disabled={!isReady || exporting !== null}
-            aria-label="导出 PDF"
-            title="导出 A4 横向 PDF（适应图纸范围，含背景与图层显示）"
-          >
-            {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            PDF
-          </button>
-          <button type="button" ref={harnessPreviewButton} className={toolbarButtonClass} disabled={!isReady} aria-label="生成 3D 示意"
-            onClick={() => setHarnessPreviewOpen(true)} title="从 M12 单段线缆图纸生成 3D 示意">
-            <Box className="h-3.5 w-3.5" />
-            3D 示意
-          </button>
-        </div>
-      </PageHeaderActions>
+      <DwgHeaderActions
+        ownerId={ownerId}
+        fileName={state.fileName}
+        isReady={isReady}
+        isErrorPhase={state.phase === 'error'}
+        localFile={localFile}
+        saving={saving}
+        saveStatus={saveStatus}
+        editing={editing}
+        showCanvasPicker={showCanvasPicker}
+        repositoryConfigured={dwgRepository.configured}
+        cloudId={cloudId}
+        cloudDrawings={cloudDrawings}
+        selectedCloudDrawing={selectedCloudDrawing}
+        cloudPlaceholder={cloudPlaceholder}
+        listLoading={listLoading}
+        listError={listError}
+        fileError={fileError}
+        originalSaveError={originalSaveError}
+        recoveryError={recoveryError}
+        exporting={exporting}
+        harnessPreviewButtonRef={harnessPreviewButton}
+        onSelectCloudAsset={(assetId) => {
+          const asset = cloudDrawings.find((item) => item.id === assetId);
+          if (asset?.status === 'ready') void openCloud(asset);
+          else setCloudId(asset?.id ?? '');
+        }}
+        onRefreshList={() => {
+          setListLoading(true);
+          void refreshList();
+        }}
+        onRecoverUpload={(asset) => void saveDrawing(asset)}
+        onChooseFile={() => fileInputRef.current?.click()}
+        onSaveOriginal={() => void saveDrawing()}
+        onExport={(format) => void handleExport(format)}
+        onOpenHarnessPreview={() => setHarnessPreviewOpen(true)}
+      />
 
       {/* 画布顶部工具栏：图纸信息、缺失提示、编辑与视口控制，不遮挡图纸区域 */}
       {showCanvasSubBar && (
@@ -1057,58 +878,13 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           onSave={() => { if (revision) void saveDrawing(undefined, revision.file); }} />}
 
         {isReady && layersOpen && (
-          <div
-            data-dwg-overlay
-            className="absolute right-3 top-3 z-10 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-lg"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-              <span className="text-xs font-semibold text-slate-700">图层</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  className="cursor-pointer rounded px-1.5 py-0.5 text-xs text-slate-500 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => setHiddenLayers(new Set<string>())}
-                  disabled={hiddenLayers.size === 0}
-                >
-                  全部显示
-                </button>
-                <button
-                  type="button"
-                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                  onClick={() => setLayersOpen(false)}
-                  title="关闭"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-            <ul className="max-h-72 overflow-y-auto py-1">
-              {state.drawing!.layers.map((layer) => {
-                const hidden = hiddenLayers.has(layer.name);
-                return (
-                  <li key={layer.name}>
-                    <button
-                      type="button"
-                      className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50"
-                      onClick={() => toggleLayer(layer.name)}
-                      title={hidden ? '点击显示该图层' : '点击隐藏该图层'}
-                    >
-                      <span
-                        className="h-3 w-3 shrink-0 rounded-sm border border-slate-300"
-                        style={{ backgroundColor: layer.color }}
-                      />
-                      <span className={`flex-1 truncate ${hidden ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                        {layer.name}
-                      </span>
-                      {hidden
-                        ? <EyeOff className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        : <Eye className="h-3.5 w-3.5 shrink-0 text-slate-500" />}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+          <DwgLayerPanel
+            layers={state.drawing!.layers}
+            hiddenLayers={hiddenLayers}
+            onShowAll={() => setHiddenLayers(new Set<string>())}
+            onToggleLayer={toggleLayer}
+            onClose={() => setLayersOpen(false)}
+          />
         )}
 
         {!isReady && (
@@ -1117,7 +893,16 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               <div className="flex flex-col items-center gap-2 text-center text-sm">
                 {state.error && <p className="max-w-md">{state.error}</p>}
                 <FileUp size={28} className="mb-1 text-slate-400" />
-                {chooseFileButton(true)}
+                <button
+                  type="button"
+                  className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
+                  disabled={saving}
+                  aria-describedby={fileError ? 'dwg-file-error' : undefined}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  选择文件
+                </button>
                 <p className="text-slate-500">也可拖入 DWG 文件（最大 20 MiB）</p>
               </div>
             ) : (
