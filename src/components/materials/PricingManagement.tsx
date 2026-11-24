@@ -21,6 +21,7 @@ export function PricingManagement() {
   const role = currentUser?.role;
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<PricingSettings | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<string | null>(null);
   const [users, setUsers] = useState<RoleRow[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,7 +36,11 @@ export function PricingManagement() {
       const { data, error } = await supabase!.from('pricing_settings').select('version,settings').eq('id', 1).single();
       if (error) throw error;
       if (!validatePricingSettings(data.settings)) throw new Error('定价参数格式无效');
-      if (!cancelled) setSettings({ ...data.settings, version: data.version });
+      if (!cancelled) {
+        const loaded: PricingSettings = { ...data.settings, version: data.version };
+        setSettings(loaded);
+        setSavedSnapshot(JSON.stringify(data.settings));
+      }
       if (canManageUsers(role)) {
         const result = await supabase!.rpc('list_app_users');
         if (result.error) throw result.error;
@@ -48,35 +53,58 @@ export function PricingManagement() {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape' && !busy) setOpen(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open]);
+  }, [open, busy]);
 
   if (!allowed) return null;
 
+  const hasUnsavedChanges = (() => {
+    if (!settings || !savedSnapshot) return false;
+    const { version: _version, ...currentValues } = settings;
+    void _version;
+    return JSON.stringify(currentValues) !== savedSnapshot;
+  })();
+
+  const handleToggleOpen = () => {
+    if (open && busy) return;
+    setMessage('');
+    setOpen(v => !v);
+  };
+
+  const handleClose = () => {
+    if (busy) return;
+    setOpen(false);
+  };
+
   const save = async () => {
     if (!settings || !supabase) return;
-    setBusy(true); setMessage('');
     const { version, ...values } = settings;
+    if (!validatePricingSettings(values)) {
+      setMessage('参数格式无效：费率须为小于 1 的非负小数，单价须为非负数（最多 6 位小数）。');
+      return;
+    }
+    setBusy(true); setMessage('');
     try {
-      if (!validatePricingSettings(values)) throw new Error('参数无效');
       const { error } = await supabase.rpc('save_pricing_settings', { expected_version: version, new_settings: values });
       if (error) throw error;
+      setSavedSnapshot(JSON.stringify(values));
       setMessage('参数已保存，新报价使用新版本。');
       setRefresh(n => n + 1);
-    } catch { setMessage('保存失败，参数无效或版本已变化，请刷新后重试。'); }
+    } catch { setMessage('保存失败，参数版本可能已变化或无权限，请刷新后重试。'); }
     finally { setBusy(false); }
   };
 
   const assign = async (user: RoleRow, nextRole: AppRole) => {
     if (!supabase || !managesUsers) return;
-    setBusy(true);
+    setBusy(true); setMessage('');
     try {
       const { error } = await supabase.rpc('assign_user_role', { target_user: user.user_id, new_role: nextRole });
       if (error) throw error;
-      setMessage('角色已更新。'); setRefresh(n => n + 1);
+      setUsers(prev => prev.map(row => (row.user_id === user.user_id ? { ...row, role: nextRole } : row)));
+      setMessage('角色已更新。');
     } catch { setMessage('角色更新失败，不能修改自己的角色。'); }
     finally { setBusy(false); }
   };
@@ -89,7 +117,7 @@ export function PricingManagement() {
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen(v => !v)}
+        onClick={handleToggleOpen}
         className={`flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 text-xs font-medium shadow-xs transition ${
           open
             ? 'border-blue-300 bg-blue-50 text-blue-700'
@@ -104,8 +132,8 @@ export function PricingManagement() {
     {open && (
       <div
         className="fixed inset-0 z-40 flex justify-end bg-slate-900/35 backdrop-blur-[1px]"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) setOpen(false);
+        onMouseDown={(e) => {
+          if (e.target === e.currentTarget) handleClose();
         }}
       >
         <section
@@ -140,7 +168,7 @@ export function PricingManagement() {
                 type="button"
                 title="刷新配置"
                 aria-label="刷新配置"
-                onClick={() => { setSettings(null); setMessage(''); setRefresh(n => n + 1); }}
+                onClick={() => { setSettings(null); setSavedSnapshot(null); setMessage(''); setRefresh(n => n + 1); }}
                 disabled={busy}
                 className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -150,7 +178,7 @@ export function PricingManagement() {
 
               {settings && (
                 <>
-                  <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50">
+                  <label className={`inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition ${busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-slate-50'}`}>
                     <Upload size={13} className="text-slate-500" />
                     <span>导入参数</span>
                     <input
@@ -169,11 +197,12 @@ export function PricingManagement() {
                   </label>
                   <button
                     type="button"
+                    disabled={busy}
                     onClick={() => {
                       const url = URL.createObjectURL(new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' }));
                       const link = document.createElement('a'); link.href = url; link.download = 'pricing-settings.json'; link.click(); URL.revokeObjectURL(url);
                     }}
-                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <Download size={13} className="text-slate-500" />
                     <span>导出参数</span>
@@ -185,29 +214,39 @@ export function PricingManagement() {
                 type="button"
                 aria-label="关闭定价设置"
                 title="关闭"
-                onClick={() => setOpen(false)}
-                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                disabled={busy}
+                onClick={handleClose}
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <X size={16} />
               </button>
             </div>
           </div>
 
+          {/* 固定状态提示条：无论滚动到顶部或底部均立即可见 */}
+          {message && (
+            <div
+              role="status"
+              className={`flex shrink-0 items-center justify-between gap-2 border-b px-5 py-2 text-xs font-medium ${
+                isErrorMessage
+                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              <span>{message}</span>
+              <button
+                type="button"
+                aria-label="关闭提示"
+                onClick={() => setMessage('')}
+                className="cursor-pointer rounded p-0.5 opacity-70 transition hover:opacity-100"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
+
           {/* 抽屉主体内容 */}
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/70 p-4 sm:p-5">
-            {message && (
-              <p
-                role="status"
-                className={`rounded-lg border px-3.5 py-2.5 text-xs font-medium ${
-                  isErrorMessage
-                    ? 'border-rose-200 bg-rose-50 text-rose-700'
-                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                }`}
-              >
-                {message}
-              </p>
-            )}
-
             {!settings && !message && (
               <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-12 text-xs text-slate-500">
                 <Loader2 size={16} className="animate-spin text-blue-600" />
@@ -353,7 +392,7 @@ export function PricingManagement() {
                         >
                           <span className="flex items-center gap-2 min-w-0">
                             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold uppercase text-slate-600">
-                              {user.email[0]}
+                              {user.email?.[0] || '?'}
                             </span>
                             <span className="truncate font-medium text-slate-800">{user.email}</span>
                             {isSelf && (
@@ -384,14 +423,21 @@ export function PricingManagement() {
 
           {/* 抽屉底部固定操作栏 */}
           <div className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3">
-            <span className="text-[11px] text-slate-500">
-              {settings ? '修改费率或单价后请点击保存，新报价将自动生效' : '等待配置加载完成'}
-            </span>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              {hasUnsavedChanges ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-700">
+                  有未保存修改
+                </span>
+              ) : (
+                <span>{settings ? '修改费率或单价后请点击保存，新报价将自动生效' : '等待配置加载完成'}</span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setOpen(false)}
-                className="h-9 cursor-pointer rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                disabled={busy}
+                onClick={handleClose}
+                className="h-9 cursor-pointer rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 关闭
               </button>
