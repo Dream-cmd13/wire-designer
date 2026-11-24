@@ -426,7 +426,7 @@ export function AdminShell({
             </div>
           )}
 
-          <div ref={setPageActionsTarget} className="order-2 flex min-w-0 max-w-full basis-full flex-wrap items-center gap-1.5 empty:hidden @min-[660px]:order-none @min-[660px]:flex-1 @min-[660px]:justify-end" />
+          <div ref={setPageActionsTarget} className="order-2 flex min-w-0 max-w-full basis-full flex-wrap items-center gap-1.5 empty:hidden @min-[660px]:order-none @min-[660px]:basis-auto @min-[660px]:flex-[1_1_0%] @min-[660px]:justify-end" />
 
           <div className="ml-auto flex shrink-0 items-center">
             {currentUser ? (

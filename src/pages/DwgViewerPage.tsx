@@ -796,26 +796,144 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         ? 'border-rose-200 bg-rose-50 text-rose-700'
         : 'border-slate-200 bg-slate-100 text-slate-600';
 
-  const footerIconButtonClass =
-    'flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-transparent text-slate-600 transition-colors hover:border-slate-200 hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
+  const subBarIconButtonClass =
+    'flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border border-transparent text-slate-600 transition-colors hover:border-slate-200 hover:bg-white hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
+  const headerIconButtonClass =
+    'flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
+  const showCanvasSubBar = isReady || state.phase !== 'idle';
 
   return (
     <div className="flex h-full flex-col bg-white">
-      <div data-dwg-toolbar className="relative flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5 empty:hidden">
-        <PageHeaderActions>
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
-            <div className="flex min-w-0 max-w-full items-center gap-1.5">
-              {state.fileName && (
-                <span className="min-w-0 max-w-28 xl:max-w-40 truncate rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700" title={state.fileName}>
-                  {state.fileName}
-                </span>
-              )}
-              {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
-                <span className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium ${saveStatusBadgeClass}`} role="status">
-                  {saving ? saveText.saving : saveText[saveStatus]}
-                </span>
-              )}
-            </div>
+      <PageHeaderActions>
+        <div className="flex min-w-0 max-w-full items-center gap-1.5">
+          {state.fileName && (
+            <span className="min-w-0 max-w-28 xl:max-w-36 truncate rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700" title={state.fileName}>
+              {state.fileName}
+            </span>
+          )}
+          {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
+            <span className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium ${saveStatusBadgeClass}`} role="status">
+              {saving ? saveText.saving : saveText[saveStatus]}
+            </span>
+          )}
+        </div>
+
+        {ownerId && (
+          <div className="flex max-w-full min-w-0 items-center gap-1">
+            <select
+              className="h-8 w-32 sm:w-40 min-w-0 cursor-pointer truncate rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-50"
+              value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
+              onChange={(event) => {
+                const asset = cloudDrawings.find((item) => item.id === event.target.value);
+                if (asset?.status === 'ready') void openCloud(asset);
+                else setCloudId(asset?.id ?? '');
+              }}
+              disabled={saving || cloudDrawings.length === 0}
+              aria-label="云端图纸"
+              title={selectedCloudDrawing?.original_name ?? '我的云端图纸'}
+            >
+              <option value="" disabled>{cloudPlaceholder}</option>
+              {cloudDrawings.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.original_name}{asset.parent_asset_id ? '（修订版）' : ''}{asset.status === 'uploading' ? '（保存未完成）' : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={headerIconButtonClass}
+              aria-label="刷新云端图纸"
+              title="刷新云端图纸"
+              aria-describedby={listError ? 'dwg-list-error' : undefined}
+              disabled={saving || listLoading || !dwgRepository.configured}
+              onClick={() => {
+                setListLoading(true);
+                void refreshList();
+              }}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${listLoading ? 'animate-spin text-blue-600' : ''}`} />
+            </button>
+            <ToolbarError id="dwg-list-error" message={listError} />
+            {selectedCloudDrawing?.status === 'uploading' && (
+              <div className="flex max-w-full min-w-0 items-center gap-1">
+                <button
+                  type="button"
+                  className={toolbarButtonClass}
+                  disabled={saving}
+                  onClick={() => void saveDrawing(selectedCloudDrawing)}
+                  aria-describedby={recoveryError ? 'dwg-recovery-error' : undefined}
+                >
+                  <CloudUpload className="h-3.5 w-3.5" />
+                  恢复保存
+                </button>
+                <ToolbarError id="dwg-recovery-error" message={recoveryError} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {(!showCanvasPicker || fileError) && (
+          <div className="flex max-w-full min-w-0 items-center gap-1">
+            {!showCanvasPicker && chooseFileButton()}
+            <ToolbarError id="dwg-file-error" message={fileError} />
+          </div>
+        )}
+
+        {ownerId && !editing && (
+          <div className="flex max-w-full min-w-0 items-center gap-1">
+            <button
+              type="button"
+              className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-blue-600 bg-blue-600 px-2 text-xs font-medium text-white shadow-2xs transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
+              disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
+              aria-describedby={originalSaveError ? 'dwg-save-error' : undefined}
+              title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'}
+              onClick={() => void saveDrawing()}
+            >
+              <CloudUpload className="h-3.5 w-3.5" />
+              {saveStatus === 'error' ? '重试保存' : '保存到云端'}
+            </button>
+            <ToolbarError id="dwg-save-error" message={originalSaveError} />
+          </div>
+        )}
+
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            className={toolbarButtonClass}
+            onClick={() => void handleExport('png')}
+            disabled={!isReady || exporting !== null}
+            aria-label="导出 PNG"
+            title="导出 PNG（适应图纸范围，含背景与图层显示）"
+          >
+            {exporting === 'png' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            PNG
+          </button>
+          <button
+            type="button"
+            className={toolbarButtonClass}
+            onClick={() => void handleExport('pdf')}
+            disabled={!isReady || exporting !== null}
+            aria-label="导出 PDF"
+            title="导出 A4 横向 PDF（适应图纸范围，含背景与图层显示）"
+          >
+            {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            PDF
+          </button>
+          <button type="button" ref={harnessPreviewButton} className={toolbarButtonClass} disabled={!isReady} aria-label="生成 3D 示意"
+            onClick={() => setHarnessPreviewOpen(true)} title="从 M12 单段线缆图纸生成 3D 示意">
+            <Box className="h-3.5 w-3.5" />
+            3D 示意
+          </button>
+        </div>
+      </PageHeaderActions>
+
+      {/* 画布顶部工具栏：图纸信息、缺失提示、编辑与视口控制，不遮挡图纸区域 */}
+      {showCanvasSubBar && (
+        <div
+          data-dwg-toolbar
+          className="relative flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-slate-200 bg-slate-50/80 px-3 py-1.5 sm:px-4"
+        >
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
             {state.phase === 'error' ? (
               <span className="shrink-0 text-xs font-medium text-red-600">加载失败</span>
             ) : !isReady && state.phase !== 'idle' && (
@@ -825,7 +943,7 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
               </span>
             )}
             {isReady && (
-              <ToolbarDetails label="图纸信息" tone="border border-slate-200/80 bg-slate-50 text-slate-600 hover:bg-slate-100">
+              <ToolbarDetails label="图纸信息" tone="border border-slate-200/80 bg-white text-slate-600 hover:bg-slate-100">
                 {statistics}
               </ToolbarDetails>
             )}
@@ -839,80 +957,71 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
             )}
           </div>
 
-          <span className="hidden h-4 w-px shrink-0 bg-slate-200 xl:block" aria-hidden="true" />
-
-          {(!showCanvasPicker || fileError) && (
-            <div className="flex max-w-full min-w-0 items-center gap-1">
-              {!showCanvasPicker && chooseFileButton()}
-              <ToolbarError id="dwg-file-error" message={fileError} />
-            </div>
-          )}
-          {ownerId && !editing && (
-            <div className="flex max-w-full min-w-0 items-center gap-1">
+          {isReady && (
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              {ownerId && (
+                <>
+                  <button
+                    type="button"
+                    className={
+                      editing
+                        ? 'flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-blue-300 bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50'
+                        : 'flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50'
+                    }
+                    disabled={!canEditDraft || saving}
+                    title={state.drawing?.version === 'AC1018' ? undefined : '当前仅支持编辑 AC1018 图纸。'}
+                    onClick={() => {
+                      if (!editing) setEditing(true);
+                      else if (!operations.length || revisionSaved) resetEditing();
+                      else setEditConfirmation('discard');
+                    }}
+                  >
+                    {editing ? '退出编辑' : DWG_WRITEBACK_ENABLED ? '编辑图纸' : '编辑草稿'}
+                  </button>
+                  <span className="mx-0.5 h-4 w-px bg-slate-200" aria-hidden="true" />
+                </>
+              )}
+              <button type="button" className={subBarIconButtonClass} onClick={() => zoomBy(1 / ZOOM_STEP)} title="缩小 (-)" aria-label="缩小">
+                <Minus className="h-3.5 w-3.5" />
+              </button>
+              <span className="w-10 select-none text-center text-xs font-medium tabular-nums text-slate-600">
+                {zoomPercent !== null ? `${zoomPercent}%` : '—'}
+              </span>
+              <button type="button" className={subBarIconButtonClass} onClick={() => zoomBy(ZOOM_STEP)} title="放大 (+)" aria-label="放大">
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+              <span className="mx-0.5 h-4 w-px bg-slate-200" aria-hidden="true" />
+              <button type="button" className={subBarIconButtonClass} onClick={fitManually} title="适应窗口 (0/F)" aria-label="适应窗口">
+                <Maximize2 className="h-3.5 w-3.5" />
+              </button>
               <button
                 type="button"
-                className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-blue-600 bg-blue-600 px-2 text-xs font-medium text-white shadow-2xs transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
-                disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
-                aria-describedby={originalSaveError ? 'dwg-save-error' : undefined}
-                title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'}
-                onClick={() => void saveDrawing()}
+                className={subBarIconButtonClass}
+                onClick={() => setBackground((mode) => (mode === 'light' ? 'dark' : 'light'))}
+                title={background === 'dark' ? '切换为白底' : '切换为黑底'}
+                aria-label={background === 'dark' ? '切换为白底' : '切换为黑底'}
               >
-                <CloudUpload className="h-3.5 w-3.5" />
-                {saveStatus === 'error' ? '重试保存' : '保存到云端'}
+                {background === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
               </button>
-              <ToolbarError id="dwg-save-error" message={originalSaveError} />
+              <span className="mx-0.5 h-4 w-px bg-slate-200" aria-hidden="true" />
+              <button
+                type="button"
+                className={`flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-xs font-medium transition-colors ${
+                  layersOpen
+                    ? 'border-blue-300 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 hover:text-blue-600'
+                }`}
+                onClick={() => setLayersOpen((open) => !open)}
+                aria-pressed={layersOpen}
+                title="图层显示控制"
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span>图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}</span>
+              </button>
             </div>
           )}
-          {ownerId && isReady && (
-            <button
-              type="button"
-              className={
-                editing
-                  ? 'flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-blue-300 bg-blue-50 px-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50'
-                  : toolbarButtonClass
-              }
-              disabled={!canEditDraft || saving}
-              title={state.drawing?.version === 'AC1018' ? undefined : '当前仅支持编辑 AC1018 图纸。'}
-              onClick={() => {
-                if (!editing) setEditing(true);
-                else if (!operations.length || revisionSaved) resetEditing();
-                else setEditConfirmation('discard');
-              }}
-            >
-              {editing ? '退出编辑' : DWG_WRITEBACK_ENABLED ? '编辑图纸' : '编辑草稿'}
-            </button>
-          )}
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              className={toolbarButtonClass}
-              onClick={() => void handleExport('png')}
-              disabled={!isReady || exporting !== null}
-              aria-label="导出 PNG"
-              title="导出 PNG（适应图纸范围，含背景与图层显示）"
-            >
-              {exporting === 'png' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-              PNG
-            </button>
-            <button
-              type="button"
-              className={toolbarButtonClass}
-              onClick={() => void handleExport('pdf')}
-              disabled={!isReady || exporting !== null}
-              aria-label="导出 PDF"
-              title="导出 A4 横向 PDF（适应图纸范围，含背景与图层显示）"
-            >
-              {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-              PDF
-            </button>
-            <button type="button" ref={harnessPreviewButton} className={toolbarButtonClass} disabled={!isReady} aria-label="生成 3D 示意"
-              onClick={() => setHarnessPreviewOpen(true)} title="从 M12 单段线缆图纸生成 3D 示意">
-              <Box className="h-3.5 w-3.5" />
-              3D 示意
-            </button>
-          </div>
-        </PageHeaderActions>
-      </div>
+        </div>
+      )}
 
       <div
         ref={containerRef}
@@ -1023,113 +1132,6 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           </div>
         )}
       </div>
-
-      {/* 底部独立 CAD 视口与云端图纸栏：不遮挡图纸区域且让顶栏保持清爽单行 */}
-      {(ownerId || isReady) && (
-        <div
-          aria-label="画布与云端图纸控制栏"
-          className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-t border-slate-200 bg-white px-3 py-1.5 sm:px-4"
-        >
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1.5">
-            {ownerId && (
-              <>
-                <span className="hidden text-[11px] font-medium text-slate-400 sm:inline">云端图纸</span>
-                <select
-                  className="h-7 w-44 sm:w-60 min-w-0 cursor-pointer truncate rounded-md border border-slate-200 bg-slate-50/70 px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-white focus:border-blue-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  value={selectedCloudDrawing && (state.phase !== 'error' || selectedCloudDrawing.status === 'uploading') ? cloudId : ''}
-                  onChange={(event) => {
-                    const asset = cloudDrawings.find((item) => item.id === event.target.value);
-                    if (asset?.status === 'ready') void openCloud(asset);
-                    else setCloudId(asset?.id ?? '');
-                  }}
-                  disabled={saving || cloudDrawings.length === 0}
-                  aria-label="云端图纸"
-                  title={selectedCloudDrawing?.original_name ?? '我的云端图纸'}
-                >
-                  <option value="" disabled>{cloudPlaceholder}</option>
-                  {cloudDrawings.map((asset) => (
-                    <option key={asset.id} value={asset.id}>
-                      {asset.original_name}{asset.parent_asset_id ? '（修订版）' : ''}{asset.status === 'uploading' ? '（保存未完成）' : ''}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className={footerIconButtonClass}
-                  aria-label="刷新云端图纸"
-                  title="刷新云端图纸"
-                  aria-describedby={listError ? 'dwg-list-error' : undefined}
-                  disabled={saving || listLoading || !dwgRepository.configured}
-                  onClick={() => {
-                    setListLoading(true);
-                    void refreshList();
-                  }}
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${listLoading ? 'animate-spin text-blue-600' : ''}`} />
-                </button>
-                <ToolbarError id="dwg-list-error" message={listError} />
-                {selectedCloudDrawing?.status === 'uploading' && (
-                  <div className="flex max-w-full min-w-0 items-center gap-1">
-                    <button
-                      type="button"
-                      className="flex h-7 cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border border-amber-300 bg-amber-50 px-2 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={saving}
-                      onClick={() => void saveDrawing(selectedCloudDrawing)}
-                      aria-describedby={recoveryError ? 'dwg-recovery-error' : undefined}
-                    >
-                      <CloudUpload className="h-3.5 w-3.5" />
-                      恢复保存
-                    </button>
-                    <ToolbarError id="dwg-recovery-error" message={recoveryError} />
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {isReady && (
-            <div className="ml-auto flex items-center gap-1">
-              <button type="button" className={footerIconButtonClass} onClick={() => zoomBy(1 / ZOOM_STEP)} title="缩小 (-)" aria-label="缩小">
-                <Minus className="h-3.5 w-3.5" />
-              </button>
-              <span className="w-10 select-none text-center text-xs font-medium tabular-nums text-slate-600">
-                {zoomPercent !== null ? `${zoomPercent}%` : '—'}
-              </span>
-              <button type="button" className={footerIconButtonClass} onClick={() => zoomBy(ZOOM_STEP)} title="放大 (+)" aria-label="放大">
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-              <span className="mx-0.5 h-4 w-px bg-slate-200" aria-hidden="true" />
-              <button type="button" className={footerIconButtonClass} onClick={fitManually} title="适应窗口 (0/F)" aria-label="适应窗口">
-                <Maximize2 className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className={footerIconButtonClass}
-                onClick={() => setBackground((mode) => (mode === 'light' ? 'dark' : 'light'))}
-                title={background === 'dark' ? '切换为白底' : '切换为黑底'}
-                aria-label={background === 'dark' ? '切换为白底' : '切换为黑底'}
-              >
-                {background === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-              </button>
-              <span className="mx-0.5 h-4 w-px bg-slate-200" aria-hidden="true" />
-              <button
-                type="button"
-                className={`flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-xs font-medium transition-colors ${
-                  layersOpen
-                    ? 'border-blue-300 bg-blue-50 text-blue-700'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-blue-600'
-                }`}
-                onClick={() => setLayersOpen((open) => !open)}
-                aria-pressed={layersOpen}
-                title="图层显示控制"
-              >
-                <Layers className="h-3.5 w-3.5" />
-                <span>图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}</span>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {editConfirmation && <DwgEditConfirmation action={editConfirmation} onCancel={() => setEditConfirmation(null)} onConfirm={() => {
         if (editConfirmation === 'discard') resetEditing();
