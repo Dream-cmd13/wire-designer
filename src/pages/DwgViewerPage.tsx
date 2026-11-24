@@ -790,78 +790,60 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
     </button>
   );
 
+  const saveStatusBadgeClass = saving
+    ? 'border-blue-200 bg-blue-50 text-blue-700'
+    : saveStatus === 'saved'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : saveStatus === 'error'
+        ? 'border-rose-200 bg-rose-50 text-rose-700'
+        : 'border-slate-200 bg-slate-100 text-slate-600';
+
+  const hudIconButtonClass = background === 'dark'
+    ? 'flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-slate-700/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-40'
+    : 'flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40';
+
   return (
     <div className="flex h-full flex-col bg-white">
       <div data-dwg-toolbar className="relative flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5 empty:hidden">
         <PageHeaderActions>
-        <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
-          <div className="flex min-w-0 max-w-full items-center gap-2">
-            {state.fileName && <span className="min-w-0 max-w-36 truncate rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" title={state.fileName}>
-              {state.fileName}
-            </span>}
-            {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
-              <span className="shrink-0 whitespace-nowrap rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600" role="status">
-                {saving ? saveText.saving : saveText[saveStatus]}
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1.5 gap-y-1">
+            <div className="flex min-w-0 max-w-full items-center gap-1.5">
+              {state.fileName && (
+                <span className="min-w-0 max-w-36 truncate rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700" title={state.fileName}>
+                  {state.fileName}
+                </span>
+              )}
+              {(saving || (isReady && (localFile || saveStatus === 'saved'))) && (
+                <span className={`shrink-0 whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium ${saveStatusBadgeClass}`} role="status">
+                  {saving ? saveText.saving : saveText[saveStatus]}
+                </span>
+              )}
+            </div>
+            {state.phase === 'error' ? (
+              <span className="shrink-0 text-xs font-medium text-red-600">加载失败</span>
+            ) : !isReady && state.phase !== 'idle' && (
+              <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-blue-600">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                加载中
               </span>
             )}
-          </div>
-          {state.phase === 'error' ? (
-            <span className="shrink-0 text-xs font-medium text-red-600">加载失败</span>
-          ) : !isReady && state.phase !== 'idle' && (
-            <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-blue-600">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              加载中
-            </span>
-          )}
-          {isReady && (
-            <ToolbarDetails label="图纸信息" tone="bg-slate-100 text-slate-600">
-              {statistics}
-            </ToolbarDetails>
-          )}
-          {isReady && externalImages.length > 0 && (
-            <ToolbarDetails label={`外部图片缺失 ${externalImages.length} 张`} tone="bg-amber-50 text-amber-800">
-              <p>浏览器无法加载图纸引用的外部图片，当前仅显示占位框。</p>
-              <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-4 [overflow-wrap:anywhere]">
-                {externalImages.map((image, index) => <li key={index}>{image.path ?? '未提供路径'}</li>)}
-              </ul>
-            </ToolbarDetails>
-          )}
-        </div>
-
-          <div className="flex items-center gap-1 border-r border-slate-200 pr-1.5">
-            <button type="button" className={iconButtonClass} onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={!isReady} title="缩小 (-)">
-              <Minus className="h-4 w-4" />
-            </button>
-            <span className="w-9 select-none text-center text-xs tabular-nums text-slate-500">
-              {zoomPercent !== null ? `${zoomPercent}%` : '—'}
-            </span>
-            <button type="button" className={iconButtonClass} onClick={() => zoomBy(ZOOM_STEP)} disabled={!isReady} title="放大 (+)">
-              <Plus className="h-4 w-4" />
-            </button>
-            <button type="button" className={iconButtonClass} onClick={fitManually} disabled={!isReady} title="适应窗口 (0/F)">
-              <Maximize2 className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              className={iconButtonClass}
-              onClick={() => setBackground((mode) => (mode === 'light' ? 'dark' : 'light'))}
-              disabled={!isReady}
-              title={background === 'dark' ? '切换为白底' : '切换为黑底'}
-            >
-              {background === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
+            {isReady && (
+              <ToolbarDetails label="图纸信息" tone="border border-slate-200/80 bg-slate-50 text-slate-600 hover:bg-slate-100">
+                {statistics}
+              </ToolbarDetails>
+            )}
+            {isReady && externalImages.length > 0 && (
+              <ToolbarDetails label={`外部图片缺失 ${externalImages.length} 张`} tone="border border-amber-200/80 bg-amber-50 text-amber-800 hover:bg-amber-100/70">
+                <p>浏览器无法加载图纸引用的外部图片，当前仅显示占位框。</p>
+                <ul className="mt-2 max-h-32 list-disc space-y-1 overflow-y-auto pl-4 [overflow-wrap:anywhere]">
+                  {externalImages.map((image, index) => <li key={index}>{image.path ?? '未提供路径'}</li>)}
+                </ul>
+              </ToolbarDetails>
+            )}
           </div>
 
-          <button
-            type="button"
-            className={toolbarButtonClass}
-            onClick={() => setLayersOpen((open) => !open)}
-            disabled={!isReady}
-            title="图层显示控制"
-          >
-            <Layers className="h-3.5 w-3.5" />
-            图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}
-          </button>
+          <span className="hidden h-4 w-px shrink-0 bg-slate-200 xl:block" aria-hidden="true" />
+
           {ownerId && <>
             <div className="flex max-w-full min-w-0 items-center gap-1">
               <select
@@ -912,23 +894,40 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
           )}
           {ownerId && !editing && (
             <div className="flex max-w-full min-w-0 items-center gap-1">
-              <button type="button" className={`${toolbarButtonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`}
+              <button
+                type="button"
+                className="flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-blue-600 bg-blue-600 px-2.5 text-xs font-medium text-white shadow-2xs transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
                 disabled={!localFile || !isReady || saving || saveStatus === 'saved' || !dwgRepository.configured}
                 aria-describedby={originalSaveError ? 'dwg-save-error' : undefined}
-                title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'} onClick={() => void saveDrawing()}>
+                title={dwgRepository.configured ? '保存 DWG 原文件' : '云端尚未配置'}
+                onClick={() => void saveDrawing()}
+              >
                 <CloudUpload className="h-3.5 w-3.5" />
                 {saveStatus === 'error' ? '重试保存' : '保存到云端'}
               </button>
               <ToolbarError id="dwg-save-error" message={originalSaveError} />
             </div>
           )}
-          {ownerId && isReady && <button type="button" className={toolbarButtonClass} disabled={!canEditDraft || saving}
-            title={state.drawing?.version === 'AC1018' ? undefined : '当前仅支持编辑 AC1018 图纸。'} onClick={() => {
-              if (!editing) setEditing(true);
-              else if (!operations.length || revisionSaved) resetEditing();
-              else setEditConfirmation('discard');
-            }}>{editing ? '退出编辑' : DWG_WRITEBACK_ENABLED ? '编辑图纸' : '编辑草稿'}</button>}
-          <div className="flex items-center gap-1">
+          {ownerId && isReady && (
+            <button
+              type="button"
+              className={
+                editing
+                  ? 'flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-blue-300 bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50'
+                  : toolbarButtonClass
+              }
+              disabled={!canEditDraft || saving}
+              title={state.drawing?.version === 'AC1018' ? undefined : '当前仅支持编辑 AC1018 图纸。'}
+              onClick={() => {
+                if (!editing) setEditing(true);
+                else if (!operations.length || revisionSaved) resetEditing();
+                else setEditConfirmation('discard');
+              }}
+            >
+              {editing ? '退出编辑' : DWG_WRITEBACK_ENABLED ? '编辑图纸' : '编辑草稿'}
+            </button>
+          )}
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               className={toolbarButtonClass}
@@ -985,6 +984,61 @@ function DwgWorkspace({ ownerId }: { ownerId: string | null }) {
         }}
       >
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+
+        {/* 画布悬浮视口控制条（缩放、适应窗口、背景切换与图层） */}
+        {isReady && (
+          <div
+            data-dwg-overlay
+            aria-label="画布视图控制"
+            className={`absolute bottom-3 left-3 z-10 flex items-center gap-1 rounded-xl border px-1.5 py-1 shadow-md backdrop-blur-xs ${
+              background === 'dark'
+                ? 'border-slate-700/90 bg-slate-900/90 text-slate-200'
+                : 'border-slate-200/90 bg-white/95 text-slate-700'
+            }`}
+          >
+            <button type="button" className={hudIconButtonClass} onClick={() => zoomBy(1 / ZOOM_STEP)} title="缩小 (-)" aria-label="缩小">
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className={`w-10 select-none text-center text-xs font-medium tabular-nums ${background === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
+              {zoomPercent !== null ? `${zoomPercent}%` : '—'}
+            </span>
+            <button type="button" className={hudIconButtonClass} onClick={() => zoomBy(ZOOM_STEP)} title="放大 (+)" aria-label="放大">
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <span className={`mx-0.5 h-4 w-px ${background === 'dark' ? 'bg-slate-700' : 'bg-slate-200'}`} aria-hidden="true" />
+            <button type="button" className={hudIconButtonClass} onClick={fitManually} title="适应窗口 (0/F)" aria-label="适应窗口">
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className={hudIconButtonClass}
+              onClick={() => setBackground((mode) => (mode === 'light' ? 'dark' : 'light'))}
+              title={background === 'dark' ? '切换为白底' : '切换为黑底'}
+              aria-label={background === 'dark' ? '切换为白底' : '切换为黑底'}
+            >
+              {background === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            </button>
+            <span className={`mx-0.5 h-4 w-px ${background === 'dark' ? 'bg-slate-700' : 'bg-slate-200'}`} aria-hidden="true" />
+            <button
+              type="button"
+              className={`flex h-7 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-2 text-xs font-medium transition-colors ${
+                layersOpen
+                  ? background === 'dark'
+                    ? 'bg-blue-500/20 text-blue-300'
+                    : 'bg-blue-50 text-blue-700'
+                  : background === 'dark'
+                    ? 'text-slate-200 hover:bg-slate-700/80 hover:text-white'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-blue-600'
+              }`}
+              onClick={() => setLayersOpen((open) => !open)}
+              aria-pressed={layersOpen}
+              title="图层显示控制"
+            >
+              <Layers className="h-3.5 w-3.5" />
+              <span>图层{hiddenLayers.size > 0 ? ` (${hiddenLayers.size} 隐藏)` : ''}</span>
+            </button>
+          </div>
+        )}
 
         {editing && <DwgEditPanel hits={hits} selection={hits.find((target) => target.key === selectedKey)} operations={operations}
           writebackEnabled={DWG_WRITEBACK_ENABLED} busy={generating} generated={Boolean(revision)} parent={Boolean(editInput?.parentId)} canSave={dwgRepository.configured}
