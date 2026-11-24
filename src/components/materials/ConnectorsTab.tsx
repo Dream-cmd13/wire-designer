@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { Search } from 'lucide-react';
 import { MaterialPagination } from '@/components/materials/MaterialPagination';
 import { PriceUpdateInfo } from '@/components/materials/PriceUpdateInfo';
@@ -10,13 +10,25 @@ import { formatMaterialPrice } from '@/lib/materialPriceEdit';
 import type { QuoteMaterial } from '@/lib/quoteMaterials';
 import type { Connector } from '@/types/harness';
 
+export interface ConnectorsTabState {
+  query: string;
+  supplierNo: string;
+  series: string;
+  shielded: string;
+  type: string;
+  pinCount: string;
+  priceStatus: 'all' | 'priced' | 'unpriced';
+  page: number;
+  pageSize: number;
+}
+
 interface ConnectorsTabProps {
   connectors: Connector[];
   priceIndex: MaterialPriceIndex;
   catalogStatus: string;
   isRefreshing: boolean;
-  initialPage?: number;
-  initialPriceStatus?: 'all' | 'priced' | 'unpriced';
+  state: ConnectorsTabState;
+  onStateChange: Dispatch<SetStateAction<ConnectorsTabState>>;
   renderEditPriceButton: (resourceId: string, kind: QuoteMaterial['kind']) => ReactNode;
 }
 
@@ -25,19 +37,21 @@ export function ConnectorsTab({
   priceIndex,
   catalogStatus,
   isRefreshing,
-  initialPage = 1,
-  initialPriceStatus = 'all',
+  state,
+  onStateChange,
   renderEditPriceButton,
 }: ConnectorsTabProps) {
-  const [connQuery, setConnQuery] = useState('');
-  const [connSupplierNo, setConnSupplierNo] = useState('all');
-  const [connSeries, setConnSeries] = useState('all');
-  const [connShielded, setConnShielded] = useState('all');
-  const [connType, setConnType] = useState('all');
-  const [connPinCount, setConnPinCount] = useState('all');
-  const [connPriceStatus, setConnPriceStatus] = useState<'all' | 'priced' | 'unpriced'>(initialPriceStatus);
-  const [connPage, setConnPage] = useState(initialPage);
-  const [connPageSize, setConnPageSize] = useState(20);
+  const {
+    query: connQuery,
+    supplierNo: connSupplierNo,
+    series: connSeries,
+    shielded: connShielded,
+    type: connType,
+    pinCount: connPinCount,
+    priceStatus: connPriceStatus,
+    page: connPage,
+    pageSize: connPageSize,
+  } = state;
   const connTableRef = useRef<HTMLDivElement>(null);
 
   const connSupplierNos = useMemo(
@@ -115,8 +129,7 @@ export function ConnectorsTab({
               type="search"
               value={connQuery}
               onChange={(e) => {
-                setConnQuery(e.target.value);
-                setConnPage(1);
+                onStateChange((prev) => ({ ...prev, query: e.target.value, page: 1 }));
               }}
               placeholder="搜索连接器名称、型号、供应商、ID"
               className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -126,8 +139,7 @@ export function ConnectorsTab({
           <select
             value={connSupplierNo}
             onChange={(e) => {
-              setConnSupplierNo(e.target.value);
-              setConnPage(1);
+              onStateChange((prev) => ({ ...prev, supplierNo: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -142,8 +154,7 @@ export function ConnectorsTab({
           <select
             value={connSeries}
             onChange={(e) => {
-              setConnSeries(e.target.value);
-              setConnPage(1);
+              onStateChange((prev) => ({ ...prev, series: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[96px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -158,8 +169,7 @@ export function ConnectorsTab({
           <select
             value={connShielded}
             onChange={(e) => {
-              setConnShielded(e.target.value);
-              setConnPage(1);
+              onStateChange((prev) => ({ ...prev, shielded: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -171,8 +181,7 @@ export function ConnectorsTab({
           <select
             value={connType}
             onChange={(e) => {
-              setConnType(e.target.value);
-              setConnPage(1);
+              onStateChange((prev) => ({ ...prev, type: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[92px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -185,8 +194,7 @@ export function ConnectorsTab({
           <select
             value={connPinCount}
             onChange={(e) => {
-              setConnPinCount(e.target.value);
-              setConnPage(1);
+              onStateChange((prev) => ({ ...prev, pinCount: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[96px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -201,8 +209,11 @@ export function ConnectorsTab({
           <select
             value={connPriceStatus}
             onChange={(e) => {
-              setConnPriceStatus(e.target.value as 'all' | 'priced' | 'unpriced');
-              setConnPage(1);
+              onStateChange((prev) => ({
+                ...prev,
+                priceStatus: e.target.value as 'all' | 'priced' | 'unpriced',
+                page: 1,
+              }));
             }}
             className="h-8.5 min-w-[104px] flex-1 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -215,14 +226,17 @@ export function ConnectorsTab({
             <button
               type="button"
               onClick={() => {
-                setConnQuery('');
-                setConnSupplierNo('all');
-                setConnSeries('all');
-                setConnShielded('all');
-                setConnType('all');
-                setConnPinCount('all');
-                setConnPriceStatus('all');
-                setConnPage(1);
+                onStateChange((prev) => ({
+                  ...prev,
+                  query: '',
+                  supplierNo: 'all',
+                  series: 'all',
+                  shielded: 'all',
+                  type: 'all',
+                  pinCount: 'all',
+                  priceStatus: 'all',
+                  page: 1,
+                }));
               }}
               className="h-8.5 shrink-0 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
             >
@@ -363,11 +377,8 @@ export function ConnectorsTab({
           currentPage={safeConnPage}
           pageSize={connPageSize}
           totalCount={filteredConnectors.length}
-          onPageChange={setConnPage}
-          onPageSizeChange={(size) => {
-            setConnPageSize(size);
-            setConnPage(1);
-          }}
+          onPageChange={(page) => onStateChange((prev) => ({ ...prev, page }))}
+          onPageSizeChange={(pageSize) => onStateChange((prev) => ({ ...prev, pageSize, page: 1 }))}
           scrollContainerRef={connTableRef}
         />
       </section>

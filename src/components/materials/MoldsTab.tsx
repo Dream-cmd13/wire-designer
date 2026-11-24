@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { Search } from 'lucide-react';
 import { MaterialPagination } from '@/components/materials/MaterialPagination';
 import { PriceUpdateInfo } from '@/components/materials/PriceUpdateInfo';
@@ -7,13 +7,20 @@ import { formatMaterialPrice } from '@/lib/materialPriceEdit';
 import { materialPriceTierKey, type QuoteMaterial } from '@/lib/quoteMaterials';
 import type { OvermoldSpec } from '@/types/harness';
 
+export interface MoldsTabState {
+  query: string;
+  page: number;
+  pageSize: number;
+}
+
 interface MoldsTabProps {
   overmolds: OvermoldSpec[];
   moldRows: MoldRow[];
   priceIndex: MaterialPriceIndex;
   catalogStatus: string;
   isRefreshing: boolean;
-  initialPage?: number;
+  state: MoldsTabState;
+  onStateChange: Dispatch<SetStateAction<MoldsTabState>>;
   renderEditPriceButton: (resourceId: string, kind: QuoteMaterial['kind']) => ReactNode;
 }
 
@@ -23,12 +30,11 @@ export function MoldsTab({
   priceIndex,
   catalogStatus,
   isRefreshing,
-  initialPage = 1,
+  state,
+  onStateChange,
   renderEditPriceButton,
 }: MoldsTabProps) {
-  const [accQuery, setAccQuery] = useState('');
-  const [accPage, setAccPage] = useState(initialPage);
-  const [accPageSize, setAccPageSize] = useState(20);
+  const { query: accQuery, page: accPage, pageSize: accPageSize } = state;
   const accTableRef = useRef<HTMLDivElement>(null);
 
   const filteredOvermolds = useMemo(() => {
@@ -55,8 +61,7 @@ export function MoldsTab({
             type="search"
             value={accQuery}
             onChange={(e) => {
-              setAccQuery(e.target.value);
-              setAccPage(1);
+              onStateChange((prev) => ({ ...prev, query: e.target.value, page: 1 }));
             }}
             placeholder="搜索模具名称、代号、材质"
             className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -137,11 +142,8 @@ export function MoldsTab({
           currentPage={safeAccPage}
           pageSize={accPageSize}
           totalCount={filteredOvermolds.length}
-          onPageChange={setAccPage}
-          onPageSizeChange={(size) => {
-            setAccPageSize(size);
-            setAccPage(1);
-          }}
+          onPageChange={(page) => onStateChange((prev) => ({ ...prev, page }))}
+          onPageSizeChange={(pageSize) => onStateChange((prev) => ({ ...prev, pageSize, page: 1 }))}
           scrollContainerRef={accTableRef}
         />
       </section>

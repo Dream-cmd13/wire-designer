@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { Search } from 'lucide-react';
 import { MaterialPagination } from '@/components/materials/MaterialPagination';
 import { PriceUpdateInfo } from '@/components/materials/PriceUpdateInfo';
@@ -11,13 +11,23 @@ import { formatMaterialPrice } from '@/lib/materialPriceEdit';
 import type { QuoteMaterial } from '@/lib/quoteMaterials';
 import type { CatalogWire } from '@/types/catalog';
 
+export interface WiresTabState {
+  query: string;
+  kind: string;
+  awg: string;
+  shielded: string;
+  priceStatus: 'all' | 'priced' | 'unpriced';
+  page: number;
+  pageSize: number;
+}
+
 interface WiresTabProps {
   wires: CatalogWire[];
   priceIndex: MaterialPriceIndex;
   catalogStatus: string;
   isRefreshing: boolean;
-  initialPage?: number;
-  initialPriceStatus?: 'all' | 'priced' | 'unpriced';
+  state: WiresTabState;
+  onStateChange: Dispatch<SetStateAction<WiresTabState>>;
   renderEditPriceButton: (resourceId: string, kind: QuoteMaterial['kind']) => ReactNode;
 }
 
@@ -26,17 +36,19 @@ export function WiresTab({
   priceIndex,
   catalogStatus,
   isRefreshing,
-  initialPage = 1,
-  initialPriceStatus = 'all',
+  state,
+  onStateChange,
   renderEditPriceButton,
 }: WiresTabProps) {
-  const [wireQuery, setWireQuery] = useState('');
-  const [wireKind, setWireKind] = useState('all');
-  const [wireAwg, setWireAwg] = useState('all');
-  const [wireShielded, setWireShielded] = useState('all');
-  const [wirePriceStatus, setWirePriceStatus] = useState<'all' | 'priced' | 'unpriced'>(initialPriceStatus);
-  const [wirePage, setWirePage] = useState(initialPage);
-  const [wirePageSize, setWirePageSize] = useState(20);
+  const {
+    query: wireQuery,
+    kind: wireKind,
+    awg: wireAwg,
+    shielded: wireShielded,
+    priceStatus: wirePriceStatus,
+    page: wirePage,
+    pageSize: wirePageSize,
+  } = state;
   const wireTableRef = useRef<HTMLDivElement>(null);
 
   const wireAwgs = useMemo(() => {
@@ -103,8 +115,7 @@ export function WiresTab({
               type="search"
               value={wireQuery}
               onChange={(e) => {
-                setWireQuery(e.target.value);
-                setWirePage(1);
+                onStateChange((prev) => ({ ...prev, query: e.target.value, page: 1 }));
               }}
               placeholder="搜索线缆名称、型号、UL标号、AWG"
               className="h-8.5 w-full rounded-md border border-slate-200 bg-white pr-3 pl-9 text-xs outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
@@ -114,8 +125,7 @@ export function WiresTab({
           <select
             value={wireKind}
             onChange={(e) => {
-              setWireKind(e.target.value);
-              setWirePage(1);
+              onStateChange((prev) => ({ ...prev, kind: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -127,8 +137,7 @@ export function WiresTab({
           <select
             value={wireAwg}
             onChange={(e) => {
-              setWireAwg(e.target.value);
-              setWirePage(1);
+              onStateChange((prev) => ({ ...prev, awg: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[112px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -143,8 +152,7 @@ export function WiresTab({
           <select
             value={wireShielded}
             onChange={(e) => {
-              setWireShielded(e.target.value);
-              setWirePage(1);
+              onStateChange((prev) => ({ ...prev, shielded: e.target.value, page: 1 }));
             }}
             className="h-8.5 min-w-[108px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -156,8 +164,11 @@ export function WiresTab({
           <select
             value={wirePriceStatus}
             onChange={(e) => {
-              setWirePriceStatus(e.target.value as 'all' | 'priced' | 'unpriced');
-              setWirePage(1);
+              onStateChange((prev) => ({
+                ...prev,
+                priceStatus: e.target.value as 'all' | 'priced' | 'unpriced',
+                page: 1,
+              }));
             }}
             className="h-8.5 min-w-[108px] flex-1 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none transition hover:border-slate-300 focus:border-blue-400"
           >
@@ -170,12 +181,15 @@ export function WiresTab({
             <button
               type="button"
               onClick={() => {
-                setWireQuery('');
-                setWireKind('all');
-                setWireAwg('all');
-                setWireShielded('all');
-                setWirePriceStatus('all');
-                setWirePage(1);
+                onStateChange((prev) => ({
+                  ...prev,
+                  query: '',
+                  kind: 'all',
+                  awg: 'all',
+                  shielded: 'all',
+                  priceStatus: 'all',
+                  page: 1,
+                }));
               }}
               className="h-8.5 shrink-0 cursor-pointer rounded-md border border-slate-200 bg-slate-50 px-2.5 text-xs font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
             >
@@ -351,11 +365,8 @@ export function WiresTab({
           currentPage={safeWirePage}
           pageSize={wirePageSize}
           totalCount={filteredWires.length}
-          onPageChange={setWirePage}
-          onPageSizeChange={(size) => {
-            setWirePageSize(size);
-            setWirePage(1);
-          }}
+          onPageChange={(page) => onStateChange((prev) => ({ ...prev, page }))}
+          onPageSizeChange={(pageSize) => onStateChange((prev) => ({ ...prev, pageSize, page: 1 }))}
           scrollContainerRef={wireTableRef}
         />
       </section>

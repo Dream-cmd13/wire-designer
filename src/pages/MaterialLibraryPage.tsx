@@ -11,14 +11,14 @@ import {
   Upload,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { ConnectorsTab } from '@/components/materials/ConnectorsTab';
+import { ConnectorsTab, type ConnectorsTabState } from '@/components/materials/ConnectorsTab';
 import { ExcelPreviewModal } from '@/components/materials/ExcelPreviewModal';
 import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
-import { FinishedHarnessesTab } from '@/components/materials/FinishedHarnessesTab';
+import { FinishedHarnessesTab, type FinishedHarnessesTabState } from '@/components/materials/FinishedHarnessesTab';
 import { MaterialPriceEditDialog } from '@/components/materials/MaterialPriceEditDialog';
-import { MoldsTab } from '@/components/materials/MoldsTab';
+import { MoldsTab, type MoldsTabState } from '@/components/materials/MoldsTab';
 import { PricingManagement } from '@/components/materials/PricingManagement';
-import { WiresTab } from '@/components/materials/WiresTab';
+import { WiresTab, type WiresTabState } from '@/components/materials/WiresTab';
 import { buildMaterialPriceIndex } from '@/components/materials/materialPriceLookup';
 import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import {
@@ -127,6 +127,39 @@ export function MaterialLibraryPage({
   const loadFinishedHarnesses = useFinishedHarnessStore((state) => state.load);
 
   const [activeTab, setActiveTab] = useState<MaterialTab>(initialTab);
+  const [connState, setConnState] = useState<ConnectorsTabState>(() => ({
+    query: '',
+    supplierNo: 'all',
+    series: 'all',
+    shielded: 'all',
+    type: 'all',
+    pinCount: 'all',
+    priceStatus: initialConnPriceStatus,
+    page: initialConnPage,
+    pageSize: 20,
+  }));
+  const [wireState, setWireState] = useState<WiresTabState>(() => ({
+    query: '',
+    kind: 'all',
+    awg: 'all',
+    shielded: 'all',
+    priceStatus: initialWirePriceStatus,
+    page: initialWirePage,
+    pageSize: 20,
+  }));
+  const [moldState, setMoldState] = useState<MoldsTabState>(() => ({
+    query: '',
+    page: initialAccPage,
+    pageSize: 20,
+  }));
+  const [finishedState, setFinishedState] = useState<FinishedHarnessesTabState>(() => ({
+    query: '',
+    supplierNo: 'all',
+    drawingStatus: 'all',
+    costStatus: 'all',
+    page: initialFinishedPage,
+    pageSize: 20,
+  }));
   const [selectedFinishedHarness, setSelectedFinishedHarness] = useState<FinishedHarnessMaterial | null>(null);
   const [directPreviewExcel, setDirectPreviewExcel] = useState<{
     fileName: string;
@@ -546,8 +579,8 @@ export function MaterialLibraryPage({
           priceIndex={priceIndex}
           catalogStatus={catalogStatus}
           isRefreshing={isRefreshing}
-          initialPage={initialConnPage}
-          initialPriceStatus={initialConnPriceStatus}
+          state={connState}
+          onStateChange={setConnState}
           renderEditPriceButton={editPriceButton}
         />
       )}
@@ -558,8 +591,8 @@ export function MaterialLibraryPage({
           priceIndex={priceIndex}
           catalogStatus={catalogStatus}
           isRefreshing={isRefreshing}
-          initialPage={initialWirePage}
-          initialPriceStatus={initialWirePriceStatus}
+          state={wireState}
+          onStateChange={setWireState}
           renderEditPriceButton={editPriceButton}
         />
       )}
@@ -571,7 +604,8 @@ export function MaterialLibraryPage({
           priceIndex={priceIndex}
           catalogStatus={catalogStatus}
           isRefreshing={isRefreshing}
-          initialPage={initialAccPage}
+          state={moldState}
+          onStateChange={setMoldState}
           renderEditPriceButton={editPriceButton}
         />
       )}
@@ -582,7 +616,8 @@ export function MaterialLibraryPage({
           finishedLoading={finishedLoading}
           finishedError={finishedError}
           isRefreshing={isRefreshing}
-          initialPage={initialFinishedPage}
+          state={finishedState}
+          onStateChange={setFinishedState}
           onReload={() => void loadFinishedHarnesses(true)}
           onSelectHarness={setSelectedFinishedHarness}
           onPreviewExcel={setDirectPreviewExcel}
