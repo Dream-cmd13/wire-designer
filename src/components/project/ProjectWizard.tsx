@@ -14,12 +14,21 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useUserStore } from '@/stores/userStore';
 import { useHarnessStore } from '@/stores/harnessStore';
 import { useCatalogStore } from '@/stores/catalogStore';
-import { getCatalogConnectors, requireCatalogSnapshot } from '@/lib/catalogRuntime';
+import { getCatalogConnectors, getCatalogWires, requireCatalogSnapshot } from '@/lib/catalogRuntime';
 import { generateId } from '@/lib/commands';
-import { createDefaultWireEndTreatment, lengthMmToCanvasWidth } from '@/lib/canvasMaterials';
+import {
+  createDefaultWireEndTreatment,
+  getConnectorHeight,
+  getConnectorNodeWidth,
+  getMaterialNodeHeight,
+  lengthMmToCanvasWidth,
+  resolveColor,
+} from '@/lib/canvasMaterials';
+import { syncConnectorLabels } from '@/lib/connectorDesignation';
 import { syncTwoDImages } from '@/lib/autoAssociateTwoDImages';
 import { DocumentWriteError } from '@/lib/documentWriteError';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import type { CatalogWire } from '@/types/catalog';
 import type {
   CanvasWireMaterial,
   Connector,
@@ -59,18 +68,38 @@ const TEMPLATES = [
   {
     id: 'star-4',
     name: '星型四端线束',
-    description: '中心节点连接四个外围节点',
+    description: '中心主节点扇出连接四个外围节点',
     icon: <Settings className="w-6 h-6" />,
   },
 ];
 
 const CIRCUIT_COLORS = ['red', 'black', 'blue', 'green', 'yellow', 'white'];
+const DEFAULT_WIRE_LENGTH_MM = 300;
+const CANVAS_START_X = 80;
+const CANVAS_START_Y = 80;
+const WIRE_ROW_STEP = 34;
+const T_BRANCH_GAP_Y = 80;
+const STAR_BRANCH_GAP_Y = 64;
+
+function estimateMergedPanelWidth(connectorCount: number): number {
+  // Mirrors WireMaterialNode's panelWidth formula conservatively so expanded tables stay clear of connectors.
+  return Math.max(300, 160 + connectorCount * 80 + 64 + 60);
+}
+
+function computeHorizontalLayout(leftConnectorWidth: number, wireWidth: number, connectorCount: number) {
+  const panelWidth = estimateMergedPanelWidth(connectorCount);
+  const gapWidth = Math.max(wireWidth + 180, panelWidth + 80);
+  const leftX = CANVAS_START_X;
+  const rightX = leftX + leftConnectorWidth + gapWidth;
+  const wireX = leftX + leftConnectorWidth + Math.round((gapWidth - wireWidth) / 2);
+  return { leftX, rightX, wireX };
+}
 
 function makeConnector(
   connectorId: string,
   position: { x: number; y: number },
   label: string,
-  connectors: Connector[] = requireCatalogSnapshot().connectors,
+  connectors: Connector[],
 ): ConnectorInstance {
   const conn = connectors.find((c) => c.id === connectorId);
   if (!conn) throw new Error(`Connector part not found: ${connectorId}`);
@@ -83,26 +112,47 @@ function makeConnector(
   };
 }
 
-function makeMaterial(
+function findMatchingElectronicCatalogWire(
+  catalogWires: CatalogWire[],
+  color: string,
+): CatalogWire | undefined {
+  const targetColorName = resolveColor(color).name;
+  const matchesColor = (wire: CatalogWire) =>
+    wire.spec.kind === 'electronic'
+    && (wire.spec.color === color || resolveColor(wire.spec.color).name === targetColorName);
+
+  return (
+    catalogWires.find((wire) => wire.spec.kind === 'electronic' && wire.spec.awg === 26 && matchesColor(wire))
+    ?? catalogWires.find(matchesColor)
+  );
+}
+
+function makeElectronicMaterial(
   name: string,
   position: { x: number; y: number },
-  circuits: MaterialCircuit[],
+  circuit: MaterialCircuit,
+  catalogWires: CatalogWire[],
 ): CanvasWireMaterial {
-  const lengthMm = 300;
+  const matchingWire = findMatchingElectronicCatalogWire(catalogWires, circuit.color);
+  const catalogSpec = matchingWire?.spec.kind === 'electronic' ? matchingWire.spec : undefined;
+  const resolvedColor = catalogSpec ? catalogSpec.color : circuit.color;
+
   return {
     id: generateId(),
+    ...(matchingWire ? { resourceItemId: matchingWire.resourceItemId } : {}),
+    ...(matchingWire?.image ? { resourceImageUrl: matchingWire.image } : {}),
     name,
     position,
-    width: lengthMmToCanvasWidth(lengthMm),
+    width: lengthMmToCanvasWidth(DEFAULT_WIRE_LENGTH_MM),
     spec: {
       kind: 'electronic',
-      color: circuits[0]?.color ?? 'red',
-      lengthMm,
-      awg: 26,
-      ulNumber: '1007',
+      color: resolvedColor,
+      lengthMm: DEFAULT_WIRE_LENGTH_MM,
+      awg: catalogSpec?.awg ?? 26,
+      ulNumber: catalogSpec?.ulNumber ?? '1007',
       endTreatment: createDefaultWireEndTreatment(),
     },
-    circuits,
+    circuits: [{ ...circuit, color: resolvedColor }],
     expandedByDefault: true,
   };
 }
@@ -132,15 +182,19 @@ function createConfigFromTemplate(
   connectorAId: string,
   connectorBId: string,
   pinCount: number,
+  catalog?: { connectors: Connector[]; wires?: CatalogWire[] },
 ): HarnessConfig {
   const now = Date.now();
-  const withAutoImages = (config: HarnessConfig): HarnessConfig => ({
-    ...config,
-    twoDImages: syncTwoDImages(config),
-  });
+  const finalizeConfig = (config: HarnessConfig): HarnessConfig => {
+    const labeled = syncConnectorLabels(config);
+    return {
+      ...labeled,
+      twoDImages: syncTwoDImages(labeled),
+    };
+  };
 
   if (templateId === 'blank') {
-    return withAutoImages({
+    return finalizeConfig({
       schemaVersion: 3,
       id: generateId(),
       name: projectName,
@@ -155,30 +209,54 @@ function createConfigFromTemplate(
     });
   }
 
+  const snapshot = catalog ?? requireCatalogSnapshot();
+  const catalogConnectors = snapshot.connectors;
+  const catalogWires = snapshot.wires ?? [];
+  const wireWidth = lengthMmToCanvasWidth(DEFAULT_WIRE_LENGTH_MM);
+  const wireHeight = getMaterialNodeHeight('electronic');
+
   if (templateId === 'simple-2p') {
-    const connA = makeConnector(connectorAId, { x: 100, y: 200 }, 'A端');
-    const connB = makeConnector(connectorBId, { x: 500, y: 200 }, 'B端');
-    const maxPins = Math.min(pinCount, connA.connector.pinCount, connB.connector.pinCount);
-    const circuits: MaterialCircuit[] = [];
-    for (let i = 1; i <= maxPins; i++) {
-      circuits.push(
-        makeCircuit(
-          connA.id, 'right', i,
-          connB.id, 'left', i,
-          CIRCUIT_COLORS[i - 1] ?? 'red',
-          `SIG${i}`,
+    const connA = makeConnector(connectorAId, { x: 0, y: 0 }, 'A端', catalogConnectors);
+    const connB = makeConnector(connectorBId, { x: 0, y: 0 }, 'B端', catalogConnectors);
+    const effectivePins = Math.max(1, Math.min(pinCount, connA.connector.pinCount, connB.connector.pinCount));
+
+    const connAHeight = getConnectorHeight(connA);
+    const connBHeight = getConnectorHeight(connB);
+    const wiresHeight = (effectivePins - 1) * WIRE_ROW_STEP + wireHeight;
+    const totalHeight = Math.max(connAHeight, connBHeight, wiresHeight);
+    const { leftX, rightX, wireX } = computeHorizontalLayout(getConnectorNodeWidth(connA), wireWidth, 2);
+
+    connA.position = { x: leftX, y: CANVAS_START_Y + Math.round((totalHeight - connAHeight) / 2) };
+    connB.position = { x: rightX, y: CANVAS_START_Y + Math.round((totalHeight - connBHeight) / 2) };
+    const wiresTop = CANVAS_START_Y + Math.round((totalHeight - wiresHeight) / 2);
+
+    const materials: CanvasWireMaterial[] = [];
+    for (let i = 1; i <= effectivePins; i++) {
+      const color = CIRCUIT_COLORS[(i - 1) % CIRCUIT_COLORS.length];
+      const circuit = makeCircuit(
+        connA.id, 'right', i,
+        connB.id, 'left', i,
+        color,
+        `SIG${i}`,
+      );
+      materials.push(
+        makeElectronicMaterial(
+          `主线材 ${i}`,
+          { x: wireX, y: wiresTop + (i - 1) * WIRE_ROW_STEP },
+          circuit,
+          catalogWires,
         ),
       );
     }
-    const material = makeMaterial('主线材', { x: 270, y: 220 }, circuits);
-    return withAutoImages({
+
+    return finalizeConfig({
       schemaVersion: 3,
       id: generateId(),
       name: projectName,
       createdAt: now,
       updatedAt: now,
       connectors: [connA, connB],
-      materials: [material],
+      materials,
       protectiveSleeves: [],
       models: [],
       quantity: 1,
@@ -187,32 +265,60 @@ function createConfigFromTemplate(
   }
 
   if (templateId === 't-branch') {
-    const connA = makeConnector(connectorAId, { x: 100, y: 200 }, 'A端');
-    const connB = makeConnector(connectorBId, { x: 500, y: 100 }, 'B端');
-    const connC = makeConnector(connectorBId, { x: 500, y: 300 }, 'C端');
+    const connA = makeConnector(connectorAId, { x: 0, y: 0 }, '主端', catalogConnectors);
+    const connB = makeConnector(connectorBId, { x: 0, y: 0 }, '分支B', catalogConnectors);
+    const connC = makeConnector(connectorBId, { x: 0, y: 0 }, '分支C', catalogConnectors);
+    const effectivePins = Math.max(1, Math.min(pinCount, connA.connector.pinCount, connB.connector.pinCount));
 
-    const maxPins = Math.min(pinCount, connA.connector.pinCount, connB.connector.pinCount);
-    const circuitsAB: MaterialCircuit[] = [];
-    for (let i = 1; i <= Math.min(maxPins, 2); i++) {
-      circuitsAB.push(
-        makeCircuit(connA.id, 'right', i, connB.id, 'left', i, CIRCUIT_COLORS[i - 1], i === 1 ? 'VCC' : 'GND'),
-      );
-    }
-    const materialAB = makeMaterial('A-B线材', { x: 270, y: 120 }, circuitsAB);
+    const connAHeight = getConnectorHeight(connA);
+    const branchHeight = getConnectorHeight(connB);
+    const wiresHeight = (effectivePins - 1) * WIRE_ROW_STEP + wireHeight;
+    const slotHeight = Math.max(branchHeight, wiresHeight);
+    const branchesTotalHeight = slotHeight * 2 + T_BRANCH_GAP_Y;
+    const totalHeight = Math.max(connAHeight, branchesTotalHeight);
+    const { leftX, rightX, wireX } = computeHorizontalLayout(getConnectorNodeWidth(connA), wireWidth, 3);
 
-    const circuitsAC: MaterialCircuit[] = [
-      makeCircuit(connA.id, 'right', 1, connC.id, 'left', 1, 'blue', 'SDA'),
+    connA.position = { x: leftX, y: CANVAS_START_Y + Math.round((totalHeight - connAHeight) / 2) };
+    const branchesTop = CANVAS_START_Y + Math.round((totalHeight - branchesTotalHeight) / 2);
+
+    const branchEntries = [
+      { connector: connB, prefix: 'A-B' },
+      { connector: connC, prefix: 'A-C' },
     ];
-    const materialAC = makeMaterial('A-C线材', { x: 270, y: 320 }, circuitsAC);
+    const materials: CanvasWireMaterial[] = [];
 
-    return withAutoImages({
+    branchEntries.forEach(({ connector, prefix }, branchIdx) => {
+      const slotTop = branchesTop + branchIdx * (slotHeight + T_BRANCH_GAP_Y);
+      connector.position = { x: rightX, y: slotTop + Math.round((slotHeight - branchHeight) / 2) };
+      const branchWiresTop = slotTop + Math.round((slotHeight - wiresHeight) / 2);
+
+      for (let i = 1; i <= effectivePins; i++) {
+        const color = CIRCUIT_COLORS[(i - 1) % CIRCUIT_COLORS.length];
+        const circuit = makeCircuit(
+          connA.id, 'right', i,
+          connector.id, 'left', i,
+          color,
+          `SIG${i}`,
+        );
+        materials.push(
+          makeElectronicMaterial(
+            `${prefix} #${i}`,
+            { x: wireX, y: branchWiresTop + (i - 1) * WIRE_ROW_STEP },
+            circuit,
+            catalogWires,
+          ),
+        );
+      }
+    });
+
+    return finalizeConfig({
       schemaVersion: 3,
       id: generateId(),
       name: projectName,
       createdAt: now,
       updatedAt: now,
       connectors: [connA, connB, connC],
-      materials: [materialAB, materialAC],
+      materials,
       protectiveSleeves: [],
       models: [],
       quantity: 1,
@@ -220,35 +326,58 @@ function createConfigFromTemplate(
     });
   }
 
-  // star-4
-  const center = makeConnector(connectorAId, { x: 300, y: 200 }, '中心');
-  const connectors: ConnectorInstance[] = [center];
+  // star-4: left center hub (P1) fanning out to 4 right branches (P2..P5)
+  const center = makeConnector(connectorAId, { x: 0, y: 0 }, '中心', catalogConnectors);
+  const arms = Array.from({ length: 4 }, (_, armIndex) =>
+    makeConnector(connectorBId, { x: 0, y: 0 }, `${String.fromCharCode(65 + armIndex)}端`, catalogConnectors),
+  );
+  const effectivePins = Math.max(1, Math.min(pinCount, center.connector.pinCount, arms[0].connector.pinCount));
+
+  const centerHeight = getConnectorHeight(center);
+  const armHeight = getConnectorHeight(arms[0]);
+  const wiresHeight = (effectivePins - 1) * WIRE_ROW_STEP + wireHeight;
+  const slotHeight = Math.max(armHeight, wiresHeight);
+  const armsTotalHeight = slotHeight * 4 + STAR_BRANCH_GAP_Y * 3;
+  const totalHeight = Math.max(centerHeight, armsTotalHeight);
+  const { leftX, rightX, wireX } = computeHorizontalLayout(getConnectorNodeWidth(center), wireWidth, 5);
+
+  center.position = { x: leftX, y: CANVAS_START_Y + Math.round((totalHeight - centerHeight) / 2) };
+  const armsTop = CANVAS_START_Y + Math.round((totalHeight - armsTotalHeight) / 2);
+  const useDedicatedPins = center.connector.pinCount >= 4 * effectivePins;
+
   const materials: CanvasWireMaterial[] = [];
+  arms.forEach((arm, armIndex) => {
+    const slotTop = armsTop + armIndex * (slotHeight + STAR_BRANCH_GAP_Y);
+    arm.position = { x: rightX, y: slotTop + Math.round((slotHeight - armHeight) / 2) };
+    const armWiresTop = slotTop + Math.round((slotHeight - wiresHeight) / 2);
 
-  for (let arm = 0; arm < 4; arm++) {
-    const angle = (arm * Math.PI) / 2;
-    const x = 300 + Math.cos(angle) * 200;
-    const y = 200 + Math.sin(angle) * 150;
-    const armConnector = makeConnector(connectorBId, { x, y }, `${String.fromCharCode(65 + arm)}端`);
-    connectors.push(armConnector);
+    for (let i = 1; i <= effectivePins; i++) {
+      const centerPin = useDedicatedPins ? armIndex * effectivePins + i : i;
+      const color = CIRCUIT_COLORS[(centerPin - 1) % CIRCUIT_COLORS.length];
+      const circuit = makeCircuit(
+        center.id, 'right', centerPin,
+        arm.id, 'left', i,
+        color,
+        `SIG${centerPin}`,
+      );
+      materials.push(
+        makeElectronicMaterial(
+          `中心-${String.fromCharCode(65 + armIndex)} #${i}`,
+          { x: wireX, y: armWiresTop + (i - 1) * WIRE_ROW_STEP },
+          circuit,
+          catalogWires,
+        ),
+      );
+    }
+  });
 
-    const circuit = makeCircuit(
-      center.id, 'right', 1,
-      armConnector.id, 'left', 1,
-      CIRCUIT_COLORS[arm],
-      `SIG${arm + 1}`,
-    );
-    const material = makeMaterial(`中心-${String.fromCharCode(65 + arm)}`, { x: 320, y: 200 + arm * 30 }, [circuit]);
-    materials.push(material);
-  }
-
-  return withAutoImages({
+  return finalizeConfig({
     schemaVersion: 3,
     id: generateId(),
     name: projectName,
     createdAt: now,
     updatedAt: now,
-    connectors,
+    connectors: [center, ...arms],
     materials,
     protectiveSleeves: [],
     models: [],
@@ -257,8 +386,46 @@ function createConfigFromTemplate(
   });
 }
 
+function pickDefaultConnectorB(connectors: Connector[], connectorAId: string): string {
+  const primary = connectors.find((c) => c.id === connectorAId);
+  if (!primary) return connectors[0]?.id ?? '';
+  const samePinDistinct = connectors.find((c) => c.id !== primary.id && c.pinCount === primary.pinCount);
+  if (samePinDistinct) return samePinDistinct.id;
+  const distinct = connectors.find((c) => c.id !== primary.id);
+  return distinct?.id ?? primary.id;
+}
+
+function getTemplateConnectorLabels(templateId: string) {
+  if (templateId === 't-branch') {
+    return {
+      primaryLabel: '主端连接器',
+      secondaryLabel: '分支连接器（2 端）',
+      pinLabel: (n: number) => `每路分支接线数: ${n}（共 ${n * 2} 条电子线）`,
+      summaryPinLabel: '分支接线数',
+      summaryPinValue: (n: number) => `每路 ${n} 条（共 ${n * 2} 条电子线）`,
+    };
+  }
+  if (templateId === 'star-4') {
+    return {
+      primaryLabel: '中心主连接器',
+      secondaryLabel: '外围分支连接器（4 端）',
+      pinLabel: (n: number) => `每路分支接线数: ${n}（共 ${n * 4} 条电子线）`,
+      summaryPinLabel: '分支接线数',
+      summaryPinValue: (n: number) => `每路 ${n} 条（共 ${n * 4} 条电子线）`,
+    };
+  }
+  return {
+    primaryLabel: '起始连接器',
+    secondaryLabel: '目标连接器',
+    pinLabel: (n: number) => `接线数量 / PIN数: ${n}`,
+    summaryPinLabel: '接线数量',
+    summaryPinValue: (n: number) => `${n} 条电子线`,
+  };
+}
+
 export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   const connectors = useCatalogStore((state) => getCatalogConnectors(state.snapshot));
+  const wires = useCatalogStore((state) => getCatalogWires(state.snapshot));
   const catalogStatus = useCatalogStore((state) => state.status);
   const catalogError = useCatalogStore((state) => state.error);
 
@@ -273,8 +440,17 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
   const [createError, setCreateError] = useState<{ message: string; uncertain: boolean } | null>(null);
   const submitting = useRef(false);
 
-  const activeConnectorA = connectorA || connectors[0]?.id || '';
-  const activeConnectorB = connectorB || (connectors[4]?.id ?? connectors[1]?.id ?? connectors[0]?.id ?? '');
+  const activeConnectorA = connectors.some((c) => c.id === connectorA)
+    ? connectorA
+    : (connectors[0]?.id ?? '');
+  const activeConnectorB = connectors.some((c) => c.id === connectorB)
+    ? connectorB
+    : pickDefaultConnectorB(connectors, activeConnectorA);
+  const selectedConnA = connectors.find((c) => c.id === activeConnectorA);
+  const selectedConnB = connectors.find((c) => c.id === activeConnectorB);
+  const maxSelectablePins = Math.max(1, Math.min(selectedConnA?.pinCount || 2, selectedConnB?.pinCount || 2));
+  const effectivePinCount = Math.min(Math.max(1, pinCount), maxSelectablePins);
+  const connectorLabels = getTemplateConnectorLabels(selectedTemplate);
 
   const { currentUser } = useUserStore();
   const { createProject } = useProjectStore();
@@ -302,7 +478,14 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
     let config: HarnessConfig | undefined;
     let created: Awaited<ReturnType<typeof createProject>>;
     try {
-      config = createConfigFromTemplate(selectedTemplate, name, activeConnectorA, activeConnectorB, pinCount);
+      config = createConfigFromTemplate(
+        selectedTemplate,
+        name,
+        activeConnectorA,
+        activeConnectorB,
+        effectivePinCount,
+        selectedTemplate === 'blank' ? undefined : { connectors, wires },
+      );
       created = await createProject(currentUser.id, name, projectDesc, config);
     } catch (error) {
       const uncertain = error instanceof DocumentWriteError && error.code === 'network';
@@ -450,8 +633,11 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
               ) : (
                 <>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">起始连接器</label>
+                    <label htmlFor="wizard-connector-a" className="mb-1 block text-sm font-medium text-slate-700">
+                      {connectorLabels.primaryLabel}
+                    </label>
                     <select
+                      id="wizard-connector-a"
                       value={activeConnectorA}
                       onChange={(e) => setConnectorA(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -464,8 +650,11 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                     </select>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">目标连接器</label>
+                    <label htmlFor="wizard-connector-b" className="mb-1 block text-sm font-medium text-slate-700">
+                      {connectorLabels.secondaryLabel}
+                    </label>
                     <select
+                      id="wizard-connector-b"
                       value={activeConnectorB}
                       onChange={(e) => setConnectorB(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -478,28 +667,21 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                     </select>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                       接线数量 / PIN数: {pinCount}
+                    <label htmlFor="wizard-pin-count" className="mb-1 block text-sm font-medium text-slate-700">
+                      {connectorLabels.pinLabel(effectivePinCount)}
                     </label>
                     <input
+                      id="wizard-pin-count"
                       type="range"
                       min={1}
-                      max={Math.min(
-                        connectors.find((c) => c.id === activeConnectorA)?.pinCount || 2,
-                        connectors.find((c) => c.id === activeConnectorB)?.pinCount || 2,
-                      )}
-                      value={pinCount}
+                      max={maxSelectablePins}
+                      value={effectivePinCount}
                       onChange={(e) => setPinCount(Number(e.target.value))}
                       className="w-full"
                     />
                     <div className="mt-1 flex justify-between text-xs text-slate-400">
                       <span>1</span>
-                      <span>
-                        {Math.min(
-                          connectors.find((c) => c.id === activeConnectorA)?.pinCount || 2,
-                          connectors.find((c) => c.id === activeConnectorB)?.pinCount || 2,
-                        )}
-                      </span>
+                      <span>{maxSelectablePins}</span>
                     </div>
                   </div>
                 </>
@@ -535,20 +717,20 @@ export function ProjectWizard({ onComplete, onCancel }: ProjectWizardProps) {
                 {selectedTemplate !== 'blank' && (
                   <>
                     <div className="flex justify-between">
-                      <span className="text-sm text-slate-500">起始连接器</span>
+                      <span className="text-sm text-slate-500">{connectorLabels.primaryLabel}</span>
                       <span className="text-sm text-slate-800">
-                        {connectors.find((c) => c.id === connectorA)?.name}
+                        {selectedConnA ? `${selectedConnA.name} (${selectedConnA.pinCount}P)` : '未选择'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-slate-500">目标连接器</span>
+                      <span className="text-sm text-slate-500">{connectorLabels.secondaryLabel}</span>
                       <span className="text-sm text-slate-800">
-                        {connectors.find((c) => c.id === connectorB)?.name}
+                        {selectedConnB ? `${selectedConnB.name} (${selectedConnB.pinCount}P)` : '未选择'}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm text-slate-500">接线数量</span>
-                      <span className="text-sm text-slate-800">{pinCount}</span>
+                      <span className="text-sm text-slate-500">{connectorLabels.summaryPinLabel}</span>
+                      <span className="text-sm text-slate-800">{connectorLabels.summaryPinValue(effectivePinCount)}</span>
                     </div>
                   </>
                 )}
