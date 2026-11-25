@@ -4,7 +4,7 @@ import { formatQuoteMoney } from '@/lib/pricing';
 import { calculatePrice, DEFAULT_PRICING_SETTINGS } from '../../../server/pricing';
 import { formatMaterialSpecification, getPriceImportCandidates, getQuoteMaterials } from '@/lib/quoteMaterials';
 import { createQuoteWorkbook } from '@/lib/quoteExport';
-import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
+import { createPriceTemplate, diffImportedPrices, parsePriceWorkbook, parsePriceWorkbookDetailed } from '@/lib/priceImport';
 import { validatePrices, type MaterialPrice } from '@/repositories/priceRepository';
 import { createFallbackConfig } from '@/lib/normalizeHarnessConfig';
 import { parseHarnessConfig } from '@/lib/harnessConfigSchema';
@@ -305,5 +305,108 @@ describe('price workbook and repository', () => {
     expect(row).not.toHaveProperty('交期');
     expect(JSON.stringify(row)).not.toContain('wire-resource');
     expect(() => createQuoteWorkbook(config, { unitPrice: p.unitPrice, totalPrice: p.totalPrice, breakdown: p }, 'internal', 'sales')).toThrow('权限');
+  });
+
+  it('skips blank unpriced rows in exported templates and rejects workbooks with no prices filled', () => {
+    const { config, prices } = fixture();
+    const materials = getQuoteMaterials(config, catalog);
+    const partialPrices = prices.slice(0, 2);
+    const exported = createPriceTemplate(materials, partialPrices);
+    const parsed = parsePriceWorkbookDetailed(bytes(exported), materials);
+
+    expect(parsed.prices).toHaveLength(2);
+    expect(parsed.skippedUnpricedCount).toBe(2);
+
+    const allBlank = createPriceTemplate(materials, []);
+    expect(() => parsePriceWorkbookDetailed(bytes(allBlank), materials)).toThrow('未填写任何含税单价');
+  });
+
+  it('reports real Excel row numbers after blank lines and aggregates multiple row errors', () => {
+    const { config, prices } = fixture();
+    const materials = getQuoteMaterials(config, catalog);
+    const book = createPriceTemplate(materials, prices);
+    const sheet = book.Sheets['材料价格'];
+    const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' });
+    aoa.splice(2, 0, ['', '', '', '', '']); // Excel 第 3 行为空行
+    (aoa[3] as unknown[])[4] = '-1'; // Excel 第 4 行单价无效
+    (aoa[4] as unknown[])[1] = '不存在物料'; // Excel 第 5 行未匹配
+    book.Sheets['材料价格'] = XLSX.utils.aoa_to_sheet(aoa);
+
+    let message = '';
+    try {
+      parsePriceWorkbook(bytes(book), materials);
+    } catch (cause) {
+      message = cause instanceof Error ? cause.message : String(cause);
+    }
+    expect(message).toContain('共发现 2 处错误');
+    expect(message).toContain('第 4 行');
+    expect(message).toContain('第 5 行');
+  });
+
+  it('accepts spaces before wire length units and counts tiers exceeding 5000mm', () => {
+    const { config, prices } = fixture();
+    const materials = getQuoteMaterials(config, catalog);
+    const book = createPriceTemplate(materials, prices);
+    book.Sheets['材料价格'].C3.v = formatMaterialSpecification(materials[1]).replace('0.6m', '6 m');
+    const parsed = parsePriceWorkbookDetailed(bytes(book), materials);
+    expect(parsed.prices[1].lengthMm).toBe(6000);
+    expect(parsed.overMaxLengthCount).toBe(1);
+
+    const bookMm = createPriceTemplate(materials, prices);
+    bookMm.Sheets['材料价格'].C3.v = formatMaterialSpecification(materials[1]).replace('0.6m', '500 mm');
+    expect(parsePriceWorkbookDetailed(bytes(bookMm), materials).prices[1].lengthMm).toBe(500);
+  });
+
+  it('normalizes IEEE-754 float tails while still rejecting true 7-decimal prices', () => {
+    const { config, prices } = fixture();
+    const materials = getQuoteMaterials(config, catalog);
+    const book = createPriceTemplate(materials, prices);
+    book.Sheets['材料价格'].E2 = { t: 'n', v: 3.5934000000000004 };
+    expect(parsePriceWorkbook(bytes(book), materials)[0].taxIncludedPrice).toBe('3.5934');
+
+    const badBook = createPriceTemplate(materials, prices);
+    badBook.Sheets['材料价格'].E2 = { t: 'n', v: 1.1234567 };
+    expect(() => parsePriceWorkbook(bytes(badBook), materials)).toThrow('第 2 行');
+  });
+
+  it('diffs added, updated, and numerically unchanged prices accurately', () => {
+    const { prices } = fixture();
+    const existing = [
+      { ...prices[0], taxIncludedPrice: '2.00' },
+      prices[1],
+    ];
+    const incoming = [
+      { ...prices[0], taxIncludedPrice: '2' }, // 数值相同，视为未变动
+      { ...prices[1], taxIncludedPrice: '4.50' }, // 单价变动
+      prices[2], // 新增
+    ];
+    const diff = diffImportedPrices(incoming, existing);
+    expect(diff.unchanged).toHaveLength(1);
+    expect(diff.updated).toHaveLength(1);
+    expect(diff.updated[0].previous.taxIncludedPrice).toBe('4');
+    expect(diff.updated[0].next.taxIncludedPrice).toBe('4.50');
+    expect(diff.added).toHaveLength(1);
+    expect(diff.changes.map((row) => row.kind)).toEqual(['wire', 'outer-mold']);
+  });
+
+  it('formats inner-mold specifications cleanly without extra fields', () => {
+    const straight = formatMaterialSpecification({
+      kind: 'inner-mold',
+      resourceId: 'mold',
+      name: '低密度透明PE直头内模',
+      specification: JSON.stringify(['低密度透明PE', 'straight']),
+      lengthMm: 0,
+      unit: '元/个',
+    });
+    const bent = formatMaterialSpecification({
+      kind: 'inner-mold',
+      resourceId: 'mold',
+      name: '低密度透明PE弯头内模',
+      specification: JSON.stringify(['低密度透明PE', 'bent']),
+      lengthMm: 0,
+      unit: '元/个',
+    });
+    expect(straight).toBe('低密度透明PE 直头');
+    expect(bent).toBe('低密度透明PE 弯头');
   });
 });

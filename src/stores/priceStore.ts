@@ -55,8 +55,9 @@ export const usePriceStore = create<PriceState>((set, get) => ({
 
   async merge(prices, source) {
     if (!canViewPricing(useUserStore.getState().currentUser?.role)) throw new Error('无物料价格维护权限');
-    const epoch = loadEpoch;
-    set({ loading: true });
+    // Invalidate any in-flight read so it cannot replace freshly imported prices.
+    const epoch = ++loadEpoch;
+    set({ loading: true, refreshing: false });
     try {
       const book = await priceRepository.merge(prices, source);
       if (epoch !== loadEpoch) return;

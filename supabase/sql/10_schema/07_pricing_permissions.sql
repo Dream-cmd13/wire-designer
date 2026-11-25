@@ -132,7 +132,9 @@ begin
       (entry->>'lengthMm')::bigint, entry->>'unit', (entry->>'taxIncludedPrice')::numeric, source_name
     from jsonb_array_elements(price_rows) as rows(entry)
     on conflict (kind, resource_id, specification, length_mm, unit) do update set
-      name = excluded.name, tax_included_price = excluded.tax_included_price, source_name = excluded.source_name;
+      name = excluded.name, tax_included_price = excluded.tax_included_price, source_name = excluded.source_name
+    where public.material_prices.tax_included_price is distinct from excluded.tax_included_price
+       or public.material_prices.name is distinct from excluded.name;
 end $$;
 revoke all on function public.import_material_prices(jsonb,text) from public, anon;
 grant execute on function public.import_material_prices(jsonb,text) to authenticated;

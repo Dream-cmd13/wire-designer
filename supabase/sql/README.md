@@ -1,3 +1,9 @@
+## 价格导入跳过未变动行（2026-11-25）
+
+现有库执行 [`supabase/updates/20261125_import_material_prices_skip_unchanged.sql`](../updates/20261125_import_material_prices_skip_unchanged.sql)；全新库直接使用已更新的 `10_schema/07_pricing_permissions.sql`。迁移仅原地替换 `public.import_material_prices(jsonb, text)`，为 `ON CONFLICT DO UPDATE` 增加 `tax_included_price` / `name` 变动过滤，避免重复导入覆盖未变动价格的更新时间、更新人和审计日志；不修改表结构，也不改动或删除任何既有价格数据。
+
+执行前备份 `public.material_prices` 行数、单价与 `pricing_audit` 计数，并保存原函数定义（`pg_get_functiondef('public.import_material_prices(jsonb,text)'::regprocedure)`）；执行后核对原数据完整保留且函数可重复执行两次幂等。回退方案：使用迁移前保存的原函数定义重新执行 `create or replace function` 恢复即可，保留全部现有价格及审计记录。
+
 ## DWG 图纸私有保存（2026-11-18）
 
 现有库执行 [`supabase/updates/20261118_dwg_preview.sql`](../updates/20261118_dwg_preview.sql)；全新库完成下方基础脚本后执行同一文件。它只创建 `dwg_assets`、私有 `dwg-files` 桶（上限 20 MiB）和本人权限，不修改内置图纸桶 `dwg-drawings`。

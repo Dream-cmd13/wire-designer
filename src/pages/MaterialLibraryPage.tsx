@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Decimal from 'decimal.js';
 import {
   Cable,
   Check,
@@ -27,14 +28,23 @@ import {
   getCatalogSnapshot,
   getCatalogWires,
 } from '@/lib/catalogRuntime';
+import { formatMaterialPrice } from '@/lib/materialPriceEdit';
 import { canViewPricing } from '@/lib/permissions';
-import { createPriceTemplate, parsePriceWorkbook } from '@/lib/priceImport';
+import {
+  createPriceTemplate,
+  diffImportedPrices,
+  parsePriceWorkbookDetailed,
+  PRICE_KIND_LABEL,
+  type ParsedPriceWorkbook,
+} from '@/lib/priceImport';
 import {
   buildCatalogPriceTemplateRows,
+  formatMaterialSpecification,
   getCatalogPriceCandidates,
+  materialPriceKey,
   type QuoteMaterial,
 } from '@/lib/quoteMaterials';
-import { getUserErrorMessage } from '@/lib/userErrorMessage';
+import { getUserErrorMessage, UserFacingError } from '@/lib/userErrorMessage';
 import type { MaterialPrice } from '@/repositories/priceRepository';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
@@ -45,8 +55,13 @@ import type { FinishedHarnessMaterial } from '@/types/finishedHarnessMaterial';
 
 type MaterialTab = 'connectors' | 'wires' | 'accessories' | 'finished-harnesses';
 
+interface PendingPriceImport extends ParsedPriceWorkbook {
+  name: string;
+}
+
 // 离开浏览器一段时间判定阈值（30秒）
 const STALE_LEAVE_THRESHOLD_MS = 30 * 1000;
+const MAX_DIFF_PREVIEW_ROWS = 50;
 
 export interface MaterialLibraryPageProps {
   initialTab?: MaterialTab;
@@ -67,7 +82,8 @@ export function MaterialLibraryPage({
   initialConnPriceStatus = 'all',
   initialWirePriceStatus = 'all',
 }: MaterialLibraryPageProps = {}) {
-  const canEditPrices = canViewPricing(useUserStore(state => state.currentUser?.role));
+  const hookUserRole = useUserStore(state => state.currentUser?.role);
+  const canEditPrices = canViewPricing(hookUserRole ?? useUserStore.getState().currentUser?.role);
   const [priceEditor, setPriceEditor] = useState<{ candidates: QuoteMaterial[]; prices: MaterialPrice[] } | null>(null);
   const storeSnapshot = useCatalogStore((state) => state.snapshot);
   const rawCatalogStatus = useCatalogStore((state) => state.status);
@@ -139,13 +155,12 @@ export function MaterialLibraryPage({
   } | null>(null);
 
   // 价格导入/导出状态
-  const [pendingImport, setPendingImport] = useState<{
-    name: string;
-    prices: MaterialPrice[];
-  } | null>(null);
-  const pendingImportRef = useRef<{ name: string; prices: MaterialPrice[] } | null>(null);
+  const [pendingImport, setPendingImport] = useState<PendingPriceImport | null>(null);
+  const pendingImportRef = useRef<PendingPriceImport | null>(null);
   const importFailureNoticeRef = useRef<number | null>(null);
   const importMergeInFlightRef = useRef(false);
+  const exportingRef = useRef(false);
+  const [exporting, setExporting] = useState(false);
   const [readingFile, setReadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -240,6 +255,11 @@ export function MaterialLibraryPage({
       return parent ? [{ candidate, parent }] : [];
     }), [priceCandidates, overmolds]);
 
+  const pendingDiff = useMemo(
+    () => (pendingImport ? diffImportedPrices(pendingImport.prices, prices) : null),
+    [pendingImport, prices],
+  );
+
   // 导入任务切换（取消、换文件、成功）时同步撤销旧的导入失败通知，避免重试提交已废弃的价格数据
   const clearImportFailureNotice = () => {
     const noticeId = importFailureNoticeRef.current;
@@ -248,7 +268,7 @@ export function MaterialLibraryPage({
     importFailureNoticeRef.current = null;
   };
 
-  const applyPendingImport = (next: { name: string; prices: MaterialPrice[] } | null) => {
+  const applyPendingImport = (next: PendingPriceImport | null) => {
     pendingImportRef.current = next;
     setPendingImport(next);
     clearImportFailureNotice();
@@ -256,8 +276,11 @@ export function MaterialLibraryPage({
 
   // 导出价格模板（包含全量 catalog 物料以支持批量补价，并检查读取错误状态）
   const handleExportPrices = async () => {
+    if (!canEditPrices || exportingRef.current) return;
+    exportingRef.current = true;
+    setExporting(true);
     try {
-      await load();
+      await load({ forceRefresh: true });
       const latest = usePriceStore.getState();
       if (latest.error) {
         notify({
@@ -270,8 +293,9 @@ export function MaterialLibraryPage({
         return;
       }
 
+      const latestCatalog = useCatalogStore.getState().snapshot ?? snapshot;
       const shared = latest.book?.prices ?? [];
-      const templateRows = buildCatalogPriceTemplateRows(snapshot, shared);
+      const templateRows = buildCatalogPriceTemplateRows(latestCatalog, shared);
 
       if (!templateRows.length) {
         notify({
@@ -300,11 +324,15 @@ export function MaterialLibraryPage({
         action: { label: '重试导出', onClick: () => void handleExportPrices() },
         dedupeKey: 'price-export-failed',
       });
+    } finally {
+      exportingRef.current = false;
+      setExporting(false);
     }
   };
 
   // 触发文件选择（使用 catalog 级 candidates 匹配，不依赖当前画布工程）
   const handleSelectFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEditPrices) return;
     const file = event.target.files?.[0];
     if (!file) return;
     clearImportFailureNotice();
@@ -314,9 +342,13 @@ export function MaterialLibraryPage({
     reader.onload = async (e) => {
       try {
         const buffer = e.target?.result as ArrayBuffer;
-        const candidates = getCatalogPriceCandidates(snapshot);
-        const parsed = parsePriceWorkbook(buffer, candidates);
-        applyPendingImport({ name: file.name, prices: parsed });
+        const latestCatalog = useCatalogStore.getState().snapshot ?? snapshot;
+        const candidates = getCatalogPriceCandidates(latestCatalog);
+        if (!candidates.length) {
+          throw new UserFacingError('物料目录尚未加载完成，暂时无法校验价格表，请稍后重试。');
+        }
+        const parsed = parsePriceWorkbookDetailed(buffer, candidates);
+        applyPendingImport({ name: file.name, ...parsed });
       } catch (cause) {
         console.error('解析价格文件失败:', cause);
         importFailureNoticeRef.current = notify({
@@ -347,17 +379,28 @@ export function MaterialLibraryPage({
     reader.readAsArrayBuffer(file);
   };
 
-  // 确认导入价格
+  // 确认导入价格（仅提交新增或价格发生变更的记录）
   const handleConfirmMerge = async () => {
     const task = pendingImportRef.current;
-    if (!task || importMergeInFlightRef.current) return;
+    if (!canEditPrices || !task || importMergeInFlightRef.current) return;
     importMergeInFlightRef.current = true;
     try {
-      await merge(task.prices, task.name);
+      const latestPrices = usePriceStore.getState().book?.prices ?? [];
+      const latestDiff = diffImportedPrices(task.prices, latestPrices);
+      if (!latestDiff.changes.length) {
+        applyPendingImport(null);
+        notify({
+          tone: 'default',
+          message: '当前共享价格库已与导入内容一致，无需写入。',
+          dedupeKey: 'price-import-result',
+        });
+        return;
+      }
+      await merge(latestDiff.changes, task.name);
       applyPendingImport(null);
       notify({
         tone: 'success',
-        message: `已成功导入并更新 ${task.prices.length} 项物料价格。`,
+        message: `已成功写入 ${latestDiff.changes.length} 项价格变动（新增 ${latestDiff.added.length} 项，更新 ${latestDiff.updated.length} 项）。`,
         dedupeKey: 'price-import-result',
       });
     } catch (cause) {
@@ -408,22 +451,40 @@ export function MaterialLibraryPage({
           />
           <span>{isRefreshing ? '同步中...' : '刷新'}</span>
         </button>
-        <button
-          type="button"
-          disabled={loading || readingFile}
-          onClick={handleExportPrices}
-          className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:opacity-50"
-          title="导出包含全量物料及已有价格的 Excel 模板"
-        >
-          <Download className="h-3.5 w-3.5 text-slate-500" />
-          导出价格表
-        </button>
-        <button type="button" disabled={readingFile || loading} onClick={() => fileInputRef.current?.click()} className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-blue-600 px-3 text-xs font-medium text-white shadow-xs transition hover:bg-blue-700 disabled:opacity-50">
-          <Upload className="h-3.5 w-3.5" />
-          <span>{readingFile ? '正在解析...' : '导入价格表'}</span>
-        </button>
+        {canEditPrices && (
+          <>
+            <button
+              type="button"
+              disabled={!catalogReady || loading || readingFile || exporting}
+              onClick={handleExportPrices}
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title="导出包含全量物料及已有价格的 Excel 模板"
+            >
+              <Download className="h-3.5 w-3.5 text-slate-500" />
+              <span>{exporting ? '正在导出...' : '导出价格表'}</span>
+            </button>
+            <button
+              type="button"
+              disabled={!catalogReady || readingFile || loading}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex h-8 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-blue-600 px-3 text-xs font-medium text-white shadow-xs transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              <span>{readingFile ? '正在解析...' : '导入价格表'}</span>
+            </button>
+          </>
+        )}
       </PageHeaderActions>
-      <input ref={fileInputRef} type="file" accept=".xlsx" hidden disabled={readingFile || loading} onChange={handleSelectFile} />
+      {canEditPrices && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx"
+          hidden
+          disabled={!catalogReady || readingFile || loading}
+          onChange={handleSelectFile}
+        />
+      )}
       <PricingManagement />
       <section className="shrink-0 rounded-lg border border-slate-200 bg-white px-4 shadow-xs">
         {/* 价格数据加载失败时保持可见，避免用户误以为价格是最新的 */}
@@ -444,21 +505,31 @@ export function MaterialLibraryPage({
         )}
 
         {/* 价格导入待确认浮层 */}
-        {pendingImport && (
-          <div className="mt-2.5 rounded-lg border border-blue-200 bg-blue-50/70 p-2.5 text-xs text-blue-900">
+        {pendingImport && pendingDiff && (
+          <div className="mt-2.5 rounded-lg border border-blue-200 bg-blue-50/70 p-3 text-xs text-blue-900 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="h-4 w-4 text-blue-600" />
-                <span className="font-semibold">
-                  准备导入: {pendingImport.name}（共解析出 {pendingImport.prices.length} 项有效价格）
-                </span>
+              <div className="space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <FileSpreadsheet className="h-4 w-4 shrink-0 text-blue-600" />
+                  <span className="font-semibold">
+                    准备导入: {pendingImport.name}（新增 {pendingDiff.added.length} 项 · 修改 {pendingDiff.updated.length} 项 · 未变动 {pendingDiff.unchanged.length} 项{pendingImport.skippedUnpricedCount > 0 ? ` · 跳过未填 ${pendingImport.skippedUnpricedCount} 项` : ''}）
+                  </span>
+                </div>
+                <p className="text-[11px] text-blue-800/80">
+                  导入为增量更新，仅写入新增或单价变动的记录；删除 Excel 中的行不会删除系统已有价格。
+                </p>
+                {pendingImport.overMaxLengthCount > 0 && (
+                  <p className="text-[11px] font-medium text-amber-700">
+                    提醒：含 {pendingImport.overMaxLengthCount} 项超过 5 米的线材档位（系统自动报价超过 5 米将转人工核价）。
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={loading}
+                  disabled={loading || pendingDiff.changes.length === 0}
                   onClick={handleConfirmMerge}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded bg-blue-600 px-3 py-1 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded bg-blue-600 px-3 py-1 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Check className="h-3.5 w-3.5" />
                   确认写入共享价格库
@@ -473,6 +544,73 @@ export function MaterialLibraryPage({
                 </button>
               </div>
             </div>
+
+            {pendingDiff.changes.length === 0 ? (
+              <div className="rounded border border-blue-200/80 bg-white/80 px-3 py-2 text-[11px] text-slate-600">
+                文件内容与当前共享价格库一致，无需写入。
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded border border-blue-200/80 bg-white">
+                <div className="max-h-52 overflow-auto">
+                  <table className="w-full border-collapse text-left text-[11px]">
+                    <thead className="sticky top-0 bg-slate-50 text-slate-600 border-b border-slate-200">
+                      <tr>
+                        <th className="px-2.5 py-1.5 font-semibold whitespace-nowrap">状态</th>
+                        <th className="px-2.5 py-1.5 font-semibold whitespace-nowrap">类型</th>
+                        <th className="px-2.5 py-1.5 font-semibold">物料名称</th>
+                        <th className="px-2.5 py-1.5 font-semibold">规格</th>
+                        <th className="px-2.5 py-1.5 font-semibold text-right whitespace-nowrap">原含税单价</th>
+                        <th className="px-2.5 py-1.5 font-semibold text-right whitespace-nowrap">新含税单价</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {pendingDiff.items.slice(0, MAX_DIFF_PREVIEW_ROWS).map((item) => {
+                        const isAdded = item.kind === 'added';
+                        const isIncrease = !isAdded && item.previousPrice !== undefined
+                          && new Decimal(item.price.taxIncludedPrice).gt(item.previousPrice);
+                        return (
+                          <tr key={materialPriceKey(item.price)} className="hover:bg-slate-50/70">
+                            <td className="px-2.5 py-1.5 whitespace-nowrap">
+                              <span
+                                className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  isAdded
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : isIncrease
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-sky-50 text-sky-700 border border-sky-200'
+                                }`}
+                              >
+                                {isAdded ? '新增' : isIncrease ? '涨价' : '降价'}
+                              </span>
+                            </td>
+                            <td className="px-2.5 py-1.5 whitespace-nowrap text-slate-500">
+                              {PRICE_KIND_LABEL[item.price.kind]}
+                            </td>
+                            <td className="px-2.5 py-1.5 font-medium text-slate-900">
+                              {item.price.name}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-slate-600">
+                              {formatMaterialSpecification(item.price)}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-right tabular-nums text-slate-500 whitespace-nowrap">
+                              {item.previousPrice !== undefined ? `¥ ${formatMaterialPrice(item.previousPrice)}` : '-'}
+                            </td>
+                            <td className="px-2.5 py-1.5 text-right tabular-nums font-semibold text-slate-900 whitespace-nowrap">
+                              ¥ {formatMaterialPrice(item.price.taxIncludedPrice)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {pendingDiff.items.length > MAX_DIFF_PREVIEW_ROWS && (
+                  <div className="border-t border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-500">
+                    仅预览前 {MAX_DIFF_PREVIEW_ROWS} 项变更，另有 {pendingDiff.items.length - MAX_DIFF_PREVIEW_ROWS} 项未展开。
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

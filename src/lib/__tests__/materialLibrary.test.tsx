@@ -5,6 +5,7 @@ import { MaterialLibraryPage } from '@/pages/MaterialLibraryPage';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePriceStore } from '@/stores/priceStore';
 import { useFinishedHarnessStore } from '@/stores/finishedHarnessStore';
+import { useUserStore } from '@/stores/userStore';
 import { FinishedHarnessMaterialDetailDialog } from '@/components/materials/FinishedHarnessMaterialDetailDialog';
 import { mapFinishedHarnessMaterialRow } from '@/repositories/finishedHarnessMaterialRepository';
 import { setCatalogSnapshot } from '@/lib/catalogRuntime';
@@ -157,41 +158,72 @@ const mockPriceBook: PriceBook = {
 
 describe('MaterialLibraryPage', () => {
   it('renders material library tabs and action buttons', () => {
+    useUserStore.setState({
+      currentUser: { id: 'eng-1', name: '张工', email: 'eng@local.app', createdAt: 0, role: 'engineer' },
+    });
     setCatalogSnapshot(mockSnapshot);
     useCatalogStore.setState({ status: 'ready', snapshot: mockSnapshot });
     useCatalogStore.getInitialState = () => useCatalogStore.getState();
     usePriceStore.setState({ book: mockPriceBook, loading: false, error: null });
     usePriceStore.getInitialState = () => usePriceStore.getState();
 
-    const html = renderToStaticMarkup(<MaterialLibraryPage />);
+    try {
+      const html = renderToStaticMarkup(<MaterialLibraryPage />);
 
-    // 操作栏
-    expect(html).toContain('导出价格表');
-    expect(html).toContain('导入价格表');
+      // 操作栏
+      expect(html).toContain('导出价格表');
+      expect(html).toContain('导入价格表');
 
-    // 筛选控件（包含屏蔽状态与插座类型）
-    expect(html).toContain('全部屏蔽状态');
-    expect(html).toContain('已屏蔽');
-    expect(html).toContain('未屏蔽');
-    expect(html).toContain('插座 (receptacle)');
+      // 筛选控件（包含屏蔽状态与插座类型）
+      expect(html).toContain('全部屏蔽状态');
+      expect(html).toContain('已屏蔽');
+      expect(html).toContain('未屏蔽');
+      expect(html).toContain('插座 (receptacle)');
 
-    // Tabs
-    expect(html).toContain('连接器');
-    expect(html).toContain('线材');
-    expect(html).toContain('模具');
-    expect(html).toContain('现有成品线束方案');
+      // Tabs
+      expect(html).toContain('连接器');
+      expect(html).toContain('线材');
+      expect(html).toContain('模具');
+      expect(html).toContain('现有成品线束方案');
 
-    // 默认展示连接器列表和单价
-    expect(html).toContain('测试连接器A');
-    expect(html).toContain('MODEL-A');
-    expect(html).toContain('含税单价');
-    expect(html).toContain('计价单位');
-    expect(html).toContain('¥ 2.50');
-    expect(html).toContain('元/个');
+      // 默认展示连接器列表和单价
+      expect(html).toContain('测试连接器A');
+      expect(html).toContain('MODEL-A');
+      expect(html).toContain('含税单价');
+      expect(html).toContain('计价单位');
+      expect(html).toContain('¥ 2.50');
+      expect(html).toContain('元/个');
 
-    // 统一分页组件
-    expect(html).toContain('显示 1 - 1 条');
-    expect(html).toContain('20 条/页');
+      // 统一分页组件
+      expect(html).toContain('显示 1 - 1 条');
+      expect(html).toContain('20 条/页');
+    } finally {
+      useUserStore.setState({ currentUser: null });
+    }
+  });
+
+  it('hides price export/import actions for sales and anonymous users', () => {
+    setCatalogSnapshot(mockSnapshot);
+    useCatalogStore.setState({ status: 'ready', snapshot: mockSnapshot });
+    useCatalogStore.getInitialState = () => useCatalogStore.getState();
+    usePriceStore.setState({ book: mockPriceBook, loading: false, error: null });
+    usePriceStore.getInitialState = () => usePriceStore.getState();
+
+    try {
+      useUserStore.setState({ currentUser: null });
+      const anonymousHtml = renderToStaticMarkup(<MaterialLibraryPage />);
+      expect(anonymousHtml).not.toContain('导出价格表');
+      expect(anonymousHtml).not.toContain('导入价格表');
+
+      useUserStore.setState({
+        currentUser: { id: 'sales-1', name: '业务员', email: 'sales@local.app', createdAt: 0, role: 'sales' },
+      });
+      const salesHtml = renderToStaticMarkup(<MaterialLibraryPage />);
+      expect(salesHtml).not.toContain('导出价格表');
+      expect(salesHtml).not.toContain('导入价格表');
+    } finally {
+      useUserStore.setState({ currentUser: null });
+    }
   });
 
   it('renders wires tab correctly with multi-tier price tags and per-strip unit', () => {

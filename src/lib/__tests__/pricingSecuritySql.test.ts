@@ -321,4 +321,43 @@ describe('real PostgreSQL pricing permissions', () => {
     expect(await db.query('select id, kind, code, spec from public.catalog_items order by code')).toEqual(legacyRows);
   }, 30000);
 
+  it('skips unchanged price rows during import_material_prices without touching audit or updated_at', async () => {
+    await db.exec('reset role');
+    const migration = readFileSync('supabase/updates/20261125_import_material_prices_skip_unchanged.sql', 'utf8');
+    const beforePrices = await db.query('select id, tax_included_price, updated_at::text from public.material_prices order by id');
+    await db.exec(migration);
+    await db.exec(migration);
+    expect(await db.query('select id, tax_included_price, updated_at::text from public.material_prices order by id')).toEqual(beforePrices);
+
+    await asUser(engineer);
+    const unchangedEntry = {
+      kind: 'connector',
+      resourceId: material,
+      name: 'M12',
+      specification: '["skip-unchanged"]',
+      lengthMm: 0,
+      unit: '元/个',
+      taxIncludedPrice: '15.50',
+    };
+    await db.query('select public.import_material_prices($1::jsonb, $2)', [JSON.stringify([unchangedEntry]), 'initial.xlsx']);
+    const firstState = await scalar(`select updated_at::text as stamp from public.material_prices where specification = '["skip-unchanged"]'`);
+    await asUser(admin);
+    const auditBefore = await scalar('select count(*)::int as count from public.pricing_audit');
+    expect(Number(auditBefore.count)).toBeGreaterThan(0);
+
+    // 数值相等（15.5 vs 15.50）且名称一致时，应跳过更新，不改写 updated_at 也不新增审计日志
+    await asUser(engineer);
+    await db.query('select public.import_material_prices($1::jsonb, $2)', [JSON.stringify([{ ...unchangedEntry, taxIncludedPrice: '15.5' }]), 'reimport.xlsx']);
+    expect(await scalar(`select updated_at::text as stamp from public.material_prices where specification = '["skip-unchanged"]'`)).toEqual(firstState);
+    await asUser(admin);
+    expect(await scalar('select count(*)::int as count from public.pricing_audit')).toEqual(auditBefore);
+
+    // 价格或名称真正变化时，正常更新并记录审计
+    await asUser(engineer);
+    await db.query('select public.import_material_prices($1::jsonb, $2)', [JSON.stringify([{ ...unchangedEntry, taxIncludedPrice: '16.00' }]), 'changed.xlsx']);
+    expect(await scalar(`select tax_included_price from public.material_prices where specification = '["skip-unchanged"]'`)).toEqual({ tax_included_price: '16.00' });
+    await asUser(admin);
+    expect(Number((await scalar('select count(*)::int as count from public.pricing_audit'))?.count)).toBe(Number(auditBefore.count) + 1);
+  });
+
 });
