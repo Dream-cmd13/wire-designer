@@ -1,19 +1,27 @@
 import { useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
-import { ArrowRight, CheckCircle2, Headphones, Loader2, Upload, X } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Loader2, Upload, X } from 'lucide-react';
 import { QuoteSubmissionError, sendQuoteRequest } from '@/lib/quoteRequests';
 import {
-  hasQuoteFileSignature, QUOTE_FILE_ACCEPT, QUOTE_FILE_MAX_COUNT, QUOTE_KINDS,
+  getQuoteRequestFieldErrors, hasQuoteFileSignature, QUOTE_FILE_ACCEPT, QUOTE_FILE_MAX_COUNT, QUOTE_FILE_MAX_MIB, QUOTE_KINDS,
   quoteFileHash, validateQuoteFile, validateQuoteRequest,
 } from '../../supabase/functions/_shared/quoteRequest';
 
+const kindHints = {
+  按图加工: '可上传已有图纸，并补充预计数量和交期。',
+  新线束设计: '可描述用途、长度、两端接口和使用环境。',
+  按样品评估: '可提供样品照片、尺寸和预计数量。',
+} satisfies Record<(typeof QUOTE_KINDS)[number], string>;
+
 const emptyFields = { name: '', phone: '', email: '', company: '', demand: '', kind: '' };
-const inputClass = 'mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100';
+const inputClass = 'mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100 aria-invalid:border-red-600 aria-invalid:focus:ring-red-100';
+const fieldErrorClass = 'mt-1 text-xs leading-5 text-red-700';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold disabled:opacity-60';
 
 export default function RequestQuotePage() {
   const [fields, setFields] = useState(emptyFields);
   const [files, setFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState('');
+  const [showFieldErrors, setShowFieldErrors] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [uploaded, setUploaded] = useState<number[]>([]);
@@ -21,13 +29,16 @@ export default function RequestQuotePage() {
   const [copied, setCopied] = useState(false);
   const submitting = useRef(false);
   const attempt = useRef<{ id: string; fingerprint: string; uploaded: Set<number> } | null>(null);
-  const contact = useRef<HTMLInputElement>(null);
+  const addDrawing = useRef<HTMLButtonElement>(null);
   const filePicker = useRef<HTMLInputElement>(null);
   const busy = Boolean(progress);
+  const fieldErrors = showFieldErrors ? getQuoteRequestFieldErrors(fields, files.length > 0) : {};
+  const kindHint = QUOTE_KINDS.find((kind) => kind === fields.kind);
 
   function changeField(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value } = event.currentTarget;
     setFields((current) => ({ ...current, [name]: value }));
+    setUploaded([]);
     setError('');
   }
 
@@ -62,15 +73,31 @@ export default function RequestQuotePage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current) return;
-    submitting.current = true;
     setError('');
+    const validation = getQuoteRequestFieldErrors(fields, files.length > 0);
+    const firstInvalid = validation.demand ? 'demand'
+      : validation.name ? 'name'
+        : validation.contact || validation.phone ? 'phone'
+          : validation.email ? 'email' : null;
+    if (firstInvalid) {
+      setShowFieldErrors(true);
+      const field = event.currentTarget.elements.namedItem(firstInvalid);
+      if (field instanceof HTMLElement) requestAnimationFrame(() => field.focus());
+      return;
+    }
+
+    submitting.current = true;
+    setFileError('');
     setProgress('正在检查资料…');
     try {
-      validateQuoteRequest({ ...fields, files: files.map((file) => ({ name: file.name, size: file.size, sha256: '0'.repeat(64) })) });
       const attachments = [];
       for (const file of files) {
         const bytes = await file.arrayBuffer();
-        if (!hasQuoteFileSignature(file.name, new Uint8Array(bytes))) throw new Error(`「${file.name}」的内容与文件格式不符，请重新选择。`);
+        if (!hasQuoteFileSignature(file.name, new Uint8Array(bytes))) {
+          setFileError(`「${file.name}」的内容与文件格式不符，请重新选择。`);
+          requestAnimationFrame(() => addDrawing.current?.focus());
+          return;
+        }
         attachments.push({ name: file.name, size: file.size, sha256: await quoteFileHash(bytes) });
       }
       const input = validateQuoteRequest({ ...fields, files: attachments });
@@ -80,6 +107,7 @@ export default function RequestQuotePage() {
         setUploaded([]);
       }
       const active = attempt.current;
+      setUploaded([...active.uploaded]);
       setProgress('正在提交询价…');
       const prepared = await sendQuoteRequest<{ uploading?: boolean; receipt?: string }>('prepare', { id: active.id, input });
       if (prepared.receipt) {
@@ -119,6 +147,7 @@ export default function RequestQuotePage() {
     setCopied(false);
     setUploaded([]);
     setFileError('');
+    setShowFieldErrors(false);
     setError('');
   }
 
@@ -138,26 +167,40 @@ export default function RequestQuotePage() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl px-3 py-5 sm:px-6 sm:py-9">
-      <p className="mb-5 text-sm leading-6 text-slate-600">告诉我们您需要的线束，或直接上传图纸。专员会与您确认需求并提供报价。无需登录。</p>
-      <form onSubmit={(event) => void submit(event)} className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <fieldset disabled={busy} className="min-w-0 space-y-6 px-4 py-5 sm:px-7 sm:py-6">
-          <section className="space-y-4" aria-label="需求和图纸">
-            <div className="flex flex-wrap gap-2" role="group" aria-label="需求类型（选填）">
-              {QUOTE_KINDS.map((kind) => (
-                <button key={kind} type="button" aria-pressed={fields.kind === kind} onClick={() => setFields((previous) => ({ ...previous, kind: previous.kind === kind ? '' : kind }))} className={`rounded-md border px-3 py-1.5 text-sm ${fields.kind === kind ? 'border-blue-600 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{kind}</button>
-              ))}
+    <div className="mx-auto max-w-3xl px-3 py-4 sm:px-6 sm:py-6">
+      <p className="mb-4 text-sm leading-6 text-slate-600">描述需求或上传图纸，专员确认后提供报价。无需登录。</p>
+      <form noValidate onSubmit={(event) => void submit(event)} className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <fieldset disabled={busy} className="min-w-0 space-y-4 px-4 py-4 sm:px-7">
+          <section className="space-y-3" aria-labelledby="quote-demand-title">
+            <div>
+              <h2 id="quote-demand-title" className="font-semibold text-slate-900">需求与图纸</h2>
+              <p id="quote-demand-help" className="mt-1 text-xs leading-5 text-slate-600">需求说明或图纸，至少提供一项。</p>
             </div>
-            <label className="block text-sm font-semibold text-slate-800">
-              需求说明
-              <textarea name="demand" value={fields.demand} onChange={changeField} rows={5} maxLength={3000} className={`${inputClass} min-h-28 resize-y font-normal`} placeholder="例如：需要 20 条设备连接线，成品长度 500 mm，用于样机。接头型号、线序或交期如已确定，也可写在这里。" />
-            </label>
+            <div>
+              <p id="quote-kind-label" className="mb-1.5 text-sm text-slate-800">需求类型 <span className="text-slate-500">（选填）</span></p>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="quote-kind-label">
+                {QUOTE_KINDS.map((kind) => (
+                  <button key={kind} type="button" aria-pressed={fields.kind === kind} onClick={() => { setFields((previous) => ({ ...previous, kind: previous.kind === kind ? '' : kind })); setUploaded([]); setError(''); }} className={`rounded-md border px-3 py-1.5 text-sm ${fields.kind === kind ? 'border-blue-600 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{kind}</button>
+                ))}
+              </div>
+              {kindHint && <p role="status" className="mt-1.5 text-xs leading-5 text-slate-600">{kindHints[kindHint]}</p>}
+            </div>
+            <div>
+              <label htmlFor="quote-demand" className="text-sm font-semibold text-slate-800">需求说明</label>
+              <textarea id="quote-demand" name="demand" value={fields.demand} onChange={changeField} rows={3} maxLength={3000} aria-invalid={Boolean(fieldErrors.demand)} aria-describedby={fieldErrors.demand ? 'quote-demand-help quote-demand-error' : 'quote-demand-help'} className={`${inputClass} block resize-y`} placeholder="例如：需要 20 条设备连接线，成品长度 500 mm，用于样机。" />
+              {fieldErrors.demand && <p id="quote-demand-error" className={fieldErrorClass}>{fieldErrors.demand}</p>}
+            </div>
             <div>
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
                 <input ref={filePicker} aria-label="选择图纸" type="file" multiple accept={QUOTE_FILE_ACCEPT} className="hidden" onChange={(event) => { addFiles(event.currentTarget.files); event.currentTarget.value = ''; }} />
-                <button type="button" onClick={() => filePicker.current?.click()} className={`${buttonClass} border border-slate-300 bg-white text-slate-800 hover:border-blue-600`}><Upload aria-hidden="true" className="h-4 w-4" />上传图纸</button>
-                <p className="mt-2 text-xs leading-5 text-slate-600">可拖入 PDF、DWG、DXF、JPG、PNG。最多 5 份，每份不超过 5 MB。填写文字或上传图纸均可提交。</p>
+                <button ref={addDrawing} type="button" aria-describedby={fileError ? 'quote-file-help quote-file-error' : 'quote-file-help'} onClick={() => filePicker.current?.click()} className={`${buttonClass} border border-slate-300 bg-white text-slate-800 hover:border-blue-600`}><Upload aria-hidden="true" className="h-4 w-4" />添加图纸</button>
+                <p id="quote-file-help" className="mt-1.5 text-xs leading-5 text-slate-600">支持选择或拖入 PDF、DWG、DXF、JPG、PNG。最多 {QUOTE_FILE_MAX_COUNT} 份，每份不超过 {QUOTE_FILE_MAX_MIB} MB。</p>
               </div>
+              {files.length > 0 && (
+                <p className="mt-2 text-xs leading-5 text-slate-600" aria-live="polite">
+                  已选 {files.length}/{QUOTE_FILE_MAX_COUNT} 份 · {uploaded.length || busy ? `已上传 ${uploaded.length}/${files.length} 份` : '提交时上传'}
+                </p>
+              )}
               {files.length > 0 && <ul className="mt-2 divide-y divide-slate-100">
                 {files.map((file, index) => <li key={`${file.name}:${file.size}:${file.lastModified}`} className="flex items-center gap-2 py-2 text-sm">
                   <span className="min-w-0 flex-1 break-all text-slate-800">{file.name}</span>
@@ -165,28 +208,38 @@ export default function RequestQuotePage() {
                   <button type="button" aria-label={`移除 ${file.name}`} title="移除文件" onClick={() => { setFiles(files.filter((_, item) => item !== index)); setUploaded([]); setFileError(''); }} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-red-700"><X aria-hidden="true" className="h-4 w-4" /></button>
                 </li>)}
               </ul>}
-              {fileError && <p role="alert" className="mt-2 text-sm text-red-700">{fileError}</p>}
+              {fileError && <p id="quote-file-error" role="alert" className="mt-2 text-sm text-red-700">{fileError}</p>}
             </div>
           </section>
-          <section className="border-t border-slate-200 pt-5" aria-labelledby="quote-contact">
+          <section className="border-t border-slate-200 pt-4" aria-labelledby="quote-contact">
             <h2 id="quote-contact" className="font-semibold text-slate-900">联系方式</h2>
-            <p className="mt-1 text-xs text-slate-600">手机号和邮箱至少填一项。</p>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm text-slate-800">联系人 <span className="text-red-700">*</span><input ref={contact} name="name" value={fields.name} required maxLength={60} autoComplete="name" onChange={changeField} className={inputClass} /></label>
+            <p id="quote-contact-help" className="mt-1 text-xs text-slate-600">手机号和邮箱至少填一项。</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-x-4">
+              <div>
+                <label htmlFor="quote-name" className="text-sm text-slate-800">联系人 <span className="text-red-700">*</span></label>
+                <input id="quote-name" name="name" value={fields.name} required maxLength={60} autoComplete="name" onChange={changeField} aria-invalid={Boolean(fieldErrors.name)} aria-describedby={fieldErrors.name ? 'quote-name-error' : undefined} className={inputClass} />
+                {fieldErrors.name && <p id="quote-name-error" className={fieldErrorClass}>{fieldErrors.name}</p>}
+              </div>
               <label className="text-sm text-slate-800">企业名称 <span className="text-slate-500">（选填）</span><input name="company" value={fields.company} maxLength={120} autoComplete="organization" onChange={changeField} className={inputClass} /></label>
-              <label className="text-sm text-slate-800">手机号<input name="phone" type="tel" value={fields.phone} maxLength={32} autoComplete="tel" onChange={changeField} className={inputClass} /></label>
-              <label className="text-sm text-slate-800">邮箱<input name="email" type="email" value={fields.email} maxLength={254} autoComplete="email" onChange={changeField} className={inputClass} /></label>
+              {fieldErrors.contact && <p id="quote-contact-error" className="text-xs leading-5 text-red-700 sm:col-span-2">{fieldErrors.contact}</p>}
+              <div>
+                <label htmlFor="quote-phone" className="text-sm text-slate-800">手机号</label>
+                <input id="quote-phone" name="phone" type="tel" value={fields.phone} maxLength={32} autoComplete="tel" onChange={changeField} aria-invalid={Boolean(fieldErrors.contact || fieldErrors.phone)} aria-describedby={`quote-contact-help${fieldErrors.contact ? ' quote-contact-error' : ''}${fieldErrors.phone ? ' quote-phone-error' : ''}`} className={inputClass} />
+                {fieldErrors.phone && <p id="quote-phone-error" className={fieldErrorClass}>{fieldErrors.phone}</p>}
+              </div>
+              <div>
+                <label htmlFor="quote-email" className="text-sm text-slate-800">邮箱</label>
+                <input id="quote-email" name="email" type="email" value={fields.email} maxLength={254} autoComplete="email" onChange={changeField} aria-invalid={Boolean(fieldErrors.contact || fieldErrors.email)} aria-describedby={`quote-contact-help${fieldErrors.contact ? ' quote-contact-error' : ''}${fieldErrors.email ? ' quote-email-error' : ''}`} className={inputClass} />
+                {fieldErrors.email && <p id="quote-email-error" className={fieldErrorClass}>{fieldErrors.email}</p>}
+              </div>
             </div>
           </section>
         </fieldset>
-        <div className="space-y-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-4 py-4 sm:px-7">
+        <div className="space-y-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-4 py-3 sm:px-7">
           <p className="text-xs leading-5 text-slate-600">提交的联系方式和图纸用于本次询价及后续沟通。</p>
           {error && <p role="alert" className="rounded-md bg-red-50 p-2.5 text-sm text-red-800">{error}</p>}
           {progress && <p role="status" className="break-all text-sm text-blue-800">{progress}</p>}
-          <div className="flex flex-wrap gap-2.5">
-            <button type="submit" disabled={busy} className={`${buttonClass} bg-blue-700 text-white hover:bg-blue-800`}>{busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowRight aria-hidden="true" className="h-4 w-4" />}{error ? '重试提交' : '提交询价'}</button>
-            <button type="button" disabled={busy} onClick={() => contact.current?.focus()} className={`${buttonClass} border border-slate-300 bg-white text-slate-700 hover:bg-slate-100`}><Headphones aria-hidden="true" className="h-4 w-4" />请专员联系我</button>
-          </div>
+          <button type="submit" disabled={busy} className={`${buttonClass} w-full bg-blue-700 text-white hover:bg-blue-800 sm:w-auto`}>{busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowRight aria-hidden="true" className="h-4 w-4" />}{error ? '重试提交' : '提交询价'}</button>
         </div>
       </form>
     </div>

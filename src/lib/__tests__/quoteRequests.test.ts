@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { appRoutes, getRouteByPath, requiresAuth, resolveRoleRoute } from '../appRoute';
-import { hasQuoteFileSignature, validateQuoteRequest } from '../../../supabase/functions/_shared/quoteRequest';
+import { getQuoteRequestFieldErrors, hasQuoteFileSignature, validateQuoteRequest } from '../../../supabase/functions/_shared/quoteRequest';
 
 const db = new PGlite();
 const id = '10000000-0000-4000-8000-000000000001';
@@ -12,6 +12,7 @@ const nextSales = '10000000-0000-4000-8000-000000000004';
 const admin = '10000000-0000-4000-8000-000000000005';
 const drawing = { name: '样品.pdf', size: 9, sha256: 'a'.repeat(64) };
 const valid = { name: ' 联系人 ', phone: '138 1234 5678', email: '', company: '', demand: '', kind: '', files: [drawing] };
+const maxDrawingSize = 20 * 1024 * 1024;
 const migration = () => readFileSync('supabase/updates/20261126_quote_requests.sql', 'utf8');
 
 beforeAll(async () => {
@@ -38,6 +39,7 @@ afterAll(async () => { await db.close(); });
 it('keeps public quote requests independent of automatic quote and opens the staff route for sales', () => {
   const publicRoute = getRouteByPath('/request-quote');
   expect(publicRoute.id).toBe('request-quote');
+  expect(publicRoute.title).toBe('提交询价');
   expect(requiresAuth(publicRoute)).toBe(false);
   expect(requiresAuth(appRoutes['auto-quote'])).toBe(true);
   expect(requiresAuth(appRoutes['quote-requests'])).toBe(true);
@@ -51,12 +53,27 @@ it('accepts a drawing or demand and validates contact, limits and actual file he
   expect(validateQuoteRequest({ ...valid, demand: '需要 20 条', files: [] }).demand).toBe('需要 20 条');
   expect(() => validateQuoteRequest({ ...valid, files: [] })).toThrow();
   expect(() => validateQuoteRequest({ ...valid, phone: '' })).toThrow();
-  expect(() => validateQuoteRequest({ ...valid, files: [{ ...drawing, size: 6 * 1024 * 1024 }] })).toThrow();
+  expect(validateQuoteRequest({ ...valid, files: [{ ...drawing, size: maxDrawingSize }] }).files[0].size).toBe(maxDrawingSize);
+  expect(() => validateQuoteRequest({ ...valid, files: [{ ...drawing, size: maxDrawingSize + 1 }] })).toThrow('20 MB');
   expect(() => validateQuoteRequest({ ...valid, files: [{ ...drawing, name: 'invoice.exe' }] })).toThrow();
   expect(hasQuoteFileSignature('样品.pdf', new TextEncoder().encode('%PDF-1.7\n'))).toBe(true);
   expect(hasQuoteFileSignature('样品.pdf', new TextEncoder().encode('<script>'))).toBe(false);
   expect(hasQuoteFileSignature('样品.dwg', new TextEncoder().encode('AC1018\0'))).toBe(true);
   expect(hasQuoteFileSignature('样品.dxf', new TextEncoder().encode('  0\r\nSECTION\r\n'))).toBe(true);
+});
+
+it('identifies each missing or invalid input and accepts either contact method and either demand source', () => {
+  expect(getQuoteRequestFieldErrors({ name: ' ', phone: '', email: '', demand: ' ' }, false)).toEqual({
+    demand: '请描述需求或上传至少一份图纸。',
+    name: '请填写联系人。',
+    contact: '请填写手机号或邮箱，方便专员联系。',
+  });
+  expect(getQuoteRequestFieldErrors({ ...valid, phone: 'abc', email: 'test@local' }, true)).toEqual({
+    phone: '请填写有效的手机号。',
+    email: '请填写有效的邮箱。',
+  });
+  expect(getQuoteRequestFieldErrors(valid, true)).toEqual({});
+  expect(getQuoteRequestFieldErrors({ ...valid, phone: '', email: 'mail@example.com', demand: '20 条' }, false)).toEqual({});
 });
 
 it('preserves existing data, finalizes once, protects files and enforces ownership and concurrent edits', async () => {
@@ -92,6 +109,15 @@ it('preserves existing data, finalizes once, protects files and enforces ownersh
   await as('authenticated', outsider);
   expect((await db.query('select id from quote_requests')).rows).toEqual([]);
   expect((await db.query("select * from storage.objects where bucket_id='quote-request-files'")).rows).toEqual([]);
+  await db.exec('reset role');
+  const raiseUploadLimit = readFileSync('supabase/updates/20261126_quote_requests_file_limit_20_mib.sql', 'utf8');
+  await db.exec(raiseUploadLimit);
+  await db.exec(raiseUploadLimit);
+  expect((await db.query('select id, public, file_size_limit from storage.buckets order by id')).rows).toEqual([
+    { id: 'existing', public: false, file_size_limit: null },
+    { id: 'quote-request-files', public: false, file_size_limit: maxDrawingSize },
+  ]);
+  expect((await callFinalize()).rows).toEqual([{ result: { ...first.result, created: false } }]);
   await as('authenticated', sales);
   const [request] = (await db.query<{ updated_at: string }>('select updated_at::text from quote_requests')).rows;
   expect((await db.query("select name from storage.objects where bucket_id='quote-request-files'")).rows).toEqual([{ name: `${id}/0` }]);

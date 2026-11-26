@@ -1,7 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   hasQuoteFileSignature, quoteFileHash, quoteFilePath, QUOTE_CLEANUP_HOURS,
-  QUOTE_REQUEST_BUCKET, QUOTE_UPLOAD_HOURS, validateQuoteRequest,
+  QUOTE_FILE_MAX_BYTES, QUOTE_REQUEST_BUCKET, QUOTE_UPLOAD_HOURS, validateQuoteRequest,
 } from '../_shared/quoteRequest.ts';
 import type { QuoteRequestInput } from '../_shared/quoteRequest.ts';
 
@@ -107,6 +107,7 @@ async function upload(request: Request) {
   if (row.status !== 'uploading') return respond({ uploaded: true });
   const file = (row.payload as QuoteRequestInput).files[index];
   if (!file) throw new RequestProblem('附件编号无效。', 400);
+  if (file.size > QUOTE_FILE_MAX_BYTES) throw new RequestProblem('提交内容超过允许大小。', 413);
   const bytes = await readLimited(request, file.size);
   if (bytes.length !== file.size || !hasQuoteFileSignature(file.name, bytes) || await quoteFileHash(bytes.buffer) !== file.sha256) {
     throw new RequestProblem(`「${file.name}」的内容与所选文件不符，请检查格式后重新选择。`, 400);
