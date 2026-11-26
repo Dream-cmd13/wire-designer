@@ -8,6 +8,7 @@ import {
   DraftingCompass,
   FileImage,
   LayoutDashboard,
+  MessageSquareText,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -16,7 +17,7 @@ import {
   Undo2,
   User,
 } from 'lucide-react';
-import { appRoutes, type AppRoute, type AppRouteId } from '@/lib/appRoute';
+import { appRoutes, resolveRoleRoute, type AppRoute, type AppRouteId } from '@/lib/appRoute';
 import type { User as AppUser } from '@/types/user';
 import { PageHeaderActionsTarget } from './pageHeaderActionsTarget';
 
@@ -25,10 +26,11 @@ export interface SidebarItem {
   path?: string;
   icon: ComponentType<{ className?: string }>;
   children?: SidebarItem[];
-  access?: 'projects' | 'materials';
+  access?: 'projects' | 'materials' | 'quote-staff';
 }
 
 const sidebarItems: SidebarItem[] = [
+  { label: '获取报价', path: appRoutes['request-quote'].path, icon: MessageSquareText },
   {
     label: '线束设计器',
     path: appRoutes['designer-projects'].path,
@@ -45,6 +47,7 @@ const sidebarItems: SidebarItem[] = [
     icon: Calculator,
     access: 'projects',
   },
+  { label: '询价管理', path: appRoutes['quote-requests'].path, icon: ClipboardList, access: 'quote-staff' },
   {
     label: '物料库',
     path: appRoutes.materials.path,
@@ -211,13 +214,17 @@ export function AdminShell({
   const accessProjects = canAccessProjects ?? Boolean(currentUser);
   const accessMaterials = canAccessMaterials ?? Boolean(currentUser);
   const visibleSidebarItems = sidebarItems.filter((item) => {
-    if (currentUser && currentUser.role !== 'engineer' && currentUser.role !== 'admin') return item.path === appRoutes['auto-quote'].path;
+    if (item.access === 'quote-staff') return currentUser?.role === 'sales' || currentUser?.role === 'admin';
+    if (currentUser && (!currentUser.role || currentUser.role === 'sales')) {
+      return Object.values(appRoutes).some((route) => route.path === item.path && resolveRoleRoute(route, 'sales') === route);
+    }
     if (item.access === 'projects') return accessProjects;
     if (item.access === 'materials') return accessMaterials;
     return true;
   });
   const showDesignerActions = (currentUser?.role === 'engineer' || currentUser?.role === 'admin') && route.section === 'designer' && Boolean(currentProjectId && currentProjectName);
-  const contextLabel = route.id === 'drawing-workbench'
+  const contextLabel = route.section === 'quote-requests' ? undefined
+    : route.id === 'drawing-workbench'
     ? '独立制图 · 新建后导出'
     : route.id === 'model-viewer'
       ? 'STEP / STL · 本地预览与私有保存'
@@ -455,7 +462,7 @@ export function AdminShell({
           </div>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-hidden">
+        <main className={`min-h-0 flex-1 ${route.section === 'quote-requests' ? 'overflow-y-auto' : 'overflow-hidden'}`}>
           <PageHeaderActionsTarget value={pageActionsTarget}>{children}</PageHeaderActionsTarget>
         </main>
       </div>

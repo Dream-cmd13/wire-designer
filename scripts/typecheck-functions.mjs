@@ -37,6 +37,7 @@ const targets = [
   'supabase/functions/_shared/passwordService.ts',
   'supabase/functions/account-password/index.ts',
   'supabase/functions/quote/index.ts',
+  'supabase/functions/quote-request/index.ts',
 ];
 const check = spawnSync(deno, ['check', '--config', 'supabase/functions/deno.json', ...targets], {
   stdio: 'inherit',

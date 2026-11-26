@@ -31,6 +31,8 @@ describe('AdminShell access menu', () => {
     expect(html).not.toContain('物料库');
     expect(html).not.toContain('自动报价');
     expect(html).toContain('制作图纸');
+    expect(html).toContain('title="获取报价"');
+    expect(html).not.toContain('title="询价管理"');
     expect(html).toContain('3D 模型');
     expect(html).not.toContain('aria-label="线束设计器"');
     expect(html).not.toContain('首页');
@@ -57,12 +59,14 @@ describe('AdminShell access menu', () => {
     expect(html).not.toContain('自动报价5');
     expect(html).toContain('制作图纸');
     expect(html).toContain('aria-label="收缩侧边栏"');
+    expect(html.includes('title="询价管理"')).toBe(role === 'admin');
   });
-  it('only shows auto quote to sales and unresolved roles', () => {
+  it('shows sales the quote routes, without giving unresolved roles the staff menu', () => {
     for (const role of ['sales', undefined] as const) {
       const html = renderShell({ id: 'sales', name: '业务员', email: 'sales@test', createdAt: 1, role });
       expect(html).toContain('title="自动报价"');
-      expect(html).toContain('aria-label="展开侧边栏"');
+      expect(html).toContain('title="获取报价"');
+      expect(html.includes('title="询价管理"')).toBe(role === 'sales');
       for (const title of ['首页','制作图纸','DWG 图纸','3D 模型','物料库','设计图','成品图']) {
         expect(html).not.toContain(`title="${title}"`);
       }

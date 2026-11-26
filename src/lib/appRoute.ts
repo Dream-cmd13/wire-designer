@@ -1,6 +1,10 @@
+import type { AppRole } from './permissions';
+
 export type AppRouteId =
   | 'designer-projects'
   | 'auto-quote'
+  | 'request-quote'
+  | 'quote-requests'
   | 'designer-design'
   | 'designer-product-image'
   | 'drawing-workbench'
@@ -12,7 +16,7 @@ export interface AppRoute {
   id: AppRouteId;
   path: string;
   title: string;
-  section: 'projects' | 'auto-quote' | 'designer' | 'drawing' | 'materials';
+  section: 'projects' | 'auto-quote' | 'quote-requests' | 'designer' | 'drawing' | 'materials';
 }
 
 export const appRoutes: Record<AppRouteId, AppRoute> = {
@@ -28,6 +32,8 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     title: '自动报价',
     section: 'auto-quote',
   },
+  'request-quote': { id: 'request-quote', path: '/request-quote', title: '获取报价', section: 'quote-requests' },
+  'quote-requests': { id: 'quote-requests', path: '/quote-requests', title: '询价管理', section: 'quote-requests' },
   'designer-design': {
     id: 'designer-design',
     path: '/designer/design',
@@ -64,11 +70,11 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
 export const defaultRoute = appRoutes['designer-projects'];
 
 /**
- * 需要登录后才能访问的路由；`drawing-workbench` 为独立工具，允许匿名使用。
+ * 制作图纸和获取报价允许匿名访问。
  * DWG 查看页的图纸存于私有桶，需要登录后通过签名 URL 访问。
  */
 export function requiresAuth(route: AppRoute): boolean {
-  return route.id !== 'drawing-workbench';
+  return route.id !== 'drawing-workbench' && route.id !== 'request-quote';
 }
 
 /**
@@ -80,7 +86,16 @@ export function shouldKeepRouteAfterLogin(route: AppRoute): boolean {
     || route.id === 'drawing-workbench'
     || route.id === 'dwg-viewer'
     || route.id === 'model-viewer'
-    || route.id === 'auto-quote';
+    || route.id === 'auto-quote'
+    || route.id === 'request-quote'
+    || route.id === 'quote-requests';
+}
+
+export function resolveRoleRoute(route: AppRoute, role: AppRole | undefined): AppRoute {
+  if (role === 'sales' && route.id !== 'auto-quote' && route.section !== 'quote-requests') {
+    return appRoutes['auto-quote'];
+  }
+  return route;
 }
 
 export const projectIdQueryKey = 'projectId';

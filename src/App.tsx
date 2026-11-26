@@ -17,7 +17,7 @@ import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { StorageSetupBanner } from '@/components/shared/StorageSetupBanner';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useProjectSaveAndRecovery } from '@/hooks/useProjectSaveAndRecovery';
-import { appRoutes, defaultRoute, getRouteByPath, requiresAuth, shouldKeepRouteAfterLogin } from '@/lib/appRoute';
+import { appRoutes, defaultRoute, getRouteByPath, requiresAuth, resolveRoleRoute, shouldKeepRouteAfterLogin } from '@/lib/appRoute';
 import { checkStorageBootstrap, type StorageBootstrapState } from '@/lib/storageBootstrap';
 import { supabase } from '@/lib/supabaseClient';
 import { getUserErrorMessage } from '@/lib/userErrorMessage';
@@ -42,6 +42,8 @@ const MaterialLibraryPage = lazy(() => import('@/pages/MaterialLibraryPage').the
 const DrawingWorkbenchPage = lazy(() => import('@/pages/DrawingWorkbenchPage').then((module) => ({ default: module.DrawingWorkbenchPage })));
 const DwgViewerPage = lazy(() => import('@/pages/DwgViewerPage').then((module) => ({ default: module.DwgViewerPage })));
 const ModelViewerPage = lazy(() => import('@/pages/ModelViewerPage').then((module) => ({ default: module.ModelViewerPage })));
+const RequestQuotePage = lazy(() => import('@/pages/RequestQuotePage'));
+const QuoteRequestsPage = lazy(() => import('@/pages/QuoteRequestsPage'));
 const AutoQuotePage = lazy(() => import('@/pages/AutoQuotePage').then((module) => ({ default: module.AutoQuotePage })));
 
 function DesignerView() {
@@ -62,9 +64,10 @@ export default function App() {
   const restricted = Boolean(currentUser && currentUser.role !== 'engineer' && currentUser.role !== 'admin');
   const { route: requestedRoute, projectId: requestedProjectId, navigate, navigationVersion, getNavigationVersion } = useAppRoute();
   const projectId = restricted ? null : requestedProjectId;
+  const allowedRoute = resolveRoleRoute(requestedRoute, currentUser ? currentUser.role ?? 'sales' : undefined);
   useEffect(() => {
-    if (currentUser?.role === 'sales' && requestedRoute.id !== 'auto-quote') navigate(appRoutes['auto-quote'].path, { replace: true });
-  }, [currentUser?.role, requestedRoute.id, navigate]);
+    if (currentUser?.role === 'sales' && allowedRoute !== requestedRoute) navigate(allowedRoute.path, { replace: true });
+  }, [currentUser?.role, allowedRoute, requestedRoute, navigate]);
   const [authOpen, setAuthOpen] = useState(false);
   const [bomModalOpen, setBomModalOpen] = useState(false);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
@@ -97,9 +100,7 @@ export default function App() {
     loadProjects,
   } = useProjectStore();
   const currentProject = !restricted && storedProject?.userId === currentUserId ? storedProject : null;
-  const route = restricted ? appRoutes['auto-quote']
-    : currentUserId && requestedRoute.section === 'designer' && !projectId && !currentProject ? defaultRoute
-    : requestedRoute;
+  const route = currentUserId && allowedRoute.section === 'designer' && !projectId && !currentProject ? defaultRoute : allowedRoute;
   const isEditingCurrentProject = route.section === 'designer'
     && Boolean(currentProject && (!projectId || currentProject.id === projectId));
 
@@ -660,6 +661,11 @@ export default function App() {
       return <ModelViewerPage key={`${currentUser?.id}:${currentUser?.role}`} />;
     }
 
+    if (route.id === 'request-quote') return <RequestQuotePage />;
+    if (route.id === 'quote-requests' && currentUser) {
+      return <QuoteRequestsPage key={`${currentUser.id}:${currentUser.role}`} user={currentUser} />;
+    }
+
     if (route.id === 'auto-quote') {
       return <AutoQuotePage key={`${currentUser?.id}:${currentUser?.role}`} />;
     }
@@ -713,7 +719,7 @@ export default function App() {
           checking={storageChecking}
           onRetry={() => void refreshStorageBootstrap()}
         />
-        {catalogStatus === 'error' && (
+        {needsCatalog && catalogStatus === 'error' && (
           <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
             {catalogError ?? '物料暂时无法加载，请联系管理员处理。'}
           </div>
