@@ -1,4 +1,3 @@
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 import { QUOTE_REQUEST_BUCKET, quoteFilePath } from '../../supabase/functions/_shared/quoteRequest';
 import type { QuoteRequestInput } from '../../supabase/functions/_shared/quoteRequest';
@@ -36,14 +35,23 @@ export class QuoteSubmissionError extends Error {
 }
 
 export async function sendQuoteRequest<T>(action: 'prepare' | 'upload' | 'finalize', body: Record<string, unknown> | File, headers?: Record<string, string>) {
-  const { data, error } = await client().functions.invoke<T>(`quote-request/${action}`, {
-    body, headers, timeout: action === 'upload' ? 90_000 : 20_000,
-  });
-  if (!error && data) return data;
-  if (error instanceof FunctionsHttpError) {
-    const detail = await error.context.json().catch(() => null) as { error?: string; code?: string } | null;
-    if (detail?.error) throw new QuoteSubmissionError(detail.error, detail.code);
+  const requestHeaders = new Headers(headers);
+  const attachment = body instanceof File;
+  requestHeaders.set('Content-Type', attachment ? 'application/octet-stream' : 'application/json');
+  const response = await fetch(`/api/quote-request/${action}`, {
+    method: 'POST',
+    body: attachment ? body : JSON.stringify(body),
+    headers: requestHeaders,
+    credentials: 'omit',
+    signal: AbortSignal.timeout(action === 'upload' ? 90_000 : 20_000),
+  }).catch(() => null);
+  const data = await response?.json().catch(() => null);
+  if (response?.ok && data) return data as T;
+  if (typeof data?.error === 'string') {
+    throw new QuoteSubmissionError(data.error, typeof data.code === 'string' ? data.code : undefined);
   }
+  if (response?.status === 429) throw new QuoteSubmissionError('提交过于频繁，请稍后重试。');
+  if (response?.status === 413) throw new QuoteSubmissionError('提交内容超过允许大小。');
   throw new QuoteSubmissionError('连接询价服务失败，请重试。');
 }
 

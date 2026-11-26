@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   hasQuoteFileSignature, quoteFileHash, quoteFilePath, QUOTE_CLEANUP_HOURS,
@@ -25,6 +26,16 @@ class RequestProblem extends Error {
 
 function respond(body: unknown, status = 200) {
   return Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
+}
+
+function hasSecret(request: Request, header: string, variable: string) {
+  const supplied = request.headers.get(header);
+  const expected = Deno.env.get(variable);
+  if (!supplied || !expected) return false;
+  const encoder = new TextEncoder();
+  const actual = encoder.encode(supplied);
+  const secret = encoder.encode(expected);
+  return actual.length === secret.length && timingSafeEqual(actual, secret);
 }
 
 function checkId(value: unknown): string {
@@ -148,8 +159,7 @@ async function finalize(request: Request) {
 }
 
 async function cleanup(request: Request) {
-  const secret = Deno.env.get('QUOTE_REQUEST_CLEANUP_SECRET');
-  if (!secret || request.headers.get('x-quote-cleanup-secret') !== secret) return respond({ error: 'Forbidden' }, 403);
+  if (!hasSecret(request, 'x-quote-cleanup-secret', 'QUOTE_REQUEST_CLEANUP_SECRET')) return respond({ error: 'Forbidden' }, 403);
   const cutoff = new Date(Date.now() - QUOTE_CLEANUP_HOURS * hour).toISOString();
   const batch = 100;
   const { data, error } = await client.from('quote_requests').select('id, payload').eq('status', 'uploading')
@@ -173,11 +183,12 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return respond({ error: 'Method not allowed' }, 405);
   const action = new URL(request.url).pathname.split('/').at(-1);
   try {
+    if (action === 'cleanup') return await cleanup(request);
+    if (!hasSecret(request, 'x-quote-forward-secret', 'QUOTE_REQUEST_FORWARD_SECRET')) return respond({ error: 'Forbidden' }, 403);
     switch (action) {
       case 'prepare': return await prepare(request);
       case 'upload': return await upload(request);
       case 'finalize': return await finalize(request);
-      case 'cleanup': return await cleanup(request);
       default: return respond({ error: 'Not found' }, 404);
     }
   } catch (error) {
