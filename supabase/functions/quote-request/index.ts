@@ -110,6 +110,8 @@ async function upload(request: Request) {
   const rawIndex = request.headers.get('x-quote-file-index');
   if (!rawIndex || !/^[0-4]$/u.test(rawIndex)) throw new RequestProblem('附件编号无效。', 400);
   const index = Number(rawIndex);
+  // The hosted Edge relay can stall on early responses to large, unread request bodies.
+  const bytes = await readLimited(request, QUOTE_FILE_MAX_BYTES);
   const { data: row, error } = await client.from('quote_requests').select('created_at, status, payload').eq('id', id).maybeSingle();
   if (error) throw new Error('quote upload metadata lookup failed');
   if (!row || (row.status === 'uploading' && Date.parse(row.created_at) <= Date.now() - QUOTE_UPLOAD_HOURS * hour)) {
@@ -118,8 +120,7 @@ async function upload(request: Request) {
   if (row.status !== 'uploading') return respond({ uploaded: true });
   const file = (row.payload as QuoteRequestInput).files[index];
   if (!file) throw new RequestProblem('附件编号无效。', 400);
-  if (file.size > QUOTE_FILE_MAX_BYTES) throw new RequestProblem('提交内容超过允许大小。', 413);
-  const bytes = await readLimited(request, file.size);
+  if (file.size > QUOTE_FILE_MAX_BYTES || bytes.length > file.size) throw new RequestProblem('提交内容超过允许大小。', 413);
   if (bytes.length !== file.size || !hasQuoteFileSignature(file.name, bytes) || await quoteFileHash(bytes.buffer) !== file.sha256) {
     throw new RequestProblem(`「${file.name}」的内容与所选文件不符，请检查格式后重新选择。`, 400);
   }
