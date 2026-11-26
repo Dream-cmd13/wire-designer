@@ -31,3 +31,8 @@ it('reports an HTTP rate limit even when the proxy sends an HTML error page', as
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<html>', { status: 429 })));
   await expect(sendQuoteRequest('finalize', { id: 'request' })).rejects.toThrow('提交过于频繁');
 });
+
+it('shows a Chinese message when the inquiry proxy returns 403', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ error: 'Forbidden' }, { status: 403 })));
+  await expect(sendQuoteRequest('prepare', { id: 'request' })).rejects.toThrow('询价服务暂时无法访问，请重新打开询价页面后重试。');
+});

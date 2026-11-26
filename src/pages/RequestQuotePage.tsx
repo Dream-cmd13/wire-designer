@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
 import { ArrowRight, CheckCircle2, Loader2, Upload, X } from 'lucide-react';
 import { QuoteSubmissionError, sendQuoteRequest } from '@/lib/quoteRequests';
+import { notify } from '@/stores/noticeStore';
 import {
   getQuoteRequestFieldErrors, hasQuoteFileSignature, QUOTE_FILE_ACCEPT, QUOTE_FILE_MAX_COUNT, QUOTE_FILE_MAX_MIB, QUOTE_KINDS,
   quoteFileHash, validateQuoteFile, validateQuoteRequest,
@@ -22,7 +23,7 @@ export default function RequestQuotePage() {
   const [files, setFiles] = useState<File[]>([]);
   const [fileError, setFileError] = useState('');
   const [showFieldErrors, setShowFieldErrors] = useState(false);
-  const [error, setError] = useState('');
+  const [submitFailed, setSubmitFailed] = useState(false);
   const [progress, setProgress] = useState('');
   const [uploaded, setUploaded] = useState<number[]>([]);
   const [receipt, setReceipt] = useState('');
@@ -39,7 +40,7 @@ export default function RequestQuotePage() {
     const { name, value } = event.currentTarget;
     setFields((current) => ({ ...current, [name]: value }));
     setUploaded([]);
-    setError('');
+    setSubmitFailed(false);
   }
 
   function addFiles(list: FileList | null) {
@@ -60,7 +61,7 @@ export default function RequestQuotePage() {
     if (next.length !== files.length) {
       setFiles(next);
       setUploaded([]);
-      setError('');
+      setSubmitFailed(false);
     }
     setFileError(errors.join(' '));
   }
@@ -70,10 +71,15 @@ export default function RequestQuotePage() {
     addFiles(event.dataTransfer.files);
   }
 
+  function showReceipt(number: string) {
+    setReceipt(number);
+    notify({ tone: 'success', title: '询价提交成功', message: `询价编号 ${number}`, dedupeKey: 'quote-submission' });
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting.current) return;
-    setError('');
+    setSubmitFailed(false);
     const validation = getQuoteRequestFieldErrors(fields, files.length > 0);
     const firstInvalid = validation.demand ? 'demand'
       : validation.name ? 'name'
@@ -111,7 +117,7 @@ export default function RequestQuotePage() {
       setProgress('正在提交询价…');
       const prepared = await sendQuoteRequest<{ uploading?: boolean; receipt?: string }>('prepare', { id: active.id, input });
       if (prepared.receipt) {
-        setReceipt(prepared.receipt);
+        showReceipt(prepared.receipt);
         return;
       }
       if (!prepared.uploading) throw new Error('询价服务返回异常，请重试。');
@@ -125,14 +131,20 @@ export default function RequestQuotePage() {
       setProgress('正在确认询价…');
       const result = await sendQuoteRequest<{ receipt?: string }>('finalize', { id: active.id });
       if (!result.receipt) throw new Error('暂未收到询价编号，请重试。');
-      setReceipt(result.receipt);
+      showReceipt(result.receipt);
     } catch (problem) {
       if (problem instanceof QuoteSubmissionError) {
         if (problem.code === 'expired' || problem.code === 'conflict') attempt.current = null;
         if (problem.code === 'missing_files') attempt.current?.uploaded.clear();
         if (problem.code) setUploaded([]);
       }
-      setError(problem instanceof Error ? problem.message : '提交失败，请稍后重试。');
+      setSubmitFailed(true);
+      notify({
+        tone: 'danger',
+        title: '询价提交失败',
+        message: problem instanceof Error ? problem.message : '暂时无法提交，请稍后重试。',
+        dedupeKey: 'quote-submission',
+      });
     } finally {
       submitting.current = false;
       setProgress('');
@@ -148,7 +160,7 @@ export default function RequestQuotePage() {
     setUploaded([]);
     setFileError('');
     setShowFieldErrors(false);
-    setError('');
+    setSubmitFailed(false);
   }
 
   if (receipt) return (
@@ -180,7 +192,7 @@ export default function RequestQuotePage() {
               <p id="quote-kind-label" className="mb-1.5 text-sm text-slate-800">需求类型 <span className="text-slate-500">（选填）</span></p>
               <div className="flex flex-wrap gap-2" role="group" aria-labelledby="quote-kind-label">
                 {QUOTE_KINDS.map((kind) => (
-                  <button key={kind} type="button" aria-pressed={fields.kind === kind} onClick={() => { setFields((previous) => ({ ...previous, kind: previous.kind === kind ? '' : kind })); setUploaded([]); setError(''); }} className={`rounded-md border px-3 py-1.5 text-sm ${fields.kind === kind ? 'border-blue-600 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{kind}</button>
+                  <button key={kind} type="button" aria-pressed={fields.kind === kind} onClick={() => { setFields((previous) => ({ ...previous, kind: previous.kind === kind ? '' : kind })); setUploaded([]); setSubmitFailed(false); }} className={`rounded-md border px-3 py-1.5 text-sm ${fields.kind === kind ? 'border-blue-600 bg-blue-50 font-semibold text-blue-800' : 'border-slate-200 text-slate-700 hover:bg-slate-50'}`}>{kind}</button>
                 ))}
               </div>
               {kindHint && <p role="status" className="mt-1.5 text-xs leading-5 text-slate-600">{kindHints[kindHint]}</p>}
@@ -213,7 +225,7 @@ export default function RequestQuotePage() {
           </section>
           <section className="border-t border-slate-200 pt-4" aria-labelledby="quote-contact">
             <h2 id="quote-contact" className="font-semibold text-slate-900">联系方式</h2>
-            <p id="quote-contact-help" className="mt-1 text-xs text-slate-600">手机号和邮箱至少填一项。</p>
+            <p id="quote-contact-help" className="mt-1 text-xs text-slate-600">手机号和邮箱至少填一项，方便专员联系。</p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 sm:gap-x-4">
               <div>
                 <label htmlFor="quote-name" className="text-sm text-slate-800">联系人 <span className="text-red-700">*</span></label>
@@ -223,8 +235,8 @@ export default function RequestQuotePage() {
               <label className="text-sm text-slate-800">企业名称 <span className="text-slate-500">（选填）</span><input name="company" value={fields.company} maxLength={120} autoComplete="organization" onChange={changeField} className={inputClass} /></label>
               {fieldErrors.contact && <p id="quote-contact-error" className="text-xs leading-5 text-red-700 sm:col-span-2">{fieldErrors.contact}</p>}
               <div>
-                <label htmlFor="quote-phone" className="text-sm text-slate-800">手机号</label>
-                <input id="quote-phone" name="phone" type="tel" value={fields.phone} maxLength={32} autoComplete="tel" onChange={changeField} aria-invalid={Boolean(fieldErrors.contact || fieldErrors.phone)} aria-describedby={`quote-contact-help${fieldErrors.contact ? ' quote-contact-error' : ''}${fieldErrors.phone ? ' quote-phone-error' : ''}`} className={inputClass} />
+                <label htmlFor="quote-phone" className="text-sm text-slate-800">中国大陆手机号</label>
+                <input id="quote-phone" name="phone" type="tel" placeholder="请输入 11 位手机号" value={fields.phone} maxLength={32} autoComplete="tel" onChange={changeField} aria-invalid={Boolean(fieldErrors.contact || fieldErrors.phone)} aria-describedby={`quote-contact-help${fieldErrors.contact ? ' quote-contact-error' : ''}${fieldErrors.phone ? ' quote-phone-error' : ''}`} className={inputClass} />
                 {fieldErrors.phone && <p id="quote-phone-error" className={fieldErrorClass}>{fieldErrors.phone}</p>}
               </div>
               <div>
@@ -236,10 +248,16 @@ export default function RequestQuotePage() {
           </section>
         </fieldset>
         <div className="space-y-3 rounded-b-xl border-t border-slate-200 bg-slate-50 px-4 py-3 sm:px-7">
-          <p className="text-xs leading-5 text-slate-600">提交的联系方式和图纸用于本次询价及后续沟通。</p>
-          {error && <p role="alert" className="rounded-md bg-red-50 p-2.5 text-sm text-red-800">{error}</p>}
-          {progress && <p role="status" className="break-all text-sm text-blue-800">{progress}</p>}
-          <button type="submit" disabled={busy} className={`${buttonClass} w-full bg-blue-700 text-white hover:bg-blue-800 sm:w-auto`}>{busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowRight aria-hidden="true" className="h-4 w-4" />}{error ? '重试提交' : '提交询价'}</button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs leading-5 text-slate-600">联系方式和图纸仅用于本次询价及后续沟通。</p>
+              {progress && <p role="status" className="mt-1 break-all text-sm text-blue-800">{progress}</p>}
+            </div>
+            <button type="submit" disabled={busy} className={`${buttonClass} shrink-0 bg-blue-700 text-white hover:bg-blue-800`}>
+              {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <ArrowRight aria-hidden="true" className="h-4 w-4" />}
+              {busy ? '提交中…' : submitFailed ? '重试提交' : '提交询价'}
+            </button>
+          </div>
         </div>
       </form>
     </div>

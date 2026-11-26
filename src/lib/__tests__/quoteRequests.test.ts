@@ -69,7 +69,7 @@ it('identifies each missing or invalid input and accepts either contact method a
     contact: '请填写手机号或邮箱，方便专员联系。',
   });
   expect(getQuoteRequestFieldErrors({ ...valid, phone: 'abc', email: 'test@local' }, true)).toEqual({
-    phone: '请填写有效的手机号。',
+    phone: '请输入有效的中国大陆 11 位手机号。',
     email: '请填写有效的邮箱。',
   });
   expect(getQuoteRequestFieldErrors(valid, true)).toEqual({});
@@ -139,4 +139,17 @@ it('preserves existing data, finalizes once, protects files and enforces ownersh
   await db.exec(`reset role; update auth.users set raw_app_meta_data='{"must_change_password":true}' where id='${sales}'`);
   await as('authenticated', sales);
   expect((await db.query('select id from quote_requests')).rows).toEqual([]);
+});
+
+it('normalizes mainland mobile numbers and rejects other phone formats', () => {
+  const email = 'buyer@example.test';
+  for (const phone of ['13812345678', '138 1234-5678', '+86 138 1234 5678', '+86 (138) 1234-5678']) {
+    expect(getQuoteRequestFieldErrors({ ...valid, phone }, true)).toEqual({});
+    expect(validateQuoteRequest({ ...valid, phone }).phone).toBe('13812345678');
+  }
+  for (const phone of ['1234567', '11234567890', '1381234567', '138123456789', '01012345678', '+1 415 555 0132', '()-']) {
+    expect(getQuoteRequestFieldErrors({ ...valid, phone, email }, true).phone).toBe('请输入有效的中国大陆 11 位手机号。');
+    expect(() => validateQuoteRequest({ ...valid, phone, email })).toThrow('中国大陆 11 位手机号');
+  }
+  expect(validateQuoteRequest({ ...valid, phone: '', email })).toMatchObject({ phone: '', email });
 });

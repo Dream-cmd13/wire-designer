@@ -45,6 +45,12 @@ export async function sendQuoteRequest<T>(action: 'prepare' | 'upload' | 'finali
     credentials: 'omit',
     signal: AbortSignal.timeout(action === 'upload' ? 90_000 : 20_000),
   }).catch(() => null);
+  if (response?.status === 403 || response?.status === 401) {
+    throw new QuoteSubmissionError('询价服务暂时无法访问，请重新打开询价页面后重试。');
+  }
+  if (response?.status === 404 || (response && response.status >= 500)) {
+    throw new QuoteSubmissionError('询价服务暂时不可用，请稍后重试。');
+  }
   const data = await response?.json().catch(() => null);
   if (response?.ok && data) return data as T;
   if (typeof data?.error === 'string') {
