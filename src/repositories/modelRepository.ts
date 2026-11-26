@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
-import { MODEL_LIMITS, type ModelFormat, type ParsedModel, type StlUnit } from '@/lib/models/modelTypes';
+import { MODEL_LIMITS, MODEL_MAX_SIZE_LABEL, type ModelFormat, type ParsedModel, type StlUnit } from '@/lib/models/modelTypes';
 import { validateModelFile } from '@/lib/models/modelParser';
 
 export interface ModelAsset {
@@ -68,7 +68,7 @@ export class ModelRepository {
       if ((response.status === 401 || response.status === 403) && attempt === 0) continue;
       if (!response.ok) throw new Error('模型下载失败，请检查网络或重新登录后重试。');
       const length = Number(response.headers.get('content-length'));
-      if (length > MODEL_LIMITS.maxBytes) throw new Error('云端模型超过 20 MiB 上限。');
+      if (length > MODEL_LIMITS.maxBytes) throw new Error(`云端模型超过 ${MODEL_MAX_SIZE_LABEL} 上限。`);
       // Enforce the limit while streaming too, including chunked responses.
       const reader = response.body?.getReader();
       if (!reader) throw new Error('模型下载内容为空。');
@@ -78,7 +78,7 @@ export class ModelRepository {
           checkAbort(signal);
           const { done, value } = await reader.read(); if (done) break;
           size += value.byteLength;
-          if (size > MODEL_LIMITS.maxBytes) { await reader.cancel(); throw new Error('云端模型超过 20 MiB 上限。'); }
+          if (size > MODEL_LIMITS.maxBytes) { await reader.cancel(); throw new Error(`云端模型超过 ${MODEL_MAX_SIZE_LABEL} 上限。`); }
           chunks.push(new Uint8Array(value));
         }
       } finally { reader.releaseLock(); }

@@ -4,7 +4,7 @@ import { ModelViewer } from '@/components/models/ModelViewer';
 import { ModelThreeViewDialog } from '@/components/models/ModelThreeViewDialog';
 import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import { parseModel, validateModelFile } from '@/lib/models/modelParser';
-import { type ModelFormat, type ModelQuality, type ParsedModel, type ParsePhase, type StlUnit } from '@/lib/models/modelTypes';
+import { MODEL_MAX_SIZE_LABEL, type ModelFormat, type ModelQuality, type ParsedModel, type ParsePhase, type StlUnit } from '@/lib/models/modelTypes';
 import { buildModelViewerRoutePath, getModelIdFromSearch } from '@/lib/appRoute';
 import { createModelSaveSession, modelRepository, type ModelAsset, type SavePhase } from '@/repositories/modelRepository';
 import { useUserStore } from '@/stores/userStore';
@@ -244,7 +244,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
         <ModelViewer model={model} modelKey={modelKey} emptyState={loading && preview !== 'idle' ? <span role="status">{phases[preview]}</span> : <div className="flex flex-col items-center gap-2">
           <Box size={28} className="mb-1 text-slate-400" />
           {chooseButton(true)}
-          <p>也可拖入 STEP / STP / STL 文件（最大 20 MiB）</p>
+          <p>也可拖入 STEP / STP / STL 文件（最大 {MODEL_MAX_SIZE_LABEL}）</p>
         </div>} status={qualityLoading && <><span>正在生成{requestedQuality === 'fine' ? '精细' : '标准'}预览…</span><button type="button" className="text-blue-700" onClick={cancelQuality}>取消质量生成</button></>} />
         {qualityError && <p role="alert" className="text-xs text-amber-800">{qualityError}</p>}
         {model && file && <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-600">
@@ -263,7 +263,7 @@ function ModelWorkspace({ ownerId }: { ownerId: string }) {
           <details className="ml-auto open:w-full"><summary className="cursor-pointer rounded px-1 py-1 font-medium text-slate-700 hover:bg-slate-50">模型详情</summary>
             <p>{model.triangleCount.toLocaleString()} 个三角形 · {model.meshes.length} 个网格</p>
             <p>{format === 'step' ? 'STEP 输出单位：毫米' : `STL 单位由用户指定（${unit}），显示已换算为毫米`}</p>
-            <p>原文件仅在主动保存时上传，上限 20 MiB。文件解析最长 60 秒，返回后最多接受 1,000,000 个三角形。</p>
+            <p>原文件仅在主动保存时上传，上限 {MODEL_MAX_SIZE_LABEL}。文件解析最长 60 秒，返回后最多接受 1,000,000 个三角形。</p>
             <p>显示质量不改变原文件精度。曲面边界为模型网格派生线，仅供查看，可能包含接缝；不代表精确 CAD 拓扑边。</p>
             {format === 'stl' && <p>STL 使用原始网格，不支持曲面边界及质量细化。</p>}
           </details>

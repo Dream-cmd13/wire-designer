@@ -43,5 +43,5 @@ grant execute on function public.get_storage_bootstrap_status() to anon, authent
 
 -- Browser original model files; never public, limit matches the parser.
 insert into storage.buckets (id, name, public, file_size_limit)
-values ('model-files', 'model-files', false, 20971520)
+values ('model-files', 'model-files', false, 31457280)
 on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit;

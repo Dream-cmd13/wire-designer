@@ -3,7 +3,9 @@ export type StlUnit = 'mm' | 'cm' | 'm' | 'inch';
 export type Vec3 = [number, number, number];
 export type ModelViewPreset = 'iso' | 'front' | 'top' | 'right';
 export type ModelQuality = 'standard' | 'fine';
-export const MODEL_LIMITS = { maxBytes: 20 * 1024 * 1024, timeoutMs: 60_000, maxTriangles: 1_000_000, maxSurfaceSegments: 300_000 } as const;
+const MODEL_MAX_MIB = 30;
+export const MODEL_MAX_SIZE_LABEL = `${MODEL_MAX_MIB} MiB`;
+export const MODEL_LIMITS = { maxBytes: MODEL_MAX_MIB * 1024 * 1024, timeoutMs: 60_000, maxTriangles: 1_000_000, maxSurfaceSegments: 300_000 } as const;
 export const STL_UNIT_SCALE: Record<StlUnit, number> = { mm: 1, cm: 10, m: 1000, inch: 25.4 };
 export const STEP_OPTIONS = {
   standard: { linearUnit: 'millimeter', linearDeflectionType: 'absolute_value', linearDeflection: 0.05, angularDeflection: 0.3 },

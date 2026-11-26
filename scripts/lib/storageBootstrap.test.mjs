@@ -43,7 +43,7 @@ function createFakeStorage(initialBuckets = [], options = {}) {
         return { data: null, error: new Error('Bucket already exists') };
       }
 
-      buckets.set(id, makeBucket({ id, public: createOptions.public }));
+      buckets.set(id, makeBucket({ id, public: createOptions.public, file_size_limit: createOptions.fileSizeLimit }));
       return { data: { name: id }, error: null };
     },
 
@@ -282,8 +282,14 @@ describe('runStorageBootstrap', () => {
   });
 });
 
-it('bootstraps the model bucket privately with the same 20 MiB limit', async () => {
- const storage=createFakeStorage();
- expect(await ensureStorageBuckets(storage)).toEqual([{id:'catalog-assets',action:'created'},{id:'model-files',action:'created'}]);
- expect(storage.snapshot().find(b=>b.id==='model-files').public).toBe(false);
+it('creates or upgrades the private model bucket to 30 MiB', async () => {
+  const existing = { id: 'model-files', public: false, file_size_limit: 20 * 1024 * 1024 };
+  for (const initialBuckets of [[], [existing]]) {
+    const storage = createFakeStorage(initialBuckets);
+    await ensureStorageBuckets(storage);
+    expect(storage.snapshot().find(bucket => bucket.id === 'model-files')).toMatchObject({
+      public: false,
+      file_size_limit: 30 * 1024 * 1024,
+    });
+  }
 });

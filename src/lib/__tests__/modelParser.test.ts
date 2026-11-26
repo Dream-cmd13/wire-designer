@@ -6,10 +6,11 @@ const triangle = () => ({ name: 'part', positions: new Float32Array([0, 0, 0, 1,
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe('model validation', () => {
   it('checks extensions, empty files and exact size boundary', () => {
-    expect(validateModelFile({ name: 'Part.STP', size: MODEL_LIMITS.maxBytes })).toBe('step');
+    const maxBytes = 30 * 1024 * 1024;
+    expect(validateModelFile({ name: 'Part.STP', size: maxBytes })).toBe('step');
     expect(() => validateModelFile({ name: 'x.obj', size: 1 })).toThrow('STEP');
     expect(() => validateModelFile({ name: 'x.stl', size: 0 })).toThrow('空');
-    expect(() => validateModelFile({ name: 'x.stl', size: MODEL_LIMITS.maxBytes + 1 })).toThrow('20 MiB');
+    expect(() => validateModelFile({ name: 'x.stl', size: maxBytes + 1 })).toThrow('30 MiB');
   });
   it('converts units and preserves relative mesh positions', () => {
     expect(STL_UNIT_SCALE).toEqual({ mm: 1, cm: 10, m: 1000, inch: 25.4 });

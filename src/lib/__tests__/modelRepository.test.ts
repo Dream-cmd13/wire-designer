@@ -81,6 +81,18 @@ describe('private model save protocol', () => {
     setStored(new Blob(['tampered bytes']));
     await expect(repo.save(session, file(), signal)).rejects.toThrow('不匹配');
   });
+  it('saves and reopens a model at 30 MiB and rejects larger originals', async () => {
+    const { repo } = backend();
+    const bytes = 30 * 1024 * 1024;
+    const source = new File([new Uint8Array(bytes)], 'large.stp');
+    const signal = new AbortController().signal;
+    const session = await createModelSaveSession('owner', source, 'mm', model);
+    const asset = await repo.save(session, source, signal);
+    expect(asset.status).toBe('ready');
+    expect((await repo.download(asset, signal)).size).toBe(bytes);
+    const oversized = new File([source, 'x'], 'oversized.stp');
+    await expect(createModelSaveSession('owner', oversized, 'mm', model)).rejects.toThrow('30 MiB');
+  });
   it('re-signs an expired download and supports cancellation', async () => {
     const { repo, setStored } = backend(); const session = await createModelSaveSession('owner', file(), 'mm', model); setStored(file());
     let calls = 0; const fetcher = vi.fn(async () => ++calls === 1 ? new Response('', { status: 403 }) : new Response(file()));

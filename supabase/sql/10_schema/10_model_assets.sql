@@ -6,7 +6,7 @@ create table if not exists public.model_assets (
   format text not null check (format in ('step', 'stl')),
   source_unit text not null check (source_unit in ('mm','cm','m','inch') and (format <> 'step' or source_unit = 'mm')),
   object_key text not null unique,
-  file_size bigint not null check (file_size between 1 and 20971520),
+  file_size bigint not null check (file_size between 1 and 31457280),
   sha256 text not null check (sha256 ~ '^[0-9a-f]{64}$'),
   status text not null default 'uploading' check (status in ('uploading','ready')),
   bounds_mm jsonb not null check (jsonb_typeof(bounds_mm) = 'object'

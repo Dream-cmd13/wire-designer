@@ -10,9 +10,9 @@ const migration = () => readFileSync('supabase/updates/20261104_model_preview.sq
 async function asUser(index: number, role = 'authenticated') {
   await db.exec(`reset role; set role ${role}; select set_config('request.jwt.claim.sub','${index < 0 ? '' : ids[index]}',false);`);
 }
-const insert = (id = modelId, owner = ids[0], objectKey = key, status = 'uploading') => db.query(`insert into public.model_assets
+const insert = (id = modelId, owner = ids[0], objectKey = key, status = 'uploading', size = 13) => db.query(`insert into public.model_assets
   (id,owner_id,original_name,format,source_unit,object_key,file_size,sha256,status,bounds_mm)
-  values ($1,$2,'part.stp','step','mm',$3,13,$4,$5,'{"min":[0,0,0],"max":[1,1,1]}')`, [id, owner, objectKey, 'a'.repeat(64), status]);
+  values ($1,$2,'part.stp','step','mm',$3,$6,$4,$5,'{"min":[0,0,0],"max":[1,1,1]}')`, [id, owner, objectKey, 'a'.repeat(64), status, size]);
 
 describe('model migration and RLS (real PostgreSQL engine; Storage schema fixture)', () => {
   beforeAll(async () => {
@@ -36,6 +36,30 @@ describe('model migration and RLS (real PostgreSQL engine; Storage schema fixtur
     await db.exec('reset role'); await db.exec(migration());
     expect((await db.query('select payload from existing_business')).rows).toEqual([{ payload: 'keep me' }]);
     expect((await db.query('select count(*)::int as n from model_assets')).rows[0]).toEqual({ n: 1 });
+  });
+  it('raises the existing model limit and retains model metadata and private objects', async () => {
+    const maxBytes = 30 * 1024 * 1024;
+    const testId = '00000000-0000-4000-8000-000000000103';
+    const testKey = `${ids[0]}/${testId}/source.stp`;
+    await asUser(0);
+    await expect(insert(testId, ids[0], testKey, 'uploading', maxBytes)).rejects.toMatchObject({ code: '23514' });
+    await db.exec('reset role');
+    await db.query('insert into storage.objects(bucket_id,name,metadata) values($1,$2,$3)', ['model-files', key, { size: 13 }]);
+    const oldRows = (await db.query('select * from model_assets')).rows;
+    const oldObjects = (await db.query('select * from storage.objects')).rows;
+    const upgrade = readFileSync('supabase/updates/20261126_model_file_limit_30_mib.sql', 'utf8');
+    await db.exec(upgrade);
+    await db.exec(upgrade);
+    expect((await db.query('select * from model_assets')).rows).toEqual(oldRows);
+    expect((await db.query('select * from storage.objects')).rows).toEqual(oldObjects);
+    expect((await db.query("select public, file_size_limit::int from storage.buckets where id='model-files'")).rows)
+      .toEqual([{ public: false, file_size_limit: maxBytes }]);
+    await asUser(0);
+    await expect(insert(testId, ids[0], testKey, 'uploading', maxBytes + 1)).rejects.toMatchObject({ code: '23514' });
+    await insert(testId, ids[0], testKey, 'uploading', maxBytes);
+    await db.exec('reset role');
+    await db.query('delete from model_assets where id=$1', [testId]);
+    await db.query('delete from storage.objects where name=$1', [key]);
   });
   it('only permits the owner engineer, including when the other user is admin', async () => {
     for (const index of [1,2,3]) {
