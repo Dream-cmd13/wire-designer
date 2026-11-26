@@ -1,8 +1,8 @@
-## 三维模型文件上限 30 MiB（2026-11-26）
+## 三维模型文件上限 50 MiB（2026-11-26）
 
-已安装三维模型功能的库，在发布配套前端前执行 [`20261126_model_file_limit_30_mib.sql`](../updates/20261126_model_file_limit_30_mib.sql)。新库使用下方已更新的表与桶脚本。不要在升级后重跑旧的 `20261104_model_preview.sql`，否则会将桶上限写回 20 MiB。
+已安装三维模型功能的库，在发布配套前端前执行 [`20261126_model_file_limit_50_mib.sql`](../updates/20261126_model_file_limit_50_mib.sql)。可以从 20 MiB 或 30 MiB 直接升级；旧的 30 MiB 迁移未执行时直接跳过，已执行时保留原记录。新库使用下方已更新的表与桶脚本。升级后不要重跑旧的 20 MiB 初始化或 30 MiB 迁移，以免降低上限。
 
-此迁移只放宽 `public.model_assets.file_size` 的约束和私有 `model-files` 的桶上限，不改动现有模型、文件、权限或 DWG。执行前确认 Storage 全局上传上限至少为 31,457,280 字节，记录原约束、桶配置、模型行数与对象清单并保留备份；执行后核对模型和对象未变，再用 20–30 MiB 的测试模型验证保存及重新打开。执行失败由事务回滚；若已保存超过 20 MiB 的模型，回退时不得恢复旧上限或删除文件。
+此迁移只放宽 `public.model_assets.file_size` 的约束和私有 `model-files` 的桶上限，不改动现有模型、文件、权限或 DWG。执行前确认 Storage 全局上传上限至少为 52,428,800 字节，记录原约束、桶配置、模型行数与对象清单并保留备份；执行后核对模型和对象未变，再用接近 50 MiB 的测试模型验证保存及重新打开。执行失败由事务回滚；若已保存超过旧上限的模型，回退时不得把上限降至低于现有文件大小或删除文件。
 
 ## 价格导入跳过未变动行（2026-11-25）
 
@@ -30,7 +30,7 @@ node --env-file=.env scripts/migrate-dwg-drawings.mjs --project-ref '<项目 ref
 
 ## 三维模型私有保存（2026-11-04）
 
-尚未安装三维模型功能的现有库先执行 `supabase/updates/20261104_model_preview.sql`，再执行上述 30 MiB 迁移；全新库按下方顺序先创建 `10_schema/10_model_assets.sql`，再执行桶与安全策略脚本。迁移仅新增本功能表、私有桶和权限，不清空既有表或文件。执行前备份数据库及 Storage 实际文件并记录对象清单，执行后核对原数据及对象清单不变。应用回退时保留新增表、桶和文件；详见 [三维模型实施与验收记录](../../docs/model-preview-validation.md)。
+尚未安装三维模型功能的现有库先执行 `supabase/updates/20261104_model_preview.sql`，再执行上述 50 MiB 迁移；全新库按下方顺序先创建 `10_schema/10_model_assets.sql`，再执行桶与安全策略脚本。迁移仅新增本功能表、私有桶和权限，不清空既有表或文件。执行前备份数据库及 Storage 实际文件并记录对象清单，执行后核对原数据及对象清单不变。应用回退时保留新增表、桶和文件；详见 [三维模型实施与验收记录](../../docs/model-preview-validation.md)。
 
 ## 外模材质收紧为黑色 PVC 45P（2026-10-13）
 
@@ -101,7 +101,7 @@ values ('替换为准确的管理员账号UUID'::uuid, 'admin');
 6. `supabase/updates/20261013_overmold_pvc_only.sql`
 7. `supabase/updates/20261014_document_revision.sql`（配套发布新前端）
 8. `supabase/updates/20261104_model_preview.sql`（三维模型元数据、私有桶及权限）
-9. `supabase/updates/20261126_model_file_limit_30_mib.sql`（三维模型上限调整至 30 MiB，配套发布新前端）
+9. `supabase/updates/20261126_model_file_limit_50_mib.sql`（三维模型直接升级至 50 MiB，配套发布新前端；跳过尚未执行的 30 MiB 迁移）
 
 执行前备份相关表并记录行数/哈希；执行后核对既有数据未变；回退与验证细节见 [数据保留升级说明](../../docs/data-preserving-upgrades.md)。
 
@@ -118,7 +118,7 @@ values ('替换为准确的管理员账号UUID'::uuid, 'admin');
 7. `10_schema/07_pricing_permissions.sql`：角色、定价参数、审计与价格权限函数。
 8. `10_schema/08_material_price_edit.sql`、`10_schema/09_material_price_updater.sql`：价格页面编辑与更新人信息函数。
 9. `10_schema/10_model_assets.sql`：创建三维模型原文件元数据表与校验触发器，必须先于下方模型权限策略。
-10. `20_storage/01_buckets.sql`：确保私有 `catalog-assets`、私有 `cost-analysis-sources`、私有 `finished-harness-drawings`、私有 `dwg-drawings` 与私有 `model-files` 桶存在，并安装只读状态 RPC；模型桶上限 30 MiB。
+10. `20_storage/01_buckets.sql`：确保私有 `catalog-assets`、私有 `cost-analysis-sources`、私有 `finished-harness-drawings`、私有 `dwg-drawings` 与私有 `model-files` 桶存在，并安装只读状态 RPC；模型桶上限 50 MiB。
 11. `30_security/01_rls.sql`：安装项目/图纸 owner 策略（项目与图纸只授予 SELECT）、仅登录可读的目录/供应商/成品图纸策略，以及三维模型仅工程师或管理员本人可读写的表与文件策略。
 12. `30_security/02_pricing_permissions.sql`：安装价格与角色权限策略（必须晚于旧策略文件）。
 13. `supabase/updates/20261013_password_change_required.sql`、`20261014_document_revision.sql`：与现有库使用同一迁移，保证新库具备强制改密门禁与文档版本控制。

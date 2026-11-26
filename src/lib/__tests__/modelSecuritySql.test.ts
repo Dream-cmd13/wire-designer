@@ -38,7 +38,7 @@ describe('model migration and RLS (real PostgreSQL engine; Storage schema fixtur
     expect((await db.query('select count(*)::int as n from model_assets')).rows[0]).toEqual({ n: 1 });
   });
   it('raises the existing model limit and retains model metadata and private objects', async () => {
-    const maxBytes = 30 * 1024 * 1024;
+    const maxBytes = 50 * 1024 * 1024;
     const testId = '00000000-0000-4000-8000-000000000103';
     const testKey = `${ids[0]}/${testId}/source.stp`;
     await asUser(0);
@@ -47,7 +47,12 @@ describe('model migration and RLS (real PostgreSQL engine; Storage schema fixtur
     await db.query('insert into storage.objects(bucket_id,name,metadata) values($1,$2,$3)', ['model-files', key, { size: 13 }]);
     const oldRows = (await db.query('select * from model_assets')).rows;
     const oldObjects = (await db.query('select * from storage.objects')).rows;
-    const upgrade = readFileSync('supabase/updates/20261126_model_file_limit_30_mib.sql', 'utf8');
+    const upgradePath = 'supabase/updates/20261126_model_file_limit_50_mib.sql';
+    const upgrade = readFileSync(upgradePath, 'utf8');
+    await db.exec(upgrade);
+    expect((await db.query("select file_size_limit::int from storage.buckets where id='model-files'")).rows)
+      .toEqual([{ file_size_limit: maxBytes }]);
+    await db.exec(readFileSync('supabase/updates/20261126_model_file_limit_30_mib.sql', 'utf8'));
     await db.exec(upgrade);
     await db.exec(upgrade);
     expect((await db.query('select * from model_assets')).rows).toEqual(oldRows);

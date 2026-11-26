@@ -1,6 +1,6 @@
 export const REQUIRED_STORAGE_BUCKETS = Object.freeze([
   Object.freeze({ id: 'catalog-assets', public: false }),
-  Object.freeze({ id: 'model-files', public: false, fileSizeLimit: 30 * 1024 * 1024 }),
+  Object.freeze({ id: 'model-files', public: false, fileSizeLimit: 50 * 1024 * 1024 }),
 ]);
 
 function errorMessage(error) {

@@ -282,14 +282,14 @@ describe('runStorageBootstrap', () => {
   });
 });
 
-it('creates or upgrades the private model bucket to 30 MiB', async () => {
+it('creates or upgrades the private model bucket to 50 MiB', async () => {
   const existing = { id: 'model-files', public: false, file_size_limit: 20 * 1024 * 1024 };
   for (const initialBuckets of [[], [existing]]) {
     const storage = createFakeStorage(initialBuckets);
     await ensureStorageBuckets(storage);
     expect(storage.snapshot().find(bucket => bucket.id === 'model-files')).toMatchObject({
       public: false,
-      file_size_limit: 30 * 1024 * 1024,
+      file_size_limit: 50 * 1024 * 1024,
     });
   }
 });
