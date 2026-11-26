@@ -32,7 +32,7 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
     title: '自动报价',
     section: 'auto-quote',
   },
-  'request-quote': { id: 'request-quote', path: '/request-quote', title: '获取报价', section: 'quote-requests' },
+  'request-quote': { id: 'request-quote', path: '/request-quote', title: '提交询价', section: 'quote-requests' },
   'quote-requests': { id: 'quote-requests', path: '/quote-requests', title: '询价管理', section: 'quote-requests' },
   'designer-design': {
     id: 'designer-design',
@@ -70,7 +70,7 @@ export const appRoutes: Record<AppRouteId, AppRoute> = {
 export const defaultRoute = appRoutes['designer-projects'];
 
 /**
- * 制作图纸和获取报价允许匿名访问。
+ * 制作图纸和提交询价允许匿名访问。
  * DWG 查看页的图纸存于私有桶，需要登录后通过签名 URL 访问。
  */
 export function requiresAuth(route: AppRoute): boolean {

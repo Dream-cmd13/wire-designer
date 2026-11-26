@@ -1,4 +1,5 @@
-export const QUOTE_FILE_MAX_BYTES = 5 * 1024 * 1024;
+export const QUOTE_FILE_MAX_MIB = 20;
+export const QUOTE_FILE_MAX_BYTES = QUOTE_FILE_MAX_MIB * 1024 * 1024;
 export const QUOTE_FILE_MAX_COUNT = 5;
 export const QUOTE_FILE_ACCEPT = '.pdf,.dwg,.dxf,.jpg,.jpeg,.png';
 export const QUOTE_KINDS = ['按图加工', '新线束设计', '按样品评估'] as const;
@@ -37,7 +38,28 @@ export function validateQuoteFile(name: string, size: number): void {
     throw new Error('文件名无效，请重命名后再上传。');
   }
   if (!extensions.has(name.slice(name.lastIndexOf('.')).toLowerCase())) throw new Error(`不支持文件「${name}」的格式。`);
-  if (!Number.isSafeInteger(size) || size < 1 || size > QUOTE_FILE_MAX_BYTES) throw new Error(`「${name}」须为非空文件，且不超过 5 MB。`);
+  if (!Number.isSafeInteger(size) || size < 1 || size > QUOTE_FILE_MAX_BYTES) throw new Error(`「${name}」须为非空文件，且不超过 ${QUOTE_FILE_MAX_MIB} MB。`);
+}
+
+type QuoteRequestFields = Pick<QuoteRequestInput, 'demand' | 'name' | 'phone' | 'email'>;
+
+export type QuoteRequestFieldErrors = Partial<Record<keyof QuoteRequestFields | 'contact', string>>;
+
+function normalizePhone(phone: string): string {
+  return phone.replace(/[\s()-]/gu, '');
+}
+
+export function getQuoteRequestFieldErrors(fields: QuoteRequestFields, hasFiles: boolean): QuoteRequestFieldErrors {
+  const errors: QuoteRequestFieldErrors = {};
+  const rawPhone = fields.phone.trim();
+  const phone = normalizePhone(rawPhone);
+  const email = fields.email.trim();
+  if (!fields.demand.trim() && !hasFiles) errors.demand = '请描述需求或上传至少一份图纸。';
+  if (!fields.name.trim()) errors.name = '请填写联系人。';
+  if (!phone && !email) errors.contact = '请填写手机号或邮箱，方便专员联系。';
+  else if (rawPhone && !/^\+?\d{7,15}$/u.test(phone)) errors.phone = '请填写有效的手机号。';
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) errors.email = '请填写有效的邮箱。';
+  return errors;
 }
 
 export function validateQuoteRequest(value: unknown): QuoteRequestInput {
@@ -46,13 +68,12 @@ export function validateQuoteRequest(value: unknown): QuoteRequestInput {
   const company = text(value.company, 120, '企业名称');
   const demand = text(value.demand, 3000, '需求说明');
   const rawPhone = text(value.phone, 32, '手机号');
-  const phone = rawPhone.replace(/[\s()-]/gu, '');
+  const phone = normalizePhone(rawPhone);
   const email = text(value.email, 254, '邮箱').toLowerCase();
   const kind = text(value.kind, 20, '需求类型');
-  if (!name) throw new Error('请填写联系人。');
-  if (!phone && !email) throw new Error('请填写手机号或邮箱，方便专员联系。');
-  if (rawPhone && !/^\+?\d{7,15}$/u.test(phone)) throw new Error('请填写有效的手机号。');
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) throw new Error('请填写有效的邮箱。');
+  const fieldErrors = getQuoteRequestFieldErrors({ name, phone: rawPhone, email, demand }, Array.isArray(value.files) && value.files.length > 0);
+  const contactError = fieldErrors.name ?? fieldErrors.contact ?? fieldErrors.phone ?? fieldErrors.email;
+  if (contactError) throw new Error(contactError);
   if (kind && !QUOTE_KINDS.some((option) => option === kind)) throw new Error('需求类型无效。');
   if (!Array.isArray(value.files) || value.files.length > QUOTE_FILE_MAX_COUNT) throw new Error('最多上传 5 份图纸。');
   const files = value.files.map((file: unknown): QuoteFile => {
@@ -61,7 +82,7 @@ export function validateQuoteRequest(value: unknown): QuoteRequestInput {
     validateQuoteFile(file.name, file.size);
     return { name: file.name, size: file.size, sha256: file.sha256 };
   });
-  if (!demand && files.length === 0) throw new Error('请描述需求或上传至少一份图纸。');
+  if (fieldErrors.demand) throw new Error(fieldErrors.demand);
   return { name, phone, email, company, demand, kind, files };
 }
 

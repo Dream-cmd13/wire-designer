@@ -30,7 +30,7 @@ export interface SidebarItem {
 }
 
 const sidebarItems: SidebarItem[] = [
-  { label: '获取报价', path: appRoutes['request-quote'].path, icon: MessageSquareText },
+  { label: appRoutes['request-quote'].title, path: appRoutes['request-quote'].path, icon: MessageSquareText },
   {
     label: '线束设计器',
     path: appRoutes['designer-projects'].path,
