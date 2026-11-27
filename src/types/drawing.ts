@@ -7,12 +7,15 @@ export type DrawingPage = {
   height: 800;
 };
 
+export type DrawingLineDash = 'solid' | 'dashed' | 'dotted' | 'dash-dot';
+
 export type DrawingObjectStyle = {
   fill: string;
   stroke: string;
   strokeWidth: number;
   fontSize: number;
   color: string;
+  dash?: DrawingLineDash;
 };
 
 export type DrawingObjectBase = {
@@ -102,11 +105,20 @@ export type DrawingTextObject = DrawingObjectBase & {
   text: string;
 };
 
+export type DrawingDimensionVariant =
+  | 'horizontal'
+  | 'vertical'
+  | 'horizontal-inward'
+  | 'vertical-inward'
+  | 'diameter'
+  | 'radius';
+
 export type DrawingDimensionObject = DrawingObjectBase & {
   kind: 'dimension';
   label: string;
   start: DrawingPoint;
   end: DrawingPoint;
+  variant?: DrawingDimensionVariant;
 };
 
 export type DrawingLineObject = DrawingObjectBase & {

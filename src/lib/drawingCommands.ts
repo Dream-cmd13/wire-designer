@@ -155,13 +155,32 @@ export function sampleFreehandPoint(points: DrawingPoint[], point: DrawingPoint,
   return previous && Math.hypot(point.x - previous.x, point.y - previous.y) < minimumDistance ? points : [...points, point];
 }
 
-export function createDrawingLineObject(kind: DrawingLineObject['kind'], points: DrawingPoint[], orthogonal = false): DrawingLineObject {
+export function createDrawingLineObject(
+  kind: DrawingLineObject['kind'],
+  points: DrawingPoint[],
+  orthogonal = false,
+  stylePatch?: Partial<DrawingObjectStyle>,
+): DrawingLineObject {
   const minX = Math.min(...points.map((point) => point.x));
   const minY = Math.min(...points.map((point) => point.y));
   const maxX = Math.max(...points.map((point) => point.x));
   const maxY = Math.max(...points.map((point) => point.y));
   const pointPadding = points.length === 1 ? 4 : 0;
-  return { id: createDrawingId(kind), kind, x: minX - pointPadding, y: minY - pointPadding, width: points.length === 1 ? 8 : Math.max(1, maxX - minX), height: points.length === 1 ? 8 : Math.max(1, maxY - minY), rotation: 0, zIndex: 10, locked: false, visible: true, style: { ...defaultDrawingObjectStyle }, points, orthogonal };
+  return {
+    id: createDrawingId(kind),
+    kind,
+    x: minX - pointPadding,
+    y: minY - pointPadding,
+    width: points.length === 1 ? 8 : Math.max(1, maxX - minX),
+    height: points.length === 1 ? 8 : Math.max(1, maxY - minY),
+    rotation: 0,
+    zIndex: 10,
+    locked: false,
+    visible: true,
+    style: { ...defaultDrawingObjectStyle, ...stylePatch },
+    points,
+    orthogonal,
+  };
 }
 
 function isPathObject(object: DrawingObject): object is DrawingLineObject {

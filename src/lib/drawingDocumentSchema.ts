@@ -75,7 +75,8 @@ function isStyle(value: unknown): boolean {
     && typeof value.stroke === 'string'
     && isFiniteNumber(value.strokeWidth)
     && isFiniteNumber(value.fontSize)
-    && typeof value.color === 'string';
+    && typeof value.color === 'string'
+    && (value.dash === undefined || value.dash === 'solid' || value.dash === 'dashed' || value.dash === 'dotted' || value.dash === 'dash-dot');
 }
 
 function isTableObject(value: Record<string, unknown>): boolean {
@@ -136,7 +137,16 @@ export function isDrawingObject(value: unknown): value is DrawingObject {
     case 'label':
       return typeof value.text === 'string';
     case 'dimension':
-      return typeof value.label === 'string' && isPoint(value.start) && isPoint(value.end);
+      return typeof value.label === 'string'
+        && isPoint(value.start)
+        && isPoint(value.end)
+        && (value.variant === undefined
+          || value.variant === 'horizontal'
+          || value.variant === 'vertical'
+          || value.variant === 'horizontal-inward'
+          || value.variant === 'vertical-inward'
+          || value.variant === 'diameter'
+          || value.variant === 'radius');
     case 'line':
     case 'polyline':
     case 'curve':

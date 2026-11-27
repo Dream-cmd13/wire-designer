@@ -14,8 +14,9 @@ import { resolveTableDoubleClickAction, resolveTablePointerAction } from '@/lib/
 import { DRAWING_TABLE_LINE_COLOR, getDrawingTableTargetObject, getDrawingTableTextFontSize, resizeDrawingTableCell, resizeDrawingTableFromHandle, resizeDrawingTableText, resolveDrawingTableCells, resolveDrawingTableLayout } from '@/lib/drawingTableLayout';
 import { getDrawingCaretIndexAtPoint, measureDrawingCaret } from '@/lib/drawingTextLayout';
 import { containsDrawingPoint, getDrawingTransformObject, getWheelScaleFactor, moveDrawingObject, resizeDrawingObject, rotateDrawingObject, type ResizeHandle } from '@/lib/drawingTransform';
+import type { DrawToolSettings } from './DrawingDrawToolFloatingBar';
 import { StandaloneDrawingSelectionOverlay } from './StandaloneDrawingSelectionOverlay';
-import type { DrawingDocument, DrawingObject, DrawingPoint, DrawingTableLocalTarget, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
+import type { DrawingDocument, DrawingLineObject, DrawingObject, DrawingPoint, DrawingTableLocalTarget, DrawingTableRow, DrawingToolMode } from '@/types/drawing';
 
 interface StandaloneDrawingCanvasProps {
   drawing: DrawingDocument;
@@ -35,6 +36,7 @@ interface StandaloneDrawingCanvasProps {
   onOpenMaterialTable?: (objectId: string) => void;
   toolMode?: DrawingToolMode;
   orthogonal?: boolean;
+  drawToolSettings?: DrawToolSettings;
   drawingAction?: { id: number; type: 'finish' | 'cancel' };
   onContextMenuRequest?: (request: {
     objectId: string | null;
@@ -412,6 +414,7 @@ export function StandaloneDrawingCanvas({
   onOpenMaterialTable,
   toolMode = 'select',
   orthogonal = false,
+  drawToolSettings,
   drawingAction,
   onContextMenuRequest,
 }: StandaloneDrawingCanvasProps) {
@@ -461,9 +464,27 @@ export function StandaloneDrawingCanvas({
     return () => observer.disconnect();
   }, [onViewportResize]);
 
+  const snapPoint = (point: DrawingPoint): DrawingPoint => (
+    drawToolSettings?.snapEnabled
+      ? { x: Math.round(point.x / 10) * 10, y: Math.round(point.y / 10) * 10 }
+      : point
+  );
+
+  const emitDrawnPath = (kind: DrawingLineObject['kind'], points: DrawingPoint[], isOrthogonal: boolean) => {
+    const stylePatch = drawToolSettings
+      ? { stroke: drawToolSettings.stroke, strokeWidth: drawToolSettings.strokeWidth, dash: drawToolSettings.dash }
+      : undefined;
+    const count = kind === 'line' ? Math.max(1, drawToolSettings?.lineCount ?? 1) : 1;
+    for (let index = 0; index < count; index += 1) {
+      const offsetY = index * 12;
+      const offsetPoints = offsetY === 0 ? points : points.map((pt) => ({ x: pt.x, y: pt.y + offsetY }));
+      onAddObject?.(createDrawingLineObject(kind, offsetPoints, isOrthogonal, stylePatch));
+    }
+  };
+
   const finalizeActiveDraft = (action: 'finish' | 'cancel') => {
     const object = finalizeDrawingDraft(draftKind, draftPoints, action, orthogonal);
-    if (object) onAddObject?.(object);
+    if (object && draftKind) emitDrawnPath(draftKind, draftPoints, orthogonal);
     setDraftPoints([]);
     setDraftKind(null);
     setPointerPoint(null);
@@ -546,8 +567,9 @@ export function StandaloneDrawingCanvas({
       setInteraction(null);
       return;
     }
-    const point = getDrawingPoint(event.clientX, event.clientY);
-    if (!point) return;
+    const rawPoint = getDrawingPoint(event.clientX, event.clientY);
+    if (!rawPoint) return;
+    const point = toolMode !== 'select' ? snapPoint(rawPoint) : rawPoint;
     if (toolMode === 'freehand') {
       event.currentTarget.setPointerCapture(event.pointerId);
       setDraftPoints([point]);
@@ -557,9 +579,11 @@ export function StandaloneDrawingCanvas({
     }
     if (toolMode === 'line' || toolMode === 'polyline' || toolMode === 'curve') {
       const origin = draftPoints.at(-1);
-      const nextPoint = orthogonal && origin ? snapOrthogonalPoint(origin, point) : point;
+      const nextPoint = (orthogonal || (toolMode === 'curve' && event.shiftKey)) && origin
+        ? snapOrthogonalPoint(origin, point)
+        : point;
       if (toolMode === 'line' && draftPoints.length === 1) {
-        onAddObject?.(createDrawingLineObject('line', [draftPoints[0], nextPoint], orthogonal));
+        emitDrawnPath('line', [draftPoints[0], nextPoint], orthogonal);
         setDraftPoints([]);
         setDraftKind(null);
         setPointerPoint(null);
@@ -805,14 +829,17 @@ export function StandaloneDrawingCanvas({
   const handleDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     setInteraction(null);
-    const point = getDrawingPoint(event.clientX, event.clientY);
-    if (!point) return;
+    const rawPoint = getDrawingPoint(event.clientX, event.clientY);
+    if (!rawPoint) return;
+    const point = toolMode !== 'select' ? snapPoint(rawPoint) : rawPoint;
     if ((toolMode === 'polyline' || toolMode === 'curve') && draftPoints.length > 0) {
       const origin = draftPoints.at(-1)!;
-      const end = orthogonal ? snapOrthogonalPoint(origin, point) : point;
+      const end = (orthogonal || (toolMode === 'curve' && event.shiftKey))
+        ? snapOrthogonalPoint(origin, point)
+        : point;
       const points = [...draftPoints, end];
       if (points.length >= 2) {
-        onAddObject?.(createDrawingLineObject(toolMode, points, orthogonal));
+        emitDrawnPath(toolMode, points, orthogonal);
       }
       setDraftPoints([]);
       setDraftKind(null);
@@ -991,9 +1018,19 @@ export function StandaloneDrawingCanvas({
               <polyline
                 points={previewPoints.map((point) => `${point.x * zoom},${point.y * zoom}`).join(' ')}
                 fill="none"
-                stroke="#2563eb"
-                strokeWidth={2}
-                strokeDasharray={toolMode === 'freehand' ? undefined : '6 4'}
+                stroke={drawToolSettings?.stroke ?? '#2563eb'}
+                strokeWidth={drawToolSettings?.strokeWidth ?? 2}
+                strokeDasharray={
+                  drawToolSettings?.dash === 'dashed'
+                    ? '8 4'
+                    : drawToolSettings?.dash === 'dotted'
+                      ? '2 4'
+                      : drawToolSettings?.dash === 'dash-dot'
+                        ? '8 4 2 4'
+                        : toolMode === 'freehand'
+                          ? undefined
+                          : '6 4'
+                }
               />
             )}
             {selectionRect && (

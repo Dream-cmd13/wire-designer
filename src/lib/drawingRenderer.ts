@@ -86,6 +86,13 @@ function drawTable(context: CanvasRenderingContext2D, object: Extract<DrawingObj
   });
 }
 
+function dashPattern(dash: DrawingObject['style']['dash']): number[] {
+  if (dash === 'dashed') return [8, 4];
+  if (dash === 'dotted') return [2, 4];
+  if (dash === 'dash-dot') return [8, 4, 2, 4];
+  return [];
+}
+
 function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
   context.save();
   context.translate(object.x + object.width / 2, object.y + object.height / 2);
@@ -94,6 +101,7 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
   context.strokeStyle = object.style.stroke;
   context.fillStyle = object.style.color;
   context.lineWidth = object.style.strokeWidth;
+  context.setLineDash(dashPattern(object.style.dash));
   context.font = `${object.style.fontSize}px ${DRAWING_FONT_FAMILY}`;
 
   if (object.kind === 'connector') {
@@ -136,15 +144,38 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
   } else if (object.kind === 'text' || object.kind === 'label') {
     drawEditableText(context, object, 'text', object.text);
   } else if (object.kind === 'dimension') {
+    const variant = object.variant ?? 'horizontal';
+    const isVertical = variant === 'vertical' || variant === 'vertical-inward';
+    if (isVertical) {
+      const x = object.width / 2;
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, object.height);
+      context.moveTo(x - 8, 0);
+      context.lineTo(x + 8, 0);
+      context.moveTo(x - 8, object.height);
+      context.lineTo(x + 8, object.height);
+      context.stroke();
+    } else {
+      const y = object.height / 2;
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(object.width, y);
+      context.moveTo(0, y - 8);
+      context.lineTo(0, y + 8);
+      context.moveTo(object.width, y - 8);
+      context.lineTo(object.width, y + 8);
+      if (variant === 'horizontal-inward') {
+        context.moveTo(8, y - 4);
+        context.lineTo(0, y);
+        context.lineTo(8, y + 4);
+        context.moveTo(object.width - 8, y - 4);
+        context.lineTo(object.width, y);
+        context.lineTo(object.width - 8, y + 4);
+      }
+      context.stroke();
+    }
     const y = object.height / 2;
-    context.beginPath();
-    context.moveTo(0, y);
-    context.lineTo(object.width, y);
-    context.moveTo(0, y - 8);
-    context.lineTo(0, y + 8);
-    context.moveTo(object.width, y - 8);
-    context.lineTo(object.width, y + 8);
-    context.stroke();
     const [textRun] = getEditableDrawingTextRuns(context, object, 'label', object.label);
     context.font = textRun.font;
     const labelWidth = context.measureText(textRun.displayText).width;

@@ -9,14 +9,26 @@ function escapeXml(value: string) {
   }[character] ?? character));
 }
 
+function svgDashAttribute(dash: DrawingObject['style']['dash']): string {
+  if (dash === 'dashed') return ' stroke-dasharray="8 4"';
+  if (dash === 'dotted') return ' stroke-dasharray="2 4"';
+  if (dash === 'dash-dot') return ' stroke-dasharray="8 4 2 4"';
+  return '';
+}
+
 function svgObject(object: DrawingObject): string {
   const common = `transform="translate(${object.x} ${object.y}) rotate(${object.rotation} ${object.width / 2} ${object.height / 2})"`;
-  const style = `fill="${object.style.fill}" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"`;
+  const dashAttr = svgDashAttribute(object.style.dash);
+  const style = `fill="${object.style.fill}" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"${dashAttr}`;
   if (object.kind === 'text' || object.kind === 'label') {
     return `<text ${common} x="0" y="${object.style.fontSize}" font-size="${object.style.fontSize}" fill="${object.style.color}">${escapeXml(object.text)}</text>`;
   }
   if (object.kind === 'dimension') {
-    return `<g ${common} ${style}><line x1="0" y1="${object.height / 2}" x2="${object.width}" y2="${object.height / 2}"/><line x1="0" y1="${object.height / 2 - 8}" x2="0" y2="${object.height / 2 + 8}"/><line x1="${object.width}" y1="${object.height / 2 - 8}" x2="${object.width}" y2="${object.height / 2 + 8}"/><text x="${object.width / 2}" y="${object.height / 2 + 1}" text-anchor="middle" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="white" stroke-width="6" stroke-linejoin="round" paint-order="stroke">${escapeXml(object.label)}</text></g>`;
+    const isVertical = object.variant === 'vertical' || object.variant === 'vertical-inward';
+    const lines = isVertical
+      ? `<line x1="${object.width / 2}" y1="0" x2="${object.width / 2}" y2="${object.height}"/><line x1="${object.width / 2 - 8}" y1="0" x2="${object.width / 2 + 8}" y2="0"/><line x1="${object.width / 2 - 8}" y1="${object.height}" x2="${object.width / 2 + 8}" y2="${object.height}"/>`
+      : `<line x1="0" y1="${object.height / 2}" x2="${object.width}" y2="${object.height / 2}"/><line x1="0" y1="${object.height / 2 - 8}" x2="0" y2="${object.height / 2 + 8}"/><line x1="${object.width}" y1="${object.height / 2 - 8}" x2="${object.width}" y2="${object.height / 2 + 8}"/>`;
+    return `<g ${common} ${style}>${lines}<text x="${object.width / 2}" y="${object.height / 2 + 1}" text-anchor="middle" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="white" stroke-width="6" stroke-linejoin="round" paint-order="stroke">${escapeXml(object.label)}</text></g>`;
   }
   if ((object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') && object.points.length === 1) {
     const point = object.points[0];
@@ -32,11 +44,11 @@ function svgObject(object: DrawingObject): string {
     }
     const last = object.points.at(-1)!;
     commands.push(`L ${last.x} ${last.y}`);
-    return `<path d="${commands.join(' ')}" fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"/>`;
+    return `<path d="${commands.join(' ')}" fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"${dashAttr}/>`;
   }
   if (object.kind === 'line' || object.kind === 'polyline' || object.kind === 'freehand') {
     const points = object.points.map((point) => `${point.x},${point.y}`).join(' ');
-    return `<polyline points="${points}" fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"/>`;
+    return `<polyline points="${points}" fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}"${dashAttr}/>`;
   }
   if (object.kind === 'wire-bundle') {
     const lines = Array.from({ length: Math.min(12, object.wireCount) }, (_, index) => `<line x1="0" y1="${object.height * 0.25 + index * 5}" x2="${object.width}" y2="${object.height * 0.25 + index * 5}"/>`).join('');

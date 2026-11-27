@@ -3,6 +3,8 @@ import { AlertCircle, Maximize2, Minus, Plus } from 'lucide-react';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
 import { DrawingComponentLibraryModal } from '@/components/drawings/standalone/DrawingComponentLibraryModal';
+import { DrawingCrossWireDialog } from '@/components/drawings/standalone/DrawingCrossWireDialog';
+import { DrawingDrawToolFloatingBar, type DrawToolSettings } from '@/components/drawings/standalone/DrawingDrawToolFloatingBar';
 import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
 import { DrawingMaterialTableDialog } from '@/components/drawings/standalone/DrawingMaterialTableDialog';
 import { DrawingPdfExportDialog } from '@/components/drawings/standalone/DrawingPdfExportDialog';
@@ -10,6 +12,7 @@ import { DrawingIconLibraryDialog } from '@/components/drawings/standalone/Drawi
 import { DrawingProcessNotesModal } from '@/components/drawings/standalone/DrawingProcessNotesModal';
 import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
 import { DrawingTableCreateDialog } from '@/components/drawings/standalone/DrawingTableCreateDialog';
+import { DrawingWiringRelationDialog } from '@/components/drawings/standalone/DrawingWiringRelationDialog';
 import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/StandaloneDrawingCanvas';
 import { StandaloneDrawingInspector } from '@/components/drawings/standalone/StandaloneDrawingInspector';
 import { StandaloneDrawingWizard } from '@/components/drawings/standalone/StandaloneDrawingWizard';
@@ -35,7 +38,7 @@ import {
 import { canEditDrawing, hydrateDrawingStore, useDrawingStore } from '@/stores/drawingStore';
 import { notify } from '@/stores/noticeStore';
 import { useUserStore } from '@/stores/userStore';
-import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
+import type { DrawingBomTableObject, DrawingCatalogResource, DrawingCommonPhrase, DrawingDimensionVariant, DrawingDocument, DrawingIconResource, DrawingLineObject, DrawingObject, DrawingObjectStyle, DrawingPoint, DrawingResourceKind, DrawingTableLocalTarget, DrawingToolMode } from '@/types/drawing';
 
 type DrawingContextState = {
   objectId: string | null;
@@ -112,6 +115,13 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
     ? documents[activeDocumentId] : undefined;
   const [selectedObjectIds, setSelectedObjectIds] = useState<string[]>([]);
   const [toolMode, setToolMode] = useState<DrawingToolMode>('select');
+  const [drawToolSettings, setDrawToolSettings] = useState<DrawToolSettings>({
+    stroke: '#111827',
+    strokeWidth: 1,
+    dash: 'solid',
+    lineCount: 1,
+    snapEnabled: true,
+  });
   const [drawingAction, setDrawingAction] = useState<{ id: number; type: 'finish' | 'cancel' }>({ id: 0, type: 'cancel' });
   const [orthogonal, setOrthogonal] = useState(false);
   const [viewport, setViewport] = useState<{ width: number; height: number } | null>(null);
@@ -121,6 +131,8 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
   const [iconLibraryOpen, setIconLibraryOpen] = useState(false);
   const [componentLibraryCategory, setComponentLibraryCategory] = useState<DrawingComponentGraphicCategory | null>(null);
   const [processNotesOpen, setProcessNotesOpen] = useState(false);
+  const [crossWireDialogOpen, setCrossWireDialogOpen] = useState(false);
+  const [wiringRelationDialogOpen, setWiringRelationDialogOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
@@ -214,12 +226,45 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
     void saveActiveDocument().catch((error) => notify({ tone: 'danger', title: '本地保存失败', message: getUserErrorMessage(error, '请保持页面打开，下载副本后重试。') }));
   };
   const applyCommand = (command: (document: DrawingDocument) => DrawingDocument) => { if (!drawing) return; const next = command(drawing); if (next === drawing) return; remember(); apply(next); };
-  const addObject = (object: DrawingObject) => { if (!drawing) return; remember(); const named = isLineObject(object) && !object.name ? { ...object, name: nextLineName(drawing) } : object; const next = { ...named, zIndex: topLayer(drawing) } as DrawingObject; apply(stampDrawingEdit({ ...drawing, objects: [...drawing.objects, next] })); setSelectedObjectIds([next.id]); };
+  const addObject = (object: DrawingObject) => {
+    if (!drawing) return;
+    remember();
+    const styled = toolMode === 'freehand' && object.kind === 'freehand'
+      ? {
+          ...object,
+          style: {
+            ...object.style,
+            stroke: drawToolSettings.stroke,
+            strokeWidth: drawToolSettings.strokeWidth,
+            dash: drawToolSettings.dash,
+          },
+        }
+      : object;
+    const named = isLineObject(styled) && !styled.name ? { ...styled, name: nextLineName(drawing) } : styled;
+    const next = { ...named, zIndex: topLayer(drawing) } as DrawingObject;
+    apply(stampDrawingEdit({ ...drawing, objects: [...drawing.objects, next] }));
+    setSelectedObjectIds([next.id]);
+  };
   const updateSelectedObjects = (objectIds: string[], patch: Partial<DrawingObject>, stylePatch?: Partial<DrawingObjectStyle>) => {
     if (!drawing) return;
     apply(patchDrawingObjects(drawing, objectIds, patch, stylePatch));
   };
   const addResource = (kind: DrawingResourceKind) => { if (!drawing) return; addObject(createPlacedResource(drawing, kind)); setResourcesOpen(false); };
+  const addDimension = (variant: DrawingDimensionVariant = 'horizontal') => {
+    if (!drawing) return;
+    const base = createPlacedResource(drawing, 'dimension');
+    if (base.kind !== 'dimension') return;
+    const isVertical = variant === 'vertical' || variant === 'vertical-inward';
+    const label = variant === 'diameter' ? 'Ø 10mm' : variant === 'radius' ? 'R 5mm' : base.label;
+    addObject({
+      ...base,
+      width: isVertical ? 45 : base.width,
+      height: isVertical ? 140 : base.height,
+      label,
+      variant,
+    });
+    setResourcesOpen(false);
+  };
   const addNumberTube = () => { if (!drawing) return; addObject(createPlacedNumberTube(drawing)); setResourcesOpen(false); };
   const openIconLibrary = () => { setResourcesOpen(false); setIconLibraryOpen(true); };
   const addTable = (input: DrawingTableCreateInput) => {
@@ -530,8 +575,16 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
         if (file) void importLocalDrawingCopy(file);
       }}/>
     </form>
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onSplit={split} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={saveDrawing} onExportLocal={downloadLocalDrawingCopy} onImportLocal={() => importFileRef.current?.click()} onPdf={requestPdfExport} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onSplit={split} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={addDimension} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={saveDrawing} onExportLocal={downloadLocalDrawingCopy} onImportLocal={() => importFileRef.current?.click()} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
+    <DrawingDrawToolFloatingBar
+      toolMode={toolMode}
+      orthogonal={orthogonal}
+      settings={drawToolSettings}
+      onChangeSettings={(patch) => setDrawToolSettings((current) => ({ ...current, ...patch }))}
+      onToggleOrthogonal={() => setOrthogonal((value) => !value)}
+      onExit={() => changeTool('select')}
+    />
     <DrawingResourcePanel
       open={resourcesOpen}
       canUseCatalog={Boolean(drawingOwnerId)}
@@ -542,10 +595,12 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
       onAddIcon={addIcon}
       onOpenCustomTable={() => { setResourcesOpen(false); setTableDialogOpen(true); }}
       onOpenProcessNotes={() => { setResourcesOpen(false); setProcessNotesOpen(true); }}
+      onOpenCrossWire={() => { setResourcesOpen(false); setCrossWireDialogOpen(true); }}
+      onOpenWiringRelation={() => { setResourcesOpen(false); setWiringRelationDialogOpen(true); }}
       onOpenComponentLibrary={(category) => { setResourcesOpen(false); setComponentLibraryCategory(category); }}
     />
       <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>
-      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onViewportResize={setViewport} onCanvasZoom={changeZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
+      <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawToolSettings={drawToolSettings} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onViewportResize={setViewport} onCanvasZoom={changeZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
       <StandaloneDrawingInspector key={primaryId} drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))} onZoomIn={() => changeZoom(zoom * getWheelScaleFactor(-1))} onZoomOut={() => changeZoom(zoom * getWheelScaleFactor(1))} onZoomReset={() => setManualZoom(null)} canZoomIn={zoom < MAX_CANVAS_ZOOM} canZoomOut={zoom > minZoom}/>
     </div>
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 border-t border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">
@@ -651,6 +706,24 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
             }
           }
           setProcessNotesOpen(false);
+        }}
+      />
+    )}
+    {crossWireDialogOpen && (
+      <DrawingCrossWireDialog
+        onClose={() => setCrossWireDialogOpen(false)}
+        onConfirm={(groupObject) => {
+          addObject(groupObject);
+          setCrossWireDialogOpen(false);
+        }}
+      />
+    )}
+    {wiringRelationDialogOpen && (
+      <DrawingWiringRelationDialog
+        onClose={() => setWiringRelationDialogOpen(false)}
+        onConfirm={(groupObject) => {
+          addObject(groupObject);
+          setWiringRelationDialogOpen(false);
         }}
       />
     )}

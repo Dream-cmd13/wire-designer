@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { PageHeaderActions } from '@/components/layout/PageHeaderActions';
 import type { DrawingSaveState } from '@/stores/drawingStore';
-import type { DrawingToolMode } from '@/types/drawing';
+import type { DrawingDimensionVariant, DrawingToolMode } from '@/types/drawing';
 
 interface Props {
   toolMode: DrawingToolMode;
@@ -52,7 +52,7 @@ interface Props {
   onAddLabel: () => void;
   onOpenIconLibrary: () => void;
   onAddNumberTube: () => void;
-  onAddDimension: () => void;
+  onAddDimension: (variant?: DrawingDimensionVariant) => void;
   onAddTable: () => void;
   onSave: () => void;
   onExportLocal: () => void;
@@ -124,15 +124,23 @@ const SAVE_STATE_CLASSES: Record<DrawingSaveState, string> = {
 
 export function DrawingWorkbenchToolbar(props: Props) {
   const [layerMenuOpen, setLayerMenuOpen] = useState(false);
+  const [dimensionMenuOpen, setDimensionMenuOpen] = useState(false);
   const layerGroupRef = useRef<HTMLDivElement>(null);
+  const dimensionGroupRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!layerMenuOpen) return;
+    if (!layerMenuOpen && !dimensionMenuOpen) return;
     const close = (event: PointerEvent) => {
-      if (event.target instanceof Node && !layerGroupRef.current?.contains(event.target)) setLayerMenuOpen(false);
+      if (event.target instanceof Node) {
+        if (!layerGroupRef.current?.contains(event.target)) setLayerMenuOpen(false);
+        if (!dimensionGroupRef.current?.contains(event.target)) setDimensionMenuOpen(false);
+      }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setLayerMenuOpen(false);
+      if (event.key === 'Escape') {
+        setLayerMenuOpen(false);
+        setDimensionMenuOpen(false);
+      }
     };
     window.addEventListener('pointerdown', close);
     window.addEventListener('keydown', closeOnEscape);
@@ -140,7 +148,7 @@ export function DrawingWorkbenchToolbar(props: Props) {
       window.removeEventListener('pointerdown', close);
       window.removeEventListener('keydown', closeOnEscape);
     };
-  }, [layerMenuOpen]);
+  }, [dimensionMenuOpen, layerMenuOpen]);
 
   const run = (action: () => void, closeLayerMenu = false) => {
     props.onBeforeAction();
@@ -226,9 +234,46 @@ export function DrawingWorkbenchToolbar(props: Props) {
         <Button title="号码管" iconOnly onClick={() => run(props.onAddNumberTube)}>
           <SquareDashed className="h-4 w-4" />
         </Button>
-        <Button title="长度标注" iconOnly onClick={() => run(props.onAddDimension)}>
-          <span className="text-xs leading-none">↔</span>
-        </Button>
+        <div ref={dimensionGroupRef} className="relative">
+          <Button
+            title="长度标注"
+            iconOnly
+            expanded={dimensionMenuOpen}
+            onClick={() => setDimensionMenuOpen((open) => !open)}
+          >
+            <span className="text-xs leading-none">↔</span>
+          </Button>
+          {dimensionMenuOpen && (
+            <div
+              role="menu"
+              aria-label="标注样式"
+              className="absolute left-0 top-full z-20 mt-1 w-28 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+            >
+              {([
+                ['horizontal', '样式1', '↔'],
+                ['vertical', '样式2', '↕'],
+                ['horizontal-inward', '样式3', '→←'],
+                ['vertical-inward', '样式4', '↓↑'],
+                ['diameter', '直径', 'Ø'],
+                ['radius', '半径', 'R'],
+              ] as const).map(([variant, label, icon]) => (
+                <button
+                  key={variant}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    run(() => props.onAddDimension(variant));
+                    setDimensionMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-600"
+                >
+                  <span className="w-5 text-center font-mono text-[11px]">{icon}</span>
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <Button title="表格" iconOnly onClick={() => run(props.onAddTable)}>
           <span className="text-xs leading-none">▦</span>
         </Button>

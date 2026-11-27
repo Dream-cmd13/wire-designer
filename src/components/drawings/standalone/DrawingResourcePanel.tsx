@@ -34,6 +34,8 @@ interface Props {
   onAddIcon: (icon: DrawingIconResource) => void;
   onOpenCustomTable?: () => void;
   onOpenProcessNotes?: () => void;
+  onOpenCrossWire?: () => void;
+  onOpenWiringRelation?: () => void;
   onOpenComponentLibrary?: (category: DrawingComponentGraphicCategory) => void;
 }
 
@@ -58,6 +60,8 @@ export function DrawingResourcePanel({
   onAddIcon,
   onOpenCustomTable,
   onOpenProcessNotes,
+  onOpenCrossWire,
+  onOpenWiringRelation,
   onOpenComponentLibrary,
 }: Props) {
   const [tab, setTab] = useState<'menu' | 'resources' | 'phrases' | 'icons'>('menu');
@@ -157,7 +161,14 @@ export function DrawingResourcePanel({
           <button type="button" onClick={() => onAddKind('polyline')} className={menuItemClass}>
             <GitFork className="h-3.5 w-3.5 text-slate-500" />分岔线
           </button>
-          <button type="button" onClick={() => onAddKind('line')} className={menuItemClass}>
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenCrossWire) onOpenCrossWire();
+              else onAddKind('line');
+            }}
+            className={menuItemClass}
+          >
             <CircleX className="h-3.5 w-3.5 text-slate-500" />交叉线
           </button>
 
@@ -187,7 +198,14 @@ export function DrawingResourcePanel({
           >
             <Table2 className="h-3.5 w-3.5 text-slate-500" />自定义接线表
           </button>
-          <button type="button" onClick={() => onAddKind('wiring-table')} className={menuItemClass}>
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenWiringRelation) onOpenWiringRelation();
+              else onAddKind('wiring-table');
+            }}
+            className={menuItemClass}
+          >
             <Share2 className="h-3.5 w-3.5 text-slate-500" />自定义接线关系
           </button>
           <button type="button" onClick={() => onAddKind('wiring-table')} className={menuItemClass}>
