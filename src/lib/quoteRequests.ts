@@ -3,6 +3,7 @@ import { QUOTE_REQUEST_BUCKET, quoteFilePath } from '../../supabase/functions/_s
 import type { QuoteRequestInput } from '../../supabase/functions/_shared/quoteRequest';
 
 export type QuoteStatus = 'pending' | 'following' | 'quoted' | 'closed';
+export type QuoteRequestScope = 'all' | 'unassigned' | 'mine';
 export const quoteStatuses: Record<QuoteStatus, string> = {
   pending: '待处理', following: '跟进中', quoted: '已报价', closed: '已关闭',
 };
@@ -67,12 +68,19 @@ export async function canHandleQuoteRequests() {
   return data === true;
 }
 
-export async function listQuoteRequests(status: QuoteStatus | '', page: number, signal: AbortSignal) {
-  let query = client().from('quote_requests').select('id,receipt,status,payload,assignee_id,follow_up_note,submitted_at,updated_at', { count: 'exact' })
-    .order('submitted_at', { ascending: false }).order('id')
+export async function listQuoteRequests({ status, scope, userId, page, signal }: {
+  status: QuoteStatus | '';
+  scope: QuoteRequestScope;
+  userId: string;
+  page: number;
+  signal: AbortSignal;
+}) {
+  let query = client().from('quote_requests').select('id,receipt,status,payload,assignee_id,follow_up_note,submitted_at,updated_at', { count: 'exact' });
+  if (scope === 'unassigned') query = query.eq('status', 'pending').is('assignee_id', null);
+  else if (status) query = query.eq('status', status);
+  if (scope === 'mine') query = query.eq('assignee_id', userId);
+  const { data, count, error } = await query.order('submitted_at', { ascending: false }).order('id')
     .range(page * QUOTE_LIST_SIZE, (page + 1) * QUOTE_LIST_SIZE - 1).abortSignal(signal);
-  if (status) query = query.eq('status', status);
-  const { data, count, error } = await query;
   if (error) throw new Error('询价列表加载失败，请刷新重试。');
   return { rows: data as QuoteRequestRow[], count: count ?? 0 };
 }
