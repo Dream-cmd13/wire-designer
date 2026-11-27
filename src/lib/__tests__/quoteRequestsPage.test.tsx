@@ -12,6 +12,11 @@ vi.mock('@/lib/quoteRequests', async (importOriginal) => ({
   canHandleQuoteRequests: vi.fn(), listQuoteRequests: vi.fn(), updateQuoteRequest: vi.fn(),
 }));
 
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: { configurable: true, value(this: HTMLDialogElement) { this.setAttribute('open', ''); } },
+  close: { configurable: true, value(this: HTMLDialogElement) { this.removeAttribute('open'); } },
+});
+
 const user: User = { id: 'sales', name: '销售', email: 'sales@example.invalid', createdAt: 0, role: 'sales' };
 const pending: QuoteRequestRow = {
   id: 'pending', receipt: 'RFQ-PENDING', status: 'pending', assignee_id: null, follow_up_note: '',
@@ -59,7 +64,6 @@ it('shows ownership in the list and queries the entire filtered set from the fir
 });
 
 it('protects a draft on refresh and switching, and keeps it on save failure', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   render(<QuoteRequestsPage user={user} />);
   await screen.findByText(mine.receipt);
   fireEvent.click(listItem(mine.receipt));
@@ -67,10 +71,12 @@ it('protects a draft on refresh and switching, and keeps it on save failure', as
   fireEvent.change(note, { target: { value: '待保存的备注' } });
   const beforeUnload = new Event('beforeunload', { cancelable: true });
   expect(window.dispatchEvent(beforeUnload)).toBe(false);
-  fireEvent.click(button('刷新'));
-  fireEvent.click(listItem(pending.receipt));
-  fireEvent.click(button('关闭询价详情'));
-  expect(confirm).toHaveBeenCalledTimes(3);
+  for (const target of [button('刷新'), listItem(pending.receipt), button('关闭询价详情')]) {
+    fireEvent.click(target);
+    const confirmation = screen.getByRole('alertdialog');
+    expect(confirmation.textContent).toContain('尚未保存');
+    fireEvent.click(within(confirmation).getByRole('button', { name: '取消' }));
+  }
   expect(listQuoteRequests).toHaveBeenCalledTimes(1);
   expect(note.value).toBe('待保存的备注');
   expect(details().textContent).toContain(mine.receipt);
@@ -86,7 +92,7 @@ it('protects a draft on refresh and switching, and keeps it on save failure', as
   expect(useNoticeStore.getState().notices.at(-1)?.title).toBe('记录已保存');
   expect(window.dispatchEvent(new Event('beforeunload', { cancelable: true }))).toBe(true);
   fireEvent.click(button('刷新'));
-  expect(confirm).toHaveBeenCalledTimes(3);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
   expect(screen.queryByRole('region', { name: '询价详情' })).toBeNull();
 });
 
@@ -115,7 +121,6 @@ it('returns to the last available page when its only unassigned request is claim
 });
 
 it('marks a quote and confirms before closing with the current draft', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
   const quoted = { ...mine, status: 'quoted' as const, updated_at: '2026-11-27T00:02:00Z' };
   vi.mocked(updateQuoteRequest).mockResolvedValueOnce(quoted)
     .mockResolvedValueOnce({ ...quoted, status: 'closed', follow_up_note: '报价后客户取消' });
@@ -129,11 +134,16 @@ it('marks a quote and confirms before closing with the current draft', async () 
   const note = within(details()).getByRole('textbox', { name: '跟进与报价记录' }) as HTMLTextAreaElement;
   fireEvent.change(note, { target: { value: '报价后客户取消' } });
   fireEvent.click(button('关闭询价'));
-  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('保存当前跟进记录'));
+  const confirmation = screen.getByRole('alertdialog');
+  expect(confirmation.textContent).toContain('保存当前跟进记录');
+  fireEvent.click(within(confirmation).getByRole('button', { name: '取消' }));
   expect(updateQuoteRequest).toHaveBeenCalledTimes(1);
   expect(note.value).toBe('报价后客户取消');
 
-  await act(async () => { fireEvent.click(button('关闭询价')); });
+  fireEvent.click(button('关闭询价'));
+  await act(async () => {
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '确认关闭' }));
+  });
   expect(useNoticeStore.getState().notices.at(-1)?.title).toBe('询价已关闭');
   expect(updateQuoteRequest).toHaveBeenLastCalledWith(quoted, 'closed', '报价后客户取消');
   expect(details().textContent).toContain('已关闭');
