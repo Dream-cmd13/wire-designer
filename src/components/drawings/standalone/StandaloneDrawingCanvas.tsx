@@ -633,8 +633,9 @@ export function StandaloneDrawingCanvas({
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const point = getDrawingPoint(event.clientX, event.clientY);
-    if (!point) return;
+    const rawPoint = getDrawingPoint(event.clientX, event.clientY);
+    if (!rawPoint) return;
+    const point = toolMode !== 'select' ? snapPoint(rawPoint) : rawPoint;
     if (toolMode === 'freehand' && draftPoints.length > 0 && event.buttons === 1) {
       setDraftPoints((items) => sampleFreehandPoint(items, point));
       setPointerPoint(point);
@@ -642,7 +643,10 @@ export function StandaloneDrawingCanvas({
     }
     if (toolMode !== 'select' && draftPoints.length > 0) {
       const origin = draftPoints.at(-1)!;
-      setPointerPoint(orthogonal ? snapOrthogonalPoint(origin, point) : point);
+      const constrained = (orthogonal || (toolMode === 'curve' && event.shiftKey))
+        ? snapOrthogonalPoint(origin, point)
+        : point;
+      setPointerPoint(constrained);
       return;
     }
     if (selectionStart) {
@@ -1024,24 +1028,28 @@ export function StandaloneDrawingCanvas({
             width={drawing.page.width * zoom}
             height={drawing.page.height * zoom}
           >
-            {previewPoints.length > 0 && (
-              <polyline
-                points={previewPoints.map((point) => `${point.x * zoom},${point.y * zoom}`).join(' ')}
-                fill="none"
-                stroke={drawToolSettings?.stroke ?? '#2563eb'}
-                strokeWidth={drawToolSettings?.strokeWidth ?? 2}
-                strokeDasharray={
-                  drawToolSettings?.dash === 'dashed'
-                    ? '8 4'
-                    : drawToolSettings?.dash === 'dotted'
-                      ? '2 4'
-                      : drawToolSettings?.dash === 'dash-dot'
-                        ? '8 4 2 4'
-                        : toolMode === 'freehand'
-                          ? undefined
-                          : '6 4'
-                }
-              />
+            {previewPoints.length > 0 && Array.from(
+              { length: toolMode === 'line' ? Math.max(1, drawToolSettings?.lineCount ?? 1) : 1 },
+              (_, index) => (
+                <polyline
+                  key={index}
+                  points={previewPoints.map((point) => `${point.x * zoom},${(point.y + index * 12) * zoom}`).join(' ')}
+                  fill="none"
+                  stroke={drawToolSettings?.stroke ?? '#2563eb'}
+                  strokeWidth={drawToolSettings?.strokeWidth ?? 2}
+                  strokeDasharray={
+                    drawToolSettings?.dash === 'dashed'
+                      ? '8 4'
+                      : drawToolSettings?.dash === 'dotted'
+                        ? '2 4'
+                        : drawToolSettings?.dash === 'dash-dot'
+                          ? '8 4 2 4'
+                          : toolMode === 'freehand'
+                            ? undefined
+                            : '6 4'
+                  }
+                />
+              ),
             )}
             {selectionRect && (
               <rect

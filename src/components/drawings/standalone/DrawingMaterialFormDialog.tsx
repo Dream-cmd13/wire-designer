@@ -6,6 +6,7 @@ import type { DrawingMaterialInput } from '@/lib/drawingMaterials';
 
 interface Props {
   mode: 'current' | 'company';
+  isEdit?: boolean;
   initial?: Partial<DrawingMaterialInput>;
   suggestions: CompanyMaterial[];
   onSubmit: (input: DrawingMaterialInput) => void | Promise<void>;
@@ -14,7 +15,7 @@ interface Props {
 
 const fieldClass = 'mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100';
 
-export function DrawingMaterialFormDialog({ mode, initial, suggestions, onSubmit, onClose }: Props) {
+export function DrawingMaterialFormDialog({ mode, isEdit = false, initial, suggestions, onSubmit, onClose }: Props) {
   const [values, setValues] = useState<DrawingMaterialInput>({
     code: initial?.code ?? '',
     nameAndSpecification: initial?.nameAndSpecification ?? '',
@@ -29,7 +30,7 @@ export function DrawingMaterialFormDialog({ mode, initial, suggestions, onSubmit
 
   const submit = async () => {
     const nextErrors: Record<string, string> = {};
-    if (!values.code.trim()) nextErrors.code = '请输入物料编码。';
+    if (mode === 'company' && !values.code.trim()) nextErrors.code = '请输入物料编码。';
     if (!values.nameAndSpecification.trim()) nextErrors.nameAndSpecification = '请输入物料名称/规格。';
     if (!values.unit.trim()) nextErrors.unit = '请输入单位。';
     if (mode === 'current' && (!values.quantity.trim() || Number(values.quantity) <= 0)) nextErrors.quantity = '请输入大于 0 的用量。';
@@ -44,7 +45,7 @@ export function DrawingMaterialFormDialog({ mode, initial, suggestions, onSubmit
   return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/30 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) onClose(); }}>
     <form role="dialog" aria-modal="true" aria-labelledby="material-form-title" onSubmit={(event) => { event.preventDefault(); void submit(); }} className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-5 shadow-2xl">
       <header className="flex items-center justify-between">
-        <h2 id="material-form-title" className="text-base font-semibold text-slate-900">{mode === 'company' ? '新增公司物料' : '添加物料'}</h2>
+        <h2 id="material-form-title" className="text-base font-semibold text-slate-900">{mode === 'company' ? '新增公司物料' : isEdit ? '编辑物料' : '添加物料'}</h2>
         <button type="button" aria-label="关闭物料表单" disabled={submitting} onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4"/></button>
       </header>
       <div className="mt-4 grid grid-cols-2 gap-4">

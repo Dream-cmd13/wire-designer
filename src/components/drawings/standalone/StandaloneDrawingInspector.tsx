@@ -211,6 +211,9 @@ export function StandaloneDrawingInspector({
                 min="0.1"
                 defaultValue={object && !multiple ? 1 : ''}
                 key={`sx-${object?.id ?? 'none'}`}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                }}
                 onBlur={(event) => {
                   if (!object) return;
                   const factor = numeric(event.target.value);
@@ -232,6 +235,9 @@ export function StandaloneDrawingInspector({
                 min="0.1"
                 defaultValue={object && !multiple ? 1 : ''}
                 key={`sy-${object?.id ?? 'none'}`}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                }}
                 onBlur={(event) => {
                   if (!object) return;
                   const factor = numeric(event.target.value);
@@ -290,6 +296,23 @@ export function StandaloneDrawingInspector({
                   onChange={(event) => update({}, { fontSize: Math.max(8, numeric(event.target.value)) })}
                   className={inputClass}
                 />
+              </label>
+            )}
+            {object && (object.kind === 'line' || object.kind === 'polyline' || object.kind === 'curve' || object.kind === 'freehand') && (
+              <label className="flex items-center gap-2 text-[11px] text-slate-500">
+                <span className="w-7 shrink-0">线型</span>
+                <select
+                  aria-label="线型"
+                  disabled={readonly}
+                  value={object.style.dash ?? 'solid'}
+                  onChange={(event) => update({}, { dash: event.target.value as 'solid' | 'dashed' | 'dotted' | 'dash-dot' })}
+                  className={inputClass}
+                >
+                  <option value="solid">实线</option>
+                  <option value="dashed">虚线</option>
+                  <option value="dotted">点线</option>
+                  <option value="dash-dot">点划线</option>
+                </select>
               </label>
             )}
           </div>

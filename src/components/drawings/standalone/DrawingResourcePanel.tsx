@@ -34,6 +34,7 @@ interface Props {
   onAddIcon: (icon: DrawingIconResource) => void;
   onOpenCustomTable?: () => void;
   onOpenProcessNotes?: () => void;
+  onOpenBomTable?: () => void;
   onOpenCrossWire?: () => void;
   onOpenWiringRelation?: () => void;
   onOpenComponentLibrary?: (category: DrawingComponentGraphicCategory) => void;
@@ -60,6 +61,7 @@ export function DrawingResourcePanel({
   onAddIcon,
   onOpenCustomTable,
   onOpenProcessNotes,
+  onOpenBomTable,
   onOpenCrossWire,
   onOpenWiringRelation,
   onOpenComponentLibrary,
@@ -155,7 +157,14 @@ export function DrawingResourcePanel({
           <button type="button" onClick={() => onAddKind('wire-bundle')} className={menuItemClass}>
             <Type className="h-3.5 w-3.5 text-slate-500" />线材
           </button>
-          <button type="button" onClick={() => onAddKind('bom-table')} className={menuItemClass}>
+          <button
+            type="button"
+            onClick={() => {
+              if (onOpenBomTable) onOpenBomTable();
+              else onAddKind('bom-table');
+            }}
+            className={menuItemClass}
+          >
             <Table2 className="h-3.5 w-3.5 text-slate-500" />物料表
           </button>
           <button type="button" onClick={() => onAddKind('polyline')} className={menuItemClass}>

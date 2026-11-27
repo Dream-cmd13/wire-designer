@@ -148,6 +148,34 @@ export function DrawingWiringRelationDialog({ onClose, onConfirm }: DrawingWirin
       });
     });
 
+    twistedStarts.forEach((startIdx, pairIdx) => {
+      const yTop = 34 + startIdx * rowStep;
+      const yBottom = yTop + rowStep;
+      const midX = (lineLeft + lineRight) / 2;
+      const twistPoints = [
+        { x: midX - 24, y: yTop },
+        { x: midX - 12, y: yBottom },
+        { x: midX, y: yTop },
+        { x: midX + 12, y: yBottom },
+        { x: midX + 24, y: yTop },
+      ];
+      children.push({
+        id: createDrawingId('twist-curve'),
+        kind: 'curve',
+        x: midX - 24,
+        y: yTop,
+        width: 48,
+        height: rowStep,
+        rotation: 0,
+        zIndex: wires.length * 3 + 5 + pairIdx,
+        locked: false,
+        visible: true,
+        orthogonal: false,
+        points: twistPoints,
+        style: { ...defaultDrawingObjectStyle, stroke: '#2563eb', strokeWidth: 1.5, dash: 'dashed' },
+      });
+    });
+
     onConfirm({
       id: createDrawingId('wire-bundle'),
       kind: 'group',

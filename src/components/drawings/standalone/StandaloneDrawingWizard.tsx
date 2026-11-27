@@ -1481,6 +1481,9 @@ function DrawingWizardSession({
           )}
 
           <div className="flex items-center gap-2.5">
+            {tab !== 'library' && canUseCatalog && validation.errors.length > 0 && (
+              <span role="alert" className="text-xs text-red-600">{validation.errors[0]}</span>
+            )}
             {tab === 'library' ? (
               <>
                 <button

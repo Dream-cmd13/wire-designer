@@ -124,7 +124,7 @@ function drawSvgGraphic(
   context.translate(offsetX, offsetY);
   context.scale(scale, scale);
 
-  const tagPattern = /<(rect|line|circle|ellipse|polygon|path|text)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/g;
+  const tagPattern = /<(rect|line|circle|ellipse|polygon|polyline|path|text)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/g;
   let match: RegExpExecArray | null;
   while ((match = tagPattern.exec(svgMarkup)) !== null) {
     const [, tag, attrs, innerText = ''] = match;
@@ -161,14 +161,16 @@ function drawSvgGraphic(
       context.ellipse(svgNum(attrs, 'cx'), svgNum(attrs, 'cy'), svgNum(attrs, 'rx'), svgNum(attrs, 'ry'), 0, 0, Math.PI * 2);
       if (fill && fill !== 'none') context.fill();
       if (stroke && stroke !== 'none') context.stroke();
-    } else if (tag === 'polygon') {
+    } else if (tag === 'polygon' || tag === 'polyline') {
       const coords = (svgAttr(attrs, 'points') ?? '').trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
       if (coords.length >= 4) {
         context.beginPath();
         context.moveTo(coords[0], coords[1]);
         for (let i = 2; i < coords.length - 1; i += 2) context.lineTo(coords[i], coords[i + 1]);
-        context.closePath();
-        if (fill && fill !== 'none') context.fill();
+        if (tag === 'polygon') {
+          context.closePath();
+          if (fill && fill !== 'none') context.fill();
+        }
         if (stroke && stroke !== 'none') context.stroke();
       }
     } else if (tag === 'path' && typeof Path2D !== 'undefined') {
@@ -259,6 +261,39 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
       context.lineTo(x + 8, 0);
       context.moveTo(x - 8, object.height);
       context.lineTo(x + 8, object.height);
+      if (variant === 'vertical-inward') {
+        context.moveTo(x - 4, 8);
+        context.lineTo(x, 0);
+        context.lineTo(x + 4, 8);
+        context.moveTo(x - 4, object.height - 8);
+        context.lineTo(x, object.height);
+        context.lineTo(x + 4, object.height - 8);
+      }
+      context.stroke();
+    } else if (variant === 'radius') {
+      const y = object.height / 2;
+      context.beginPath();
+      context.arc(4, y, 2.5, 0, Math.PI * 2);
+      context.fillStyle = object.style.stroke;
+      context.fill();
+      context.beginPath();
+      context.moveTo(4, y);
+      context.lineTo(object.width, y);
+      context.moveTo(object.width - 8, y - 4);
+      context.lineTo(object.width, y);
+      context.lineTo(object.width - 8, y + 4);
+      context.stroke();
+    } else if (variant === 'diameter') {
+      const y = object.height / 2;
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(object.width, y);
+      context.moveTo(8, y - 4);
+      context.lineTo(0, y);
+      context.lineTo(8, y + 4);
+      context.moveTo(object.width - 8, y - 4);
+      context.lineTo(object.width, y);
+      context.lineTo(object.width - 8, y + 4);
       context.stroke();
     } else {
       const y = object.height / 2;

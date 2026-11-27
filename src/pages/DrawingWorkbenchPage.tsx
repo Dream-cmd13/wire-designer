@@ -24,7 +24,7 @@ import { createDrawingId, createDrawingNumberTubeObject, createDrawingResourceOb
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
 import { appendDrawingMaterial, moveDrawingMaterial, removeDrawingMaterial, updateDrawingMaterial, type DrawingMaterialInput } from '@/lib/drawingMaterials';
-import type { DrawingComponentGraphicCategory } from '@/lib/drawingStaticResources';
+import { listStaticDrawingCommonPhrases, type DrawingComponentGraphicCategory } from '@/lib/drawingStaticResources';
 import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
 import { getDrawingTransformObject, getWheelScaleFactor, MAX_CANVAS_ZOOM, MAX_OBJECT_SCALE, MIN_CANVAS_ZOOM, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
 import { enterDrawingWorkbench } from '@/lib/drawingWorkbenchSession';
@@ -595,6 +595,18 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
       onAddIcon={addIcon}
       onOpenCustomTable={() => { setResourcesOpen(false); setTableDialogOpen(true); }}
       onOpenProcessNotes={() => { setResourcesOpen(false); setProcessNotesOpen(true); }}
+      onOpenBomTable={() => {
+        setResourcesOpen(false);
+        const existing = drawing.objects.find((obj) => obj.kind === 'bom-table');
+        if (existing) {
+          setSelectedObjectIds([existing.id]);
+          setMaterialTableObjectId(existing.id);
+          return;
+        }
+        const created = createPlacedResource(drawing, 'bom-table');
+        addObject(created);
+        setMaterialTableObjectId(created.id);
+      }}
       onOpenCrossWire={() => { setResourcesOpen(false); setCrossWireDialogOpen(true); }}
       onOpenWiringRelation={() => { setResourcesOpen(false); setWiringRelationDialogOpen(true); }}
       onOpenComponentLibrary={(category) => { setResourcesOpen(false); setComponentLibraryCategory(category); }}
@@ -689,7 +701,7 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
       <DrawingProcessNotesModal
         initialTab="process"
         selectedNotes={drawing.techRequirements}
-        phrases={[]}
+        phrases={listStaticDrawingCommonPhrases()}
         onClose={() => setProcessNotesOpen(false)}
         onConfirm={(notes) => {
           const lines = notes.flatMap((note) => note.split('\n')).map((line) => line.trim()).filter(Boolean);

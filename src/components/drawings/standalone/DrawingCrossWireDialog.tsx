@@ -88,7 +88,12 @@ export function DrawingCrossWireDialog({ onClose, onConfirm }: DrawingCrossWireD
   };
 
   const removeRow = (id: number) => {
-    setRows((current) => (current.length <= 1 ? current : current.filter((row) => row.id !== id)));
+    setRows((current) => {
+      if (current.length <= 1) return current;
+      const next = current.filter((row) => row.id !== id);
+      const maxTarget = Math.max(next.length, 4);
+      return next.map((row) => ({ ...row, targetIndex: Math.min(maxTarget, row.targetIndex) }));
+    });
   };
 
   const handleConfirm = () => {

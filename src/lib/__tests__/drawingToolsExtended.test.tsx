@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DrawingCrossWireDialog } from '@/components/drawings/standalone/DrawingCrossWireDialog';
 import { DrawingDrawToolFloatingBar } from '@/components/drawings/standalone/DrawingDrawToolFloatingBar';
+import { DrawingMaterialFormDialog } from '@/components/drawings/standalone/DrawingMaterialFormDialog';
+import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
 import { DrawingWiringRelationDialog } from '@/components/drawings/standalone/DrawingWiringRelationDialog';
+import { StandaloneDrawingInspector } from '@/components/drawings/standalone/StandaloneDrawingInspector';
 import { createBlankDrawingDocument, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { isDrawingDocument } from '@/lib/drawingDocumentSchema';
 import { serializeDrawingSvg } from '@/lib/drawingExport';
@@ -45,7 +48,9 @@ describe('extended drawing tools and styles', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '插入到画板' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    expect(onConfirm.mock.calls[0][0].children.some((item: { kind: string; text?: string }) => item.text === '接线图')).toBe(true);
+    const group = onConfirm.mock.calls[0][0];
+    expect(group.children.some((item: { kind: string; text?: string }) => item.text === '接线图')).toBe(true);
+    expect(group.children.some((item: { kind: string; style?: { dash?: string } }) => item.kind === 'curve' && item.style?.dash === 'dashed')).toBe(true);
   });
 
   it('exposes dash style, line count, color, and exit on floating draw-tool bar', () => {
@@ -183,5 +188,152 @@ describe('extended drawing tools and styles', () => {
     expect(canvasSource).toContain('{hoverPoint && (');
     expect(canvasSource).toContain('y1={hoverPoint.y}');
     expect(canvasSource).toContain('x1={hoverPoint.x}');
+  });
+
+  it('allows editing current BOM materials with blank material code and displays edit title', () => {
+    const onSubmit = vi.fn();
+    render(
+      <DrawingMaterialFormDialog
+        mode="current"
+        isEdit
+        initial={{ code: '', nameAndSpecification: '热缩套管', unit: 'mm', quantity: '8', note: '' }}
+        suggestions={[]}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    );
+
+    expect(screen.getByText('编辑物料')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '确定' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ code: '', nameAndSpecification: '热缩套管', unit: 'mm', quantity: '8' }));
+  });
+
+  it('exports arrowheads and markers for vertical-inward, diameter, and radius dimensions', () => {
+    const doc = createBlankDrawingDocument('标注变体测试');
+    doc.objects.push(
+      {
+        id: 'dim-vin',
+        kind: 'dimension',
+        x: 100,
+        y: 100,
+        width: 45,
+        height: 120,
+        rotation: 0,
+        zIndex: 10,
+        locked: false,
+        visible: true,
+        label: '120',
+        start: { x: 122.5, y: 100 },
+        end: { x: 122.5, y: 220 },
+        variant: 'vertical-inward',
+        style: { ...defaultDrawingObjectStyle },
+      },
+      {
+        id: 'dim-dia',
+        kind: 'dimension',
+        x: 200,
+        y: 100,
+        width: 140,
+        height: 30,
+        rotation: 0,
+        zIndex: 11,
+        locked: false,
+        visible: true,
+        label: 'Ø 10mm',
+        start: { x: 200, y: 115 },
+        end: { x: 340, y: 115 },
+        variant: 'diameter',
+        style: { ...defaultDrawingObjectStyle },
+      },
+      {
+        id: 'dim-rad',
+        kind: 'dimension',
+        x: 400,
+        y: 100,
+        width: 120,
+        height: 30,
+        rotation: 0,
+        zIndex: 12,
+        locked: false,
+        visible: true,
+        label: 'R 5mm',
+        start: { x: 400, y: 115 },
+        end: { x: 520, y: 115 },
+        variant: 'radius',
+        style: { ...defaultDrawingObjectStyle },
+      },
+    );
+
+    const svg = serializeDrawingSvg(doc);
+    expect(svg).toContain('points="18.5,8 22.5,0 26.5,8"');
+    expect(svg).toContain('Ø 10mm');
+    expect(svg).toContain('<circle cx="4" cy="15" r="2.5"');
+    expect(svg).toContain('R 5mm');
+  });
+
+  it('commits scale on Enter and edits line dash style in inspector', () => {
+    const doc = createBlankDrawingDocument('属性面板测试');
+    doc.objects.push({
+      id: 'line-edit-1',
+      kind: 'line',
+      x: 100,
+      y: 100,
+      width: 100,
+      height: 20,
+      rotation: 0,
+      zIndex: 10,
+      locked: false,
+      visible: true,
+      orthogonal: true,
+      points: [{ x: 100, y: 100 }, { x: 200, y: 120 }],
+      style: { ...defaultDrawingObjectStyle, dash: 'solid' },
+    });
+    const onUpdateObject = vi.fn();
+
+    render(
+      <StandaloneDrawingInspector
+        drawing={doc}
+        selectedObjectId="line-edit-1"
+        selectedObjectIds={['line-edit-1']}
+        onStartEdit={vi.fn()}
+        onUpdateObject={onUpdateObject}
+        onUpdateObjects={vi.fn()}
+        onSetLayer={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('线型'), { target: { value: 'dashed' } });
+    expect(onUpdateObject).toHaveBeenCalledWith(
+      'line-edit-1',
+      expect.objectContaining({ style: expect.objectContaining({ dash: 'dashed' }) }),
+    );
+
+    const xScale = screen.getByLabelText('X 轴') as HTMLInputElement;
+    xScale.focus();
+    fireEvent.change(xScale, { target: { value: '2' } });
+    fireEvent.keyDown(xScale, { key: 'Enter' });
+    expect(onUpdateObject).toHaveBeenCalledWith('line-edit-1', { width: 200 });
+  });
+
+  it('routes resource panel BOM table button to onOpenBomTable and loads static phrases in workbench', () => {
+    const onOpenBomTable = vi.fn();
+    render(
+      <DrawingResourcePanel
+        open
+        onClose={vi.fn()}
+        onAddKind={vi.fn()}
+        onAddCatalog={vi.fn()}
+        onAddPhrase={vi.fn()}
+        onAddIcon={vi.fn()}
+        onOpenBomTable={onOpenBomTable}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '物料表' }));
+    expect(onOpenBomTable).toHaveBeenCalledTimes(1);
+
+    const workbenchSource = readFileSync('src/pages/DrawingWorkbenchPage.tsx', 'utf8');
+    expect(workbenchSource).toContain('phrases={listStaticDrawingCommonPhrases()}');
+    expect(workbenchSource).toContain('onOpenBomTable={() => {');
   });
 });

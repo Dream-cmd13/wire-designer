@@ -293,6 +293,7 @@ export function DrawingMaterialTableDialog({
         <DrawingMaterialFormDialog
           key={`${form.mode}:${form.editIndex ?? 'new'}:${form.initial?.code ?? ''}`}
           mode={form.mode}
+          isEdit={form.editIndex !== undefined}
           initial={form.initial}
           suggestions={materials}
           onClose={() => setForm(null)}
