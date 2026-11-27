@@ -199,7 +199,7 @@ export default function RequestQuotePage() {
             </div>
             <div>
               <label htmlFor="quote-demand" className="text-sm font-semibold text-slate-800">需求说明</label>
-              <textarea id="quote-demand" name="demand" value={fields.demand} onChange={changeField} rows={3} maxLength={3000} aria-invalid={Boolean(fieldErrors.demand)} aria-describedby={fieldErrors.demand ? 'quote-demand-help quote-demand-error' : 'quote-demand-help'} className={`${inputClass} block resize-y`} placeholder="例如：需要 20 条设备连接线，成品长度 500 mm，用于样机。" />
+              <textarea id="quote-demand" name="demand" spellCheck={false} value={fields.demand} onChange={changeField} rows={3} maxLength={3000} aria-invalid={Boolean(fieldErrors.demand)} aria-describedby={fieldErrors.demand ? 'quote-demand-help quote-demand-error' : 'quote-demand-help'} className={`${inputClass} block resize-y`} placeholder="例如：需要 20 条设备连接线，成品长度 500 mm，用于样机。" />
               {fieldErrors.demand && <p id="quote-demand-error" className={fieldErrorClass}>{fieldErrors.demand}</p>}
             </div>
             <div>
