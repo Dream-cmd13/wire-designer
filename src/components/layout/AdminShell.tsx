@@ -146,15 +146,16 @@ const quoteViews = [
   { route: appRoutes['quote-requests'], icon: ClipboardList },
 ];
 
-function HeaderViewToggle({ label, views, currentRouteId, onNavigate, compact }: {
+function HeaderViewToggle({ label, views, currentRouteId, onNavigate, compact, equalWidth }: {
   label: string;
   views: typeof designViews;
   currentRouteId: AppRouteId;
   onNavigate: (path: string) => void;
   compact?: boolean;
+  equalWidth?: boolean;
 }) {
   return (
-    <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs" role="group" aria-label={label}>
+    <div className={`${equalWidth ? 'grid w-48 grid-cols-2' : 'flex'} items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs`} role="group" aria-label={label}>
       {views.map(({ route, icon: Icon }) => {
         const active = currentRouteId === route.id;
         return (
@@ -162,7 +163,7 @@ function HeaderViewToggle({ label, views, currentRouteId, onNavigate, compact }:
             key={route.id}
             type="button"
             onClick={() => { if (!active) onNavigate(route.path); }}
-            className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 font-medium transition-all ${
+            className={`flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 font-medium transition-all ${
               active ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'
             }`}
             title={route.title}
@@ -331,7 +332,9 @@ export function AdminShell({
       </aside>
 
       <div className="@container flex min-w-0 flex-1 flex-col">
-        <header data-page-header className="relative flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4">
+        <header data-page-header className={`relative min-h-14 shrink-0 items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4 ${
+          showQuoteToggle ? 'grid grid-cols-[minmax(0,1fr)_auto] @min-[660px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]' : 'flex flex-wrap'
+        }`}>
           <div className="mr-auto min-w-0">
             <h1 className="truncate text-sm font-semibold text-slate-900">{route.title}</h1>
             {contextLabel && <p className="hidden max-w-52 truncate text-xs text-slate-500 @min-[580px]:block" title={contextLabel}>{contextLabel}</p>}
@@ -431,37 +434,44 @@ export function AdminShell({
           )}
 
           {showQuoteToggle && (
-            <div className="order-2 flex shrink-0 @min-[660px]:order-none">
-              <HeaderViewToggle label="询价切换" views={quoteViews} currentRouteId={route.id} onNavigate={onNavigate} />
+            <div className="col-span-2 row-start-2 justify-self-center @min-[660px]:col-span-1 @min-[660px]:col-start-2 @min-[660px]:row-start-1">
+              <HeaderViewToggle label="询价切换" views={quoteViews} currentRouteId={route.id} onNavigate={onNavigate} equalWidth />
             </div>
           )}
 
-          <div ref={setPageActionsTarget} className="order-2 flex min-w-0 max-w-full basis-full flex-wrap items-center gap-1.5 empty:hidden @min-[660px]:order-none @min-[660px]:basis-auto @min-[660px]:flex-[1_1_0%] @min-[660px]:justify-end" />
+          <div className={showQuoteToggle
+            ? 'col-start-2 row-start-1 flex min-w-0 items-center justify-end gap-2 @min-[660px]:col-start-3'
+            : 'contents'
+          }>
+            <div ref={setPageActionsTarget} className={`flex items-center gap-1.5 empty:hidden ${showQuoteToggle
+              ? 'shrink-0' : 'order-2 min-w-0 max-w-full basis-full flex-wrap @min-[660px]:order-none @min-[660px]:basis-auto @min-[660px]:flex-[1_1_0%] @min-[660px]:justify-end'
+            }`} />
 
-          <div className="ml-auto flex shrink-0 items-center">
-            {currentUser ? (
-              <button
-                type="button"
-                onClick={onOpenAuth}
-                aria-label={currentUser.name}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
-              >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
-                  {currentUser.name[0]}
-                </span>
-                <span className="hidden max-w-28 truncate sm:inline">{currentUser.name}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenAuth}
-                aria-label="登录"
-                className="flex cursor-pointer items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-              >
-                <User className="h-4 w-4" />
-                <span className="hidden sm:inline">登录</span>
-              </button>
-            )}
+            <div className={showQuoteToggle ? 'flex min-w-0 items-center' : 'ml-auto flex shrink-0 items-center'}>
+              {currentUser ? (
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  aria-label={currentUser.name}
+                  className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
+                >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
+                    {currentUser.name[0]}
+                  </span>
+                  <span className="hidden max-w-28 truncate sm:inline">{currentUser.name}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  aria-label="登录"
+                  className="flex cursor-pointer items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="hidden sm:inline">登录</span>
+                </button>
+              )}
+            </div>
           </div>
         </header>
 
