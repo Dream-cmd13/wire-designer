@@ -427,6 +427,7 @@ export function StandaloneDrawingCanvas({
   const [draftPoints, setDraftPoints] = useState<DrawingPoint[]>([]);
   const [draftKind, setDraftKind] = useState<Extract<DrawingObject['kind'], 'line' | 'polyline' | 'curve' | 'freehand'> | null>(null);
   const [pointerPoint, setPointerPoint] = useState<DrawingPoint | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<DrawingPoint | null>(null);
   const [selectionStart, setSelectionStart] = useState<DrawingPoint | null>(null);
   const [selectionEnd, setSelectionEnd] = useState<DrawingPoint | null>(null);
   const [editor, setEditor] = useState<EditTarget | null>(null);
@@ -939,7 +940,27 @@ export function StandaloneDrawingCanvas({
 
   return (
     <div ref={viewportRef} role="region" aria-label="图纸画布" className="isolate flex min-h-0 min-w-0 flex-1 overflow-auto bg-slate-100/70 p-4">
-      <div className="relative m-auto shrink-0" onContextMenu={handleContextMenu} onWheel={handleWheel}>
+      <div
+        className="relative m-auto shrink-0"
+        onContextMenu={handleContextMenu}
+        onWheel={handleWheel}
+        onPointerMove={(event) => {
+          const raw = getDrawingPoint(event.clientX, event.clientY);
+          if (!raw) return;
+          const next = toolMode !== 'select' ? snapPoint(raw) : raw;
+          if (
+            next.x >= DRAWING_PAGE_INSET
+            && next.x <= drawing.page.width - DRAWING_PAGE_INSET
+            && next.y >= DRAWING_PAGE_INSET
+            && next.y <= drawing.page.height - DRAWING_PAGE_INSET
+          ) {
+            setHoverPoint(next);
+          } else {
+            setHoverPoint(null);
+          }
+        }}
+        onPointerLeave={() => setHoverPoint(null)}
+      >
         <canvas
           ref={canvasRef}
           className={`block bg-white shadow-md touch-none ${toolMode !== 'select' ? 'cursor-crosshair' : ''}`}
@@ -951,33 +972,36 @@ export function StandaloneDrawingCanvas({
           onPointerCancel={endDrag}
           onContextMenu={handleContextMenu}
         />
-        {/* Non-exported blueprint alignment crosshairs */}
-        <svg
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 top-0 z-[5]"
-          width={drawing.page.width * zoom}
-          height={drawing.page.height * zoom}
-          viewBox={`0 0 ${drawing.page.width} ${drawing.page.height}`}
-        >
-          <line
-            x1={DRAWING_PAGE_INSET}
-            y1={190}
-            x2={drawing.page.width - DRAWING_PAGE_INSET}
-            y2={190}
-            stroke="#cbd5e1"
-            strokeWidth={1}
-            strokeDasharray="4 4"
-          />
-          <line
-            x1={230}
-            y1={DRAWING_PAGE_INSET}
-            x2={230}
-            y2={drawing.page.height - DRAWING_PAGE_INSET}
-            stroke="#cbd5e1"
-            strokeWidth={1}
-            strokeDasharray="4 4"
-          />
-        </svg>
+        {/* Dynamic mouse-following dashed crosshair guides (hidden until pointer enters frame) */}
+        {hoverPoint && (
+          <svg
+            aria-hidden="true"
+            data-testid="drawing-hover-crosshair"
+            className="pointer-events-none absolute left-0 top-0 z-[5]"
+            width={drawing.page.width * zoom}
+            height={drawing.page.height * zoom}
+            viewBox={`0 0 ${drawing.page.width} ${drawing.page.height}`}
+          >
+            <line
+              x1={DRAWING_PAGE_INSET}
+              y1={hoverPoint.y}
+              x2={drawing.page.width - DRAWING_PAGE_INSET}
+              y2={hoverPoint.y}
+              stroke="#94a3b8"
+              strokeWidth={1}
+              strokeDasharray="4 4"
+            />
+            <line
+              x1={hoverPoint.x}
+              y1={DRAWING_PAGE_INSET}
+              x2={hoverPoint.x}
+              y2={drawing.page.height - DRAWING_PAGE_INSET}
+              stroke="#94a3b8"
+              strokeWidth={1}
+              strokeDasharray="4 4"
+            />
+          </svg>
+        )}
         {tableObjects.map((object) => (
           <DrawingTableLayer
             key={object.id}

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DrawingCrossWireDialog } from '@/components/drawings/standalone/DrawingCrossWireDialog';
@@ -173,5 +174,14 @@ describe('extended drawing tools and styles', () => {
     expect(textCalls).toContain('总长度小于120');
     expect(textCalls).toContain('30~40');
     expect(textCalls).not.toContain('扎线8字');
+  });
+
+  it('renders dashed crosshair guides only while hovering inside the drawing frame', () => {
+    const canvasSource = readFileSync('src/components/drawings/standalone/StandaloneDrawingCanvas.tsx', 'utf8');
+    expect(canvasSource).toContain('const [hoverPoint, setHoverPoint] = useState<DrawingPoint | null>(null)');
+    expect(canvasSource).toContain('onPointerLeave={() => setHoverPoint(null)}');
+    expect(canvasSource).toContain('{hoverPoint && (');
+    expect(canvasSource).toContain('y1={hoverPoint.y}');
+    expect(canvasSource).toContain('x1={hoverPoint.x}');
   });
 });
