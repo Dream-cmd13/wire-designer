@@ -226,11 +226,38 @@ export type DrawingWireDraft = {
   targetPin?: number;
 };
 
+export type DrawingWizardMode = 'internal' | 'external';
+export type DrawingInternalWireStyle = 'normal' | 'shielded' | 'twisted' | 'ribbon';
+export type DrawingExternalTailStyle = 'double-connector' | 'single-tinned' | 'single-crimped';
+
 export type DrawingWizardDraft = {
   endpointForm: DrawingEndpointForm;
+  wizardMode?: DrawingWizardMode;
+  internalWireStyle?: DrawingInternalWireStyle;
+  externalTailStyle?: DrawingExternalTailStyle;
   leftConnector?: DrawingConnectorResource;
   rightConnector?: DrawingConnectorResource;
   singleConnector?: DrawingConnectorResource;
+  leftConnectorCount?: number;
+  rightConnectorCount?: number;
+  tailCount?: number;
+  tailCoreCount?: number;
+  tinningLengthMm?: number;
+  tinningToleranceMm?: number;
+  halfStrip?: boolean;
+  hasTopView?: boolean;
+  ferriteCount?: number;
+  ferriteResources?: DrawingCatalogResource[];
+  hasTailClamp?: boolean;
+  tailClampResource?: DrawingCatalogResource;
+  hasProtectiveSleeve?: boolean;
+  mainWireWidthPx?: number;
+  tailWireSpacingPx?: number;
+  tailWireWidthPx?: number;
+  includeWiringTable?: boolean;
+  processNotes?: string[];
+  packagingGraphic?: { id: string; name: string };
+  materialKindCountOverride?: number;
   drawingNo: string;
   totalLengthMm: number;
   toleranceMm: number;

@@ -4,6 +4,73 @@ import type {
   DrawingIconResource,
   DrawingTemplateSummary,
 } from '@/types/drawing';
+import { createBlankDrawingDocument, createDrawingId, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
+
+export type DrawingProcessNotePreset = {
+  id: string;
+  tab: 'process' | 'tech';
+  title: string;
+  content: string;
+};
+
+export const DRAWING_PROCESS_PRESETS: readonly DrawingProcessNotePreset[] = [
+  {
+    id: 'process-packaging',
+    tab: 'process',
+    title: '包装说明',
+    content: [
+      '包装说明：',
+      '1按示意图尺寸扎线，10PCS/把，用草绳绑扎;',
+      '2纸箱底部封箱，放防水袋; 底部放隔板，下部放两套刀卡，',
+      '每格装20PCS产品，刀卡间用隔板隔开; 上部放两层，每层放120PCS产品;',
+      '下部与上部用隔板隔开; 每箱装产品400PCS。',
+    ].join('\n'),
+  },
+  {
+    id: 'process-manufacturing',
+    tab: 'process',
+    title: '制程工艺说明',
+    content: [
+      '制程工艺说明：',
+      '裁线长度：1000±10mm',
+      '1.P1端：',
+      '1.1 线材剥皮（含编网）12±1mm，铝箔挑除，地线保留。',
+      '1.2 芯线剥皮1.5-2.0mm，按接线表焊线。',
+      '1.3 成型内、外模。（编网包入内模）',
+      '2.P2：',
+      '2.1 线材剥皮（含编网）12±1mm，铝箔挑除，地线保留。',
+      '2.2 芯线剥皮1.5-2.0mm，按接线表焊线。',
+      '2.3 成型内、外模。（编网包入内模）',
+    ].join('\n'),
+  },
+  {
+    id: 'tech-length-tolerance',
+    tab: 'tech',
+    title: 'L尺寸公差表',
+    content: [
+      'L尺寸公差表（单位:mm）',
+      '≤300 ±10mm',
+      '> 300≤1500 ±20mm',
+      '> 1500≤3000 ±25mm',
+      '> 3000≤5000 ±30mm',
+      '> 5000≤8000 ±50mm',
+    ].join('\n'),
+  },
+  {
+    id: 'tech-requirements',
+    tab: 'tech',
+    title: '技术要求',
+    content: [
+      '技术要求：',
+      '1.所有材料需符合RoHS;',
+      '2.线材表面：无破损、无脏污、印字清晰等;',
+      '3.线材剥头时，绝缘层及芯线导体切除应整齐，芯线导体不应划伤、卷曲',
+      '或产生刻痕、断股；绝缘层不应被擦伤、压伤或产生裂纹，即不允许绝缘层厚度减小;',
+      '4.注意禁止用裸手接触有镀层的裸导线，必须带上干净的手套操作。并且',
+      '剥出的芯线导体应及时加工，以防导体外表面氧化;',
+    ].join('\n'),
+  },
+];
 
 const DRAWING_TEMPLATES = [
   {
@@ -20,11 +87,51 @@ const DRAWING_TEMPLATES = [
     description: '双连接器四芯屏蔽线',
     currentVersion: 1,
   },
+  {
+    id: 'template-usb-braided-tin',
+    name: '7/0.15*2芯红黑+7/0.12*2芯白绿 铝箔 编织32/0.10TCCS OD3.5 黑色编纱编后OD3.8 USB编织线 带卡位 尾部上锡',
+    category: '外线 / USB',
+    description: 'USB 编织线，带线尾卡位与尾部上锡',
+    currentVersion: 1,
+  },
+  {
+    id: 'template-usb-spring',
+    name: '9/0.10BS*4C(红白绿黑)OD3.6mm 贝吉色TPU外被 弹簧线 USB AM-XH2.54P 双头',
+    category: '外线 / USB',
+    description: 'USB AM 至 XH2.54P 弹簧线双头连接器',
+    currentVersion: 1,
+  },
+  {
+    id: 'template-usb-am-bm',
+    name: 'USB AM & USB BM 不含头1200mm',
+    category: '外线 / USB',
+    description: 'USB AM 到 USB BM 标准连接线',
+    currentVersion: 1,
+  },
+  {
+    id: 'template-typec-double',
+    name: '两头TYPE C公头接口，一头弯头，另一头直头，长度1.5米，不含头',
+    category: '外线 / USB',
+    description: 'Type-C 弯头转直头双头连接线',
+    currentVersion: 1,
+  },
+  {
+    id: 'template-typec-xarr',
+    name: 'TYPE-C TO XARR-09V',
+    category: '外线 / USB',
+    description: 'Type-C 转 XARR-09V 连接线束',
+    currentVersion: 1,
+  },
 ] satisfies readonly DrawingTemplateSummary[];
 
 const DRAWING_TEMPLATE_DOCUMENTS: Record<string, DrawingDocument> = {
-  'template-single': drawingTemplate('template-single', '单头普通电子线模板', 'TPL-SINGLE'),
-  'template-double': drawingTemplate('template-double', '双头四芯屏蔽线模板', 'TPL-DOUBLE'),
+  'template-single': drawingTemplate('template-single', '单头普通电子线模板', 'TPL-SINGLE', 'single'),
+  'template-double': drawingTemplate('template-double', '双头四芯屏蔽线模板', 'TPL-DOUBLE', 'double'),
+  'template-usb-braided-tin': drawingTemplate('template-usb-braided-tin', 'USB编织线 带卡位 尾部上锡', 'TPL-USB-01', 'single'),
+  'template-usb-spring': drawingTemplate('template-usb-spring', 'USB AM-XH2.54P 双头', 'TPL-USB-02', 'double'),
+  'template-usb-am-bm': drawingTemplate('template-usb-am-bm', 'USB AM & USB BM', 'TPL-USB-03', 'double'),
+  'template-typec-double': drawingTemplate('template-typec-double', '两头TYPE C公头接口', 'TPL-TC-04', 'double'),
+  'template-typec-xarr': drawingTemplate('template-typec-xarr', 'TYPE-C TO XARR-09V', 'TPL-TC-05', 'double'),
 };
 
 const DRAWING_COMMON_PHRASES = [
@@ -132,18 +239,89 @@ const DRAWING_ICONS = [
   icon('symbol-star', '五角星', '标识与包装', 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1.1-6.2-4.5-4.4 6.2-.9z'),
 ] satisfies readonly DrawingIconResource[];
 
-function drawingTemplate(id: string, name: string, drawingNo: string): DrawingDocument {
+function drawingTemplate(id: string, name: string, drawingNo: string, mode: 'single' | 'double'): DrawingDocument {
+  const base = createBlankDrawingDocument(name, new Date('2026-11-27T00:00:00Z'));
+  const objects = [
+    {
+      id: createDrawingId('connector'),
+      kind: 'connector' as const,
+      x: 110,
+      y: 170,
+      width: 170,
+      height: 110,
+      rotation: 0,
+      zIndex: 10,
+      locked: false,
+      visible: true,
+      style: { ...defaultDrawingObjectStyle },
+      label: 'P1 连接器',
+      pinCount: 4,
+      gender: 'receptacle' as const,
+      side: mode === 'single' ? 'none' as const : 'left' as const,
+      showPinGrid: false,
+    },
+    ...(mode === 'double'
+      ? [{
+          id: createDrawingId('connector'),
+          kind: 'connector' as const,
+          x: 910,
+          y: 170,
+          width: 170,
+          height: 110,
+          rotation: 0,
+          zIndex: 10,
+          locked: false,
+          visible: true,
+          style: { ...defaultDrawingObjectStyle },
+          label: 'P2 连接器',
+          pinCount: 4,
+          gender: 'male' as const,
+          side: 'right' as const,
+          showPinGrid: false,
+        }]
+      : []),
+    {
+      id: createDrawingId('wire-bundle'),
+      kind: 'wire-bundle' as const,
+      x: 280,
+      y: 185,
+      width: mode === 'double' ? 630 : 660,
+      height: 80,
+      rotation: 0,
+      zIndex: 4,
+      locked: false,
+      visible: true,
+      style: { ...defaultDrawingObjectStyle, fill: '#f8fafc' },
+      label: mode === 'double' ? '主线束' : '尾部上锡',
+      wireCount: 4,
+      wireKind: 'shielded' as const,
+    },
+    {
+      id: createDrawingId('dimension'),
+      kind: 'dimension' as const,
+      x: 110,
+      y: 110,
+      width: mode === 'double' ? 970 : 830,
+      height: 40,
+      rotation: 0,
+      zIndex: 5,
+      locked: false,
+      visible: true,
+      style: { ...defaultDrawingObjectStyle },
+      label: '1000±10 mm',
+      start: { x: 110, y: 130 },
+      end: { x: mode === 'double' ? 1080 : 940, y: 130 },
+    },
+    ...base.objects,
+  ];
   return {
-    schemaVersion: 1,
+    ...base,
     id,
     name,
     createdAt: 0,
     updatedAt: 0,
-    page: { size: 'A4', orientation: 'landscape', width: 1200, height: 800 },
-    objects: [],
+    objects,
     titleBlock: { title: name, drawingNo, revision: 'A' },
-    revisionTable: [],
-    techRequirements: [],
   };
 }
 
@@ -163,3 +341,67 @@ export function listStaticDrawingCommonPhrases(): DrawingCommonPhrase[] {
 export function listStaticDrawingIcons(): DrawingIconResource[] {
   return DRAWING_ICONS.map((icon) => ({ ...icon }));
 }
+
+export type DrawingComponentGraphicCategory =
+  | '包装方式'
+  | '工艺说明'
+  | '裁线图型'
+  | '线材图型'
+  | '辅材图型'
+  | '不规则图型'
+  | '物料规格'
+  | '线材截面图';
+
+export type DrawingComponentGraphic = {
+  id: string;
+  name: string;
+  category: DrawingComponentGraphicCategory;
+  subCategory: string;
+  svgPreview: string;
+};
+
+const pkgWrapSvg = (variant: 'figure8' | 'pe-bag' | 'circle' | 'figure8-ferrite' | 'figure8-ferrite-sr' | 'figure8-tin') => {
+  if (variant === 'pe-bag') {
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="44" y="10" width="92" height="70" rx="2" fill="#fff" stroke="#334155" stroke-width="1.2"/><line x1="44" y1="20" x2="136" y2="20" stroke="#475569" stroke-width="1"/><line x1="44" y1="24" x2="136" y2="24" stroke="#94a3b8" stroke-width="0.8"/><circle cx="126" cy="70" r="2.2" fill="none" stroke="#64748b" stroke-width="0.8"/></svg>';
+  }
+  if (variant === 'circle') {
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><circle cx="90" cy="46" r="24" fill="none" stroke="#1e293b" stroke-width="1.5"/><circle cx="90" cy="46" r="20" fill="none" stroke="#475569" stroke-width="1"/><circle cx="90" cy="46" r="16" fill="none" stroke="#64748b" stroke-width="0.8"/><line x1="66" y1="14" x2="114" y2="14" stroke="#1e293b" stroke-width="1"/><text x="90" y="11" text-anchor="middle" font-size="8" fill="#1e293b">100±10</text></svg>';
+  }
+  if (variant === 'figure8-ferrite-sr') {
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="34" y="34" width="66" height="22" rx="11" fill="none" stroke="#1e293b" stroke-width="1.2"/><rect x="38" y="37" width="58" height="16" rx="8" fill="none" stroke="#475569" stroke-width="0.9"/><rect x="64" y="31" width="6" height="28" rx="1" fill="#e2e8f0" stroke="#334155" stroke-width="0.9"/><line x1="16" y1="45" x2="34" y2="45" stroke="#1e293b" stroke-width="1.4"/><line x1="100" y1="45" x2="152" y2="45" stroke="#1e293b" stroke-width="1.4"/><rect x="116" y="40" width="12" height="10" rx="1.5" fill="#cbd5e1" stroke="#334155" stroke-width="0.9"/><rect x="142" y="40" width="10" height="10" rx="1" fill="#475569"/><line x1="152" y1="42" x2="168" y2="39" stroke="#dc2626" stroke-width="1.2"/><line x1="152" y1="45" x2="168" y2="45" stroke="#16a34a" stroke-width="1.2"/><line x1="152" y1="48" x2="168" y2="51" stroke="#111827" stroke-width="1.2"/><text x="67" y="24" text-anchor="middle" font-size="7" fill="#1e293b">100±10</text><text x="132" y="24" text-anchor="middle" font-size="7" fill="#1e293b">50~150</text></svg>';
+  }
+  if (variant === 'figure8-tin') {
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="32" y="34" width="68" height="22" rx="11" fill="none" stroke="#1e293b" stroke-width="1.2"/><rect x="36" y="37" width="60" height="16" rx="8" fill="none" stroke="#475569" stroke-width="0.9"/><rect x="63" y="31" width="6" height="28" rx="1" fill="#e2e8f0" stroke="#334155" stroke-width="0.9"/><line x1="14" y1="45" x2="32" y2="45" stroke="#1e293b" stroke-width="1.4"/><line x1="100" y1="45" x2="148" y2="45" stroke="#1e293b" stroke-width="1.4"/><line x1="148" y1="43" x2="166" y2="43" stroke="#111827" stroke-width="1.5"/><line x1="148" y1="47" x2="166" y2="47" stroke="#dc2626" stroke-width="1.5"/></svg>';
+  }
+  return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="44" y="34" width="92" height="22" rx="11" fill="none" stroke="#1e293b" stroke-width="1.2"/><rect x="48" y="37" width="84" height="16" rx="8" fill="none" stroke="#475569" stroke-width="0.9"/><rect x="52" y="40" width="76" height="10" rx="5" fill="none" stroke="#64748b" stroke-width="0.8"/><rect x="87" y="31" width="6" height="28" rx="1" fill="#e2e8f0" stroke="#334155" stroke-width="0.9"/><line x1="20" y1="45" x2="44" y2="45" stroke="#1e293b" stroke-width="1.4"/><line x1="136" y1="45" x2="160" y2="45" stroke="#1e293b" stroke-width="1.4"/></svg>';
+};
+
+const DRAWING_COMPONENT_GRAPHICS: readonly DrawingComponentGraphic[] = [
+  { id: 'pkg-figure8', name: '扎线8字', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
+  { id: 'pkg-pe-bag', name: '单根线包装自封口PE袋 - 大号', category: '包装方式', subCategory: '包装袋', svgPreview: pkgWrapSvg('pe-bag') },
+  { id: 'pkg-circle-both', name: '圆形扎线-两边扎线', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('circle') },
+  { id: 'pkg-figure8-ferrite', name: '8字形扎线-带磁环-两头露出', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
+  { id: 'pkg-figure8-tin', name: '8字形扎线-带磁环-尾部上锡', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-tin') },
+  { id: 'pkg-figure8-ferrite-sr', name: '8字形扎线-带磁环+SR-两头露出', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-ferrite-sr') },
+  { id: 'pkg-figure8-usb', name: '8字形扎线-USB带卡位', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-ferrite-sr') },
+  { id: 'pkg-pe-small', name: '独立PE袋包装 - 小号', category: '包装方式', subCategory: '包装袋', svgPreview: pkgWrapSvg('pe-bag') },
+  { id: 'pkg-figure8-double', name: '8字形双扎带捆扎', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
+
+  { id: 'irr-sleeve-taper', name: '套管', category: '不规则图型', subCategory: '护套/套管', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><polygon points="24,34 52,34 156,22 156,68 52,56 24,56" fill="#0f172a"/></svg>' },
+  { id: 'irr-usb-braided', name: 'USB编织线示意', category: '不规则图型', subCategory: '外线整图', svgPreview: pkgWrapSvg('figure8-ferrite-sr') },
+  { id: 'irr-phb2', name: 'PHB2 分支线束', category: '不规则图型', subCategory: '分支线束', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="38" width="60" height="14" fill="#1e293b"/><path d="M80 42 L140 24 M80 45 L140 45 M80 48 L140 66" stroke="#334155" stroke-width="2"/><rect x="140" y="18" width="22" height="12" fill="none" stroke="#334155" stroke-width="1.2"/><rect x="140" y="60" width="22" height="12" fill="none" stroke="#334155" stroke-width="1.2"/></svg>' },
+
+  { id: 'proc-strip-note', name: '剥皮上锡工艺图型', category: '工艺说明', subCategory: '剥头工艺', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="20" y="36" width="80" height="18" fill="#334155"/><line x1="100" y1="40" x2="140" y2="40" stroke="#dc2626" stroke-width="2.5"/><line x1="100" y1="50" x2="140" y2="50" stroke="#111827" stroke-width="2.5"/><rect x="140" y="38" width="16" height="4" fill="#cbd5e1" stroke="#475569" stroke-width="0.6"/><rect x="140" y="48" width="16" height="4" fill="#cbd5e1" stroke="#475569" stroke-width="0.6"/></svg>' },
+  { id: 'cut-single', name: '单芯裁线图型', category: '裁线图型', subCategory: '裁线', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><line x1="25" y1="45" x2="155" y2="45" stroke="#1e293b" stroke-width="3"/><line x1="25" y1="26" x2="155" y2="26" stroke="#475569" stroke-width="1"/><text x="90" y="22" text-anchor="middle" font-size="8" fill="#1e293b">L±5mm</text></svg>' },
+  { id: 'wire-shielded', name: '屏蔽多芯线材图型', category: '线材图型', subCategory: '屏蔽线', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="25" y="35" width="130" height="20" rx="3" fill="#f8fafc" stroke="#1e293b" stroke-width="1.5"/><line x1="35" y1="41" x2="145" y2="41" stroke="#dc2626" stroke-width="2"/><line x1="35" y1="49" x2="145" y2="49" stroke="#111827" stroke-width="2"/></svg>' },
+  { id: 'aux-ferrite', name: '抗干扰磁环图型', category: '辅材图型', subCategory: '磁环', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="60" y="25" width="60" height="40" rx="6" fill="#eef2ff" stroke="#334155" stroke-width="1.5"/><line x1="20" y1="45" x2="60" y2="45" stroke="#1e293b" stroke-width="3"/><line x1="120" y1="45" x2="160" y2="45" stroke="#1e293b" stroke-width="3"/></svg>' },
+  { id: 'spec-rohs', name: '材料环保与公差规格', category: '物料规格', subCategory: '通用规格', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="24" y="18" width="132" height="54" rx="4" fill="#fff" stroke="#64748b" stroke-width="1"/><text x="34" y="36" font-size="9" fill="#1e293b">1. 符合 RoHS 标准</text><text x="34" y="54" font-size="9" fill="#475569">2. 100% 导通测试</text></svg>' },
+  { id: 'section-4c', name: '四芯护套线截面图', category: '线材截面图', subCategory: '截面图', svgPreview: '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><circle cx="90" cy="45" r="28" fill="#f1f5f9" stroke="#1e293b" stroke-width="1.8"/><circle cx="78" cy="35" r="8" fill="#dc2626"/><circle cx="102" cy="35" r="8" fill="#ffffff" stroke="#334155"/><circle cx="78" cy="55" r="8" fill="#16a34a"/><circle cx="102" cy="55" r="8" fill="#111827"/></svg>' },
+];
+
+export function listStaticDrawingComponentGraphics(category?: DrawingComponentGraphicCategory): DrawingComponentGraphic[] {
+  return DRAWING_COMPONENT_GRAPHICS
+    .filter((item) => !category || item.category === category)
+    .map((item) => ({ ...item }));
+}
+

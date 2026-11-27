@@ -46,13 +46,14 @@ describe('workbench catalog gates', () => {
     );
 
     expect(anonymous).toContain('登录后可使用配置向导新建图纸。');
-    expect(anonymous).not.toContain('左连接器/模型');
+    expect(anonymous).not.toContain('左端子');
 
     const signedIn = renderToStaticMarkup(
       <StandaloneDrawingWizard open canUseCatalog onClose={noop} onGenerate={noop} />,
     );
 
     expect(signedIn).not.toContain('登录后可使用配置向导新建图纸。');
-    expect(signedIn).toContain('左连接器/模型');
+    expect(signedIn).toContain('左端子');
+    expect(signedIn).toContain('实时预览');
   });
 });

@@ -48,7 +48,7 @@ describe('DrawingCatalogRepository', () => {
   it('keeps static drawing resources available without Supabase', async () => {
     const repository = new DrawingCatalogRepository(null);
 
-    await expect(repository.listTemplates()).resolves.toHaveLength(2);
+    await expect(repository.listTemplates()).resolves.toHaveLength(7);
     await expect(repository.listCommonPhrases()).resolves.toHaveLength(3);
     const icons = await repository.listIcons();
     expect(icons).toHaveLength(66);
@@ -59,7 +59,7 @@ describe('DrawingCatalogRepository', () => {
     const queries: string[] = [];
     const repository = new DrawingCatalogRepository(fakeClient({}, {}, queries));
 
-    await expect(repository.listTemplates()).resolves.toHaveLength(2);
+    await expect(repository.listTemplates()).resolves.toHaveLength(7);
     const template = await repository.loadTemplate('template-single');
     expect(template).toEqual(expect.objectContaining({ name: '单头普通电子线模板' }));
     expect(template.id).not.toBe('template-single');

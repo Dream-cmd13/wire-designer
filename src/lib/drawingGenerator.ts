@@ -55,6 +55,13 @@ export function countDrawingMaterialKinds(draft: DrawingWizardDraft): number {
   if (draft.hasMold) ids.add(`mold:${draft.modelResource?.resourceItemId ?? 'configured'}`);
   const protectiveSleeve = resolveProtectiveSleeveMaterial(draft);
   if (protectiveSleeve) ids.add(protectiveSleeve.key);
+  else if (draft.hasProtectiveSleeve) ids.add('protective_sleeve:default');
+  if (draft.hasTailClamp) ids.add(`tail_clamp:${draft.tailClampResource?.resourceItemId ?? 'default'}`);
+  const ferriteCount = draft.ferriteCount ?? 0;
+  for (let i = 0; i < ferriteCount; i += 1) {
+    const resource = draft.ferriteResources?.[i];
+    ids.add(`ferrite:${resource?.resourceItemId ?? `default-${i + 1}`}`);
+  }
   return ids.size;
 }
 
@@ -189,13 +196,24 @@ function drawingBomRows(draft: DrawingWizardDraft, left?: DrawingConnectorResour
     const current = materials.get(key);
     materials.set(key, { code, name, unit, quantity: (current?.quantity ?? 0) + quantity });
   };
-  add(`connector:${left?.id}`, left?.name, 'PCS', 1, left?.model);
-  add(`connector:${right?.id}`, right?.name, 'PCS', 1, right?.model);
+  const leftCount = Math.max(1, draft.leftConnectorCount ?? 1);
+  const rightCount = Math.max(1, draft.rightConnectorCount ?? 1);
+  add(`connector:${left?.id}`, left?.name, 'PCS', leftCount, left?.model);
+  add(`connector:${right?.id}`, right?.name, 'PCS', rightCount, right?.model);
   const wireLengthM = getDrawingWireMaterialLengthMm(draft) / 1000;
   add(`wire:${draft.wireResource?.resourceItemId}`, draft.wireResource?.name, 'M', wireLengthM, draft.wireResource?.model);
   if (draft.hasMold) add(`model:${draft.modelResource?.resourceItemId ?? 'generic'}`, draft.modelResource?.name ?? '外线模具', 'PCS', 1, draft.modelResource?.model);
   const protectiveSleeve = resolveProtectiveSleeveMaterial(draft);
   if (protectiveSleeve) add(protectiveSleeve.key, protectiveSleeve.name, protectiveSleeve.unit, 1, protectiveSleeve.code);
+  else if (draft.hasProtectiveSleeve) add('protective_sleeve:default', '热缩套管', 'PCS', 1);
+  if (draft.hasTailClamp) {
+    add(`tail_clamp:${draft.tailClampResource?.resourceItemId ?? 'default'}`, draft.tailClampResource?.name ?? '线尾卡位', 'PCS', 1, draft.tailClampResource?.model);
+  }
+  const ferriteCount = draft.ferriteCount ?? 0;
+  for (let i = 0; i < ferriteCount; i += 1) {
+    const resource = draft.ferriteResources?.[i];
+    add(`ferrite:${resource?.resourceItemId ?? 'default'}`, resource?.name ?? '抗干扰磁环', 'PCS', 1, resource?.model);
+  }
   return [...materials.values()].map((material, index) => ({
     序号: String(index + 1), 物料编码: material.code, '物料名称/规格': material.name, 单位: material.unit,
     用量: String(Number(material.quantity.toFixed(3))), 备注: '',
@@ -224,9 +242,10 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
   const dimensionStartX = leftObject?.x ?? 90;
   const dimensionEndX = rightObject ? rightObject.x + rightObject.width : wireEndX;
   const dimensionEndY = rightObject?.y ?? wireStartY;
-  const tableCount = Math.ceil(draft.wires.length / 10);
-  const rowsPerTable = Math.ceil(draft.wires.length / tableCount);
-  const tableWidth = tableCount === 1 ? 520 : Math.floor((1090 - (tableCount - 1) * 12) / tableCount);
+  const includeWiringTable = draft.includeWiringTable !== false;
+  const tableCount = includeWiringTable ? Math.ceil(draft.wires.length / 10) : 0;
+  const rowsPerTable = tableCount > 0 ? Math.ceil(draft.wires.length / tableCount) : 0;
+  const tableWidth = tableCount <= 1 ? 520 : Math.floor((1090 - (tableCount - 1) * 12) / tableCount);
   const wiringTables = Array.from({ length: tableCount }, (_, index) => {
     const table = createWiringTable();
     const rowStart = index * rowsPerTable;
@@ -271,11 +290,21 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       rows: object.rows.map((row) => row.C3 === '工程图号' ? { ...row, C4: drawingNo } : row.C8 === '比例' ? { ...row, C9: '不按比例' } : row),
     };
   });
-  const requirements = [
-    '接线为逻辑示意。实物针位和端接方式按所选连接器规格执行。',
-    ...(draft.wireResource?.shielded ? [`屏蔽层端接：${draft.shieldTermination?.trim() || '待确认'}`] : []),
-    '成品须进行导通及短路测试。',
-  ];
+  const customNoteLines = (draft.processNotes ?? [])
+    .flatMap((note) => note.split('\n'))
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const requirements = customNoteLines.length > 0
+    ? customNoteLines
+    : [
+        '接线为逻辑示意。实物针位和端接方式按所选连接器规格执行。',
+        ...(draft.wireResource?.shielded ? [`屏蔽层端接：${draft.shieldTermination?.trim() || '待确认'}`] : []),
+        ...(draft.tinningLengthMm && draft.tinningLengthMm > 0
+          ? [`尾部上锡：${draft.tinningLengthMm}±${draft.tinningToleranceMm ?? 0} mm${draft.halfStrip ? '（半剥）' : ''}`]
+          : []),
+        '成品须进行导通及短路测试。',
+      ];
+  const requirementsHeight = Math.max(86, 34 + requirements.length * 16);
   const objects: DrawingObject[] = [
     ...(leftObject ? [leftObject] : []),
     ...(rightObject ? [rightObject] : []),
@@ -302,9 +331,9 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       id: createDrawingId('tech-requirements'),
       kind: 'tech-requirements',
       x: 70,
-      y: tableCount === 1 ? 370 : 570,
+      y: tableCount <= 1 ? 370 : 570,
       width: 500,
-      height: 86,
+      height: requirementsHeight,
       rotation: 0,
       zIndex: 5,
       locked: false,
@@ -316,7 +345,63 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
     ...frameObjects,
   ];
 
-  if (protectiveSleeve) {
+  if (draft.hasTopView && leftObject) {
+    objects.push({
+      id: createDrawingId('accessory'),
+      kind: 'accessory',
+      x: leftObject.x,
+      y: leftObject.y + leftObject.height + 16,
+      width: 140,
+      height: 42,
+      rotation: 0,
+      zIndex: 7,
+      locked: false,
+      visible: true,
+      style: style({ fill: '#f8fafc' }),
+      label: '连接器俯视图',
+      accessoryType: 'model',
+    });
+  }
+
+  const ferriteCount = draft.ferriteCount ?? 0;
+  for (let i = 0; i < ferriteCount; i += 1) {
+    const resource = draft.ferriteResources?.[i];
+    objects.push({
+      id: createDrawingId('accessory'),
+      kind: 'accessory',
+      x: 420 + i * 130,
+      y: 168,
+      width: 100,
+      height: 36,
+      rotation: 0,
+      zIndex: 8,
+      locked: false,
+      visible: true,
+      style: style({ fill: '#eef2ff' }),
+      label: resource?.name ?? `磁环 ${i + 1}`,
+      accessoryType: 'model',
+    });
+  }
+
+  if (draft.hasTailClamp) {
+    objects.push({
+      id: createDrawingId('accessory'),
+      kind: 'accessory',
+      x: 770,
+      y: 168,
+      width: 96,
+      height: 36,
+      rotation: 0,
+      zIndex: 8,
+      locked: false,
+      visible: true,
+      style: style({ fill: '#f1f5f9' }),
+      label: draft.tailClampResource?.name ?? '线尾卡位',
+      accessoryType: 'model',
+    });
+  }
+
+  if (protectiveSleeve || draft.hasProtectiveSleeve) {
     objects.push({
       id: createDrawingId('accessory'),
       kind: 'accessory',
@@ -329,8 +414,26 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       locked: false,
       visible: true,
       style: style({ fill: '#e2e8f0' }),
-      label: protectiveSleeve.name,
+      label: protectiveSleeve?.name ?? '热缩套管',
       accessoryType: 'sleeve',
+    });
+  }
+
+  if (draft.packagingGraphic) {
+    objects.push({
+      id: createDrawingId('accessory'),
+      kind: 'accessory',
+      x: 820,
+      y: 470,
+      width: 240,
+      height: 82,
+      rotation: 0,
+      zIndex: 8,
+      locked: false,
+      visible: true,
+      style: style({ fill: '#f8fafc' }),
+      label: `扎线示意图 · ${draft.packagingGraphic.name}`,
+      accessoryType: 'packaging',
     });
   }
 

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Maximize2, Minus, Plus } from 'lucide-react';
 import { ActionToast } from '@/components/shared/ActionToast';
 import { DrawingCanvasContextMenu } from '@/components/drawings/standalone/DrawingCanvasContextMenu';
+import { DrawingComponentLibraryModal } from '@/components/drawings/standalone/DrawingComponentLibraryModal';
 import { DrawingLinePropertiesDialog } from '@/components/drawings/standalone/DrawingLinePropertiesDialog';
 import { DrawingMaterialTableDialog } from '@/components/drawings/standalone/DrawingMaterialTableDialog';
 import { DrawingPdfExportDialog } from '@/components/drawings/standalone/DrawingPdfExportDialog';
 import { DrawingIconLibraryDialog } from '@/components/drawings/standalone/DrawingIconLibraryDialog';
+import { DrawingProcessNotesModal } from '@/components/drawings/standalone/DrawingProcessNotesModal';
 import { DrawingResourcePanel } from '@/components/drawings/standalone/DrawingResourcePanel';
 import { DrawingTableCreateDialog } from '@/components/drawings/standalone/DrawingTableCreateDialog';
 import { StandaloneDrawingCanvas } from '@/components/drawings/standalone/StandaloneDrawingCanvas';
@@ -18,7 +20,8 @@ import { isDrawingDocument } from '@/lib/drawingDocumentSchema';
 import { createDrawingId, createDrawingNumberTubeObject, createDrawingResourceObject, createDrawingTableObject, defaultDrawingObjectStyle, type DrawingTableCreateInput } from '@/lib/drawingDocument';
 import { downloadDrawingPdf } from '@/lib/drawingExport';
 import { applyDrawingLineProperties, type DrawingLinePropertiesInput } from '@/lib/drawingLineProperties';
-import { appendDrawingMaterial, type DrawingMaterialInput } from '@/lib/drawingMaterials';
+import { appendDrawingMaterial, moveDrawingMaterial, removeDrawingMaterial, updateDrawingMaterial, type DrawingMaterialInput } from '@/lib/drawingMaterials';
+import type { DrawingComponentGraphicCategory } from '@/lib/drawingStaticResources';
 import { getDrawingTableTargetObject, resizeDrawingTableCell, resizeDrawingTableText, resolveDrawingTableLayout, scaleDrawingTable } from '@/lib/drawingTableLayout';
 import { getDrawingTransformObject, getWheelScaleFactor, MAX_CANVAS_ZOOM, MAX_OBJECT_SCALE, MIN_CANVAS_ZOOM, MIN_OBJECT_SCALE, scaleDrawingObjectFromCenter } from '@/lib/drawingTransform';
 import { enterDrawingWorkbench } from '@/lib/drawingWorkbenchSession';
@@ -116,6 +119,8 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [iconLibraryOpen, setIconLibraryOpen] = useState(false);
+  const [componentLibraryCategory, setComponentLibraryCategory] = useState<DrawingComponentGraphicCategory | null>(null);
+  const [processNotesOpen, setProcessNotesOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
@@ -414,6 +419,21 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
     remember();
     updateObject(materialTableObject.id, appendDrawingMaterial(materialTableObject, input));
   };
+  const updateCurrentMaterial = (rowIndex: number, input: DrawingMaterialInput) => {
+    if (!materialTableObject) return;
+    remember();
+    updateObject(materialTableObject.id, updateDrawingMaterial(materialTableObject, rowIndex, input));
+  };
+  const moveCurrentMaterial = (rowIndex: number, direction: 'up' | 'down') => {
+    if (!materialTableObject) return;
+    remember();
+    updateObject(materialTableObject.id, moveDrawingMaterial(materialTableObject, rowIndex, direction));
+  };
+  const removeCurrentMaterial = (rowIndex: number) => {
+    if (!materialTableObject) return;
+    remember();
+    updateObject(materialTableObject.id, removeDrawingMaterial(materialTableObject, rowIndex));
+  };
 
   const addCatalog = (resource: DrawingCatalogResource) => {
     if (!drawing) return;
@@ -510,12 +530,23 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
         if (file) void importLocalDrawingCopy(file);
       }}/>
     </form>
-    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={saveDrawing} onExportLocal={downloadLocalDrawingCopy} onImportLocal={() => importFileRef.current?.click()} onPdf={requestPdfExport} exporting={exporting}/>
+    <DrawingWorkbenchToolbar toolMode={toolMode} orthogonal={orthogonal} hasSelection={selected.length > 0} selectionLocked={selected.some((object) => object.locked)} allObjectsLocked={allObjectsLocked} canUndo={past.length > 0} canRedo={future.length > 0} onBeforeAction={breakDrawingPath} onWizard={() => setWizardOpen(true)} onResources={() => setResourcesOpen((value) => !value)} onUndo={undo} onRedo={redo} onClear={clear} onDelete={removeSelected} onSplit={split} onToggleSelectionLock={toggleSelectionLocks} onToggleAllLocks={toggleAllLocks} onLayer={moveLayers} onToolMode={changeTool} onOrthogonal={() => setOrthogonal((value) => !value)} onAddText={() => addResource('text')} onAddLabel={() => addResource('label')} onOpenIconLibrary={openIconLibrary} onAddNumberTube={addNumberTube} onAddDimension={() => addResource('dimension')} onAddTable={() => setTableDialogOpen(true)} saveState={saveState} onSave={saveDrawing} onExportLocal={downloadLocalDrawingCopy} onImportLocal={() => importFileRef.current?.click()} onPdf={requestPdfExport} exporting={exporting}/>
     <div className="relative flex min-h-0 flex-1">
-    <DrawingResourcePanel open={resourcesOpen} canUseCatalog={Boolean(drawingOwnerId)} onClose={() => setResourcesOpen(false)} onAddKind={addResource} onAddCatalog={addCatalog} onAddPhrase={addPhrase} onAddIcon={addIcon}/>
+    <DrawingResourcePanel
+      open={resourcesOpen}
+      canUseCatalog={Boolean(drawingOwnerId)}
+      onClose={() => setResourcesOpen(false)}
+      onAddKind={addResource}
+      onAddCatalog={addCatalog}
+      onAddPhrase={addPhrase}
+      onAddIcon={addIcon}
+      onOpenCustomTable={() => { setResourcesOpen(false); setTableDialogOpen(true); }}
+      onOpenProcessNotes={() => { setResourcesOpen(false); setProcessNotesOpen(true); }}
+      onOpenComponentLibrary={(category) => { setResourcesOpen(false); setComponentLibraryCategory(category); }}
+    />
       <DrawingIconLibraryDialog open={iconLibraryOpen} onClose={() => setIconLibraryOpen(false)} onAddIcon={addIcon}/>
       <StandaloneDrawingCanvas drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} zoom={zoom} toolMode={toolMode} orthogonal={orthogonal} drawingAction={drawingAction} onSelectObject={(id) => { if (!id) setSelectedObjectIds([]); else if (!selectedObjectIds.includes(id)) setSelectedObjectIds([id]); }} onSelectionChange={setSelectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onViewportResize={setViewport} onCanvasZoom={changeZoom} onScaleObject={scaleSelectedObject} onScaleTableTarget={scaleTableTarget} onAddObject={addObject} onEditLineRequest={setLineEditorObjectId} onOpenMaterialTable={setMaterialTableObjectId} onContextMenuRequest={openContextMenu}/>
-      <StandaloneDrawingInspector key={primaryId} drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))}/>
+      <StandaloneDrawingInspector key={primaryId} drawing={drawing} selectedObjectId={primaryId} selectedObjectIds={selectedObjectIds} onStartEdit={remember} onUpdateObject={updateObject} onUpdateObjects={updateSelectedObjects} onSetLayer={(ids, target) => apply(setDrawingLayer(drawing, ids, target))} onZoomIn={() => changeZoom(zoom * getWheelScaleFactor(-1))} onZoomOut={() => changeZoom(zoom * getWheelScaleFactor(1))} onZoomReset={() => setManualZoom(null)} canZoomIn={zoom < MAX_CANVAS_ZOOM} canZoomOut={zoom > minZoom}/>
     </div>
     <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-2 border-t border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500">
       <span>{drawing.page.size} · 横向</span>
@@ -578,7 +609,52 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
     {selectionWarning && <ActionToast message="请先选择一个对象。" onClose={() => setSelectionWarning(false)}/>}
     {pdfDialogOpen && <DrawingPdfExportDialog open defaultFilename={exportFilename} exporting={exporting} onClose={() => { if (!exporting) setPdfDialogOpen(false); }} onConfirm={(filename) => void exportPdf(filename)}/>}
     <DrawingTableCreateDialog open={tableDialogOpen} onClose={() => setTableDialogOpen(false)} onConfirm={addTable}/>
-    {materialTableObject && <DrawingMaterialTableDialog drawing={drawing} table={materialTableObject} canUseCatalog={Boolean(drawingOwnerId)} onAddCurrent={addCurrentMaterial} onClose={() => setMaterialTableObjectId(null)}/>}
+    {componentLibraryCategory && (
+      <DrawingComponentLibraryModal
+        mode="component"
+        initialCategory={componentLibraryCategory}
+        onClose={() => setComponentLibraryCategory(null)}
+        onConfirm={(graphic) => {
+          const base = createPlacedResource(drawing, 'accessory');
+          addObject({
+            ...base,
+            kind: 'accessory',
+            width: 160,
+            height: 64,
+            label: graphic.name,
+            accessoryType: graphic.category === '包装方式' ? 'packaging' : 'specification',
+          });
+          setComponentLibraryCategory(null);
+        }}
+      />
+    )}
+    {processNotesOpen && (
+      <DrawingProcessNotesModal
+        initialTab="process"
+        selectedNotes={drawing.techRequirements}
+        phrases={[]}
+        onClose={() => setProcessNotesOpen(false)}
+        onConfirm={(notes) => {
+          const lines = notes.flatMap((note) => note.split('\n')).map((line) => line.trim()).filter(Boolean);
+          if (lines.length > 0) {
+            const existing = drawing.objects.find((obj) => obj.kind === 'tech-requirements');
+            if (existing && existing.kind === 'tech-requirements') {
+              remember();
+              updateObject(existing.id, { requirements: lines, height: Math.max(86, 34 + lines.length * 16) });
+            } else {
+              addObject({
+                ...createPlacedResource(drawing, 'tech-requirements'),
+                kind: 'tech-requirements',
+                requirements: lines,
+                height: Math.max(86, 34 + lines.length * 16),
+              });
+            }
+          }
+          setProcessNotesOpen(false);
+        }}
+      />
+    )}
+    {materialTableObject && <DrawingMaterialTableDialog drawing={drawing} table={materialTableObject} canUseCatalog={Boolean(drawingOwnerId)} onAddCurrent={addCurrentMaterial} onUpdateCurrent={updateCurrentMaterial} onMoveCurrent={moveCurrentMaterial} onRemoveCurrent={removeCurrentMaterial} onClose={() => setMaterialTableObjectId(null)}/>}
     {lineEditorObject && <DrawingLinePropertiesDialog object={lineEditorObject} defaultName={lineEditorObject.name || fallbackLineName(drawing, lineEditorObject.id)} onClose={() => setLineEditorObjectId(null)} onConfirm={updateLineProperties}/>}
     <StandaloneDrawingWizard open={wizardOpen} canUseCatalog={Boolean(drawingOwnerId)} onClose={() => setWizardOpen(false)} onGenerate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }} onLoadTemplate={(next) => { remember(); apply(next); setSelectedObjectIds([]); setWizardOpen(false); }}/>
   </div>;

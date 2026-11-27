@@ -9,7 +9,15 @@ import {
 describe('drawing static resources', () => {
   it('preserves all seeded resources with stable template ids and rich icon library', () => {
     expect(listStaticDrawingTemplates().map((template) => template.id))
-      .toEqual(['template-single', 'template-double']);
+      .toEqual([
+        'template-single',
+        'template-double',
+        'template-usb-braided-tin',
+        'template-usb-spring',
+        'template-usb-am-bm',
+        'template-typec-double',
+        'template-typec-xarr',
+      ]);
     expect(listStaticDrawingCommonPhrases()).toHaveLength(3);
 
     const icons = listStaticDrawingIcons();

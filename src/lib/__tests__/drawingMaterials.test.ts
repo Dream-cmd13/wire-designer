@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { appendDrawingMaterial, renumberDrawingMaterials } from '@/lib/drawingMaterials';
+import {
+  appendDrawingMaterial,
+  moveDrawingMaterial,
+  removeDrawingMaterial,
+  renumberDrawingMaterials,
+  updateDrawingMaterial,
+} from '@/lib/drawingMaterials';
 import { createBlankDrawingDocument } from '@/lib/drawingDocument';
 import type { DrawingBomTableObject } from '@/types/drawing';
 
@@ -40,5 +46,25 @@ describe('drawing materials', () => {
       { 序号: '1', 物料编码: 'A' },
       { 序号: '2', 物料编码: 'B' },
     ]);
+  });
+
+  it('updates, reorders, and removes material rows while keeping bottom anchored', () => {
+    const drawing = createBlankDrawingDocument('BOM edit test');
+    const source = drawing.objects.find((object): object is DrawingBomTableObject => object.kind === 'bom-table')!;
+    const added = appendDrawingMaterial(
+      appendDrawingMaterial(source, { code: 'M-01', nameAndSpecification: '端子A', unit: 'PCS', quantity: '1', note: '' }),
+      { code: 'W-02', nameAndSpecification: '线材B', unit: 'M', quantity: '2', note: '' },
+    );
+
+    const moved = moveDrawingMaterial(added, 1, 'up');
+    expect(moved.rows.map((row) => `${row.序号}:${row.物料编码}`)).toEqual(['1:W-02', '2:M-01']);
+
+    const updated = updateDrawingMaterial(moved, 0, { code: 'W-02X', nameAndSpecification: '线材B改', unit: 'MM', quantity: '200', note: '已改' });
+    expect(updated.rows[0]).toMatchObject({ 序号: '1', 物料编码: 'W-02X', '物料名称/规格': '线材B改', 单位: 'MM', 用量: '200', 备注: '已改' });
+
+    const removed = removeDrawingMaterial(updated, 0);
+    expect(removed.rows).toHaveLength(1);
+    expect(removed.rows[0]).toMatchObject({ 序号: '1', 物料编码: 'M-01' });
+    expect(removed.y + removed.height).toBe(source.y + source.height);
   });
 });

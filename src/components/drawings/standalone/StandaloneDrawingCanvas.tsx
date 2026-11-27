@@ -911,11 +911,11 @@ export function StandaloneDrawingCanvas({
   const selectionRect = selectionStart && selectionEnd ? normalizeDrawingRect(selectionStart, selectionEnd) : null;
 
   return (
-    <div ref={viewportRef} role="region" aria-label="图纸画布" className="isolate flex min-h-0 min-w-0 flex-1 overflow-auto bg-[linear-gradient(#dbe4ef_1px,transparent_1px),linear-gradient(90deg,#dbe4ef_1px,transparent_1px)] bg-[length:24px_24px] p-4">
+    <div ref={viewportRef} role="region" aria-label="图纸画布" className="isolate flex min-h-0 min-w-0 flex-1 overflow-auto bg-slate-100/70 p-4">
       <div className="relative m-auto shrink-0" onContextMenu={handleContextMenu} onWheel={handleWheel}>
         <canvas
           ref={canvasRef}
-          className={`block bg-white shadow-lg touch-none ${toolMode !== 'select' ? 'cursor-crosshair' : ''}`}
+          className={`block bg-white shadow-md touch-none ${toolMode !== 'select' ? 'cursor-crosshair' : ''}`}
           style={{ width: `${drawing.page.width * zoom}px`, height: `${drawing.page.height * zoom}px` }}
           onDoubleClick={handleDoubleClick}
           onPointerDown={handlePointerDown}
@@ -924,6 +924,47 @@ export function StandaloneDrawingCanvas({
           onPointerCancel={endDrag}
           onContextMenu={handleContextMenu}
         />
+        {/* Non-exported blueprint alignment crosshairs and subtle center watermark */}
+        <svg
+          aria-hidden="true"
+          className="pointer-events-none absolute left-0 top-0 z-[5]"
+          width={drawing.page.width * zoom}
+          height={drawing.page.height * zoom}
+          viewBox={`0 0 ${drawing.page.width} ${drawing.page.height}`}
+        >
+          <line
+            x1={DRAWING_PAGE_INSET}
+            y1={190}
+            x2={drawing.page.width - DRAWING_PAGE_INSET}
+            y2={190}
+            stroke="#cbd5e1"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+          />
+          <line
+            x1={230}
+            y1={DRAWING_PAGE_INSET}
+            x2={230}
+            y2={drawing.page.height - DRAWING_PAGE_INSET}
+            stroke="#cbd5e1"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+          />
+          <text
+            x={drawing.page.width / 2}
+            y={drawing.page.height / 2}
+            textAnchor="middle"
+            dominantBaseline="central"
+            transform={`rotate(-28 ${drawing.page.width / 2} ${drawing.page.height / 2})`}
+            fontSize={44}
+            fontWeight={500}
+            fill="#94a3b8"
+            fillOpacity={0.22}
+            letterSpacing={4}
+          >
+            线图(东莞)科技有限公司
+          </text>
+        </svg>
         {tableObjects.map((object) => (
           <DrawingTableLayer
             key={object.id}
