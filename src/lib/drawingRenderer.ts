@@ -93,6 +93,106 @@ function dashPattern(dash: DrawingObject['style']['dash']): number[] {
   return [];
 }
 
+function svgAttr(attrs: string, name: string): string | undefined {
+  const match = attrs.match(new RegExp(`\\b${name}=["']([^"']*)["']`));
+  return match?.[1];
+}
+
+function svgNum(attrs: string, name: string, fallback = 0): number {
+  const raw = svgAttr(attrs, name);
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function drawSvgGraphic(
+  context: CanvasRenderingContext2D,
+  svgMarkup: string,
+  width: number,
+  height: number,
+) {
+  const vbMatch = svgMarkup.match(/viewBox=["']\s*([\d.-]+)[\s,]+([\d.-]+)[\s,]+([\d.-]+)[\s,]+([\d.-]+)\s*["']/);
+  const vbX = vbMatch ? Number(vbMatch[1]) : 0;
+  const vbY = vbMatch ? Number(vbMatch[2]) : 0;
+  const vbW = vbMatch && Number(vbMatch[3]) > 0 ? Number(vbMatch[3]) : 180;
+  const vbH = vbMatch && Number(vbMatch[4]) > 0 ? Number(vbMatch[4]) : 90;
+  const scale = Math.min(width / vbW, height / vbH);
+  const offsetX = (width - vbW * scale) / 2 - vbX * scale;
+  const offsetY = (height - vbH * scale) / 2 - vbY * scale;
+
+  context.save();
+  context.translate(offsetX, offsetY);
+  context.scale(scale, scale);
+
+  const tagPattern = /<(rect|line|circle|ellipse|polygon|path|text)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1>)/g;
+  let match: RegExpExecArray | null;
+  while ((match = tagPattern.exec(svgMarkup)) !== null) {
+    const [, tag, attrs, innerText = ''] = match;
+    const fill = svgAttr(attrs, 'fill');
+    const stroke = svgAttr(attrs, 'stroke');
+    const strokeWidth = svgNum(attrs, 'stroke-width', 1);
+    context.lineWidth = strokeWidth;
+    if (stroke && stroke !== 'none') context.strokeStyle = stroke;
+    if (fill && fill !== 'none') context.fillStyle = fill;
+
+    if (tag === 'rect') {
+      const x = svgNum(attrs, 'x');
+      const y = svgNum(attrs, 'y');
+      const w = svgNum(attrs, 'width');
+      const h = svgNum(attrs, 'height');
+      const rx = svgNum(attrs, 'rx');
+      context.beginPath();
+      if (rx > 0 && typeof context.roundRect === 'function') context.roundRect(x, y, w, h, rx);
+      else context.rect(x, y, w, h);
+      if (fill && fill !== 'none') context.fill();
+      if (stroke && stroke !== 'none') context.stroke();
+    } else if (tag === 'line') {
+      context.beginPath();
+      context.moveTo(svgNum(attrs, 'x1'), svgNum(attrs, 'y1'));
+      context.lineTo(svgNum(attrs, 'x2'), svgNum(attrs, 'y2'));
+      context.stroke();
+    } else if (tag === 'circle') {
+      context.beginPath();
+      context.arc(svgNum(attrs, 'cx'), svgNum(attrs, 'cy'), svgNum(attrs, 'r'), 0, Math.PI * 2);
+      if (fill && fill !== 'none') context.fill();
+      if (stroke && stroke !== 'none') context.stroke();
+    } else if (tag === 'ellipse' && typeof context.ellipse === 'function') {
+      context.beginPath();
+      context.ellipse(svgNum(attrs, 'cx'), svgNum(attrs, 'cy'), svgNum(attrs, 'rx'), svgNum(attrs, 'ry'), 0, 0, Math.PI * 2);
+      if (fill && fill !== 'none') context.fill();
+      if (stroke && stroke !== 'none') context.stroke();
+    } else if (tag === 'polygon') {
+      const coords = (svgAttr(attrs, 'points') ?? '').trim().split(/[\s,]+/).map(Number).filter(Number.isFinite);
+      if (coords.length >= 4) {
+        context.beginPath();
+        context.moveTo(coords[0], coords[1]);
+        for (let i = 2; i < coords.length - 1; i += 2) context.lineTo(coords[i], coords[i + 1]);
+        context.closePath();
+        if (fill && fill !== 'none') context.fill();
+        if (stroke && stroke !== 'none') context.stroke();
+      }
+    } else if (tag === 'path' && typeof Path2D !== 'undefined') {
+      const d = svgAttr(attrs, 'd');
+      if (d) {
+        const path = new Path2D(d);
+        if (fill && fill !== 'none') context.fill(path);
+        if (stroke && stroke !== 'none') context.stroke(path);
+      }
+    } else if (tag === 'text') {
+      const x = svgNum(attrs, 'x');
+      const y = svgNum(attrs, 'y');
+      const fontSize = svgNum(attrs, 'font-size', 8);
+      const anchor = svgAttr(attrs, 'text-anchor');
+      context.font = `${fontSize}px ${DRAWING_FONT_FAMILY}`;
+      context.fillStyle = fill && fill !== 'none' ? fill : '#1e293b';
+      context.textAlign = anchor === 'middle' ? 'center' : anchor === 'end' ? 'right' : 'left';
+      context.fillText(innerText.trim(), x, y);
+      context.textAlign = 'left';
+    }
+  }
+  context.restore();
+}
+
 function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
   context.save();
   context.translate(object.x + object.width / 2, object.y + object.height / 2);
@@ -136,11 +236,15 @@ function drawObject(context: CanvasRenderingContext2D, object: DrawingObject) {
     context.fillStyle = object.style.color;
     drawEditableText(context, object, 'label', object.label);
   } else if (object.kind === 'accessory') {
-    context.fillStyle = object.style.fill;
-    context.fillRect(0, 0, object.width, object.height);
-    context.strokeRect(0, 0, object.width, object.height);
-    context.fillStyle = object.style.color;
-    drawEditableText(context, object, 'label', object.label);
+    if (object.svgGraphic) {
+      drawSvgGraphic(context, object.svgGraphic, object.width, object.height);
+    } else {
+      context.fillStyle = object.style.fill;
+      context.fillRect(0, 0, object.width, object.height);
+      context.strokeRect(0, 0, object.width, object.height);
+      context.fillStyle = object.style.color;
+      drawEditableText(context, object, 'label', object.label);
+    }
   } else if (object.kind === 'text' || object.kind === 'label') {
     drawEditableText(context, object, 'text', object.text);
   } else if (object.kind === 'dimension') {

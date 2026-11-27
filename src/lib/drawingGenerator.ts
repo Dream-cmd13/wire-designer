@@ -424,16 +424,17 @@ export function createDrawingFromWizard(draft: DrawingWizardDraft): DrawingDocum
       id: createDrawingId('accessory'),
       kind: 'accessory',
       x: 820,
-      y: 470,
+      y: 440,
       width: 240,
-      height: 82,
+      height: 110,
       rotation: 0,
       zIndex: 8,
       locked: false,
       visible: true,
-      style: style({ fill: '#f8fafc' }),
+      style: style({ fill: '#ffffff' }),
       label: `扎线示意图 · ${draft.packagingGraphic.name}`,
       accessoryType: 'packaging',
+      svgGraphic: draft.packagingGraphic.svgPreview,
     });
   }
 

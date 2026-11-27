@@ -98,6 +98,7 @@ export type DrawingAccessoryObject = DrawingObjectBase & {
   kind: 'accessory';
   label: string;
   accessoryType: 'sleeve' | 'packaging' | 'specification' | 'model';
+  svgGraphic?: string;
 };
 
 export type DrawingTextObject = DrawingObjectBase & {
@@ -268,7 +269,7 @@ export type DrawingWizardDraft = {
   tailWireWidthPx?: number;
   includeWiringTable?: boolean;
   processNotes?: string[];
-  packagingGraphic?: { id: string; name: string };
+  packagingGraphic?: { id: string; name: string; svgPreview?: string };
   materialKindCountOverride?: number;
   drawingNo: string;
   totalLengthMm: number;

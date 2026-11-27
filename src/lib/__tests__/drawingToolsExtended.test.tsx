@@ -7,6 +7,8 @@ import { DrawingWiringRelationDialog } from '@/components/drawings/standalone/Dr
 import { createBlankDrawingDocument, defaultDrawingObjectStyle } from '@/lib/drawingDocument';
 import { isDrawingDocument } from '@/lib/drawingDocumentSchema';
 import { serializeDrawingSvg } from '@/lib/drawingExport';
+import { renderDrawingCanvas } from '@/lib/drawingRenderer';
+import { listStaticDrawingComponentGraphics } from '@/lib/drawingStaticResources';
 
 describe('extended drawing tools and styles', () => {
   afterEach(() => {
@@ -111,5 +113,65 @@ describe('extended drawing tools and styles', () => {
     const svg = serializeDrawingSvg(doc);
     expect(svg).toContain('stroke-dasharray="8 4 2 4"');
     expect(svg).toContain('120mm');
+  });
+
+  it('renders and exports vector svgGraphic for packaging and component graphics', () => {
+    const pkg = listStaticDrawingComponentGraphics('包装方式').find((item) => item.id === 'pkg-figure8')!;
+    const doc = createBlankDrawingDocument('包装矢量图');
+    doc.objects.push({
+      id: 'pkg-1',
+      kind: 'accessory',
+      x: 200,
+      y: 260,
+      width: 240,
+      height: 120,
+      rotation: 0,
+      zIndex: 10,
+      locked: false,
+      visible: true,
+      label: pkg.name,
+      accessoryType: 'packaging',
+      svgGraphic: pkg.svgPreview,
+      style: { ...defaultDrawingObjectStyle },
+    });
+
+    expect(isDrawingDocument(doc)).toBe(true);
+    const svg = serializeDrawingSvg(doc);
+    expect(svg).toContain('总长度小于120');
+    expect(svg).toContain('30~40');
+
+    const textCalls: string[] = [];
+    const context = {
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      font: '',
+      textAlign: 'left',
+      setLineDash: () => undefined,
+      clearRect: () => undefined,
+      fillRect: () => undefined,
+      strokeRect: () => undefined,
+      save: () => undefined,
+      restore: () => undefined,
+      beginPath: () => undefined,
+      rect: () => undefined,
+      roundRect: () => undefined,
+      moveTo: () => undefined,
+      lineTo: () => undefined,
+      arc: () => undefined,
+      ellipse: () => undefined,
+      closePath: () => undefined,
+      fill: () => undefined,
+      stroke: () => undefined,
+      translate: () => undefined,
+      rotate: () => undefined,
+      scale: () => undefined,
+      fillText: (text: string) => textCalls.push(text),
+    } as unknown as CanvasRenderingContext2D;
+
+    renderDrawingCanvas(context, doc, null, { hiddenObjectIds: new Set(doc.objects.filter((o) => o.kind !== 'accessory').map((o) => o.id)) });
+    expect(textCalls).toContain('总长度小于120');
+    expect(textCalls).toContain('30~40');
+    expect(textCalls).not.toContain('扎线8字');
   });
 });

@@ -96,6 +96,14 @@ function svgObject(object: DrawingObject): string {
   if (object.kind === 'icon') {
     return `<g ${common} fill="none" stroke="${object.style.stroke}" stroke-width="${object.style.strokeWidth}" transform-origin="center"><path d="${escapeXml(object.svgPath)}" transform="scale(${object.width / 24} ${object.height / 24})"/></g>`;
   }
+  if (object.kind === 'accessory' && object.svgGraphic) {
+    const vbMatch = object.svgGraphic.match(/viewBox=["']([^"']+)["']/);
+    const viewBox = vbMatch?.[1] ?? '0 0 180 90';
+    const inner = object.svgGraphic
+      .replace(/^[\s\S]*?<svg[^>]*>/i, '')
+      .replace(/<\/svg>\s*$/i, '');
+    return `<g ${common}><svg x="0" y="0" width="${object.width}" height="${object.height}" viewBox="${escapeXml(viewBox)}">${inner}</svg></g>`;
+  }
   const label = object.kind === 'accessory' ? object.label : '';
   return `<g ${common} ${style}><rect width="${object.width}" height="${object.height}"/><text x="6" y="${object.height / 2 + 4}" font-size="${object.style.fontSize}" fill="${object.style.color}" stroke="none">${escapeXml(label)}</text></g>`;
 }

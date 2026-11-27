@@ -360,12 +360,32 @@ export type DrawingComponentGraphic = {
   svgPreview: string;
 };
 
-const pkgWrapSvg = (variant: 'figure8' | 'pe-bag' | 'circle' | 'figure8-ferrite' | 'figure8-ferrite-sr' | 'figure8-tin') => {
+const pkgWrapSvg = (
+  variant:
+    | 'figure8'
+    | 'figure8-labeled'
+    | 'pe-bag'
+    | 'waterproof-bag'
+    | 'carton'
+    | 'circle'
+    | 'figure8-ferrite'
+    | 'figure8-ferrite-sr'
+    | 'figure8-tin',
+) => {
   if (variant === 'pe-bag') {
-    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="44" y="10" width="92" height="70" rx="2" fill="#fff" stroke="#334155" stroke-width="1.2"/><line x1="44" y1="20" x2="136" y2="20" stroke="#475569" stroke-width="1"/><line x1="44" y1="24" x2="136" y2="24" stroke="#94a3b8" stroke-width="0.8"/><circle cx="126" cy="70" r="2.2" fill="none" stroke="#64748b" stroke-width="0.8"/></svg>';
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="44" y="10" width="92" height="70" rx="1" fill="none" stroke="#334155" stroke-width="1.1"/><line x1="44" y1="18" x2="136" y2="18" stroke="#475569" stroke-width="0.9"/><line x1="44" y1="22" x2="136" y2="22" stroke="#94a3b8" stroke-width="0.7"/><circle cx="126" cy="70" r="2.2" fill="none" stroke="#64748b" stroke-width="0.8"/></svg>';
+  }
+  if (variant === 'waterproof-bag') {
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><ellipse cx="90" cy="20" rx="46" ry="7" fill="none" stroke="#334155" stroke-width="1"/><path d="M44 20 L44 74 Q90 83 136 74 L136 20" fill="none" stroke="#334155" stroke-width="1"/><line x1="94" y1="52" x2="112" y2="38" stroke="#94a3b8" stroke-width="0.8"/><line x1="102" y1="58" x2="116" y2="47" stroke="#94a3b8" stroke-width="0.8"/></svg>';
+  }
+  if (variant === 'carton') {
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><polygon points="56,34 90,20 124,34 90,48" fill="none" stroke="#334155" stroke-width="1"/><polygon points="56,34 90,48 90,76 56,62" fill="none" stroke="#334155" stroke-width="1"/><polygon points="90,48 124,34 124,62 90,76" fill="none" stroke="#334155" stroke-width="1"/><polygon points="56,34 90,20 76,12 42,26" fill="none" stroke="#475569" stroke-width="0.9"/><polygon points="124,34 90,20 104,12 138,26" fill="none" stroke="#475569" stroke-width="0.9"/></svg>';
   }
   if (variant === 'circle') {
-    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><circle cx="90" cy="46" r="24" fill="none" stroke="#1e293b" stroke-width="1.5"/><circle cx="90" cy="46" r="20" fill="none" stroke="#475569" stroke-width="1"/><circle cx="90" cy="46" r="16" fill="none" stroke="#64748b" stroke-width="0.8"/><line x1="66" y1="14" x2="114" y2="14" stroke="#1e293b" stroke-width="1"/><text x="90" y="11" text-anchor="middle" font-size="8" fill="#1e293b">100±10</text></svg>';
+    return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><circle cx="90" cy="48" r="24" fill="none" stroke="#1e293b" stroke-width="1.3"/><circle cx="90" cy="48" r="20" fill="none" stroke="#475569" stroke-width="1"/><circle cx="90" cy="48" r="16" fill="none" stroke="#64748b" stroke-width="0.8"/><line x1="66" y1="12" x2="66" y2="48" stroke="#64748b" stroke-width="0.7"/><line x1="114" y1="12" x2="114" y2="48" stroke="#64748b" stroke-width="0.7"/><line x1="66" y1="16" x2="114" y2="16" stroke="#1e293b" stroke-width="1"/><text x="90" y="13" text-anchor="middle" font-size="8" fill="#1e293b">100±10</text><rect x="64" y="64" width="8" height="12" fill="#fff" stroke="#475569" stroke-width="0.8"/><rect x="108" y="64" width="8" height="12" fill="#fff" stroke="#475569" stroke-width="0.8"/></svg>';
+  }
+  if (variant === 'figure8-labeled') {
+    return '<svg viewBox="0 0 220 90" xmlns="http://www.w3.org/2000/svg"><line x1="20" y1="14" x2="20" y2="52" stroke="#64748b" stroke-width="0.7"/><line x1="204" y1="14" x2="204" y2="52" stroke="#64748b" stroke-width="0.7"/><line x1="20" y1="20" x2="204" y2="20" stroke="#1e293b" stroke-width="0.9"/><text x="112" y="17" text-anchor="middle" font-size="7.5" fill="#1e293b">总长度小于120</text><line x1="68" y1="30" x2="68" y2="52" stroke="#64748b" stroke-width="0.7"/><line x1="20" y1="36" x2="68" y2="36" stroke="#1e293b" stroke-width="0.8"/><text x="44" y="33" text-anchor="middle" font-size="7" fill="#1e293b">30~40</text><rect x="14" y="50" width="8" height="16" fill="#fff" stroke="#334155" stroke-width="0.9"/><rect x="64" y="50" width="8" height="16" fill="#fff" stroke="#334155" stroke-width="0.9"/><line x1="22" y1="53" x2="64" y2="53" stroke="#1e293b" stroke-width="1"/><line x1="22" y1="56" x2="64" y2="56" stroke="#1e293b" stroke-width="1"/><line x1="22" y1="59" x2="64" y2="59" stroke="#1e293b" stroke-width="1"/><line x1="22" y1="62" x2="64" y2="62" stroke="#1e293b" stroke-width="1"/><rect x="72" y="45" width="132" height="24" rx="12" fill="none" stroke="#1e293b" stroke-width="1.1"/><rect x="76" y="48" width="124" height="18" rx="9" fill="none" stroke="#475569" stroke-width="0.9"/><rect x="80" y="51" width="116" height="12" rx="6" fill="none" stroke="#64748b" stroke-width="0.8"/><rect x="135" y="42" width="6" height="30" rx="1" fill="#fff" stroke="#334155" stroke-width="0.9"/></svg>';
   }
   if (variant === 'figure8-ferrite-sr') {
     return '<svg viewBox="0 0 180 90" xmlns="http://www.w3.org/2000/svg"><rect x="34" y="34" width="66" height="22" rx="11" fill="none" stroke="#1e293b" stroke-width="1.2"/><rect x="38" y="37" width="58" height="16" rx="8" fill="none" stroke="#475569" stroke-width="0.9"/><rect x="64" y="31" width="6" height="28" rx="1" fill="#e2e8f0" stroke="#334155" stroke-width="0.9"/><line x1="16" y1="45" x2="34" y2="45" stroke="#1e293b" stroke-width="1.4"/><line x1="100" y1="45" x2="152" y2="45" stroke="#1e293b" stroke-width="1.4"/><rect x="116" y="40" width="12" height="10" rx="1.5" fill="#cbd5e1" stroke="#334155" stroke-width="0.9"/><rect x="142" y="40" width="10" height="10" rx="1" fill="#475569"/><line x1="152" y1="42" x2="168" y2="39" stroke="#dc2626" stroke-width="1.2"/><line x1="152" y1="45" x2="168" y2="45" stroke="#16a34a" stroke-width="1.2"/><line x1="152" y1="48" x2="168" y2="51" stroke="#111827" stroke-width="1.2"/><text x="67" y="24" text-anchor="middle" font-size="7" fill="#1e293b">100±10</text><text x="132" y="24" text-anchor="middle" font-size="7" fill="#1e293b">50~150</text></svg>';
@@ -377,13 +397,19 @@ const pkgWrapSvg = (variant: 'figure8' | 'pe-bag' | 'circle' | 'figure8-ferrite'
 };
 
 const DRAWING_COMPONENT_GRAPHICS: readonly DrawingComponentGraphic[] = [
-  { id: 'pkg-figure8', name: '扎线8字', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
+  { id: 'pkg-figure8', name: '扎线8字', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-labeled') },
   { id: 'pkg-pe-bag', name: '单根线包装自封口PE袋 - 大号', category: '包装方式', subCategory: '包装袋', svgPreview: pkgWrapSvg('pe-bag') },
   { id: 'pkg-circle-both', name: '圆形扎线-两边扎线', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('circle') },
   { id: 'pkg-figure8-ferrite', name: '8字形扎线-带磁环-两头露出', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
   { id: 'pkg-figure8-tin', name: '8字形扎线-带磁环-尾部上锡', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-tin') },
   { id: 'pkg-figure8-ferrite-sr', name: '8字形扎线-带磁环+SR-两头露出', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-ferrite-sr') },
   { id: 'pkg-figure8-usb', name: '8字形扎线-USB带卡位', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-ferrite-sr') },
+  { id: 'pkg-figure8-2', name: '8字形扎线2', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
+  { id: 'pkg-figure8-ac', name: '8字形扎线-A到C', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
+  { id: 'pkg-figure8-lr', name: '8字形扎线-左头右尾', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8-tin') },
+  { id: 'pkg-figure8-1', name: '8字形扎线-1', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
+  { id: 'pkg-carton', name: '纸箱', category: '包装方式', subCategory: '包装箱', svgPreview: pkgWrapSvg('carton') },
+  { id: 'pkg-waterproof-bag', name: '防水袋', category: '包装方式', subCategory: '包装袋', svgPreview: pkgWrapSvg('waterproof-bag') },
   { id: 'pkg-pe-small', name: '独立PE袋包装 - 小号', category: '包装方式', subCategory: '包装袋', svgPreview: pkgWrapSvg('pe-bag') },
   { id: 'pkg-figure8-double', name: '8字形双扎带捆扎', category: '包装方式', subCategory: '扎线', svgPreview: pkgWrapSvg('figure8') },
 

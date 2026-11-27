@@ -1647,7 +1647,10 @@ function DrawingWizardSession({
           initialSelectedId={draft.packagingGraphic?.id}
           onClose={() => setPackagingModalOpen(false)}
           onConfirm={(graphic) => {
-            setDraft({ ...draft, packagingGraphic: { id: graphic.id, name: graphic.name } });
+            setDraft({
+              ...draft,
+              packagingGraphic: { id: graphic.id, name: graphic.name, svgPreview: graphic.svgPreview },
+            });
             setPackagingModalOpen(false);
           }}
         />

@@ -674,10 +674,12 @@ function DrawingWorkbenchSession({ drawingOwnerId }: { drawingOwnerId: string | 
           addObject({
             ...base,
             kind: 'accessory',
-            width: 160,
-            height: 64,
+            width: 240,
+            height: 120,
             label: graphic.name,
             accessoryType: graphic.category === '包装方式' ? 'packaging' : 'specification',
+            svgGraphic: graphic.svgPreview,
+            style: { ...base.style, fill: '#ffffff' },
           });
           setComponentLibraryCategory(null);
         }}

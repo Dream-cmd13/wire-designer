@@ -129,6 +129,7 @@ export function isDrawingObject(value: unknown): value is DrawingObject {
           || value.wireKind === 'shielded');
     case 'accessory':
       return typeof value.label === 'string'
+        && (value.svgGraphic === undefined || typeof value.svgGraphic === 'string')
         && (value.accessoryType === 'sleeve'
           || value.accessoryType === 'packaging'
           || value.accessoryType === 'specification'
