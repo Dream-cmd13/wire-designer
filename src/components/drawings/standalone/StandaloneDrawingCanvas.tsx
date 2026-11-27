@@ -951,7 +951,7 @@ export function StandaloneDrawingCanvas({
           onPointerCancel={endDrag}
           onContextMenu={handleContextMenu}
         />
-        {/* Non-exported blueprint alignment crosshairs and subtle center watermark */}
+        {/* Non-exported blueprint alignment crosshairs */}
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute left-0 top-0 z-[5]"
@@ -977,20 +977,6 @@ export function StandaloneDrawingCanvas({
             strokeWidth={1}
             strokeDasharray="4 4"
           />
-          <text
-            x={drawing.page.width / 2}
-            y={drawing.page.height / 2}
-            textAnchor="middle"
-            dominantBaseline="central"
-            transform={`rotate(-28 ${drawing.page.width / 2} ${drawing.page.height / 2})`}
-            fontSize={44}
-            fontWeight={500}
-            fill="#94a3b8"
-            fillOpacity={0.22}
-            letterSpacing={4}
-          >
-            线图(东莞)科技有限公司
-          </text>
         </svg>
         {tableObjects.map((object) => (
           <DrawingTableLayer

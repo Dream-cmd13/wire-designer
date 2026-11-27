@@ -132,4 +132,13 @@ describe('drawing workbench UI contract', () => {
     expect(pageSource).toContain('remember();');
     expect(pageSource).toContain('onAddCurrent={addCurrentMaterial}');
   });
+
+  it('keeps the drawing canvas free of third-party or placeholder company names', () => {
+    const canvasSource = readFileSync(new URL('../../components/drawings/standalone/StandaloneDrawingCanvas.tsx', import.meta.url), 'utf8');
+    const docSource = readFileSync(new URL('../../lib/drawingDocument.ts', import.meta.url), 'utf8');
+    for (const forbidden of ['线图(东莞)科技有限公司', '线图（东莞）科技有限公司', 'xxx公司']) {
+      expect(canvasSource).not.toContain(forbidden);
+      expect(docSource).not.toContain(forbidden);
+    }
+  });
 });

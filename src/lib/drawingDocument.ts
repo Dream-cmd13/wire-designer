@@ -95,7 +95,7 @@ function createRevisionTable(date: Date): DrawingObject {
 }
 
 function createTitleInformationTable(drawingNo: string, date: Date): DrawingObject {
-  const columns = ['xxx公司', '', '', '', '', '品名', '', '', ''];
+  const columns = ['', '', '', '', '', '品名', '', '', ''];
   return {
     ...objectBase('table', DRAWING_DEFAULT_TABLE_POSITIONS['title-block'], 360, 124),
     kind: 'table',
