@@ -57,8 +57,8 @@ function RequestDetails({ row, user, note, saving, saveError, onNoteChange, onSa
       <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 text-sm">
         <div className="min-w-0"><dt className="text-xs text-slate-500">联系人</dt><dd className="mt-1 break-all font-medium">{payload.name}</dd></div>
         <div className="min-w-0"><dt className="text-xs text-slate-500">企业名称</dt><dd className="mt-1 break-all">{payload.company || '—'}</dd></div>
-        <div className="min-w-0"><dt className="text-xs text-slate-500">手机号</dt><dd className="mt-1 break-all">{payload.phone ? <a href={`tel:${payload.phone}`} className="text-blue-700 underline">{payload.phone}</a> : '—'}</dd></div>
-        <div className="min-w-0"><dt className="text-xs text-slate-500">邮箱</dt><dd className="mt-1 break-all">{payload.email ? <a href={`mailto:${encodeURIComponent(payload.email).replace('%40', '@')}`} className="text-blue-700 underline">{payload.email}</a> : '—'}</dd></div>
+        <div className="min-w-0"><dt className="text-xs text-slate-500">手机号</dt><dd className="mt-1 break-all">{payload.phone ? <a href={`tel:${payload.phone}`} className="text-blue-700 no-underline">{payload.phone}</a> : '—'}</dd></div>
+        <div className="min-w-0"><dt className="text-xs text-slate-500">邮箱</dt><dd className="mt-1 break-all">{payload.email ? <a href={`mailto:${encodeURIComponent(payload.email).replace('%40', '@')}`} className="text-blue-700 no-underline">{payload.email}</a> : '—'}</dd></div>
       </dl>
       <div className="mt-5 border-t border-slate-200 pt-4">
         <h3 className="text-sm font-semibold text-slate-900">需求说明{payload.kind ? ` · ${payload.kind}` : ''}</h3>
