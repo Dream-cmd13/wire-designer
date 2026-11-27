@@ -1,9 +1,9 @@
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 import { QUOTE_REQUEST_BUCKET, quoteFilePath } from '../../supabase/functions/_shared/quoteRequest';
 import type { QuoteRequestInput } from '../../supabase/functions/_shared/quoteRequest';
 
 export type QuoteStatus = 'pending' | 'following' | 'quoted' | 'closed';
+export type QuoteRequestScope = 'all' | 'unassigned' | 'mine';
 export const quoteStatuses: Record<QuoteStatus, string> = {
   pending: '待处理', following: '跟进中', quoted: '已报价', closed: '已关闭',
 };
@@ -36,14 +36,29 @@ export class QuoteSubmissionError extends Error {
 }
 
 export async function sendQuoteRequest<T>(action: 'prepare' | 'upload' | 'finalize', body: Record<string, unknown> | File, headers?: Record<string, string>) {
-  const { data, error } = await client().functions.invoke<T>(`quote-request/${action}`, {
-    body, headers, timeout: action === 'upload' ? 90_000 : 20_000,
-  });
-  if (!error && data) return data;
-  if (error instanceof FunctionsHttpError) {
-    const detail = await error.context.json().catch(() => null) as { error?: string; code?: string } | null;
-    if (detail?.error) throw new QuoteSubmissionError(detail.error, detail.code);
+  const requestHeaders = new Headers(headers);
+  const attachment = body instanceof File;
+  requestHeaders.set('Content-Type', attachment ? 'application/octet-stream' : 'application/json');
+  const response = await fetch(`/api/quote-request/${action}`, {
+    method: 'POST',
+    body: attachment ? body : JSON.stringify(body),
+    headers: requestHeaders,
+    credentials: 'omit',
+    signal: AbortSignal.timeout(action === 'upload' ? 90_000 : 20_000),
+  }).catch(() => null);
+  if (response?.status === 403 || response?.status === 401) {
+    throw new QuoteSubmissionError('询价服务暂时无法访问，请重新打开询价页面后重试。');
   }
+  if (response?.status === 404 || (response && response.status >= 500)) {
+    throw new QuoteSubmissionError('询价服务暂时不可用，请稍后重试。');
+  }
+  const data = await response?.json().catch(() => null);
+  if (response?.ok && data) return data as T;
+  if (typeof data?.error === 'string') {
+    throw new QuoteSubmissionError(data.error, typeof data.code === 'string' ? data.code : undefined);
+  }
+  if (response?.status === 429) throw new QuoteSubmissionError('提交过于频繁，请稍后重试。');
+  if (response?.status === 413) throw new QuoteSubmissionError('提交内容超过允许大小。');
   throw new QuoteSubmissionError('连接询价服务失败，请重试。');
 }
 
@@ -53,12 +68,19 @@ export async function canHandleQuoteRequests() {
   return data === true;
 }
 
-export async function listQuoteRequests(status: QuoteStatus | '', page: number, signal: AbortSignal) {
-  let query = client().from('quote_requests').select('id,receipt,status,payload,assignee_id,follow_up_note,submitted_at,updated_at', { count: 'exact' })
-    .order('submitted_at', { ascending: false }).order('id')
+export async function listQuoteRequests({ status, scope, userId, page, signal }: {
+  status: QuoteStatus | '';
+  scope: QuoteRequestScope;
+  userId: string;
+  page: number;
+  signal: AbortSignal;
+}) {
+  let query = client().from('quote_requests').select('id,receipt,status,payload,assignee_id,follow_up_note,submitted_at,updated_at', { count: 'exact' });
+  if (scope === 'unassigned') query = query.eq('status', 'pending').is('assignee_id', null);
+  else if (status) query = query.eq('status', status);
+  if (scope === 'mine') query = query.eq('assignee_id', userId);
+  const { data, count, error } = await query.order('submitted_at', { ascending: false }).order('id')
     .range(page * QUOTE_LIST_SIZE, (page + 1) * QUOTE_LIST_SIZE - 1).abortSignal(signal);
-  if (status) query = query.eq('status', status);
-  const { data, count, error } = await query;
   if (error) throw new Error('询价列表加载失败，请刷新重试。');
   return { rows: data as QuoteRequestRow[], count: count ?? 0 };
 }

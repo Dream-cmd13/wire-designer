@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin, type ProxyOptions } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
@@ -38,29 +38,41 @@ function dropDuplicateLibredwgWasm(): Plugin {
 // https://vite.dev/config/
 // Vitest 3 reads this file automatically for aliases and plugins.
 // Test-specific config (environment, globals) uses vitest defaults.
-export default defineConfig({
-  server: { proxy: { '/api/dwg/edit': 'http://127.0.0.1:5198' } },
-  worker: { format: 'es' },
-  plugins: [react(), dropDuplicateLibredwgWasm()],
-  // PGlite 隔离数据库用例在并行负载下可能超过 5s 默认超时；统一提高超时而不跳过断言。
-  test: {
-    testTimeout: 30000,
-    hookTimeout: 60000,
-  },
-  optimizeDeps: {
-    include: [
-      '@xyflow/react',
-      'lucide-react',
-      'react',
-      'react-dom',
-      'react/jsx-runtime',
-      'zustand',
-    ],
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, __dirname, ['VITE_SUPABASE_URL', 'QUOTE_REQUEST_FORWARD_SECRET']);
+  const proxy: Record<string, string | ProxyOptions> = { '/api/dwg/edit': 'http://127.0.0.1:5198' };
+  if (env.VITE_SUPABASE_URL && env.QUOTE_REQUEST_FORWARD_SECRET) {
+    proxy['^/api/quote-request/(prepare|upload|finalize)$'] = {
+      target: env.VITE_SUPABASE_URL,
+      changeOrigin: true,
+      headers: { 'x-quote-forward-secret': env.QUOTE_REQUEST_FORWARD_SECRET },
+      rewrite: (url) => url.replace('/api/', '/functions/v1/'),
+    };
+  }
+  return {
+    server: { proxy },
+    worker: { format: 'es' },
+    plugins: [react(), dropDuplicateLibredwgWasm()],
+    // PGlite 隔离数据库用例在并行负载下可能超过 5s 默认超时；统一提高超时而不跳过断言。
+    test: {
+      testTimeout: 30000,
+      hookTimeout: 60000,
     },
-    dedupe: ['react', 'react-dom'],
-  },
-})
+    optimizeDeps: {
+      include: [
+        '@xyflow/react',
+        'lucide-react',
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        'zustand',
+      ],
+    },
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+      },
+      dedupe: ['react', 'react-dom'],
+    },
+  };
+});

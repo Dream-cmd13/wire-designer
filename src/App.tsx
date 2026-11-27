@@ -68,6 +68,11 @@ export default function App() {
   useEffect(() => {
     if (currentUser?.role === 'sales' && allowedRoute !== requestedRoute) navigate(allowedRoute.path, { replace: true });
   }, [currentUser?.role, allowedRoute, requestedRoute, navigate]);
+  const quoteLeaveGuard = useRef<((proceed: () => void) => void) | null>(null);
+  const registerQuoteLeaveGuard = useCallback((guard: (proceed: () => void) => void) => {
+    quoteLeaveGuard.current = guard;
+    return () => { if (quoteLeaveGuard.current === guard) quoteLeaveGuard.current = null; };
+  }, []);
   const [authOpen, setAuthOpen] = useState(false);
   const [bomModalOpen, setBomModalOpen] = useState(false);
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
@@ -371,13 +376,16 @@ export default function App() {
 
   const handleNavigate = useCallback((path: string) => {
     const nextRoute = getRouteByPath(path);
-    const activeProjectId = currentProject?.id;
-    if (nextRoute.section === 'designer') {
-      navigate(activeProjectId ? nextRoute.path : defaultRoute.path, { projectId: activeProjectId });
-      return;
-    }
-
-    navigate(path);
+    const proceed = () => {
+      const activeProjectId = currentProject?.id;
+      if (nextRoute.section === 'designer') {
+        navigate(activeProjectId ? nextRoute.path : defaultRoute.path, { projectId: activeProjectId });
+        return;
+      }
+      navigate(path);
+    };
+    if (nextRoute.id !== 'quote-requests' && quoteLeaveGuard.current) quoteLeaveGuard.current(proceed);
+    else proceed();
   }, [currentProject, navigate]);
 
   const handleOpenProject = useCallback(async (
@@ -663,7 +671,7 @@ export default function App() {
 
     if (route.id === 'request-quote') return <RequestQuotePage />;
     if (route.id === 'quote-requests' && currentUser) {
-      return <QuoteRequestsPage key={`${currentUser.id}:${currentUser.role}`} user={currentUser} />;
+      return <QuoteRequestsPage key={`${currentUser.id}:${currentUser.role}`} user={currentUser} registerLeaveGuard={registerQuoteLeaveGuard} />;
     }
 
     if (route.id === 'auto-quote') {

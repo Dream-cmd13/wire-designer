@@ -26,11 +26,11 @@ export interface SidebarItem {
   path?: string;
   icon: ComponentType<{ className?: string }>;
   children?: SidebarItem[];
-  access?: 'projects' | 'materials' | 'quote-staff';
+  access?: 'projects' | 'materials';
 }
 
 const sidebarItems: SidebarItem[] = [
-  { label: appRoutes['request-quote'].title, path: appRoutes['request-quote'].path, icon: MessageSquareText },
+  { label: '询价', path: appRoutes['request-quote'].path, icon: MessageSquareText },
   {
     label: '线束设计器',
     path: appRoutes['designer-projects'].path,
@@ -47,7 +47,6 @@ const sidebarItems: SidebarItem[] = [
     icon: Calculator,
     access: 'projects',
   },
-  { label: '询价管理', path: appRoutes['quote-requests'].path, icon: ClipboardList, access: 'quote-staff' },
   {
     label: '物料库',
     path: appRoutes.materials.path,
@@ -138,53 +137,49 @@ function ProjectNameEditor({
   );
 }
 
-function DesignViewToggle({
-  currentRouteId,
-  onNavigate,
-}: {
+const designViews = [
+  { route: appRoutes['designer-design'], icon: PenTool },
+  { route: appRoutes['designer-product-image'], icon: FileImage },
+];
+const quoteViews = [
+  { route: appRoutes['request-quote'], icon: MessageSquareText },
+  { route: appRoutes['quote-requests'], icon: ClipboardList },
+];
+
+function HeaderViewToggle({ label, views, currentRouteId, onNavigate, compact, equalWidth }: {
+  label: string;
+  views: typeof designViews;
   currentRouteId: AppRouteId;
   onNavigate: (path: string) => void;
+  compact?: boolean;
+  equalWidth?: boolean;
 }) {
   return (
-    <div
-      className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs"
-      role="group"
-      aria-label="视图切换"
-    >
-      <button
-        type="button"
-        onClick={() => onNavigate(appRoutes['designer-design'].path)}
-        className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
-          currentRouteId === 'designer-design'
-            ? 'bg-white text-blue-600 shadow-sm font-semibold'
-            : 'text-slate-600 hover:text-slate-900'
-        }`}
-        title="设计图"
-        aria-pressed={currentRouteId === 'designer-design'}
-      >
-        <PenTool className="h-3.5 w-3.5 shrink-0" />
-        <span className="hidden sm:inline">设计图</span>
-      </button>
-      <button
-        type="button"
-        onClick={() => onNavigate(appRoutes['designer-product-image'].path)}
-        className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 font-medium transition-all ${
-          currentRouteId === 'designer-product-image'
-            ? 'bg-white text-blue-600 shadow-sm font-semibold'
-            : 'text-slate-600 hover:text-slate-900'
-        }`}
-        title="成品图"
-        aria-pressed={currentRouteId === 'designer-product-image'}
-      >
-        <FileImage className="h-3.5 w-3.5 shrink-0" />
-        <span className="hidden sm:inline">成品图</span>
-      </button>
+    <div className={`${equalWidth ? 'grid w-48 grid-cols-2' : 'flex'} items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs`} role="group" aria-label={label}>
+      {views.map(({ route, icon: Icon }) => {
+        const active = currentRouteId === route.id;
+        return (
+          <button
+            key={route.id}
+            type="button"
+            onClick={() => { if (!active) onNavigate(route.path); }}
+            className={`flex cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 font-medium transition-all ${
+              active ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title={route.title}
+            aria-pressed={active}
+          >
+            <Icon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            <span className={compact ? 'hidden sm:inline' : undefined}>{route.title}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 function pathMatches(route: AppRoute, item: SidebarItem) {
-  if (item.path === route.path) return true;
+  if (item.path === route.path || (item.path === appRoutes['request-quote'].path && route.section === 'quote-requests')) return true;
   return item.children?.some((child) => child.path === route.path) ?? false;
 }
 
@@ -214,7 +209,6 @@ export function AdminShell({
   const accessProjects = canAccessProjects ?? Boolean(currentUser);
   const accessMaterials = canAccessMaterials ?? Boolean(currentUser);
   const visibleSidebarItems = sidebarItems.filter((item) => {
-    if (item.access === 'quote-staff') return currentUser?.role === 'sales' || currentUser?.role === 'admin';
     if (currentUser && (!currentUser.role || currentUser.role === 'sales')) {
       return Object.values(appRoutes).some((route) => route.path === item.path && resolveRoleRoute(route, 'sales') === route);
     }
@@ -223,6 +217,7 @@ export function AdminShell({
     return true;
   });
   const showDesignerActions = (currentUser?.role === 'engineer' || currentUser?.role === 'admin') && route.section === 'designer' && Boolean(currentProjectId && currentProjectName);
+  const showQuoteToggle = route.section === 'quote-requests' && (currentUser?.role === 'sales' || currentUser?.role === 'admin');
   const contextLabel = route.section === 'quote-requests' ? undefined
     : route.id === 'drawing-workbench'
     ? '独立制图 · 新建后导出'
@@ -283,7 +278,7 @@ export function AdminShell({
                 <div key={item.label}>
                   <button
                     type="button"
-                    onClick={() => item.path && onNavigate(item.path)}
+                    onClick={() => { if (item.path && (!active || item.path !== appRoutes['request-quote'].path)) onNavigate(item.path); }}
                     className={`flex h-10 w-full cursor-pointer items-center rounded-md text-left text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 ${
                       active ? 'bg-blue-500 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     } ${sidebarCollapsed ? 'justify-center px-0' : 'gap-2 px-2'}`}
@@ -337,7 +332,9 @@ export function AdminShell({
       </aside>
 
       <div className="@container flex min-w-0 flex-1 flex-col">
-        <header data-page-header className="relative flex min-h-14 shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4">
+        <header data-page-header className={`relative min-h-14 shrink-0 items-center gap-x-3 gap-y-1.5 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4 ${
+          showQuoteToggle ? 'grid grid-cols-[minmax(0,1fr)_auto] @min-[660px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]' : 'flex flex-wrap'
+        }`}>
           <div className="mr-auto min-w-0">
             <h1 className="truncate text-sm font-semibold text-slate-900">{route.title}</h1>
             {contextLabel && <p className="hidden max-w-52 truncate text-xs text-slate-500 @min-[580px]:block" title={contextLabel}>{contextLabel}</p>}
@@ -422,7 +419,10 @@ export function AdminShell({
                     <span className="hidden font-semibold @min-[1150px]:inline">线束报价</span>
                   </button>
                 )}
-                <DesignViewToggle
+                <HeaderViewToggle
+                  label="视图切换"
+                  views={designViews}
+                  compact
                   currentRouteId={route.id}
                   onNavigate={onNavigate}
                 />
@@ -433,32 +433,45 @@ export function AdminShell({
             </div>
           )}
 
-          <div ref={setPageActionsTarget} className="order-2 flex min-w-0 max-w-full basis-full flex-wrap items-center gap-1.5 empty:hidden @min-[660px]:order-none @min-[660px]:basis-auto @min-[660px]:flex-[1_1_0%] @min-[660px]:justify-end" />
+          {showQuoteToggle && (
+            <div className="col-span-2 row-start-2 justify-self-center @min-[660px]:col-span-1 @min-[660px]:col-start-2 @min-[660px]:row-start-1">
+              <HeaderViewToggle label="询价切换" views={quoteViews} currentRouteId={route.id} onNavigate={onNavigate} equalWidth />
+            </div>
+          )}
 
-          <div className="ml-auto flex shrink-0 items-center">
-            {currentUser ? (
-              <button
-                type="button"
-                onClick={onOpenAuth}
-                aria-label={currentUser.name}
-                className="flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
-              >
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
-                  {currentUser.name[0]}
-                </span>
-                <span className="hidden max-w-28 truncate sm:inline">{currentUser.name}</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onOpenAuth}
-                aria-label="登录"
-                className="flex cursor-pointer items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-              >
-                <User className="h-4 w-4" />
-                <span className="hidden sm:inline">登录</span>
-              </button>
-            )}
+          <div className={showQuoteToggle
+            ? 'col-start-2 row-start-1 flex min-w-0 items-center justify-end gap-2 @min-[660px]:col-start-3'
+            : 'contents'
+          }>
+            <div ref={setPageActionsTarget} className={`flex items-center gap-1.5 empty:hidden ${showQuoteToggle
+              ? 'shrink-0' : 'order-2 min-w-0 max-w-full basis-full flex-wrap @min-[660px]:order-none @min-[660px]:basis-auto @min-[660px]:flex-[1_1_0%] @min-[660px]:justify-end'
+            }`} />
+
+            <div className={showQuoteToggle ? 'flex min-w-0 items-center' : 'ml-auto flex shrink-0 items-center'}>
+              {currentUser ? (
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  aria-label={currentUser.name}
+                  className="flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm transition-colors hover:bg-slate-50"
+                >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white">
+                    {currentUser.name[0]}
+                  </span>
+                  <span className="hidden max-w-28 truncate sm:inline">{currentUser.name}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  aria-label="登录"
+                  className="flex cursor-pointer items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  <User className="h-4 w-4" />
+                  <span className="hidden sm:inline">登录</span>
+                </button>
+              )}
+            </div>
           </div>
         </header>
 

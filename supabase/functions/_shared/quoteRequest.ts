@@ -46,7 +46,7 @@ type QuoteRequestFields = Pick<QuoteRequestInput, 'demand' | 'name' | 'phone' | 
 export type QuoteRequestFieldErrors = Partial<Record<keyof QuoteRequestFields | 'contact', string>>;
 
 function normalizePhone(phone: string): string {
-  return phone.replace(/[\s()-]/gu, '');
+  return phone.replace(/[\s()-]/gu, '').replace(/^\+86/u, '');
 }
 
 export function getQuoteRequestFieldErrors(fields: QuoteRequestFields, hasFiles: boolean): QuoteRequestFieldErrors {
@@ -56,8 +56,8 @@ export function getQuoteRequestFieldErrors(fields: QuoteRequestFields, hasFiles:
   const email = fields.email.trim();
   if (!fields.demand.trim() && !hasFiles) errors.demand = '请描述需求或上传至少一份图纸。';
   if (!fields.name.trim()) errors.name = '请填写联系人。';
-  if (!phone && !email) errors.contact = '请填写手机号或邮箱，方便专员联系。';
-  else if (rawPhone && !/^\+?\d{7,15}$/u.test(phone)) errors.phone = '请填写有效的手机号。';
+  if (!rawPhone && !email) errors.contact = '请填写手机号或邮箱，方便专员联系。';
+  if (rawPhone && !/^1[3-9]\d{9}$/u.test(phone)) errors.phone = '请输入有效的中国大陆 11 位手机号。';
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) errors.email = '请填写有效的邮箱。';
   return errors;
 }

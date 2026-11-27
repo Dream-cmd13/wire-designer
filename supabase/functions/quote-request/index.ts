@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import {
   hasQuoteFileSignature, quoteFileHash, quoteFilePath, QUOTE_CLEANUP_HOURS,
@@ -25,6 +26,16 @@ class RequestProblem extends Error {
 
 function respond(body: unknown, status = 200) {
   return Response.json(body, { status, headers: { ...cors, 'Cache-Control': 'no-store' } });
+}
+
+function hasSecret(request: Request, header: string, variable: string) {
+  const supplied = request.headers.get(header);
+  const expected = Deno.env.get(variable);
+  if (!supplied || !expected) return false;
+  const encoder = new TextEncoder();
+  const actual = encoder.encode(supplied);
+  const secret = encoder.encode(expected);
+  return actual.length === secret.length && timingSafeEqual(actual, secret);
 }
 
 function checkId(value: unknown): string {
@@ -99,6 +110,8 @@ async function upload(request: Request) {
   const rawIndex = request.headers.get('x-quote-file-index');
   if (!rawIndex || !/^[0-4]$/u.test(rawIndex)) throw new RequestProblem('附件编号无效。', 400);
   const index = Number(rawIndex);
+  // The hosted Edge relay can stall on early responses to large, unread request bodies.
+  const bytes = await readLimited(request, QUOTE_FILE_MAX_BYTES);
   const { data: row, error } = await client.from('quote_requests').select('created_at, status, payload').eq('id', id).maybeSingle();
   if (error) throw new Error('quote upload metadata lookup failed');
   if (!row || (row.status === 'uploading' && Date.parse(row.created_at) <= Date.now() - QUOTE_UPLOAD_HOURS * hour)) {
@@ -107,8 +120,7 @@ async function upload(request: Request) {
   if (row.status !== 'uploading') return respond({ uploaded: true });
   const file = (row.payload as QuoteRequestInput).files[index];
   if (!file) throw new RequestProblem('附件编号无效。', 400);
-  if (file.size > QUOTE_FILE_MAX_BYTES) throw new RequestProblem('提交内容超过允许大小。', 413);
-  const bytes = await readLimited(request, file.size);
+  if (file.size > QUOTE_FILE_MAX_BYTES || bytes.length > file.size) throw new RequestProblem('提交内容超过允许大小。', 413);
   if (bytes.length !== file.size || !hasQuoteFileSignature(file.name, bytes) || await quoteFileHash(bytes.buffer) !== file.sha256) {
     throw new RequestProblem(`「${file.name}」的内容与所选文件不符，请检查格式后重新选择。`, 400);
   }
@@ -149,8 +161,7 @@ async function finalize(request: Request) {
 }
 
 async function cleanup(request: Request) {
-  const secret = Deno.env.get('QUOTE_REQUEST_CLEANUP_SECRET');
-  if (!secret || request.headers.get('x-quote-cleanup-secret') !== secret) return respond({ error: 'Forbidden' }, 403);
+  if (!hasSecret(request, 'x-quote-cleanup-secret', 'QUOTE_REQUEST_CLEANUP_SECRET')) return respond({ error: 'Forbidden' }, 403);
   const cutoff = new Date(Date.now() - QUOTE_CLEANUP_HOURS * hour).toISOString();
   const batch = 100;
   const { data, error } = await client.from('quote_requests').select('id, payload').eq('status', 'uploading')
@@ -174,11 +185,12 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return respond({ error: 'Method not allowed' }, 405);
   const action = new URL(request.url).pathname.split('/').at(-1);
   try {
+    if (action === 'cleanup') return await cleanup(request);
+    if (!hasSecret(request, 'x-quote-forward-secret', 'QUOTE_REQUEST_FORWARD_SECRET')) return respond({ error: 'Forbidden' }, 403);
     switch (action) {
       case 'prepare': return await prepare(request);
       case 'upload': return await upload(request);
       case 'finalize': return await finalize(request);
-      case 'cleanup': return await cleanup(request);
       default: return respond({ error: 'Not found' }, 404);
     }
   } catch (error) {

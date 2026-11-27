@@ -6,10 +6,16 @@
 
 ## 发布顺序
 
-1. 使用测试库先验证，确认账号改密迁移已执行。备份现有数据库数据及 Storage（数据库备份不包含对象原件），并记录现有业务行数/桶清单。通过项目迁移工具预览 `npm run supabase:migrate -- 20261126_quote_requests.sql`，确认目标、计划、备份及恢复方案后，由有授权的维护人员加 `--apply <确认码>` 执行。已安装询价功能的环境仅需执行后续迁移 `20261126_quote_requests_file_limit_20_mib.sql`。新环境先创建询价表和存储桶，再执行该迁移。迁移仅提高私有询价桶的附件上限，现有资料继续保留。
-2. 部署 `supabase functions deploy quote-request --project-ref <目标项目>`。在接入层为公开 `prepare`、`upload`、`finalize` 配置 IP/请求速率限制和告警（包括直接访问 Edge Function 的路径；数据库另有每小时同联系方式和全站收件占位上限）。如通过 Nginx 同源代理，在询价上传路径 `/api/quote-request/upload` 对应的 `location` 中设为 `client_max_body_size 20m;`，并确认其他代理层和 Storage 全局限制允许 20 MiB。棕地环境先确认已有 Storage 策略不会宽泛授权新桶。附件先检查大小、文件头和摘要，以附件方式下载，不在线渲染；处理外部附件时仍需按公司要求做安全检查。
+1. 使用测试库先验证，确认账号改密迁移已执行。备份现有数据库数据及 Storage（数据库备份不包含对象原件），并记录现有业务行数/桶清单。通过项目迁移工具预览 `npm run supabase:migrate -- 20261126_quote_requests.sql`，确认目标、计划、备份及恢复方案后，由有授权的维护人员加 `--apply <确认码>` 执行。已安装询价功能的环境通过 `npm run supabase:migrate -- 20261126_quote_requests_file_limit_20_mib.sql` 预览 20 MiB 限额迁移，确认后再执行。新环境先创建询价表与存储桶，再执行该限额迁移。限额迁移仅更新私有桶配置，保留现有资料。
+2. 部署 `supabase functions deploy quote-request --project-ref <目标项目>`。公开 `prepare`、`upload`、`finalize` 由站点同源 `/api/quote-request/` 转发，接入层按客户端 IP 和全站请求速率限流。Nginx 覆盖 `x-quote-forward-secret`，其值与 Edge Secret `QUOTE_REQUEST_FORWARD_SECRET` 一致。函数校验失败返回 403。数据库另有每小时同联系方式和全站收件占位上限。棕地环境先确认已有 Storage 策略不会宽泛授权新桶。附件先检查大小、文件头和摘要，以附件方式下载，不在线渲染；处理外部附件时仍需按公司要求做安全检查。
 3. 为 `quote-request/cleanup` 配置每 15 分钟的私有定时 POST：用计划器或 Supabase Cron/Vault 以 `x-quote-cleanup-secret` 请求头提供与 Edge Secret `QUOTE_REQUEST_CLEANUP_SECRET` 一致的高强度随机值。清理只处理超过 3 小时、从未提交成功的记录和对应对象，每批最多 100 条。用 Storage API 删除对象；不要直接删除 `storage.objects` 元数据。检查最近执行结果和积压。上线前明确已提交图纸的访问责任和留存期限；清理不会触及已提交的询价。
-4. 最后发布前端。测试库用无痕窗口测试纯文字提交、真实 PDF/DWG 附件、20 MiB 附件可完成提交并下载、20 MiB + 1 字节被拒绝、失败重试与重复提交，然后由真实接单账号认领、下载并记录报价。验证未登记账号及访客无法读取，内部自动报价和原资料访问边界不变。检查通知或人工值班流程。
+4. 最后发布前端。测试库用无痕窗口测试纯文字提交、真实 PDF/DWG 附件、20 MiB 附件可提交并下载、20 MiB + 1 字节被拒绝、失败重试与重复提交，然后由真实接单账号认领、下载并记录报价。验证未登记账号及访客无法读取，内部自动报价和原资料访问边界不变。检查通知或人工值班流程。
+
+## 运维检查
+
+- Nginx 仅转发三个公开动作，并校验到 Supabase 的 TLS 证书。接口按 IP 每分钟 30 个请求、全站每分钟 120 个请求限流，允许短时突发。询价代理的 `client_max_body_size` 为 `20m`，其他代理层和 Storage 全局限制也需要允许 20 MiB。直接向 Supabase 三个动作发 POST 应返回 403；通过站点代理发送空 JSON 应返回 400。
+- 生产清理由 `designer-quote-request.timer` 每 15 分钟执行。使用 `systemctl status designer-quote-request.timer` 和 `journalctl -u designer-quote-request.service` 查看清理结果及错误告警。告警统计最近 15 分钟的 HTTP 429 和 5xx，访问统计只含时间和状态码。生产的转发及清理凭据分别由 Edge Secrets 和服务器受限配置保护。
+- 本地连接测试项目时，在 `.env.local` 配置该测试项目的 `VITE_SUPABASE_URL` 和 `QUOTE_REQUEST_FORWARD_SECRET`。Vite 只在服务端向函数添加转发密钥。
 
 ## 回退
 
